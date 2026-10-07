@@ -112,7 +112,11 @@ func main() {
 	proxySrv := grpcapi.NewProxyServer(loader, limiter)
 
 	grpcSrv := server.NewGRPCServer(proxySrv, adminSrv, verifier, cfg.GRPCAddr)
-	httpSrv := server.NewHTTPServer(pool, cfg.HTTPAddr)
+	var openaiAPI *server.OpenAIAPI
+	if cfg.HTTPAPIEnabled {
+		openaiAPI = server.NewOpenAIAPI(proxySrv, verifier)
+	}
+	httpSrv := server.NewHTTPServer(pool, cfg.HTTPAddr, openaiAPI, cfg.HTTPAPITimeout)
 
 	grpcErrCh := make(chan error, 1)
 	httpErrCh := make(chan error, 1)

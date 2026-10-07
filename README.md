@@ -17,6 +17,8 @@ vendor is down, enforces rate and spend limits, and records usage.
   per end user, backed by Redis.
 - **More than text.** Text generation with structured (JSON-schema) output, speech
   synthesis, image generation and typed judgments.
+- **OpenAI-compatible HTTP API.** Point any OpenAI SDK or tool at `http://host:8080/v1`
+  and get routing, fallbacks and limits for free.
 - **Usage reporting.** Optionally forwards one event per call to a gRPC usage sink.
 
 ## Contents
@@ -30,6 +32,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 - [Configuration reference](#configuration-reference)
 - [Setting it up: keys, models, rules](#setting-it-up-keys-models-rules)
 - [Calling the proxy](#calling-the-proxy)
+- [OpenAI-compatible HTTP API](#openai-compatible-http-api)
 - [Concepts](#concepts)
 - [Error contract](#error-contract)
 - [Operations](#operations)
@@ -52,7 +55,8 @@ Two gRPC services share port `9090`:
 | `llmproxy.v1.LLMProxyService` | `GenerateText`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `ListModels` | `generate` |
 | `llmproxy.v1.LLMProxyAdminService` | models, rules, vendor keys, API keys, key rotation | `admin` |
 
-Port `8080` serves plain HTTP health probes (`/healthz`, `/readyz`). gRPC server
+Port `8080` serves the health probes (`/healthz`, `/readyz`) and the
+[OpenAI-compatible HTTP API](#openai-compatible-http-api) under `/v1`. gRPC server
 reflection is on, so `grpcurl` works without the `.proto` files.
 
 ## Quick start (Docker Compose)
@@ -191,7 +195,9 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `DATABASE_URL` | – | **Required.** Postgres connection string. |
 | `LLMPROXY_ENCRYPTION_KEYS` | – | **Required.** Versioned keyring `1:<base64 32 bytes>[,2:…]`. The highest version encrypts new writes; all listed versions can decrypt. |
 | `GRPC_ADDR` | `:9090` | gRPC listen address (data and admin planes). |
-| `HTTP_ADDR` | `:8080` | Health-probe listen address. |
+| `HTTP_ADDR` | `:8080` | HTTP listen address (health probes and the OpenAI-compatible API). |
+| `HTTP_API_ENABLED` | `true` | Serve the `/v1` API on `HTTP_ADDR`; `false` leaves only the health probes. |
+| `HTTP_API_TIMEOUT` | `5m` | Read/write timeout for one HTTP API call (it waits on an upstream model). |
 | `LOG_LEVEL` | `info` | zerolog level. |
 | `SHUTDOWN_TIMEOUT` | `30s` | Graceful drain time on SIGTERM. |
 | `DB_MAX_CONNS` / `DB_MIN_CONNS` | `25` / `5` | Postgres pool bounds. |
@@ -387,6 +393,108 @@ writes no text, so its models must declare the `judge` capability and refuse `Ge
 
 Returns the models the calling key can use (those whose vendor it holds a credential for), with
 efforts, capabilities, rpm and prices.
+
+## OpenAI-compatible HTTP API
+
+The data plane is also available as HTTP/JSON in the OpenAI wire format, so existing
+OpenAI SDKs, LangChain, `curl` and similar tools work by changing the base URL and key.
+It runs on `HTTP_ADDR` (default `:8080`) and shares everything with gRPC: the same
+`llm_…` API keys (scope `generate`), vendor credentials, rules, fallbacks, throttling and
+usage reporting. Set `HTTP_API_ENABLED=false` to turn it off.
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8080/v1", api_key="llm_<your key>")
+reply = client.chat.completions.create(
+    model="auto",                                # let the rules choose
+    messages=[{"role": "user", "content": "Say hi in three words."}],
+)
+print(reply.choices[0].message.content, reply.model)   # `model` is the one that answered
+```
+
+```bash
+curl -s localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer llm_<your key>" -H "Content-Type: application/json" \
+  -d '{"model":"auto","messages":[{"role":"user","content":"Say hi in three words."}]}'
+```
+
+### Endpoints
+
+| Endpoint | Maps to | Notes |
+| --- | --- | --- |
+| `POST /v1/chat/completions` | `GenerateText` | Text and structured output. |
+| `POST /v1/audio/speech` | `SynthesizeSpeech` | Returns OGG/Opus audio. |
+| `POST /v1/images/generations` | `GenerateImage` | Returns `b64_json`. |
+| `GET /v1/models`, `GET /v1/models/{id}` | `ListModels` | Only models the key holds a vendor credential for. |
+| `POST /v1/judge` | `Judge` | Not part of OpenAI's API. Body and response are the protobuf JSON of `JudgeRequest` / `JudgeResponse`. |
+
+Authentication is `Authorization: Bearer llm_…`. The response headers `X-LLM-Proxy-Vendor`
+and `X-LLM-Proxy-Rule` (and `X-LLM-Proxy-Model` for speech and images) tell you which
+vendor and rule served the call; for chat the answering model is the `model` field.
+
+### Choosing a model
+
+The `model` field decides routing:
+
+| `model` | Behaviour |
+| --- | --- |
+| `auto` (or empty) | Rules decide. Effort comes from `reasoning_effort` (`low` / `medium` / `high`), default `medium`. |
+| `auto:low`, `auto:medium`, `auto:high` | Rules decide, at that effort. |
+| anything else | An exact registry model id (`model_override`): bypasses rules but not throttles. |
+
+Routing attributes (what rules match on, and what usage events carry) come from OpenAI's own
+fields: `metadata` is passed through as attributes, `user` becomes `attributes["user_id"]`
+(unless `metadata.user_id` is set), and `metadata.action_id` is used as the usage action label.
+
+```json
+{"model": "auto:low", "user": "u-42", "metadata": {"subject": "french", "action_id": "app.quiz"},
+ "messages": [{"role": "user", "content": "Translate: good morning"}]}
+```
+
+### Chat completions: what is supported
+
+| Request field | Support |
+| --- | --- |
+| `messages` | `system`/`developer` messages become the system instruction, `user`/`assistant` the conversation. Content is a string or text parts. |
+| `max_tokens`, `max_completion_tokens` | Output ceiling (`max_output_tokens`). Set one: an unbounded answer is the costliest failure. |
+| `response_format` | `json_schema` is enforced (converted to the proxy's schema; keywords such as `enum` and `additionalProperties` are dropped). `json_object` asks for JSON in the prompt. |
+| `stream` | Accepted. The proxy retries and verifies whole answers, so the full reply arrives as a single SSE chunk followed by `[DONE]`; `stream_options.include_usage` is honoured. |
+| `reasoning_effort`, `user`, `metadata` | Routing, as above. |
+| `enable_google_search` | Extension: let a Google model ground the answer in search. |
+| `n` | Must be 1. |
+| `tools`, `tool_choice`, `functions` | Rejected with `400`. |
+| Image/audio content parts, `tool`/`function` roles | Rejected with `400`. |
+| `temperature`, `top_p`, `stop`, `seed`, `logprobs`, penalties… | Accepted and ignored. |
+
+The response is a standard `chat.completion` with `finish_reason: "stop"` and token `usage`.
+
+### Speech and images
+
+`POST /v1/audio/speech` takes `model`, `input` and an optional `language` extension (pronunciation
+hint, e.g. `"Serbian"`); `voice`, `response_format` and `speed` are ignored. The body of the response
+is OGG/Opus whatever format was requested; check the `Content-Type`.
+
+`POST /v1/images/generations` takes `model` and `prompt`; `n` must be 1 and `response_format: "url"`
+is rejected (the image is returned as `data[0].b64_json`).
+
+Both need rules for the `tts` / `image` [modality](#speech-image-and-judgment-rules).
+
+### Errors
+
+Errors use OpenAI's shape, `{"error": {"message", "type", "param", "code"}}`, and the proxy's
+[error contract](#error-contract) shows up in `code`:
+
+| HTTP | `type` | `code` examples |
+| --- | --- | --- |
+| 400 | `invalid_request_error` | `output_truncated`, `no_capable_model`, `no_vendor_key`, `not_configured`; validation messages |
+| 401 / 403 | `authentication_error` / `permission_error` | missing or invalid key, missing scope |
+| 429 | `rate_limit_error` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` (with `Retry-After`) |
+| 502 | `server_error` | `vendor_error` |
+| 503 | `server_error` | `vendors_unavailable` (the only error worth retrying) |
+
+OpenAI SDKs retry 429 and 5xx automatically; for `throttled:*` and `vendor_error` you may want to
+disable that (`max_retries=0`) and handle them yourself.
 
 ## Concepts
 

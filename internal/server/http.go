@@ -13,26 +13,30 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
-// HTTPServer serves only health endpoints; all real traffic is gRPC.
+// HTTPServer serves the health endpoints and, when configured, the OpenAI-compatible API.
 type HTTPServer struct {
 	server *http.Server
 	pinger Pinger
 	addr   string
 }
 
-// NewHTTPServer creates the health HTTP server
-func NewHTTPServer(pinger Pinger, addr string) *HTTPServer {
+// NewHTTPServer creates the HTTP server. api may be nil (health only);
+// requestTimeout bounds one API call, which waits on an upstream model.
+func NewHTTPServer(pinger Pinger, addr string, api *OpenAIAPI, requestTimeout time.Duration) *HTTPServer {
 	s := &HTTPServer{pinger: pinger, addr: addr}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.HandleFunc("GET /readyz", s.handleReadyz)
+	if api != nil {
+		api.Register(mux)
+	}
 
 	s.server = &http.Server{
 		Addr:         addr,
 		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		ReadTimeout:  requestTimeout,
+		WriteTimeout: requestTimeout,
 		IdleTimeout:  120 * time.Second,
 	}
 	return s

@@ -12,9 +12,13 @@ type Config struct {
 	DatabaseURL string
 	// EncryptionKeys is the versioned AES-256-GCM keyring spec
 	// ("1:<base64 32B>,2:..."); vendor keys are unreadable without it.
-	EncryptionKeys  string
-	GRPCAddr        string
-	HTTPAddr        string
+	EncryptionKeys string
+	GRPCAddr       string
+	HTTPAddr       string
+	// HTTPAPIEnabled mounts the OpenAI-compatible API on HTTPAddr; off leaves health only.
+	HTTPAPIEnabled bool
+	// HTTPAPITimeout bounds one HTTP API call, which waits on an upstream model.
+	HTTPAPITimeout  time.Duration
 	LogLevel        string
 	ShutdownTimeout time.Duration
 	DBMaxConns      int32
@@ -54,6 +58,8 @@ func Load() *Config {
 		EncryptionKeys:     getEnv("LLMPROXY_ENCRYPTION_KEYS", ""),
 		GRPCAddr:           getEnv("GRPC_ADDR", ":9090"),
 		HTTPAddr:           getEnv("HTTP_ADDR", ":8080"),
+		HTTPAPIEnabled:     getBoolEnv("HTTP_API_ENABLED", true),
+		HTTPAPITimeout:     getDurationEnv("HTTP_API_TIMEOUT", 5*time.Minute),
 		LogLevel:           getEnv("LOG_LEVEL", "info"),
 		ShutdownTimeout:    getDurationEnv("SHUTDOWN_TIMEOUT", 30*time.Second),
 		DBMaxConns:         int32(getIntEnv("DB_MAX_CONNS", 25)),
