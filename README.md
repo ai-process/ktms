@@ -15,8 +15,8 @@ vendor is down, enforces rate and spend limits, and records usage.
   Rules are changed at runtime over an admin RPC, with no redeploy.
 - **Throttling.** Per-model requests-per-minute and daily token budgets, per API key and
   per end user, backed by Redis.
-- **More than text.** Text generation with structured (JSON-schema) output, speech
-  synthesis, image generation and typed judgments.
+- **More than text.** Text generation with structured (JSON-schema) output, asynchronous
+  batch generation at 50% discount, speech synthesis, image generation and typed judgments.
 - **OpenAI-compatible HTTP API.** Point any OpenAI SDK or tool at `http://host:8080/v1`
   and get routing, fallbacks and limits for free.
 - **Usage reporting.** Optionally forwards one event per call to a gRPC usage sink.
@@ -52,7 +52,7 @@ Two gRPC services share port `9090`:
 
 | Service | Purpose | Needed scope |
 | --- | --- | --- |
-| `llmproxy.v1.LLMProxyService` | `GenerateText`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `ListModels` | `generate` |
+| `llmproxy.v1.LLMProxyService` | `GenerateText`, `SubmitBatch`, `GetBatch`, `ListBatchResults`, `CancelBatch`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `ListModels` | `generate` |
 | `llmproxy.v1.LLMProxyAdminService` | models, rules, vendor keys, API keys, key rotation | `admin` |
 
 Port `8080` serves the health probes (`/healthz`, `/readyz`) and the
@@ -207,6 +207,9 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `REDIS_ADDR` | empty | Redis for throttling. Empty disables limits. |
 | `REDIS_PASSWORD` / `REDIS_DB` | empty / `0` | Redis auth and database. |
 | `REDIS_KEY_PREFIX` | empty | Namespace for counters when Redis is shared (compose uses `dev`). |
+| `BATCH_POLL_SECONDS` | `60` | Background polling interval in seconds for checking unfinished batch jobs. |
+| `BATCH_MAX_ITEMS` | `10000` | Maximum number of items allowed in a single batch submission. |
+| `RESULTS_RETENTION_DAYS` | `7` | Retention period in days for completed batch results before cleanup. |
 | `BOOTSTRAP_ADMIN_KEY` | empty | Implicit admin key for creating the first real key. Unset afterwards. |
 | `USAGE_COLLECTOR_HOST` | empty | `host:port` of a gRPC usage sink. Empty disables reporting. |
 | `USAGE_PROJECT_ID` | `llm-proxy` | Default project name on usage events. |
@@ -260,17 +263,22 @@ Vendors: `openai`, `google`, `deepseek` (OpenAI-compatible API, default endpoint
     "price_out_per_mtok": 2.50,
     "price_in_peak_per_mtok": 0,            // for vendors with peak-hour pricing, else 0
     "price_out_peak_per_mtok": 0,
+    "price_in_batch_per_mtok": 0,           // batch pricing; 0 defaults to half normal price
+    "price_out_batch_per_mtok": 0,
     "daily_tokens_per_key": 50000000,       // per API key per UTC day, 0 = unlimited
-    "daily_tokens_per_user": 500000,        // per attributes["user_id"] per UTC day
+    "daily_tokens_per_user": 500000,        // per attributes["user_id"] (or svc:<key_name> fallback) per UTC day
     "enabled": true } }
 ```
 
 (The `//` comments are for illustration; strip them from real JSON.) Send it to `UpsertModel`.
 
+When `price_in_batch_per_mtok` and `price_out_batch_per_mtok` are `0`, the proxy automatically defaults them to half the regular price (`price_in_per_mtok / 2`, `price_out_per_mtok / 2`).
+
 Capabilities a model may declare:
 
 | Capability | Meaning |
 | --- | --- |
+| `batch` | Can serve asynchronous batch text generation requests (`SubmitBatch`). |
 | `google_search` | Can serve requests with `enable_google_search`. |
 | `no_structured_output` | The vendor API can't take a JSON schema (e.g. DeepSeek). The shape is requested in the prompt and verified by the proxy instead. |
 | `tts` | Can serve `SynthesizeSpeech`. |
@@ -345,7 +353,7 @@ Python, TypeScript… clients from [`proto/llmproxy/v1`](proto/llmproxy/v1) with
 | Field | Notes |
 | --- | --- |
 | `effort` | Routing tier. |
-| `attributes` | Opaque key/values matched by rules and copied to usage events. `user_id` charges the per-user daily budget. `usage_project` overrides the usage project (see below). |
+| `attributes` | Opaque key/values matched by rules and copied to usage events. `user_id` charges the per-user daily budget (falls back to `svc:<key_name>` for service callers without `user_id`). `usage_project` overrides the usage project (see below). |
 | `base_system_instruction`, `request_instruction` | System content never travels as a message. |
 | `response_schema` | Unset = free text. Set = JSON output validated against the schema; a vendor that can't enforce it is verified by the proxy. |
 | `max_output_tokens` | Ceiling, `0` = none. Output tokens are the expensive ones; set it. |
@@ -355,6 +363,75 @@ Python, TypeScript… clients from [`proto/llmproxy/v1`](proto/llmproxy/v1) with
 
 The response carries `choices`, token `usage`, `resolved_model`, `resolved_vendor` and
 `matched_rule` (empty on override).
+
+### Batch text generation
+
+For offline or bulk workflows (such as page generation, backfills, or data pipelines) that prioritize cost over latency, batch generation processes thousands of items asynchronously through vendor Batch APIs (e.g., Google Gemini Batch API) at a **50% discount** compared to interactive calls. Jobs typically finish within 24 hours (vendor timeout at 48 hours).
+
+- **Route resolution:** Resolved once upon submission. The proxy selects the first model in the rule's chain that has the `batch` capability, a valid vendor key for the client, and available daily budget. Once submitted, there is no vendor fallback; per-item outcomes are returned to the client.
+- **Privacy:** Prompts are streamed/submitted to the vendor and never persisted in the proxy database.
+- **Throttling & Accounting:** RPM limits do not apply to batches. Daily token budgets are checked at submission (rejecting if already exhausted) and tokens are deducted when final item results arrive. Results are retained for `RESULTS_RETENTION_DAYS` (default 7 days).
+
+#### SubmitBatch
+
+Takes a list of items (`custom_id` unique within the batch, and standard `GenerateTextRequest`), batch-level `effort` and `attributes`, and an optional `client_batch_id` for idempotency (resubmitting with the same client batch ID returns the existing batch):
+
+```bash
+grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
+  "effort": "EFFORT_LOW",
+  "attributes": {"task": "catalog_enrichment"},
+  "client_batch_id": "job-2026-10-07-001",
+  "items": [
+    {
+      "custom_id": "item-1",
+      "request": {
+        "messages": [{"role": "MESSAGE_ROLE_USER", "text": "Extract attributes from product 1"}],
+        "response_schema": {"type": "object", "properties": {"color": {"type": "string"}}, "required": ["color"]}
+      }
+    },
+    {
+      "custom_id": "item-2",
+      "request": {
+        "messages": [{"role": "MESSAGE_ROLE_USER", "text": "Extract attributes from product 2"}],
+        "response_schema": {"type": "object", "properties": {"color": {"type": "string"}}, "required": ["color"]}
+      }
+    }
+  ]
+}' localhost:9090 llmproxy.v1.LLMProxyService/SubmitBatch
+```
+
+Returns a `Batch` with status `BATCH_STATE_PENDING` (or `BATCH_STATE_RUNNING`), total item count, model, and creation timestamp.
+
+#### GetBatch
+
+Polls batch state (`PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `EXPIRED`) and progress counts (`total`, `done`, `failed`):
+
+```bash
+grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
+  "batch_id": "0199c0a0-6228-7e10-91b5-685d996cbfa1"
+}' localhost:9090 llmproxy.v1.LLMProxyService/GetBatch
+```
+
+#### ListBatchResults
+
+Pages through completed items with `page_token` (and `next_page_token`). Each item contains its `custom_id` and either a successful `response` (`GenerateTextResponse` with choices, usage, resolved_model, resolved_vendor, matched_rule) or an `error` (`BatchItemError` with gRPC code, message, and error reason):
+
+```bash
+grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
+  "batch_id": "0199c0a0-6228-7e10-91b5-685d996cbfa1",
+  "page_size": 100
+}' localhost:9090 llmproxy.v1.LLMProxyService/ListBatchResults
+```
+
+#### CancelBatch
+
+Requests cancellation of an unfinished batch job at the vendor. The batch remains `RUNNING` until vendor confirmation is polled: already completed items preserve their results, while remaining unfinished items fail with reason `batch_cancelled`.
+
+```bash
+grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
+  "batch_id": "0199c0a0-6228-7e10-91b5-685d996cbfa1"
+}' localhost:9090 llmproxy.v1.LLMProxyService/CancelBatch
+```
 
 ### SynthesizeSpeech, GenerateImage
 
@@ -514,16 +591,30 @@ API key's name. Any service implementing `RecordUsageEvent(s)` works as a sink.
 
 ## Error contract
 
+### RPC status codes
+
 | gRPC status | Reason | What to do |
 | --- | --- | --- |
+| `NOT_FOUND` | – | Unknown batch ID. |
+| `INVALID_ARGUMENT` | – | Empty batch, duplicate `custom_id`, too many items (> `BATCH_MAX_ITEMS`), or invalid parameters. |
 | `UNAVAILABLE` | `vendors_unavailable` | The whole chain failed. **The only retryable error.** |
-| `RESOURCE_EXHAUSTED` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` | Back off; don't hot-retry. |
+| `RESOURCE_EXHAUSTED` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` | Back off; don't hot-retry. Daily budget exhausted before batch submission. |
 | `FAILED_PRECONDITION` | `output_truncated` | Raise `max_output_tokens`; don't retry as-is. |
-| `FAILED_PRECONDITION` | `no_capable_model` | No model in the matched chain can serve this request/modality. |
+| `FAILED_PRECONDITION` | `no_capable_model` | No model in the matched chain can serve this request, modality, or batch capability. |
 | `FAILED_PRECONDITION` | `no_vendor_key` | The client key holds no credential for the chain's vendors. |
 | `FAILED_PRECONDITION` | `not_configured` | No models/rules configured yet. |
 | `INTERNAL` | `vendor_error` | Terminal vendor failure. |
 | `UNAUTHENTICATED` / `PERMISSION_DENIED` | – | Missing/invalid key, or key lacks the scope. |
+
+### Batch item error reasons
+
+Items returned in `ListBatchResults` that failed have an `error` containing a gRPC code, a message, and one of these reasons:
+
+| Reason | When | What to do |
+| --- | --- | --- |
+| `output_truncated` | Item reached `max_output_tokens` or candidate finish limit. | Re-submit item with higher `max_output_tokens`. |
+| `vendor_error` | Vendor error occurred during processing or structured schema validation failed. | Retry synchronously or resubmit in another batch. |
+| `batch_expired` | Vendor batch expired (after 48 h) before the item finished. | Re-submit the item. |
 
 ## Operations
 

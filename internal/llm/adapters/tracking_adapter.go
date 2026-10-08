@@ -321,3 +321,44 @@ func (t *TrackingAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, user
 
 	return result, err
 }
+
+// Unwrap returns the wrapped adapter.
+func (t *TrackingAdapter) Unwrap() llm.ClientAdapter {
+	return t.adapter
+}
+
+// SubmitBatch delegates to the wrapped adapter if it implements BatchAdapter.
+func (t *TrackingAdapter) SubmitBatch(ctx context.Context, batchID string, items []*llm.BatchSubmitItem) (string, error) {
+	b, ok := t.adapter.(llm.BatchAdapter)
+	if !ok {
+		return "", fmt.Errorf("%s does not support batch processing", t.model)
+	}
+	return b.SubmitBatch(ctx, batchID, items)
+}
+
+// GetBatch delegates to the wrapped adapter if it implements BatchAdapter.
+func (t *TrackingAdapter) GetBatch(ctx context.Context, vendorJobID string) (*llm.BatchJobStatus, error) {
+	b, ok := t.adapter.(llm.BatchAdapter)
+	if !ok {
+		return nil, fmt.Errorf("%s does not support batch processing", t.model)
+	}
+	return b.GetBatch(ctx, vendorJobID)
+}
+
+// CancelBatch delegates to the wrapped adapter if it implements BatchAdapter.
+func (t *TrackingAdapter) CancelBatch(ctx context.Context, vendorJobID string) error {
+	b, ok := t.adapter.(llm.BatchAdapter)
+	if !ok {
+		return fmt.Errorf("%s does not support batch processing", t.model)
+	}
+	return b.CancelBatch(ctx, vendorJobID)
+}
+
+// FetchBatchResults delegates to the wrapped adapter if it implements BatchAdapter.
+func (t *TrackingAdapter) FetchBatchResults(ctx context.Context, vendorJobID string, items []*llm.BatchSubmitItem) ([]*llm.BatchItemResult, error) {
+	b, ok := t.adapter.(llm.BatchAdapter)
+	if !ok {
+		return nil, fmt.Errorf("%s does not support batch processing", t.model)
+	}
+	return b.FetchBatchResults(ctx, vendorJobID, items)
+}

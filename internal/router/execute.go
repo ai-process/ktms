@@ -31,6 +31,10 @@ type Throttle interface {
 	Reserve(ctx context.Context, m *proxydb.Model, keyName, userID string, estimate int64) (res *Reservation, tripped string)
 	// Settle adjusts reserved budgets to actual usage; usage zero = release.
 	Settle(res *Reservation, usage llm.TokensUsage)
+	// CheckDailyBudget reports if daily budget is already exhausted ("budget_key" | "budget_user"), or "" if OK.
+	CheckDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string) string
+	// ChargeDailyBudget increments the daily budgets with actual batch tokens.
+	ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string, tokens int64)
 }
 
 // Reservation is the throttle's bookkeeping handle for one admitted call.
@@ -47,6 +51,16 @@ func (NoopThrottle) Reserve(context.Context, *proxydb.Model, string, string, int
 	return nil, ""
 }
 func (NoopThrottle) Settle(*Reservation, llm.TokensUsage) {}
+func (NoopThrottle) CheckDailyBudget(context.Context, *proxydb.Model, string, string) string { return "" }
+func (NoopThrottle) ChargeDailyBudget(context.Context, *proxydb.Model, string, string, int64) {}
+
+// UserID resolves user identity from attributes with an svc:<keyName> fallback.
+func UserID(attributes map[string]string, keyName string) string {
+	if u := attributes["user_id"]; u != "" {
+		return u
+	}
+	return "svc:" + keyName
+}
 
 // SchemaFailure reports a model that answered but could not produce the
 // requested shape, even given a second try. It advances the chain rather than
@@ -66,7 +80,7 @@ func (e *SchemaFailure) Unwrap() error { return e.Err }
 type Request struct {
 	Chain    []*proxydb.Model // pre-filtered candidates, in fallback order
 	KeyName  string           // api_key name: throttle keys, logs
-	UserID   string           // attributes["user_id"], "" = no user budget
+	UserID   string           // attributes["user_id"] or svc:<keyName> fallback
 	Estimate int64            // estimated input tokens to reserve
 	Chat     *llm.ChatContext
 	// Adapter resolves the vendor adapter for a chain model — a closure over

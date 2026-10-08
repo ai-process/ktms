@@ -46,6 +46,9 @@ const (
 // declare it, so a chat model can never be handed a judgment.
 const CapabilityJudge = "judge"
 
+// CapabilityBatch marks models that support batch processing.
+const CapabilityBatch = "batch"
+
 func ValidVendor(v string) bool {
 	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorTypeSafe
 }

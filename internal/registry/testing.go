@@ -26,3 +26,8 @@ func NewSnapshotForTest(models []*proxydb.Model, rules []*proxydb.Rule,
 	}
 	return snap
 }
+
+// SetAdapter stores a mock adapter for tests.
+func (s *Snapshot) SetAdapter(apiKeyID, modelID string, adapter llm.ClientAdapter) {
+	s.adapters.Store(apiKeyID+"\x00"+modelID, adapter)
+}

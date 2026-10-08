@@ -1,22 +1,29 @@
 package adapters
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/ai-process/llm-proxy/internal/audio"
-	"github.com/ai-process/llm-proxy/internal/llm"
 	"math"
 	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
-
 	"google.golang.org/genai"
+	"google.golang.org/grpc/codes"
+
+	"github.com/ai-process/llm-proxy/internal/audio"
+	"github.com/ai-process/llm-proxy/internal/llm"
 )
 
 // ttsOutputSampleRate is what Gemini TTS produces (16-bit LE mono PCM) when the
 // response MIME type omits an explicit rate.
 const ttsOutputSampleRate = 24000
+
+var inlineBatchSizeThreshold = 15 * 1024 * 1024 // 15 MB
 
 type GoogleAdapter struct {
 	geminiClient *genai.Client
@@ -25,6 +32,7 @@ type GoogleAdapter struct {
 	ttsModel     string
 	ttsVoice     string
 	imageModel   string
+	softSchema   bool
 }
 
 func NewGoogleAdapter(geminiClient *genai.Client, model string, throttle *llm.ThrottleControl) *GoogleAdapter {
@@ -34,6 +42,10 @@ func NewGoogleAdapter(geminiClient *genai.Client, model string, throttle *llm.Th
 		throttle:     throttle,
 		// Nano Banana 2 Lite: newest and cheapest of the flash image line.
 	}
+}
+
+func (a *GoogleAdapter) SetSoftSchema(s bool) {
+	a.softSchema = s
 }
 
 func (a *GoogleAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error) {
@@ -67,7 +79,10 @@ func (a *GoogleAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, erro
 		}
 	}
 
-	response := &llm.Response{}
+	return a.parseGenerateContentResponse(result, finishReason, chat.GetResponseSchema())
+}
+
+func (a *GoogleAdapter) parseGenerateContentResponse(result *genai.GenerateContentResponse, finishReason genai.FinishReason, schema *llm.ResponseSchema) (*llm.Response, error) {
 	text := result.Text()
 
 	// Truncated even without a ceiling: the model's own limit was reached, so the
@@ -87,13 +102,25 @@ func (a *GoogleAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, erro
 		}
 	}
 
+	if schema != nil && a.softSchema {
+		if err := llm.CheckResponseSchema(text, schema); err != nil {
+			return nil, err
+		}
+	}
+
+	response := &llm.Response{}
 	response.AddMessage(&llm.Message{
 		Type: llm.MessageTypeBot,
 		Text: text,
 	})
-	//log.Info().Interface("usage", result.UsageMetadata).Msg("GoogleAdapter: Usage info")
-	response.Usage.Input = int(result.UsageMetadata.PromptTokenCount)
-	response.Usage.Output = int(result.UsageMetadata.TotalTokenCount - result.UsageMetadata.PromptTokenCount)
+	if result.UsageMetadata != nil {
+		response.Usage.Input = int(result.UsageMetadata.PromptTokenCount)
+		if result.UsageMetadata.CandidatesTokenCount > 0 {
+			response.Usage.Output = int(result.UsageMetadata.CandidatesTokenCount)
+		} else if result.UsageMetadata.TotalTokenCount >= result.UsageMetadata.PromptTokenCount {
+			response.Usage.Output = int(result.UsageMetadata.TotalTokenCount - result.UsageMetadata.PromptTokenCount)
+		}
+	}
 	return response, nil
 }
 
@@ -431,4 +458,325 @@ func (a *GoogleAdapter) SynthesizeSpeech(text, language, userID string, meta map
 		return result, nil
 	}
 	return failed(fmt.Errorf("gemini tts: %w", lastErr))
+}
+
+// SubmitBatch submits a batch of text generation requests to the Gemini Batch API.
+// Batches up to ~15 MB are sent as InlinedRequests; larger ones are uploaded as a JSONL file.
+func (a *GoogleAdapter) SubmitBatch(ctx context.Context, batchID string, items []*llm.BatchSubmitItem) (string, error) {
+	if len(items) == 0 {
+		return "", fmt.Errorf("GoogleAdapter: batch is empty")
+	}
+
+	inlineRequests := make([]*genai.InlinedRequest, len(items))
+	for i, it := range items {
+		contents := a.contextToContents(it.Chat.GetMessages())
+		config := a.buildGenerateConfig(it.Chat)
+		inlineRequests[i] = &genai.InlinedRequest{
+			Contents: contents,
+			Config:   config,
+			Metadata: map[string]string{"key": it.CustomID},
+		}
+	}
+
+	data, err := json.Marshal(inlineRequests)
+	if err != nil {
+		return "", fmt.Errorf("GoogleAdapter: marshal inlined requests: %w", err)
+	}
+
+	var src *genai.BatchJobSource
+	if len(data) <= inlineBatchSizeThreshold {
+		src = &genai.BatchJobSource{
+			InlinedRequests: inlineRequests,
+		}
+	} else {
+		var buf bytes.Buffer
+		for i, it := range items {
+			lineReq := map[string]any{
+				"contents": inlineRequests[i].Contents,
+			}
+			if inlineRequests[i].Config != nil {
+				cfgMap := map[string]any{}
+				if inlineRequests[i].Config.SystemInstruction != nil {
+					lineReq["system_instruction"] = inlineRequests[i].Config.SystemInstruction
+				}
+				if inlineRequests[i].Config.MaxOutputTokens > 0 {
+					cfgMap["max_output_tokens"] = inlineRequests[i].Config.MaxOutputTokens
+				}
+				if inlineRequests[i].Config.ResponseMIMEType != "" {
+					cfgMap["response_mime_type"] = inlineRequests[i].Config.ResponseMIMEType
+				}
+				if inlineRequests[i].Config.ResponseSchema != nil {
+					cfgMap["response_schema"] = inlineRequests[i].Config.ResponseSchema
+				}
+				if len(cfgMap) > 0 {
+					lineReq["generation_config"] = cfgMap
+				}
+			}
+			lineObj := map[string]any{
+				"key":     it.CustomID,
+				"request": lineReq,
+			}
+			lineBytes, err := json.Marshal(lineObj)
+			if err != nil {
+				return "", fmt.Errorf("GoogleAdapter: marshal jsonl line: %w", err)
+			}
+			buf.Write(lineBytes)
+			buf.WriteByte('\n')
+		}
+
+		uploaded, err := a.geminiClient.Files.Upload(ctx, bytes.NewReader(buf.Bytes()), &genai.UploadFileConfig{
+			MIMEType:    "jsonl",
+			DisplayName: "batch-" + batchID,
+		})
+		if err != nil {
+			return "", fmt.Errorf("GoogleAdapter: upload batch jsonl file: %w", err)
+		}
+		src = &genai.BatchJobSource{
+			FileName: uploaded.Name,
+		}
+	}
+
+	job, err := a.geminiClient.Batches.Create(ctx, a.model, src, &genai.CreateBatchJobConfig{
+		DisplayName: "batch-" + batchID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("GoogleAdapter: create batch job: %w", err)
+	}
+	return job.Name, nil
+}
+
+// GetBatch polls the vendor for the batch job state.
+func (a *GoogleAdapter) GetBatch(ctx context.Context, vendorJobID string) (*llm.BatchJobStatus, error) {
+	job, err := a.geminiClient.Batches.Get(ctx, vendorJobID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("GoogleAdapter: get batch job %s: %w", vendorJobID, err)
+	}
+
+	status := &llm.BatchJobStatus{
+		State: mapJobState(job.State),
+	}
+	if job.CompletionStats != nil {
+		status.DoneCount = int32(job.CompletionStats.SuccessfulCount)
+		status.FailedCount = int32(job.CompletionStats.FailedCount)
+		status.TotalCount = status.DoneCount + status.FailedCount + int32(job.CompletionStats.IncompleteCount)
+	}
+	if !job.EndTime.IsZero() {
+		status.CompletedAt = &job.EndTime
+	}
+	if job.Error != nil {
+		status.Error = job.Error.Message
+	}
+	return status, nil
+}
+
+func mapJobState(state genai.JobState) string {
+	switch state {
+	case genai.JobStatePending, genai.JobStateQueued:
+		return "PENDING"
+	case genai.JobStateRunning, genai.JobStateUpdating, genai.JobStateCancelling:
+		return "RUNNING"
+	case genai.JobStateSucceeded:
+		return "SUCCEEDED"
+	case genai.JobStateFailed:
+		return "FAILED"
+	case genai.JobStateCancelled:
+		return "CANCELLED"
+	case genai.JobStateExpired:
+		return "EXPIRED"
+	default:
+		return "PENDING"
+	}
+}
+
+// CancelBatch requests cancellation of the batch job at the vendor.
+func (a *GoogleAdapter) CancelBatch(ctx context.Context, vendorJobID string) error {
+	err := a.geminiClient.Batches.Cancel(ctx, vendorJobID, nil)
+	if err != nil {
+		var apiErr genai.APIError
+		var apiErrPtr *genai.APIError
+		if (errors.As(err, &apiErr) && apiErr.Status == "FAILED_PRECONDITION") ||
+			(errors.As(err, &apiErrPtr) && apiErrPtr != nil && apiErrPtr.Status == "FAILED_PRECONDITION") {
+			return nil
+		}
+		errLower := strings.ToLower(err.Error())
+		if strings.Contains(errLower, "already") ||
+			strings.Contains(errLower, "cancelling") ||
+			strings.Contains(errLower, "canceling") ||
+			strings.Contains(errLower, "failed_precondition") {
+			return nil
+		}
+		return fmt.Errorf("GoogleAdapter: cancel batch job %s: %w", vendorJobID, err)
+	}
+	return nil
+}
+
+// FetchBatchResults retrieves results from either inlined responses or output file download.
+func (a *GoogleAdapter) FetchBatchResults(ctx context.Context, vendorJobID string, items []*llm.BatchSubmitItem) ([]*llm.BatchItemResult, error) {
+	job, err := a.geminiClient.Batches.Get(ctx, vendorJobID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("GoogleAdapter: fetch batch job %s: %w", vendorJobID, err)
+	}
+
+	results := make([]*llm.BatchItemResult, len(items))
+	for i, it := range items {
+		results[i] = &llm.BatchItemResult{
+			CustomID: it.CustomID,
+		}
+	}
+
+	if job.State == genai.JobStateExpired {
+		for i := range results {
+			results[i].Error = &llm.BatchItemError{
+				Code:    int32(codes.DeadlineExceeded),
+				Reason:  "batch_expired",
+				Message: "batch expired before completion",
+			}
+		}
+		return results, nil
+	}
+
+	if job.State == genai.JobStateFailed && (job.Dest == nil || (len(job.Dest.InlinedResponses) == 0 && job.Dest.FileName == "")) {
+		errMsg := "batch job failed"
+		if job.Error != nil && job.Error.Message != "" {
+			errMsg = job.Error.Message
+		}
+		for i := range results {
+			results[i].Error = &llm.BatchItemError{
+				Code:    int32(codes.Internal),
+				Reason:  "vendor_error",
+				Message: errMsg,
+			}
+		}
+		return results, nil
+	}
+
+	// 1. Inlined responses
+	if job.Dest != nil && len(job.Dest.InlinedResponses) > 0 {
+		for i, inlineResp := range job.Dest.InlinedResponses {
+			if i >= len(results) {
+				break
+			}
+			it := items[i]
+			if inlineResp.Error != nil {
+				results[i].Error = &llm.BatchItemError{
+					Code:    int32(codes.Internal),
+					Reason:  "vendor_error",
+					Message: inlineResp.Error.Message,
+				}
+				continue
+			}
+			if inlineResp.Response != nil {
+				finishReason := genai.FinishReasonUnspecified
+				if len(inlineResp.Response.Candidates) > 0 {
+					finishReason = inlineResp.Response.Candidates[0].FinishReason
+				}
+				resp, parseErr := a.parseGenerateContentResponse(inlineResp.Response, finishReason, it.Chat.GetResponseSchema())
+				if parseErr != nil {
+					results[i].Error = mapItemError(parseErr)
+				} else {
+					results[i].Response = resp
+				}
+			}
+		}
+		return results, nil
+	}
+
+	// 2. Output file responses
+	if job.Dest != nil && job.Dest.FileName != "" {
+		f := &genai.File{DownloadURI: job.Dest.FileName, URI: job.Dest.FileName}
+		data, err := a.geminiClient.Files.Download(ctx, genai.NewDownloadURIFromFile(f), nil)
+		if err != nil {
+			return nil, fmt.Errorf("GoogleAdapter: download batch results file %s: %w", job.Dest.FileName, err)
+		}
+
+		scanner := bufio.NewScanner(bytes.NewReader(data))
+		scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
+
+		itemIndexByCustomID := make(map[string]int, len(items))
+		for i, it := range items {
+			itemIndexByCustomID[it.CustomID] = i
+		}
+
+		lineIdx := 0
+		for scanner.Scan() {
+			line := bytes.TrimSpace(scanner.Bytes())
+			if len(line) == 0 {
+				continue
+			}
+
+			var parsedLine struct {
+				Key      string                          `json:"key"`
+				CustomID string                          `json:"custom_id"`
+				Response *genai.GenerateContentResponse `json:"response"`
+				Error    *genai.JobError                 `json:"error"`
+			}
+			if err := json.Unmarshal(line, &parsedLine); err == nil && (parsedLine.Response != nil || parsedLine.Error != nil) {
+				idx := lineIdx
+				k := parsedLine.Key
+				if k == "" {
+					k = parsedLine.CustomID
+				}
+				if k != "" {
+					if targetIdx, ok := itemIndexByCustomID[k]; ok {
+						idx = targetIdx
+					}
+				}
+				if idx < len(results) {
+					if parsedLine.Error != nil {
+						results[idx].Error = &llm.BatchItemError{
+							Code:    int32(codes.Internal),
+							Reason:  "vendor_error",
+							Message: parsedLine.Error.Message,
+						}
+					} else if parsedLine.Response != nil {
+						finishReason := genai.FinishReasonUnspecified
+						if len(parsedLine.Response.Candidates) > 0 {
+							finishReason = parsedLine.Response.Candidates[0].FinishReason
+						}
+						resp, parseErr := a.parseGenerateContentResponse(parsedLine.Response, finishReason, items[idx].Chat.GetResponseSchema())
+						if parseErr != nil {
+							results[idx].Error = mapItemError(parseErr)
+						} else {
+							results[idx].Response = resp
+						}
+					}
+				}
+			} else {
+				var directResp genai.GenerateContentResponse
+				if err := json.Unmarshal(line, &directResp); err == nil && len(directResp.Candidates) > 0 {
+					if lineIdx < len(results) {
+						finishReason := directResp.Candidates[0].FinishReason
+						resp, parseErr := a.parseGenerateContentResponse(&directResp, finishReason, items[lineIdx].Chat.GetResponseSchema())
+						if parseErr != nil {
+							results[lineIdx].Error = mapItemError(parseErr)
+						} else {
+							results[lineIdx].Response = resp
+						}
+					}
+				}
+			}
+			lineIdx++
+		}
+		if err := scanner.Err(); err != nil {
+			return nil, fmt.Errorf("GoogleAdapter: scan batch results jsonl: %w", err)
+		}
+		return results, nil
+	}
+
+	return results, nil
+}
+
+func mapItemError(err error) *llm.BatchItemError {
+	if errors.Is(err, llm.ErrOutputTruncated) {
+		return &llm.BatchItemError{
+			Code:    int32(codes.FailedPrecondition),
+			Reason:  "output_truncated",
+			Message: err.Error(),
+		}
+	}
+	return &llm.BatchItemError{
+		Code:    int32(codes.Internal),
+		Reason:  "vendor_error",
+		Message: err.Error(),
+	}
 }

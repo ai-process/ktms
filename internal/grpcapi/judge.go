@@ -33,7 +33,7 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
 		Chain:    plan.chain,
 		KeyName:  plan.identity.Name,
-		UserID:   plan.attrs["user_id"],
+		UserID:   router.UserID(plan.attrs, plan.identity.Name),
 		Estimate: judgeEstimate(judgeReq),
 		Adapter:  plan.adapter,
 		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
@@ -44,7 +44,7 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 				return llm.TokensUsage{}, status.Errorf(codes.FailedPrecondition,
 					"no_capable_model: %s cannot judge", m.ID)
 			}
-			res, err := judge.Judge(ctx, judgeReq, plan.attrs["user_id"], plan.meta)
+			res, err := judge.Judge(ctx, judgeReq, router.UserID(plan.attrs, plan.identity.Name), plan.meta)
 			if err != nil {
 				return llm.TokensUsage{}, err
 			}

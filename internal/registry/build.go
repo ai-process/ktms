@@ -80,6 +80,7 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 			return nil, fmt.Errorf("genai client: %w", err)
 		}
 		adapter := adapters.NewGoogleAdapter(client, m.ID, noThrottle)
+		adapter.SetSoftSchema(SoftSchema(m))
 		if HasCapability(m, CapabilityTTS) {
 			adapter.SetTTS(m.ID, googleTTSVoice)
 		}

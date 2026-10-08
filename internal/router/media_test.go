@@ -12,13 +12,9 @@ import (
 
 // noThrottle admits everything: these tests are about chain walking, and the
 // throttle paths are already covered for the text path.
-type noThrottle struct{}
-
-func (noThrottle) AllowRPM(context.Context, string, *proxydb.Model) bool { return true }
-func (noThrottle) Reserve(context.Context, *proxydb.Model, string, string, int64) (*Reservation, string) {
-	return nil, ""
+type noThrottle struct {
+	NoopThrottle
 }
-func (noThrottle) Settle(*Reservation, llm.TokensUsage) {}
 
 func mediaModels(ids ...string) []*proxydb.Model {
 	var out []*proxydb.Model

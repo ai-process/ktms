@@ -24,6 +24,10 @@ const (
 	LLMProxyService_GenerateImage_FullMethodName    = "/llmproxy.v1.LLMProxyService/GenerateImage"
 	LLMProxyService_Judge_FullMethodName            = "/llmproxy.v1.LLMProxyService/Judge"
 	LLMProxyService_ListModels_FullMethodName       = "/llmproxy.v1.LLMProxyService/ListModels"
+	LLMProxyService_SubmitBatch_FullMethodName      = "/llmproxy.v1.LLMProxyService/SubmitBatch"
+	LLMProxyService_GetBatch_FullMethodName         = "/llmproxy.v1.LLMProxyService/GetBatch"
+	LLMProxyService_ListBatchResults_FullMethodName = "/llmproxy.v1.LLMProxyService/ListBatchResults"
+	LLMProxyService_CancelBatch_FullMethodName      = "/llmproxy.v1.LLMProxyService/CancelBatch"
 )
 
 // LLMProxyServiceClient is the client API for LLMProxyService service.
@@ -52,6 +56,11 @@ type LLMProxyServiceClient interface {
 	// filtered to models declaring the "judge" capability.
 	Judge(ctx context.Context, in *JudgeRequest, opts ...grpc.CallOption) (*JudgeResponse, error)
 	ListModels(ctx context.Context, in *ListModelsRequest, opts ...grpc.CallOption) (*ListModelsResponse, error)
+	// Batch generation RPCs.
+	SubmitBatch(ctx context.Context, in *SubmitBatchRequest, opts ...grpc.CallOption) (*SubmitBatchResponse, error)
+	GetBatch(ctx context.Context, in *GetBatchRequest, opts ...grpc.CallOption) (*Batch, error)
+	ListBatchResults(ctx context.Context, in *ListBatchResultsRequest, opts ...grpc.CallOption) (*ListBatchResultsResponse, error)
+	CancelBatch(ctx context.Context, in *CancelBatchRequest, opts ...grpc.CallOption) (*CancelBatchResponse, error)
 }
 
 type lLMProxyServiceClient struct {
@@ -112,6 +121,46 @@ func (c *lLMProxyServiceClient) ListModels(ctx context.Context, in *ListModelsRe
 	return out, nil
 }
 
+func (c *lLMProxyServiceClient) SubmitBatch(ctx context.Context, in *SubmitBatchRequest, opts ...grpc.CallOption) (*SubmitBatchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SubmitBatchResponse)
+	err := c.cc.Invoke(ctx, LLMProxyService_SubmitBatch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lLMProxyServiceClient) GetBatch(ctx context.Context, in *GetBatchRequest, opts ...grpc.CallOption) (*Batch, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Batch)
+	err := c.cc.Invoke(ctx, LLMProxyService_GetBatch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lLMProxyServiceClient) ListBatchResults(ctx context.Context, in *ListBatchResultsRequest, opts ...grpc.CallOption) (*ListBatchResultsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListBatchResultsResponse)
+	err := c.cc.Invoke(ctx, LLMProxyService_ListBatchResults_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lLMProxyServiceClient) CancelBatch(ctx context.Context, in *CancelBatchRequest, opts ...grpc.CallOption) (*CancelBatchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CancelBatchResponse)
+	err := c.cc.Invoke(ctx, LLMProxyService_CancelBatch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LLMProxyServiceServer is the server API for LLMProxyService service.
 // All implementations must embed UnimplementedLLMProxyServiceServer
 // for forward compatibility.
@@ -138,6 +187,11 @@ type LLMProxyServiceServer interface {
 	// filtered to models declaring the "judge" capability.
 	Judge(context.Context, *JudgeRequest) (*JudgeResponse, error)
 	ListModels(context.Context, *ListModelsRequest) (*ListModelsResponse, error)
+	// Batch generation RPCs.
+	SubmitBatch(context.Context, *SubmitBatchRequest) (*SubmitBatchResponse, error)
+	GetBatch(context.Context, *GetBatchRequest) (*Batch, error)
+	ListBatchResults(context.Context, *ListBatchResultsRequest) (*ListBatchResultsResponse, error)
+	CancelBatch(context.Context, *CancelBatchRequest) (*CancelBatchResponse, error)
 	mustEmbedUnimplementedLLMProxyServiceServer()
 }
 
@@ -162,6 +216,18 @@ func (UnimplementedLLMProxyServiceServer) Judge(context.Context, *JudgeRequest) 
 }
 func (UnimplementedLLMProxyServiceServer) ListModels(context.Context, *ListModelsRequest) (*ListModelsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListModels not implemented")
+}
+func (UnimplementedLLMProxyServiceServer) SubmitBatch(context.Context, *SubmitBatchRequest) (*SubmitBatchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SubmitBatch not implemented")
+}
+func (UnimplementedLLMProxyServiceServer) GetBatch(context.Context, *GetBatchRequest) (*Batch, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetBatch not implemented")
+}
+func (UnimplementedLLMProxyServiceServer) ListBatchResults(context.Context, *ListBatchResultsRequest) (*ListBatchResultsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListBatchResults not implemented")
+}
+func (UnimplementedLLMProxyServiceServer) CancelBatch(context.Context, *CancelBatchRequest) (*CancelBatchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelBatch not implemented")
 }
 func (UnimplementedLLMProxyServiceServer) mustEmbedUnimplementedLLMProxyServiceServer() {}
 func (UnimplementedLLMProxyServiceServer) testEmbeddedByValue()                         {}
@@ -274,6 +340,78 @@ func _LLMProxyService_ListModels_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LLMProxyService_SubmitBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SubmitBatchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyServiceServer).SubmitBatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyService_SubmitBatch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyServiceServer).SubmitBatch(ctx, req.(*SubmitBatchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LLMProxyService_GetBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBatchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyServiceServer).GetBatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyService_GetBatch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyServiceServer).GetBatch(ctx, req.(*GetBatchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LLMProxyService_ListBatchResults_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListBatchResultsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyServiceServer).ListBatchResults(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyService_ListBatchResults_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyServiceServer).ListBatchResults(ctx, req.(*ListBatchResultsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LLMProxyService_CancelBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelBatchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyServiceServer).CancelBatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyService_CancelBatch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyServiceServer).CancelBatch(ctx, req.(*CancelBatchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LLMProxyService_ServiceDesc is the grpc.ServiceDesc for LLMProxyService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -300,6 +438,22 @@ var LLMProxyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListModels",
 			Handler:    _LLMProxyService_ListModels_Handler,
+		},
+		{
+			MethodName: "SubmitBatch",
+			Handler:    _LLMProxyService_SubmitBatch_Handler,
+		},
+		{
+			MethodName: "GetBatch",
+			Handler:    _LLMProxyService_GetBatch_Handler,
+		},
+		{
+			MethodName: "ListBatchResults",
+			Handler:    _LLMProxyService_ListBatchResults_Handler,
+		},
+		{
+			MethodName: "CancelBatch",
+			Handler:    _LLMProxyService_CancelBatch_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

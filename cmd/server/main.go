@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/ai-process/llm-proxy/internal/apikeys"
+	"github.com/ai-process/llm-proxy/internal/batch"
 	"github.com/ai-process/llm-proxy/internal/config"
 	"github.com/ai-process/llm-proxy/internal/crypto"
 	"github.com/ai-process/llm-proxy/internal/grpcapi"
@@ -109,7 +110,11 @@ func main() {
 	loader.Start(rootCtx, cfg.RoutingReload)
 
 	adminSrv := grpcapi.NewAdminServer(db, keyring, loader.Refresh)
-	proxySrv := grpcapi.NewProxyServer(loader, limiter)
+	proxySrv := grpcapi.NewProxyServer(loader, limiter).WithBatch(db, cfg.BatchMaxItems)
+
+	batchPoller := batch.NewPoller(db, loader, limiter, tracker, cfg.BatchPollInterval, cfg.ResultsRetention)
+	batchPoller.Start(rootCtx)
+	defer batchPoller.Stop()
 
 	grpcSrv := server.NewGRPCServer(proxySrv, adminSrv, verifier, cfg.GRPCAddr)
 	var openaiAPI *server.OpenAIAPI

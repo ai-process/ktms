@@ -25,6 +25,10 @@ var methodScopes = map[string]string{
 	method(pb.LLMProxyService_GenerateImage_FullMethodName):    apikeys.ScopeGenerate,
 	method(pb.LLMProxyService_Judge_FullMethodName):            apikeys.ScopeGenerate,
 	method(pb.LLMProxyService_ListModels_FullMethodName):       apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_SubmitBatch_FullMethodName):      apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_GetBatch_FullMethodName):         apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_ListBatchResults_FullMethodName): apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_CancelBatch_FullMethodName):      apikeys.ScopeGenerate,
 
 	method(pb.LLMProxyAdminService_UpsertModel_FullMethodName):      apikeys.ScopeAdmin,
 	method(pb.LLMProxyAdminService_DeleteModel_FullMethodName):      apikeys.ScopeAdmin,

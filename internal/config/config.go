@@ -45,6 +45,10 @@ type Config struct {
 	UsageCollectorHost string
 	UsageProjectID     string
 
+	BatchMaxItems     int
+	BatchPollInterval time.Duration
+	ResultsRetention  time.Duration
+
 	SentryDSN         string
 	SentryEnvironment string
 	SentryRelease     string
@@ -74,6 +78,9 @@ func Load() *Config {
 		BootstrapAdminKey:  getEnv("BOOTSTRAP_ADMIN_KEY", ""),
 		UsageCollectorHost: getEnv("USAGE_COLLECTOR_HOST", ""),
 		UsageProjectID:     getEnv("USAGE_PROJECT_ID", "llm-proxy"),
+		BatchMaxItems:      getIntEnv("BATCH_MAX_ITEMS", 10000),
+		BatchPollInterval:  time.Duration(getIntEnv("BATCH_POLL_SECONDS", 60)) * time.Second,
+		ResultsRetention:   getRetentionEnv("RESULTS_RETENTION_DAYS", 7*24*time.Hour),
 		SentryDSN:          getEnv("SENTRY_DSN", ""),
 		SentryEnvironment:  getEnv("SENTRY_ENVIRONMENT", "development"),
 		SentryRelease:      getEnv("SENTRY_RELEASE", ""),
@@ -117,6 +124,19 @@ func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
 	if value := os.Getenv(key); value != "" {
 		if d, err := time.ParseDuration(value); err == nil {
 			return d
+		}
+	}
+	return defaultValue
+}
+
+func getRetentionEnv(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if d, err := time.ParseDuration(value); err == nil {
+			return d
+		}
+		// Try parsing as integer days (e.g. "7")
+		if days, err := strconv.Atoi(value); err == nil && days > 0 {
+			return time.Duration(days) * 24 * time.Hour
 		}
 	}
 	return defaultValue

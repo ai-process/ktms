@@ -34,9 +34,56 @@ type Model struct {
 	// V4 doubles for two windows a day, so one price understates its cost.
 	PriceInPeakPerMtok  float64
 	PriceOutPeakPerMtok float64
-	DailyTokensPerKey   int64
-	DailyTokensPerUser  int64
-	Enabled             bool
+	// Batch rates, 0 means half the standard (off-peak) rate.
+	PriceInBatchPerMtok  float64
+	PriceOutBatchPerMtok float64
+	DailyTokensPerKey    int64
+	DailyTokensPerUser   int64
+	Enabled              bool
+}
+
+func (m *Model) BatchPriceInPerMtok() float64 {
+	if m.PriceInBatchPerMtok > 0 {
+		return m.PriceInBatchPerMtok
+	}
+	return m.PriceInPerMtok / 2.0
+}
+
+func (m *Model) BatchPriceOutPerMtok() float64 {
+	if m.PriceOutBatchPerMtok > 0 {
+		return m.PriceOutBatchPerMtok
+	}
+	return m.PriceOutPerMtok / 2.0
+}
+
+type Batch struct {
+	ID            string
+	ClientBatchID string
+	APIKeyID      string
+	KeyName       string
+	Model         string
+	VendorJobName string
+	State         string // PENDING, RUNNING, SUCCEEDED, FAILED, CANCELLED, EXPIRED
+	TotalCount    int32
+	DoneCount     int32
+	FailedCount   int32
+	Attributes    map[string]string
+	ActionID      string
+	CreatedAt     time.Time
+	CompletedAt   *time.Time
+	LeasedUntil   *time.Time
+}
+
+type BatchItem struct {
+	BatchID        string
+	CustomID       string
+	Position       int32
+	Status         string // PENDING, SUCCEEDED, FAILED
+	ResponseSchema []byte // optional JSON representation of ResponseSchema
+	Result         []byte // raw JSON of GenerateTextResponse
+	Error          []byte // raw JSON of BatchItemError
+	InputTokens    int64
+	OutputTokens   int64
 }
 
 type Rule struct {

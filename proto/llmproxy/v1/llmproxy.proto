@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package llmproxy.v1;
 
+import "google/protobuf/timestamp.proto";
+
 option go_package = "github.com/ai-process/llm-proxy/gen/llmproxy/v1;llmproxyv1";
 
 // Effort is the only routing field the proxy is guaranteed to understand.
@@ -87,6 +89,8 @@ message ModelInfo {
   int32 rpm = 5;
   double price_in_per_mtok = 6;
   double price_out_per_mtok = 7;
+  double price_in_batch_per_mtok = 8;
+  double price_out_batch_per_mtok = 9;
 }
 
 message ListModelsResponse {
@@ -116,6 +120,12 @@ service LLMProxyService {
   // filtered to models declaring the "judge" capability.
   rpc Judge(JudgeRequest) returns (JudgeResponse);
   rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
+
+  // Batch generation RPCs.
+  rpc SubmitBatch(SubmitBatchRequest) returns (SubmitBatchResponse);
+  rpc GetBatch(GetBatchRequest) returns (Batch);
+  rpc ListBatchResults(ListBatchResultsRequest) returns (ListBatchResultsResponse);
+  rpc CancelBatch(CancelBatchRequest) returns (CancelBatchResponse);
 }
 
 message SynthesizeSpeechRequest {
@@ -198,3 +208,80 @@ message JudgeResponse {
   string resolved_vendor = 4;
   string matched_rule = 5;
 }
+
+enum BatchState {
+  BATCH_STATE_UNSPECIFIED = 0;
+  BATCH_STATE_PENDING = 1;
+  BATCH_STATE_RUNNING = 2;
+  BATCH_STATE_SUCCEEDED = 3;
+  BATCH_STATE_FAILED = 4;
+  BATCH_STATE_CANCELLED = 5;
+  BATCH_STATE_EXPIRED = 6;
+}
+
+message BatchCounts {
+  int32 total = 1;
+  int32 done = 2;
+  int32 failed = 3;
+}
+
+message Batch {
+  string id = 1;
+  string client_batch_id = 2;
+  BatchState state = 3;
+  BatchCounts counts = 4;
+  string model = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp completed_at = 7;
+}
+
+message BatchItemRequest {
+  string custom_id = 1;
+  GenerateTextRequest request = 2;
+}
+
+message SubmitBatchRequest {
+  repeated BatchItemRequest items = 1;
+  Effort effort = 2;
+  map<string, string> attributes = 3;
+  string client_batch_id = 4;
+}
+
+message SubmitBatchResponse {
+  Batch batch = 1;
+}
+
+message GetBatchRequest {
+  string batch_id = 1;
+}
+
+message BatchItemError {
+  int32 code = 1;
+  string message = 2;
+  string reason = 3;
+}
+
+message BatchItemResult {
+  string custom_id = 1;
+  oneof result {
+    GenerateTextResponse response = 2;
+    BatchItemError error = 3;
+  }
+}
+
+message ListBatchResultsRequest {
+  string batch_id = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListBatchResultsResponse {
+  repeated BatchItemResult items = 1;
+  string next_page_token = 2;
+}
+
+message CancelBatchRequest {
+  string batch_id = 1;
+}
+
+message CancelBatchResponse {}

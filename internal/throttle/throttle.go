@@ -122,3 +122,59 @@ func (t *Redis) Settle(res *router.Reservation, usage llm.TokensUsage) {
 		}
 	}()
 }
+
+// CheckDailyBudget checks if either daily budget for this model is already at or beyond limit.
+func (t *Redis) CheckDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string) string {
+	if t.client == nil {
+		return ""
+	}
+	day := t.now().UTC().Format("20060102")
+
+	if m.DailyTokensPerKey > 0 {
+		key := t.keys.BudgetKey(keyName, m.ID, day)
+		val, err := t.client.Get(ctx, key).Int64()
+		if err == nil && val >= m.DailyTokensPerKey {
+			return "budget_key"
+		}
+	}
+	if m.DailyTokensPerUser > 0 && userID != "" {
+		key := t.keys.BudgetUser(userID, m.ID, day)
+		val, err := t.client.Get(ctx, key).Int64()
+		if err == nil && val >= m.DailyTokensPerUser {
+			return "budget_user"
+		}
+	}
+	return ""
+}
+
+// ChargeDailyBudget increments the daily budgets with actual batch tokens.
+func (t *Redis) ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string, tokens int64) {
+	if t.client == nil || tokens <= 0 {
+		return
+	}
+	day := t.now().UTC().Format("20060102")
+	var keys []string
+	if m.DailyTokensPerKey > 0 {
+		keys = append(keys, t.keys.BudgetKey(keyName, m.ID, day))
+	}
+	if m.DailyTokensPerUser > 0 && userID != "" {
+		keys = append(keys, t.keys.BudgetUser(userID, m.ID, day))
+	}
+	if len(keys) == 0 {
+		return
+	}
+
+	go func() {
+		defer panicsafe.Guard("throttle charge batch tokens")
+		c, cancel := context.WithTimeout(context.Background(), settleTimeout)
+		defer cancel()
+		for _, k := range keys {
+			pipe := t.client.Pipeline()
+			pipe.IncrBy(c, k, tokens)
+			pipe.Expire(c, k, budgetTTL)
+			if _, err := pipe.Exec(c); err != nil {
+				log.Warn().Err(err).Str("key", k).Msg("throttle: charge batch tokens failed")
+			}
+		}
+	}()
+}

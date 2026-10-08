@@ -36,13 +36,15 @@ type ModelSpec struct {
 	PriceOutPerMtok float64                `protobuf:"fixed64,8,opt,name=price_out_per_mtok,json=priceOutPerMtok,proto3" json:"price_out_per_mtok,omitempty"`
 	// Peak rates, 0 when the vendor bills one price all day. DeepSeek V4 doubles
 	// for two windows daily, so a single price understates its cost.
-	PriceInPeakPerMtok  float64 `protobuf:"fixed64,12,opt,name=price_in_peak_per_mtok,json=priceInPeakPerMtok,proto3" json:"price_in_peak_per_mtok,omitempty"`
-	PriceOutPeakPerMtok float64 `protobuf:"fixed64,13,opt,name=price_out_peak_per_mtok,json=priceOutPeakPerMtok,proto3" json:"price_out_peak_per_mtok,omitempty"`
-	DailyTokensPerKey   int64   `protobuf:"varint,9,opt,name=daily_tokens_per_key,json=dailyTokensPerKey,proto3" json:"daily_tokens_per_key,omitempty"`     // per api key per UTC day, 0 = unlimited
-	DailyTokensPerUser  int64   `protobuf:"varint,10,opt,name=daily_tokens_per_user,json=dailyTokensPerUser,proto3" json:"daily_tokens_per_user,omitempty"` // per attributes["user_id"] per UTC day
-	Enabled             bool    `protobuf:"varint,11,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	PriceInPeakPerMtok   float64 `protobuf:"fixed64,12,opt,name=price_in_peak_per_mtok,json=priceInPeakPerMtok,proto3" json:"price_in_peak_per_mtok,omitempty"`
+	PriceOutPeakPerMtok  float64 `protobuf:"fixed64,13,opt,name=price_out_peak_per_mtok,json=priceOutPeakPerMtok,proto3" json:"price_out_peak_per_mtok,omitempty"`
+	PriceInBatchPerMtok  float64 `protobuf:"fixed64,14,opt,name=price_in_batch_per_mtok,json=priceInBatchPerMtok,proto3" json:"price_in_batch_per_mtok,omitempty"`
+	PriceOutBatchPerMtok float64 `protobuf:"fixed64,15,opt,name=price_out_batch_per_mtok,json=priceOutBatchPerMtok,proto3" json:"price_out_batch_per_mtok,omitempty"`
+	DailyTokensPerKey    int64   `protobuf:"varint,9,opt,name=daily_tokens_per_key,json=dailyTokensPerKey,proto3" json:"daily_tokens_per_key,omitempty"`     // per api key per UTC day, 0 = unlimited
+	DailyTokensPerUser   int64   `protobuf:"varint,10,opt,name=daily_tokens_per_user,json=dailyTokensPerUser,proto3" json:"daily_tokens_per_user,omitempty"` // per attributes["user_id"] (or svc:<key_name> fallback) per UTC day
+	Enabled              bool    `protobuf:"varint,11,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *ModelSpec) Reset() {
@@ -141,6 +143,20 @@ func (x *ModelSpec) GetPriceInPeakPerMtok() float64 {
 func (x *ModelSpec) GetPriceOutPeakPerMtok() float64 {
 	if x != nil {
 		return x.PriceOutPeakPerMtok
+	}
+	return 0
+}
+
+func (x *ModelSpec) GetPriceInBatchPerMtok() float64 {
+	if x != nil {
+		return x.PriceInBatchPerMtok
+	}
+	return 0
+}
+
+func (x *ModelSpec) GetPriceOutBatchPerMtok() float64 {
+	if x != nil {
+		return x.PriceOutBatchPerMtok
 	}
 	return 0
 }
@@ -1256,7 +1272,7 @@ var File_llmproxy_v1_admin_proto protoreflect.FileDescriptor
 
 const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"\n" +
-	"\x17llmproxy/v1/admin.proto\x12\vllmproxy.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1allmproxy/v1/llmproxy.proto\"\xf4\x03\n" +
+	"\x17llmproxy/v1/admin.proto\x12\vllmproxy.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1allmproxy/v1/llmproxy.proto\"\xe2\x04\n" +
 	"\tModelSpec\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06vendor\x18\x02 \x01(\tR\x06vendor\x12\x1a\n" +
@@ -1267,7 +1283,9 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"\x11price_in_per_mtok\x18\a \x01(\x01R\x0epriceInPerMtok\x12+\n" +
 	"\x12price_out_per_mtok\x18\b \x01(\x01R\x0fpriceOutPerMtok\x122\n" +
 	"\x16price_in_peak_per_mtok\x18\f \x01(\x01R\x12priceInPeakPerMtok\x124\n" +
-	"\x17price_out_peak_per_mtok\x18\r \x01(\x01R\x13priceOutPeakPerMtok\x12/\n" +
+	"\x17price_out_peak_per_mtok\x18\r \x01(\x01R\x13priceOutPeakPerMtok\x124\n" +
+	"\x17price_in_batch_per_mtok\x18\x0e \x01(\x01R\x13priceInBatchPerMtok\x126\n" +
+	"\x18price_out_batch_per_mtok\x18\x0f \x01(\x01R\x14priceOutBatchPerMtok\x12/\n" +
 	"\x14daily_tokens_per_key\x18\t \x01(\x03R\x11dailyTokensPerKey\x121\n" +
 	"\x15daily_tokens_per_user\x18\n" +
 	" \x01(\x03R\x12dailyTokensPerUser\x12\x18\n" +

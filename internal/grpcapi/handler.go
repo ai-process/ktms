@@ -26,8 +26,10 @@ type SnapshotProvider interface {
 // ProxyServer implements the data-plane LLMProxyService.
 type ProxyServer struct {
 	pb.UnimplementedLLMProxyServiceServer
-	snapshots SnapshotProvider
-	throttle  router.Throttle
+	snapshots     SnapshotProvider
+	throttle      router.Throttle
+	batchStore    BatchStore
+	batchMaxItems int
 }
 
 // Reserved attribute names. Callers may set usage_project when one api key
@@ -103,7 +105,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 	resp, model, err := router.Execute(ctx, s.throttle, router.Request{
 		Chain:      models,
 		KeyName:    id.Name,
-		UserID:     req.GetAttributes()["user_id"],
+		UserID:     router.UserID(req.GetAttributes(), id.Name),
 		Estimate:   estimateTokens(req),
 		Chat:       chat,
 		Adapter:    func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
@@ -161,10 +163,7 @@ func buildChat(req *pb.GenerateTextRequest, id *apikeys.Identity, ruleName, effo
 	}
 	chat.SetActionID(actionID)
 
-	userID := req.GetAttributes()["user_id"]
-	if userID == "" {
-		userID = "svc:" + id.Name
-	}
+	userID := router.UserID(req.GetAttributes(), id.Name)
 	chat.SetInternalUserID(userID)
 
 	// Attributes flow into usage meta, plus what the proxy resolved. A caller's
@@ -210,12 +209,14 @@ func (s *ProxyServer) ListModels(ctx context.Context, _ *pb.ListModelsRequest) (
 
 func modelInfo(m *proxydb.Model) *pb.ModelInfo {
 	return &pb.ModelInfo{
-		Id:              m.ID,
-		Vendor:          m.Vendor,
-		Efforts:         effortsToProto(m.Efforts),
-		Capabilities:    m.Capabilities,
-		Rpm:             m.RPM,
-		PriceInPerMtok:  m.PriceInPerMtok,
-		PriceOutPerMtok: m.PriceOutPerMtok,
+		Id:                   m.ID,
+		Vendor:               m.Vendor,
+		Efforts:              effortsToProto(m.Efforts),
+		Capabilities:         m.Capabilities,
+		Rpm:                  m.RPM,
+		PriceInPerMtok:       m.PriceInPerMtok,
+		PriceOutPerMtok:      m.PriceOutPerMtok,
+		PriceInBatchPerMtok:  m.BatchPriceInPerMtok(),
+		PriceOutBatchPerMtok: m.BatchPriceOutPerMtok(),
 	}
 }

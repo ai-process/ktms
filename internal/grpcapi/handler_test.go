@@ -394,3 +394,28 @@ func TestUsageProject(t *testing.T) {
 		t.Errorf("no meta means no project, got %q", got)
 	}
 }
+
+func TestGenerateText_ServiceCallerBudgetCheck(t *testing.T) {
+	vendor := &fakeVendor{reply: "test response"}
+	srv := httptest.NewServer(http.HandlerFunc(vendor.handler))
+	defer srv.Close()
+
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+
+	m := testModel("m1", registry.VendorOpenAI, srv.URL, registry.EffortLow)
+	m.DailyTokensPerUser = 1
+	keys := map[string]map[string]string{"key1": {registry.VendorOpenAI: "sk-test"}}
+	snap := registry.NewSnapshotForTest([]*proxydb.Model{m}, catchAllRules("m1"), keys, nil)
+	s := NewProxyServer(fixedSnapshot{snap}, throttle.New(client, "t"))
+
+	req := &pb.GenerateTextRequest{
+		Effort:   pb.Effort_EFFORT_LOW,
+		Messages: []*pb.ChatMessage{{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: "12345678"}},
+	}
+	_, err := s.GenerateText(testIdentity(), req)
+	if status.Code(err) != codes.ResourceExhausted || status.Convert(err).Message() != "throttled:budget_user" {
+		t.Fatalf("err = %v, want ResourceExhausted throttled:budget_user", err)
+	}
+}

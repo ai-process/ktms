@@ -96,6 +96,7 @@ func loadModels(ctx context.Context, q querier) ([]*Model, error) {
 	rows, err := q.Query(ctx,
 		`SELECT id, vendor, endpoint, efforts, capabilities, rpm, price_in_per_mtok,
 		        price_out_per_mtok, price_in_peak_per_mtok, price_out_peak_per_mtok,
+		        price_in_batch_per_mtok, price_out_batch_per_mtok,
 		        daily_tokens_per_key, daily_tokens_per_user, enabled
 		 FROM model ORDER BY id`)
 	if err != nil {
@@ -107,6 +108,7 @@ func loadModels(ctx context.Context, q querier) ([]*Model, error) {
 		var m Model
 		if err := rows.Scan(&m.ID, &m.Vendor, &m.Endpoint, &m.Efforts, &m.Capabilities, &m.RPM,
 			&m.PriceInPerMtok, &m.PriceOutPerMtok, &m.PriceInPeakPerMtok, &m.PriceOutPeakPerMtok,
+			&m.PriceInBatchPerMtok, &m.PriceOutBatchPerMtok,
 			&m.DailyTokensPerKey, &m.DailyTokensPerUser, &m.Enabled); err != nil {
 			return nil, err
 		}
@@ -219,14 +221,16 @@ func UpsertModel(ctx context.Context, tx pgx.Tx, m *Model) error {
 	_, err := tx.Exec(ctx,
 		`INSERT INTO model (id, vendor, endpoint, efforts, capabilities, rpm, price_in_per_mtok,
 		                    price_out_per_mtok, price_in_peak_per_mtok, price_out_peak_per_mtok,
+		                    price_in_batch_per_mtok, price_out_batch_per_mtok,
 		                    daily_tokens_per_key, daily_tokens_per_user, enabled)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		 ON CONFLICT (id) DO UPDATE SET vendor = $2, endpoint = $3, efforts = $4, capabilities = $5,
 		   rpm = $6, price_in_per_mtok = $7, price_out_per_mtok = $8, price_in_peak_per_mtok = $9,
-		   price_out_peak_per_mtok = $10, daily_tokens_per_key = $11,
-		   daily_tokens_per_user = $12, enabled = $13, updated_at = NOW()`,
+		   price_out_peak_per_mtok = $10, price_in_batch_per_mtok = $11, price_out_batch_per_mtok = $12,
+		   daily_tokens_per_key = $13, daily_tokens_per_user = $14, enabled = $15, updated_at = NOW()`,
 		m.ID, m.Vendor, m.Endpoint, m.Efforts, m.Capabilities, m.RPM,
 		m.PriceInPerMtok, m.PriceOutPerMtok, m.PriceInPeakPerMtok, m.PriceOutPeakPerMtok,
+		m.PriceInBatchPerMtok, m.PriceOutBatchPerMtok,
 		m.DailyTokensPerKey, m.DailyTokensPerUser, m.Enabled)
 	return err
 }
