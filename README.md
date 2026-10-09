@@ -20,6 +20,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 - **OpenAI-compatible HTTP API.** Point any OpenAI SDK or tool at `http://host:8080/v1`
   and get routing, fallbacks and limits for free.
 - **Usage reporting.** Optionally forwards one event per call to a gRPC usage sink.
+- **Web console.** [llm-proxy-admin](#web-console) manages models, rules and keys in the browser.
 
 ## Contents
 
@@ -31,6 +32,7 @@ vendor is down, enforces rate and spend limits, and records usage.
   - [Production checklist](#production-checklist)
 - [Configuration reference](#configuration-reference)
 - [Setting it up: keys, models, rules](#setting-it-up-keys-models-rules)
+- [Web console](#web-console)
 - [Calling the proxy](#calling-the-proxy)
 - [OpenAI-compatible HTTP API](#openai-compatible-http-api)
 - [Concepts](#concepts)
@@ -221,7 +223,8 @@ Everything is an environment variable; see [`env.example`](env.example).
 
 All of this is done with the admin service (`LLMProxyAdminService`) using a key that has
 the `admin` scope. Mutations are validated in a transaction together with the existing
-config, so an invalid state can never become active.
+config, so an invalid state can never become active. Prefer a browser to `grpcurl`? See the
+[web console](#web-console).
 
 ### 1. API keys
 
@@ -326,6 +329,28 @@ Without such a rule the call fails with `FAILED_PRECONDITION no_capable_model`.
 
 Add a higher version to the keyring (`1:…,2:…`), redeploy, call `RotateEncryption` to
 re-encrypt every stored vendor key, then drop the old version.
+
+## Web console
+
+[**llm-proxy-admin**](https://github.com/ai-process/llm-proxy-admin) is a small web UI for everything in
+the previous section: models, routing rules, client API keys, vendor credentials and a playground for
+trying a prompt through your rules. It can also show usage and spend per project, user and model when
+paired with [light-tokenmeter](https://github.com/ai-process/light-tokenmeter). Sign-in is Google, limited to
+an e-mail allowlist with wildcards (`*@example.com`).
+
+```bash
+# 1. a key for the console
+grpcurl -plaintext -H "authorization: Bearer $BOOTSTRAP_ADMIN_KEY" \
+  -d '{"name":"console","scopes":["admin"]}' localhost:9090 llmproxy.v1.LLMProxyAdminService/MintAPIKey
+
+# 2. run it (see its README for the Google OAuth setup)
+docker run -d -p 8081:8080 \
+  -e PUBLIC_URL=https://admin.example.com \
+  -e GOOGLE_CLIENT_ID=… -e GOOGLE_CLIENT_SECRET=… -e ALLOWED_EMAILS='*@example.com' \
+  -e SESSION_SECRET="$(openssl rand -base64 36)" \
+  -e LLM_PROXY_ADDR=llm-proxy:9090 -e LLM_PROXY_ADMIN_KEY=llm_… \
+  coyl/llm-proxy-admin:latest
+```
 
 ## Calling the proxy
 
