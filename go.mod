@@ -1,6 +1,6 @@
 module github.com/ai-process/llm-proxy
 
-go 1.25.7
+go 1.26.0
 
 require (
 	github.com/alicebob/miniredis/v2 v2.35.0
@@ -15,7 +15,7 @@ require (
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/genai v1.34.0
-	google.golang.org/grpc v1.83.0
+	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 )
 
@@ -51,11 +51,11 @@ require (
 	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
-	golang.org/x/crypto v0.54.0 // indirect
-	golang.org/x/net v0.57.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260720211330-0afa2a65878a // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
