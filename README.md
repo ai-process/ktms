@@ -284,6 +284,7 @@ Capabilities a model may declare:
 | `batch` | Can serve asynchronous batch text generation requests (`SubmitBatch`). |
 | `google_search` | Can serve requests with `enable_google_search`. |
 | `no_structured_output` | The vendor API can't take a JSON schema (e.g. DeepSeek). The shape is requested in the prompt and verified by the proxy instead. |
+| `no_thinking` | The model reasons by default and bills the reasoning as output (DeepSeek V4). The proxy sends `thinking: {"type": "disabled"}`. OpenAI-compatible vendors only. |
 | `tts` | Can serve `SynthesizeSpeech`. |
 | `image` | Can serve `GenerateImage`. |
 | `judge` | Can serve `Judge` (TypeSafe models). |

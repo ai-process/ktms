@@ -62,6 +62,7 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		client := openai.NewClient(opts...)
 		adapter := adapters.NewOpenAIAdapter(&client, m.ID, noThrottle)
 		adapter.SetSoftSchema(SoftSchema(m))
+		adapter.SetNoThinking(HasCapability(m, CapabilityNoThinking))
 		// The registry id is the model to call, whichever modality it serves.
 		if HasCapability(m, CapabilityTTS) {
 			adapter.SetTTS(m.ID, openAITTSVoice)

@@ -147,6 +147,7 @@ type OpenAIAdapter struct {
 	// (DeepSeek). The shape is asked for in the prompt instead, and the router
 	// verifies the reply against the schema afterwards.
 	softSchema bool
+	noThinking bool
 }
 
 func NewOpenAIAdapter(client *openai.Client, model string, throttle *llm.ThrottleControl) *OpenAIAdapter {
@@ -159,6 +160,9 @@ func NewOpenAIAdapter(client *openai.Client, model string, throttle *llm.Throttl
 
 // SetSoftSchema switches this adapter to prompt-described schemas.
 func (a *OpenAIAdapter) SetSoftSchema(soft bool) { a.softSchema = soft }
+
+// SetNoThinking asks the vendor not to reason (DeepSeek's thinking switch).
+func (a *OpenAIAdapter) SetNoThinking(off bool) { a.noThinking = off }
 
 func (a *OpenAIAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error) {
 	// Rendered once, not per attempt: toOpenAi consumes the chat's per-request
@@ -267,6 +271,9 @@ func (a *OpenAIAdapter) buildCompletionParams(chat *llm.ChatContext, messages []
 				},
 			},
 		}
+	}
+	if a.noThinking {
+		params.SetExtraFields(map[string]any{"thinking": map[string]string{"type": "disabled"}})
 	}
 	return params
 }

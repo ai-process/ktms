@@ -33,6 +33,10 @@ const CapabilityGoogleSearch = "google_search"
 // exception so a model that says nothing keeps the enforced behaviour.
 const CapabilityNoStructuredOutput = "no_structured_output"
 
+// CapabilityNoThinking marks models that reason by default unless told not to
+// (DeepSeek V4 thinks at high effort, billed as output). The proxy turns it off.
+const CapabilityNoThinking = "no_thinking"
+
 // CapabilityTTS and CapabilityImage mark models that can serve the speech and
 // image RPCs. Opt-in: a chain filtered for one of these keeps only models that
 // declare it, so a text model can never be handed audio work.
