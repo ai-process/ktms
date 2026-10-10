@@ -30,6 +30,7 @@ func NewGRPCServer(proxy pb.LLMProxyServiceServer, admin pb.LLMProxyAdminService
 	verifier *apikeys.Verifier, addr string) *GRPCServer {
 	srv := grpclib.NewServer(
 		grpclib.ChainUnaryInterceptor(unaryLoggingInterceptor, authUnaryInterceptor(verifier)),
+		grpclib.ChainStreamInterceptor(streamLoggingInterceptor, authStreamInterceptor(verifier)),
 	)
 
 	pb.RegisterLLMProxyServiceServer(srv, proxy)
@@ -64,6 +65,19 @@ func unaryLoggingInterceptor(
 	resp, err = handler(ctx, req)
 	rpcLogEvent(err).Str("method", info.FullMethod).Dur("duration", time.Since(start)).Msg("grpc request")
 	return resp, err
+}
+
+func streamLoggingInterceptor(
+	srv any,
+	ss grpclib.ServerStream,
+	info *grpclib.StreamServerInfo,
+	handler grpclib.StreamHandler,
+) (err error) {
+	start := time.Now()
+	defer recoverToStatus(info.FullMethod, &err)()
+	err = handler(srv, ss)
+	rpcLogEvent(err).Str("method", info.FullMethod).Dur("duration", time.Since(start)).Msg("grpc request")
+	return err
 }
 
 // rpcLogEvent picks the log level for a finished RPC. Client-caused and

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -174,26 +175,99 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			continue
 		}
 
+		type streamChecker interface {
+			SupportsStreaming() bool
+		}
+		if sc, ok := adapter.(streamChecker); ok && !sc.SupportsStreaming() {
+			th.Settle(res, llm.TokensUsage{})
+			log.Warn().Str("model", m.ID).Msg("model does not support streaming, trying next in chain")
+			continue
+		}
+
 		streamAdapter, ok := adapter.(llm.StreamAdapter)
 		if !ok {
 			th.Settle(res, llm.TokensUsage{})
-			lastErr = fmt.Errorf("model %s does not support streaming", m.ID)
+			log.Warn().Str("model", m.ID).Msg("model does not support streaming, trying next in chain")
 			continue
 		}
+
+		schema := r.Chat.GetResponseSchema()
+		soft := schema != nil && r.SoftSchema != nil && r.SoftSchema(m)
 
 		var (
 			firstChunkSent bool
 			spent          llm.TokensUsage
+			outChars       int
+			bufferedChunks []llm.StreamChunk
+			fullText       strings.Builder
 		)
 
 		err = streamAdapter.GenerateTextStream(ctx, r.Chat, func(chunk llm.StreamChunk) error {
+			if soft {
+				bufferedChunks = append(bufferedChunks, chunk)
+				fullText.WriteString(chunk.Delta)
+				if chunk.Usage != nil {
+					spent.Input = chunk.Usage.Input
+					spent.Output = chunk.Usage.Output
+				}
+				return nil
+			}
 			firstChunkSent = true
+			outChars += len([]rune(chunk.Delta))
+			for _, tc := range chunk.ToolCallChunks {
+				outChars += len([]rune(tc.ArgumentsDelta)) + len([]rune(tc.Name))
+			}
 			if chunk.Usage != nil {
 				spent.Input = chunk.Usage.Input
 				spent.Output = chunk.Usage.Output
 			}
 			return onChunk(m, chunk)
 		})
+
+		if soft && err == nil {
+			if checkErr := llm.CheckResponseSchema(fullText.String(), schema); checkErr != nil {
+				log.Error().Err(checkErr).Str("model", m.ID).Str("vendor", m.Vendor).
+					Msg("stream reply did not match requested schema, trying next in chain")
+				if spent.Input == 0 && spent.Output == 0 {
+					if r.Chat != nil {
+						spent.Input = r.Chat.EstimateInputTokens()
+					}
+					spent.Output = len([]rune(fullText.String()))/4 + 1
+				}
+				th.Settle(res, spent)
+				lastErr = &SchemaFailure{Model: m.ID, Err: checkErr}
+				continue
+			}
+			firstChunkSent = true
+			for _, c := range bufferedChunks {
+				outChars += len([]rune(c.Delta))
+				for _, tc := range c.ToolCallChunks {
+					outChars += len([]rune(tc.ArgumentsDelta)) + len([]rune(tc.Name))
+				}
+				if c.Usage != nil {
+					spent.Input = c.Usage.Input
+					spent.Output = c.Usage.Output
+				}
+				if emitErr := onChunk(m, c); emitErr != nil {
+					th.Settle(res, spent)
+					return m, emitErr
+				}
+			}
+		}
+
+		if firstChunkSent && spent.Input == 0 && spent.Output == 0 {
+			if r.Chat != nil {
+				spent.Input = r.Chat.EstimateInputTokens()
+			}
+			if spent.Input == 0 && r.Estimate > 0 {
+				spent.Input = int(r.Estimate)
+			}
+			if outChars > 0 {
+				spent.Output = outChars/4 + 1
+			} else {
+				spent.Output = 1
+			}
+		}
 
 		th.Settle(res, spent)
 
@@ -204,6 +278,11 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 		lastErr = err
 		if firstChunkSent {
 			return m, err
+		}
+
+		if errors.Is(err, llm.ErrStreamingNotSupported) {
+			log.Warn().Str("model", m.ID).Msg("streaming not supported, trying next in chain")
+			continue
 		}
 
 		if errors.Is(err, llm.ErrOutputTruncated) || !llm.IsRetryableError(err) {

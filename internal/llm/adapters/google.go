@@ -162,13 +162,24 @@ func (a *GoogleAdapter) parseGenerateContentResponse(result *genai.GenerateConte
 // exercise question is a bot turn) keep their intended semantics.
 // System messages are excluded: they go through buildSystemInstruction.
 func (a *GoogleAdapter) contextToContents(messages []*llm.Message) []*genai.Content {
-	var contents []*genai.Content
+	functionNameByID := make(map[string]string)
 	for _, message := range messages {
+		for _, tc := range message.ToolCalls {
+			if tc.ID != "" && tc.Function.Name != "" {
+				functionNameByID[tc.ID] = tc.Function.Name
+			}
+		}
+	}
+
+	var contents []*genai.Content
+	for i := 0; i < len(messages); {
+		message := messages[i]
 		switch message.Type {
 		case llm.MessageTypeUser:
 			if message.Text != "" {
 				contents = append(contents, genai.NewContentFromText(message.Text, genai.RoleUser))
 			}
+			i++
 		case llm.MessageTypeBot:
 			var parts []*genai.Part
 			if message.Text != "" {
@@ -188,16 +199,31 @@ func (a *GoogleAdapter) contextToContents(messages []*llm.Message) []*genai.Cont
 			if len(parts) > 0 {
 				contents = append(contents, genai.NewContentFromParts(parts, genai.RoleModel))
 			}
+			i++
 		case llm.MessageTypeTool:
-			var respMap map[string]any
-			if err := json.Unmarshal([]byte(message.Text), &respMap); err != nil {
-				respMap = map[string]any{"output": message.Text}
+			var parts []*genai.Part
+			for i < len(messages) && messages[i].Type == llm.MessageTypeTool {
+				toolMsg := messages[i]
+				fnName := functionNameByID[toolMsg.ToolCallID]
+				if fnName == "" {
+					fnName = toolMsg.ToolCallID
+				}
+				var respMap map[string]any
+				if err := json.Unmarshal([]byte(toolMsg.Text), &respMap); err != nil {
+					respMap = map[string]any{"output": toolMsg.Text}
+				}
+				respPart := genai.NewPartFromFunctionResponse(fnName, respMap)
+				if respPart.FunctionResponse != nil {
+					respPart.FunctionResponse.ID = toolMsg.ToolCallID
+				}
+				parts = append(parts, respPart)
+				i++
 			}
-			respPart := genai.NewPartFromFunctionResponse(message.ToolCallID, respMap)
-			if respPart.FunctionResponse != nil {
-				respPart.FunctionResponse.ID = message.ToolCallID
+			if len(parts) > 0 {
+				contents = append(contents, genai.NewContentFromParts(parts, genai.RoleUser))
 			}
-			contents = append(contents, genai.NewContentFromParts([]*genai.Part{respPart}, genai.RoleUser))
+		default:
+			i++
 		}
 	}
 	return contents
@@ -227,6 +253,10 @@ func (a *GoogleAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCo
 	}
 
 	a.throttle.WaitForSlot()
+	var (
+		callIndex   int
+		hasToolCall bool
+	)
 	for resp, err := range a.geminiClient.Models.GenerateContentStream(ctx, a.model, contents, config) {
 		if err != nil {
 			return err
@@ -244,30 +274,45 @@ func (a *GoogleAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCo
 
 		if len(resp.Candidates) > 0 {
 			cand := resp.Candidates[0]
-			if cand.FinishReason != "" && cand.FinishReason != genai.FinishReasonUnspecified {
-				switch cand.FinishReason {
-				case genai.FinishReasonStop:
-					streamChunk.FinishReason = "stop"
-				case genai.FinishReasonMaxTokens:
-					streamChunk.FinishReason = "length"
-				default:
-					streamChunk.FinishReason = string(cand.FinishReason)
-				}
-			}
-
 			if cand.Content != nil {
 				for _, part := range cand.Content.Parts {
 					if part.Text != "" {
 						streamChunk.Delta += part.Text
 					}
 					if part.FunctionCall != nil {
+						hasToolCall = true
 						argsJSON, _ := json.Marshal(part.FunctionCall.Args)
+						id := part.FunctionCall.ID
+						if id == "" {
+							id = fmt.Sprintf("call_%s_%d", part.FunctionCall.Name, callIndex)
+						}
 						streamChunk.ToolCallChunks = append(streamChunk.ToolCallChunks, &llm.ToolCallChunk{
-							ID:             part.FunctionCall.ID,
+							Index:          int32(callIndex),
+							ID:             id,
 							Type:           "function",
 							Name:           part.FunctionCall.Name,
 							ArgumentsDelta: string(argsJSON),
 						})
+						callIndex++
+					}
+				}
+			}
+
+			if cand.FinishReason != "" && cand.FinishReason != genai.FinishReasonUnspecified {
+				switch cand.FinishReason {
+				case genai.FinishReasonStop:
+					if hasToolCall {
+						streamChunk.FinishReason = "tool_calls"
+					} else {
+						streamChunk.FinishReason = "stop"
+					}
+				case genai.FinishReasonMaxTokens:
+					streamChunk.FinishReason = "length"
+				default:
+					if hasToolCall {
+						streamChunk.FinishReason = "tool_calls"
+					} else {
+						streamChunk.FinishReason = string(cand.FinishReason)
 					}
 				}
 			}

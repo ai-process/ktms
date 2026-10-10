@@ -247,6 +247,9 @@ func attributes(metadata map[string]string, user string) (attrs map[string]strin
 }
 
 func (req *chatRequest) toProto() (*pb.GenerateTextRequest, error) {
+	if len(req.Functions) > 0 && string(req.Functions) != "null" {
+		return nil, invalid("functions is deprecated and not supported; use tools instead")
+	}
 	if req.N != nil && *req.N != 1 {
 		return nil, invalid("n must be 1")
 	}
@@ -471,13 +474,6 @@ func (a *OpenAIAPI) streamChat(ctx context.Context, w http.ResponseWriter, preq 
 		return status.Error(codes.Internal, "streaming unsupported by response writer")
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
-
 	s := &httpStreamAdapter{
 		ctx:          ctx,
 		w:            w,
@@ -489,6 +485,9 @@ func (a *OpenAIAPI) streamChat(ctx context.Context, w http.ResponseWriter, preq 
 
 	err := a.proxy.GenerateTextStream(&pb.GenerateTextStreamRequest{Request: preq}, s)
 	if err != nil {
+		if !s.headersSent {
+			return err
+		}
 		errData, _ := json.Marshal(map[string]any{
 			"error": map[string]any{
 				"message": err.Error(),
@@ -498,21 +497,23 @@ func (a *OpenAIAPI) streamChat(ctx context.Context, w http.ResponseWriter, preq 
 		_, _ = fmt.Fprintf(w, "data: %s\n\n", errData)
 	}
 
-	if s.lastUsage != nil && includeUsage {
-		usageBody := map[string]any{
-			"id":      id,
-			"object":  "chat.completion.chunk",
-			"created": created,
-			"model":   s.resolvedModel,
-			"choices": []any{},
-			"usage":   usageJSON(s.lastUsage),
+	if s.headersSent {
+		if s.lastUsage != nil && includeUsage {
+			usageBody := map[string]any{
+				"id":      id,
+				"object":  "chat.completion.chunk",
+				"created": created,
+				"model":   s.resolvedModel,
+				"choices": []any{},
+				"usage":   usageJSON(s.lastUsage),
+			}
+			b, _ := json.Marshal(usageBody)
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
 		}
-		b, _ := json.Marshal(usageBody)
-		_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
-	}
 
-	_, _ = io.WriteString(w, "data: [DONE]\n\n")
-	flusher.Flush()
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		flusher.Flush()
+	}
 	return nil
 }
 
@@ -526,6 +527,7 @@ type httpStreamAdapter struct {
 	resolvedModel string
 	includeUsage  bool
 	lastUsage     *pb.TokensUsage
+	headersSent   bool
 }
 
 func (s *httpStreamAdapter) Context() context.Context {
@@ -533,6 +535,17 @@ func (s *httpStreamAdapter) Context() context.Context {
 }
 
 func (s *httpStreamAdapter) Send(chunk *pb.GenerateTextChunk) error {
+	if !s.headersSent {
+		setResolvedHeaders(s.w, chunk.ResolvedVendor, chunk.MatchedRule)
+		s.w.Header().Set("Content-Type", "text/event-stream")
+		s.w.Header().Set("Cache-Control", "no-cache")
+		s.w.Header().Set("Connection", "keep-alive")
+		s.w.Header().Set("X-Accel-Buffering", "no")
+		s.w.WriteHeader(http.StatusOK)
+		s.flusher.Flush()
+		s.headersSent = true
+	}
+
 	if chunk.ResolvedModel != "" {
 		s.resolvedModel = chunk.ResolvedModel
 	}

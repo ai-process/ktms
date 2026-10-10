@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -50,6 +51,8 @@ type StreamChunk struct {
 type StreamAdapter interface {
 	GenerateTextStream(ctx context.Context, chat *ChatContext, onChunk func(StreamChunk) error) error
 }
+
+var ErrStreamingNotSupported = errors.New("streaming not supported")
 
 // SpeechSynthesizer is an optional adapter capability, discovered by type
 // assertion so the ClientAdapter contract stays untouched.

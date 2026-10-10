@@ -111,11 +111,23 @@ func (t *TrackingAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, er
 	return resp, err
 }
 
+// SupportsStreaming reports whether the underlying adapter supports streaming.
+func (t *TrackingAdapter) SupportsStreaming() bool {
+	streamer, ok := t.adapter.(llm.StreamAdapter)
+	if !ok {
+		return false
+	}
+	if sc, ok := streamer.(interface{ SupportsStreaming() bool }); ok {
+		return sc.SupportsStreaming()
+	}
+	return true
+}
+
 // GenerateTextStream forwards streaming text generation and tracks usage upon completion.
 func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
 	streamer, ok := t.adapter.(llm.StreamAdapter)
 	if !ok {
-		return fmt.Errorf("adapter for %s does not support streaming", t.model)
+		return fmt.Errorf("%w: model %s", llm.ErrStreamingNotSupported, t.model)
 	}
 
 	startTime := time.Now()
@@ -133,8 +145,17 @@ func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.Chat
 		meta = chat.GetMeta()
 	}
 
-	var lastUsage llm.TokensUsage
+	var (
+		lastUsage        llm.TokensUsage
+		outputCharsCount int
+		chunksEmitted    int
+	)
 	wrappedChunk := func(chunk llm.StreamChunk) error {
+		chunksEmitted++
+		outputCharsCount += len([]rune(chunk.Delta))
+		for _, tc := range chunk.ToolCallChunks {
+			outputCharsCount += len([]rune(tc.ArgumentsDelta)) + len([]rune(tc.Name))
+		}
 		if chunk.Usage != nil {
 			lastUsage = *chunk.Usage
 		}
@@ -143,6 +164,19 @@ func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.Chat
 
 	err := streamer.GenerateTextStream(ctx, chat, wrappedChunk)
 	durationMs := time.Since(startTime).Milliseconds()
+
+	// If the stream ended without vendor token accounting (e.g. cut short or mid-stream disconnect),
+	// fall back to estimating consumed input and output tokens so usage is recorded.
+	if lastUsage.Input == 0 && lastUsage.Output == 0 && chunksEmitted > 0 {
+		if chat != nil {
+			lastUsage.Input = chat.EstimateInputTokens()
+		}
+		if outputCharsCount > 0 {
+			lastUsage.Output = outputCharsCount/4 + 1
+		} else {
+			lastUsage.Output = 1
+		}
+	}
 
 	if t.tracker != nil {
 		var status usagev1.Status

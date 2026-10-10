@@ -333,3 +333,135 @@ func TestExecuteSkipsCheckForStrictModels(t *testing.T) {
 		t.Fatalf("strict model called %d times, want 1", strict.calls)
 	}
 }
+
+type fakeStreamAdapter struct {
+	fakeAdapter
+	stream      func(ctx context.Context, chat *llm.ChatContext, onChunk func(llm.StreamChunk) error) error
+	unsupported bool
+}
+
+func (f *fakeStreamAdapter) SupportsStreaming() bool {
+	return !f.unsupported
+}
+
+func (f *fakeStreamAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+	if f.unsupported {
+		return llm.ErrStreamingNotSupported
+	}
+	if f.stream != nil {
+		return f.stream(ctx, chat, onChunk)
+	}
+	return nil
+}
+
+func TestExecuteStreamSoftSchemaFailsAndAdvances(t *testing.T) {
+	badStream := &fakeStreamAdapter{
+		stream: func(_ context.Context, _ *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+			return onChunk(llm.StreamChunk{Delta: "Here is prose"})
+		},
+	}
+	goodStream := &fakeStreamAdapter{
+		stream: func(_ context.Context, _ *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+			return onChunk(llm.StreamChunk{Delta: `{"answer":"ok"}`, Usage: &llm.TokensUsage{Input: 5, Output: 3}})
+		},
+	}
+	adapters := map[string]llm.ClientAdapter{"soft": badStream, "good": goodStream}
+	th := &recordingThrottle{}
+
+	var receivedChunks []string
+	m, err := ExecuteStream(context.Background(), th, Request{
+		Chain: []*proxydb.Model{
+			model("soft", registry.VendorDeepSeek, registry.EffortHigh),
+			model("good", registry.VendorGoogle, registry.EffortHigh),
+		},
+		KeyName: "k", Chat: chatWithSchema(),
+		Adapter:    func(m *proxydb.Model) (llm.ClientAdapter, error) { return adapters[m.ID], nil },
+		SoftSchema: func(m *proxydb.Model) bool { return m.ID == "soft" },
+	}, func(_ *proxydb.Model, chunk llm.StreamChunk) error {
+		receivedChunks = append(receivedChunks, chunk.Delta)
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if m.ID != "good" {
+		t.Fatalf("expected resolved model 'good', got %s", m.ID)
+	}
+	if len(receivedChunks) != 1 || receivedChunks[0] != `{"answer":"ok"}` {
+		t.Fatalf("unexpected received chunks: %v", receivedChunks)
+	}
+	if len(th.settled) != 2 {
+		t.Fatalf("expected 2 settlements, got %d", len(th.settled))
+	}
+	if th.settled[0].Input == 0 || th.settled[0].Output == 0 {
+		t.Errorf("expected non-zero fallback settlement for failed soft schema attempt, got %+v", th.settled[0])
+	}
+}
+
+func TestExecuteStreamAbortedMidStreamChargesBudget(t *testing.T) {
+	abortedStream := &fakeStreamAdapter{
+		stream: func(_ context.Context, _ *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+			if err := onChunk(llm.StreamChunk{Delta: "partially generated output text"}); err != nil {
+				return err
+			}
+			return errors.New("connection reset by peer")
+		},
+	}
+	th := &recordingThrottle{}
+	chat := llm.NewChatContext()
+	chat.AddUserMessage("tell me a long story")
+
+	m, err := ExecuteStream(context.Background(), th, Request{
+		Chain:    []*proxydb.Model{model("m1", registry.VendorOpenAI, registry.EffortHigh)},
+		KeyName:  "k",
+		Chat:     chat,
+		Estimate: 100,
+		Adapter:  func(_ *proxydb.Model) (llm.ClientAdapter, error) { return abortedStream, nil },
+	}, func(_ *proxydb.Model, _ llm.StreamChunk) error {
+		return nil
+	})
+
+	if err == nil {
+		t.Fatal("expected stream error")
+	}
+	if m == nil || m.ID != "m1" {
+		t.Fatalf("expected model m1, got %v", m)
+	}
+	if len(th.settled) != 1 {
+		t.Fatalf("expected 1 settlement, got %d", len(th.settled))
+	}
+	if th.settled[0].Input <= 0 || th.settled[0].Output <= 0 {
+		t.Errorf("budget bypass: expected non-zero usage settled on aborted stream, got %+v", th.settled[0])
+	}
+}
+
+func TestExecuteStreamSkipsUnsupportedModel(t *testing.T) {
+	unsupported := &fakeStreamAdapter{unsupported: true}
+	supported := &fakeStreamAdapter{
+		stream: func(_ context.Context, _ *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+			return onChunk(llm.StreamChunk{Delta: "hi"})
+		},
+	}
+	adapters := map[string]llm.ClientAdapter{"no_stream": unsupported, "stream": supported}
+	th := &recordingThrottle{}
+
+	m, err := ExecuteStream(context.Background(), th, Request{
+		Chain: []*proxydb.Model{
+			model("no_stream", registry.VendorOpenAI, registry.EffortHigh),
+			model("stream", registry.VendorGoogle, registry.EffortHigh),
+		},
+		KeyName: "k",
+		Chat:    llm.NewChatContext(),
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) { return adapters[m.ID], nil },
+	}, func(_ *proxydb.Model, _ llm.StreamChunk) error {
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("ExecuteStream: %v", err)
+	}
+	if m.ID != "stream" {
+		t.Fatalf("expected model 'stream', got %s", m.ID)
+	}
+}

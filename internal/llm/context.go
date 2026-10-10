@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/rs/zerolog/log"
 )
@@ -450,4 +451,20 @@ func (c *ChatContext) GobEncode() ([]byte, error) {
 // GobDecode implements the gob.GobDecoder interface for ChatContext
 func (c *ChatContext) GobDecode(data []byte) error {
 	return c.UnmarshalBinary(data)
+}
+
+// EstimateInputTokens estimates input tokens based on runes in instructions and messages.
+func (c *ChatContext) EstimateInputTokens() int {
+	if c == nil {
+		return 1
+	}
+	runes := utf8.RuneCountInString(c.BaseSystemInstruction) +
+		utf8.RuneCountInString(c.perRequestSystemInstruction)
+	for _, m := range c.GetMessages() {
+		runes += utf8.RuneCountInString(m.Text)
+		for _, tc := range m.ToolCalls {
+			runes += utf8.RuneCountInString(tc.Function.Name) + utf8.RuneCountInString(tc.Function.Arguments)
+		}
+	}
+	return runes/4 + 1
 }

@@ -55,8 +55,10 @@ func (f *fakeProxy) GenerateTextStream(r *pb.GenerateTextStreamRequest, s pb.LLM
 		return nil
 	}
 	if err := s.Send(&pb.GenerateTextChunk{
-		Delta:         "hello",
-		ResolvedModel: "m1",
+		Delta:          "hello",
+		ResolvedModel:  "m1",
+		ResolvedVendor: "openai",
+		MatchedRule:    "default",
 	}); err != nil {
 		return err
 	}
@@ -218,6 +220,7 @@ func TestChatRejectsUnsupported(t *testing.T) {
 		"no msgs":    `{"messages":[]}`,
 		"bad json":   `{`,
 		"bad effort": `{"model":"auto:max","messages":[{"role":"user","content":"x"}]}`,
+		"functions":  `{"messages":[{"role":"user","content":"x"}],"functions":[{"name":"f"}]}`,
 	}
 	for name, body := range cases {
 		rec := do(h, "POST", "/v1/chat/completions", key, body)
@@ -362,11 +365,28 @@ func TestChatStream(t *testing.T) {
 	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
 		t.Fatalf("content-type %q", ct)
 	}
+	if rec.Header().Get("X-LLM-Proxy-Vendor") != "openai" || rec.Header().Get("X-LLM-Proxy-Rule") != "default" {
+		t.Errorf("headers: %v", rec.Header())
+	}
 	b := rec.Body.String()
 	for _, want := range []string{`"content":"hello"`, `"finish_reason":"stop"`, `"total_tokens":5`, "data: [DONE]"} {
 		if !strings.Contains(b, want) {
 			t.Errorf("stream missing %s:\n%s", want, b)
 		}
+	}
+}
+
+func TestChatStreamPreStreamError(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	fp.textErr = status.Error(codes.ResourceExhausted, "throttled:rpm")
+	rec := do(h, "POST", "/v1/chat/completions", key,
+		`{"stream":true,"messages":[{"role":"user","content":"x"}]}`)
+	if rec.Code != 429 {
+		t.Fatalf("expected 429, got %d: %s", rec.Code, rec.Body.String())
+	}
+	e := errBody(t, rec)
+	if e["code"] != "throttled:rpm" {
+		t.Errorf("expected throttled:rpm, got %v", e["code"])
 	}
 }
 
