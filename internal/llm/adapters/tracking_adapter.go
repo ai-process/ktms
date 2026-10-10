@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	usagev1 "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1"
@@ -165,17 +166,16 @@ func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.Chat
 	err := streamer.GenerateTextStream(ctx, chat, wrappedChunk)
 	durationMs := time.Since(startTime).Milliseconds()
 
-	// If the stream ended without vendor token accounting (e.g. cut short or mid-stream disconnect),
-	// fall back to estimating consumed input and output tokens so usage is recorded.
-	if lastUsage.Input == 0 && lastUsage.Output == 0 && chunksEmitted > 0 {
+	// If the stream ended without vendor token accounting (cut short, mid-stream disconnect,
+	// or aborted before first chunk while thinking), fall back to estimating consumed tokens.
+	disconnected := ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+	if lastUsage.Input == 0 && (chunksEmitted > 0 || disconnected) {
 		if chat != nil {
 			lastUsage.Input = chat.EstimateInputTokens()
 		}
-		if outputCharsCount > 0 {
-			lastUsage.Output = outputCharsCount/4 + 1
-		} else {
-			lastUsage.Output = 1
-		}
+	}
+	if lastUsage.Output == 0 && chunksEmitted > 0 {
+		lastUsage.Output = llm.EstimateOutputTokens(outputCharsCount)
 	}
 
 	if t.tracker != nil {

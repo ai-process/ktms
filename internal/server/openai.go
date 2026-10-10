@@ -497,6 +497,10 @@ func (a *OpenAIAPI) streamChat(ctx context.Context, w http.ResponseWriter, preq 
 		_, _ = fmt.Fprintf(w, "data: %s\n\n", errData)
 	}
 
+	if err == nil && !s.headersSent {
+		s.ensureHeaders("", "")
+	}
+
 	if s.headersSent {
 		if s.lastUsage != nil && includeUsage {
 			usageBody := map[string]any{
@@ -534,17 +538,22 @@ func (s *httpStreamAdapter) Context() context.Context {
 	return s.ctx
 }
 
-func (s *httpStreamAdapter) Send(chunk *pb.GenerateTextChunk) error {
-	if !s.headersSent {
-		setResolvedHeaders(s.w, chunk.ResolvedVendor, chunk.MatchedRule)
-		s.w.Header().Set("Content-Type", "text/event-stream")
-		s.w.Header().Set("Cache-Control", "no-cache")
-		s.w.Header().Set("Connection", "keep-alive")
-		s.w.Header().Set("X-Accel-Buffering", "no")
-		s.w.WriteHeader(http.StatusOK)
-		s.flusher.Flush()
-		s.headersSent = true
+func (s *httpStreamAdapter) ensureHeaders(vendor, rule string) {
+	if s.headersSent {
+		return
 	}
+	setResolvedHeaders(s.w, vendor, rule)
+	s.w.Header().Set("Content-Type", "text/event-stream")
+	s.w.Header().Set("Cache-Control", "no-cache")
+	s.w.Header().Set("Connection", "keep-alive")
+	s.w.Header().Set("X-Accel-Buffering", "no")
+	s.w.WriteHeader(http.StatusOK)
+	s.flusher.Flush()
+	s.headersSent = true
+}
+
+func (s *httpStreamAdapter) Send(chunk *pb.GenerateTextChunk) error {
+	s.ensureHeaders(chunk.ResolvedVendor, chunk.MatchedRule)
 
 	if chunk.ResolvedModel != "" {
 		s.resolvedModel = chunk.ResolvedModel

@@ -134,3 +134,64 @@ func TestBuildGenerateConfigSetsJSONModeWithSchema(t *testing.T) {
 		t.Fatalf("a response schema requires JSON mime type, got %q", config.ResponseMIMEType)
 	}
 }
+
+func TestParseGenerateContentResponseToolCallIDs(t *testing.T) {
+	adapter := &GoogleAdapter{}
+	resp := &genai.GenerateContentResponse{
+		Candidates: []*genai.Candidate{
+			{
+				Content: &genai.Content{
+					Parts: []*genai.Part{
+						genai.NewPartFromFunctionCall("get_weather", map[string]any{"city": "Tokyo"}),
+						genai.NewPartFromFunctionCall("get_weather", map[string]any{"city": "Paris"}),
+					},
+				},
+				FinishReason: genai.FinishReasonStop,
+			},
+		},
+	}
+
+	result, err := adapter.parseGenerateContentResponse(resp, genai.FinishReasonStop, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Choices) != 1 {
+		t.Fatalf("expected 1 choice, got %d", len(result.Choices))
+	}
+	tcs := result.Choices[0].ToolCalls
+	if len(tcs) != 2 {
+		t.Fatalf("expected 2 tool calls, got %d", len(tcs))
+	}
+	if tcs[0].ID != "call_get_weather_0" {
+		t.Errorf("expected call_get_weather_0, got %s", tcs[0].ID)
+	}
+	if tcs[1].ID != "call_get_weather_1" {
+		t.Errorf("expected call_get_weather_1, got %s", tcs[1].ID)
+	}
+	if result.Choices[0].FinishReason != "tool_calls" {
+		t.Errorf("expected finish_reason tool_calls, got %s", result.Choices[0].FinishReason)
+	}
+}
+
+func TestMapGeminiFinishReason(t *testing.T) {
+	cases := []struct {
+		reason      genai.FinishReason
+		hasToolCall bool
+		want        string
+	}{
+		{genai.FinishReasonStop, false, "stop"},
+		{genai.FinishReasonStop, true, "tool_calls"},
+		{genai.FinishReasonMaxTokens, false, "length"},
+		{genai.FinishReasonSafety, false, "content_filter"},
+		{genai.FinishReasonRecitation, false, "content_filter"},
+		{genai.FinishReasonBlocklist, false, "content_filter"},
+		{genai.FinishReasonProhibitedContent, false, "content_filter"},
+		{genai.FinishReasonSPII, false, "content_filter"},
+	}
+	for _, c := range cases {
+		got := mapGeminiFinishReason(c.reason, c.hasToolCall)
+		if got != c.want {
+			t.Errorf("mapGeminiFinishReason(%v, %v) = %q, want %q", c.reason, c.hasToolCall, got, c.want)
+		}
+	}
+}
