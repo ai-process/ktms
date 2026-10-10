@@ -23,6 +23,7 @@ type fakeProxy struct {
 	textErr      error
 	respDetails  []*pb.Choice
 	streamChunks []*pb.GenerateTextChunk
+	emptyStream  bool
 	media        map[string]string
 }
 
@@ -45,6 +46,9 @@ func (f *fakeProxy) GenerateTextStream(r *pb.GenerateTextStreamRequest, s pb.LLM
 	f.text = r.Request
 	if f.textErr != nil {
 		return f.textErr
+	}
+	if f.emptyStream {
+		return nil
 	}
 	if len(f.streamChunks) > 0 {
 		for _, chunk := range f.streamChunks {
@@ -301,7 +305,7 @@ func TestChatToolsAndToolRoles(t *testing.T) {
 	var resp struct {
 		Choices []struct {
 			Message struct {
-				Role      string `json:"role"`
+				Role      string  `json:"role"`
 				Content   *string `json:"content"`
 				ToolCalls []struct {
 					ID       string `json:"id"`
@@ -387,6 +391,23 @@ func TestChatStreamPreStreamError(t *testing.T) {
 	e := errBody(t, rec)
 	if e["code"] != "throttled:rpm" {
 		t.Errorf("expected throttled:rpm, got %v", e["code"])
+	}
+}
+
+func TestChatStreamZeroChunks(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	fp.emptyStream = true
+	rec := do(h, "POST", "/v1/chat/completions", key,
+		`{"stream":true,"messages":[{"role":"user","content":"x"}]}`)
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("content-type %q, want text/event-stream", ct)
+	}
+	b := rec.Body.String()
+	if !strings.Contains(b, "data: [DONE]\n\n") {
+		t.Errorf("expected data: [DONE], got body %q", b)
 	}
 }
 

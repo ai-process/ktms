@@ -465,3 +465,69 @@ func TestExecuteStreamSkipsUnsupportedModel(t *testing.T) {
 		t.Fatalf("expected model 'stream', got %s", m.ID)
 	}
 }
+
+func TestExecuteStreamDisconnectBeforeFirstChunkChargesBudget(t *testing.T) {
+	thinkingStream := &fakeStreamAdapter{
+		stream: func(ctx context.Context, _ *llm.ChatContext, _ func(llm.StreamChunk) error) error {
+			return ctx.Err()
+		},
+	}
+	th := &recordingThrottle{}
+	chat := llm.NewChatContext()
+	chat.AddUserMessage("ponder the universe for a minute")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := ExecuteStream(ctx, th, Request{
+		Chain:    []*proxydb.Model{model("m1", registry.VendorOpenAI, registry.EffortHigh)},
+		KeyName:  "k",
+		Chat:     chat,
+		Estimate: 100,
+		Adapter:  func(_ *proxydb.Model) (llm.ClientAdapter, error) { return thinkingStream, nil },
+	}, func(_ *proxydb.Model, _ llm.StreamChunk) error {
+		return nil
+	})
+
+	if err == nil {
+		t.Fatal("expected error on canceled context")
+	}
+	if len(th.settled) != 1 {
+		t.Fatalf("expected 1 settlement, got %d", len(th.settled))
+	}
+	if th.settled[0].Input <= 0 {
+		t.Errorf("expected non-zero input tokens charged on pre-chunk disconnect, got %+v", th.settled[0])
+	}
+}
+
+func TestExecuteStreamSoftSchemaErrorPartwayChargesBudget(t *testing.T) {
+	partwayStream := &fakeStreamAdapter{
+		stream: func(_ context.Context, _ *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+			if err := onChunk(llm.StreamChunk{Delta: "{\"partial\":"}); err != nil {
+				return err
+			}
+			return errors.New("upstream connection reset")
+		},
+	}
+	th := &recordingThrottle{}
+
+	_, err := ExecuteStream(context.Background(), th, Request{
+		Chain:      []*proxydb.Model{model("soft", registry.VendorDeepSeek, registry.EffortHigh)},
+		KeyName:    "k",
+		Chat:       chatWithSchema(),
+		Adapter:    func(_ *proxydb.Model) (llm.ClientAdapter, error) { return partwayStream, nil },
+		SoftSchema: func(_ *proxydb.Model) bool { return true },
+	}, func(_ *proxydb.Model, _ llm.StreamChunk) error {
+		return nil
+	})
+
+	if err == nil {
+		t.Fatal("expected stream error")
+	}
+	if len(th.settled) != 1 {
+		t.Fatalf("expected 1 settlement, got %d", len(th.settled))
+	}
+	if th.settled[0].Input <= 0 || th.settled[0].Output <= 0 {
+		t.Errorf("expected input and output tokens charged for partway soft schema stream, got %+v", th.settled[0])
+	}
+}

@@ -582,7 +582,7 @@ fields: `metadata` is passed through as attributes, `user` becomes `attributes["
 | Image/audio content parts | Rejected with `400`. |
 | `temperature`, `top_p`, `stop`, `seed`, `logprobs`, penalties… | Accepted and ignored. |
 
-The response is a standard `chat.completion` with `finish_reason: "stop"` and token `usage`.
+The response is a standard `chat.completion` with `finish_reason` (`"stop"`, `"tool_calls"`, `"length"`, or `"content_filter"`) and token `usage`.
 
 ### Speech and images
 

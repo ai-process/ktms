@@ -126,3 +126,27 @@ func TestTrackingAdapterStreamAbortedWithoutUsage(t *testing.T) {
 		t.Errorf("expected estimated usage recorded on aborted stream, got in=%d out=%d", tracker.in, tracker.out)
 	}
 }
+
+func TestTrackingAdapterStreamDisconnectBeforeFirstChunk(t *testing.T) {
+	tracker := &capturingTracker{}
+	streamAdapter := &stubStreamAdapter{
+		stream: func(ctx context.Context, _ *llm.ChatContext, _ func(llm.StreamChunk) error) error {
+			return ctx.Err()
+		},
+	}
+	adapter := NewTrackingAdapter(streamAdapter, tracker, "openai", "gpt-4")
+	chat := llm.NewChatContext()
+	chat.SetInternalUserID("u1")
+	chat.AddUserMessage("hello world")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_ = adapter.GenerateTextStream(ctx, chat, func(llm.StreamChunk) error { return nil })
+	if tracker.calls != 1 {
+		t.Fatalf("expected 1 tracker call, got %d", tracker.calls)
+	}
+	if tracker.in <= 0 {
+		t.Errorf("expected estimated input tokens recorded on pre-chunk disconnect, got in=%d", tracker.in)
+	}
+}

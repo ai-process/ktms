@@ -98,7 +98,7 @@ func (a *GoogleAdapter) parseGenerateContentResponse(result *genai.GenerateConte
 				argsJSON, _ := json.Marshal(part.FunctionCall.Args)
 				id := part.FunctionCall.ID
 				if id == "" {
-					id = "call_" + part.FunctionCall.Name
+					id = fmt.Sprintf("call_%s_%d", part.FunctionCall.Name, len(toolCalls))
 				}
 				toolCalls = append(toolCalls, &llm.ToolCall{
 					ID:   id,
@@ -130,12 +130,7 @@ func (a *GoogleAdapter) parseGenerateContentResponse(result *genai.GenerateConte
 		}
 	}
 
-	calculatedFinishReason := "stop"
-	if len(toolCalls) > 0 {
-		calculatedFinishReason = "tool_calls"
-	} else if finishReason == genai.FinishReasonMaxTokens {
-		calculatedFinishReason = "length"
-	}
+	calculatedFinishReason := mapGeminiFinishReason(finishReason, len(toolCalls) > 0)
 
 	response := &llm.Response{}
 	response.AddMessage(&llm.Message{
@@ -299,22 +294,7 @@ func (a *GoogleAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCo
 			}
 
 			if cand.FinishReason != "" && cand.FinishReason != genai.FinishReasonUnspecified {
-				switch cand.FinishReason {
-				case genai.FinishReasonStop:
-					if hasToolCall {
-						streamChunk.FinishReason = "tool_calls"
-					} else {
-						streamChunk.FinishReason = "stop"
-					}
-				case genai.FinishReasonMaxTokens:
-					streamChunk.FinishReason = "length"
-				default:
-					if hasToolCall {
-						streamChunk.FinishReason = "tool_calls"
-					} else {
-						streamChunk.FinishReason = string(cand.FinishReason)
-					}
-				}
+				streamChunk.FinishReason = mapGeminiFinishReason(cand.FinishReason, hasToolCall)
 			}
 		}
 
@@ -330,6 +310,32 @@ func (a *GoogleAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCo
 	}
 
 	return nil
+}
+
+// mapGeminiFinishReason maps vendor stop conditions to OpenAI standards
+// so clients receive content_filter or tool_calls rather than vendor enums.
+func mapGeminiFinishReason(fr genai.FinishReason, hasToolCall bool) string {
+	if hasToolCall {
+		return "tool_calls"
+	}
+	switch fr {
+	case genai.FinishReasonStop:
+		return "stop"
+	case genai.FinishReasonMaxTokens:
+		return "length"
+	case genai.FinishReasonSafety,
+		genai.FinishReasonImageSafety,
+		genai.FinishReasonBlocklist,
+		genai.FinishReasonProhibitedContent,
+		genai.FinishReasonSPII,
+		genai.FinishReasonRecitation:
+		return "content_filter"
+	default:
+		if fr == "" || fr == genai.FinishReasonUnspecified {
+			return "stop"
+		}
+		return strings.ToLower(string(fr))
+	}
 }
 
 // buildGenerateConfig assembles the per-request vendor config: system instruction,

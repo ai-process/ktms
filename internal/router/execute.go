@@ -228,11 +228,16 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			if checkErr := llm.CheckResponseSchema(fullText.String(), schema); checkErr != nil {
 				log.Error().Err(checkErr).Str("model", m.ID).Str("vendor", m.Vendor).
 					Msg("stream reply did not match requested schema, trying next in chain")
-				if spent.Input == 0 && spent.Output == 0 {
+				if spent.Input == 0 {
 					if r.Chat != nil {
 						spent.Input = r.Chat.EstimateInputTokens()
 					}
-					spent.Output = len([]rune(fullText.String()))/4 + 1
+					if spent.Input == 0 && r.Estimate > 0 {
+						spent.Input = int(r.Estimate)
+					}
+				}
+				if spent.Output == 0 {
+					spent.Output = llm.EstimateOutputTokens(len([]rune(fullText.String())))
 				}
 				th.Settle(res, spent)
 				lastErr = &SchemaFailure{Model: m.ID, Err: checkErr}
@@ -255,17 +260,20 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			}
 		}
 
-		if firstChunkSent && spent.Input == 0 && spent.Output == 0 {
+		disconnected := ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+		if (firstChunkSent || disconnected || (soft && len(bufferedChunks) > 0)) && spent.Input == 0 {
 			if r.Chat != nil {
 				spent.Input = r.Chat.EstimateInputTokens()
 			}
 			if spent.Input == 0 && r.Estimate > 0 {
 				spent.Input = int(r.Estimate)
 			}
+		}
+		if spent.Output == 0 {
 			if outChars > 0 {
-				spent.Output = outChars/4 + 1
-			} else {
-				spent.Output = 1
+				spent.Output = llm.EstimateOutputTokens(outChars)
+			} else if soft && fullText.Len() > 0 {
+				spent.Output = llm.EstimateOutputTokens(len([]rune(fullText.String())))
 			}
 		}
 

@@ -468,3 +468,11 @@ func (c *ChatContext) EstimateInputTokens() int {
 	}
 	return runes/4 + 1
 }
+
+// EstimateOutputTokens estimates output tokens from character or rune count.
+func EstimateOutputTokens(runes int) int {
+	if runes <= 0 {
+		return 1
+	}
+	return runes/4 + 1
+}
