@@ -38,6 +38,19 @@ type ClientAdapter interface {
 	GenerateText(chat *ChatContext) (*Response, error)
 }
 
+// StreamChunk is one incremental delta from a streaming model call.
+type StreamChunk struct {
+	Delta          string
+	FinishReason   string
+	Usage          *TokensUsage
+	ToolCallChunks []*ToolCallChunk
+}
+
+// StreamAdapter is an optional adapter capability for incremental text generation streaming.
+type StreamAdapter interface {
+	GenerateTextStream(ctx context.Context, chat *ChatContext, onChunk func(StreamChunk) error) error
+}
+
 // SpeechSynthesizer is an optional adapter capability, discovered by type
 // assertion so the ClientAdapter contract stays untouched.
 type SpeechSynthesizer interface {

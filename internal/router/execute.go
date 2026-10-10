@@ -146,6 +146,79 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 	return nil, nil, &ChainExhausted{Last: lastErr}
 }
 
+// ExecuteStream walks the model chain for streaming requests. Pre-stream failures
+// fallback to the next model; once the first chunk is emitted, the stream locks.
+func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*proxydb.Model, llm.StreamChunk) error) (*proxydb.Model, error) {
+	var lastErr error
+	allThrottled := true
+	throttleKind := "rpm"
+
+	for _, m := range r.Chain {
+		if !th.AllowRPM(ctx, r.KeyName, m) {
+			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Msg("model rpm-saturated, trying next in chain")
+			continue
+		}
+		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate)
+		if tripped != "" {
+			throttleKind = tripped
+			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("budget", tripped).
+				Msg("budget exhausted, trying next in chain")
+			continue
+		}
+		allThrottled = false
+
+		adapter, err := r.Adapter(m)
+		if err != nil {
+			th.Settle(res, llm.TokensUsage{})
+			lastErr = err
+			continue
+		}
+
+		streamAdapter, ok := adapter.(llm.StreamAdapter)
+		if !ok {
+			th.Settle(res, llm.TokensUsage{})
+			lastErr = fmt.Errorf("model %s does not support streaming", m.ID)
+			continue
+		}
+
+		var (
+			firstChunkSent bool
+			spent          llm.TokensUsage
+		)
+
+		err = streamAdapter.GenerateTextStream(ctx, r.Chat, func(chunk llm.StreamChunk) error {
+			firstChunkSent = true
+			if chunk.Usage != nil {
+				spent.Input = chunk.Usage.Input
+				spent.Output = chunk.Usage.Output
+			}
+			return onChunk(m, chunk)
+		})
+
+		th.Settle(res, spent)
+
+		if err == nil {
+			return m, nil
+		}
+
+		lastErr = err
+		if firstChunkSent {
+			return m, err
+		}
+
+		if errors.Is(err, llm.ErrOutputTruncated) || !llm.IsRetryableError(err) {
+			log.Error().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).
+				Str("key", r.KeyName).Msg("terminal vendor error, ending stream chain")
+			return m, err
+		}
+	}
+
+	if allThrottled {
+		return nil, &ChainExhausted{AllThrottled: true, ThrottleKind: throttleKind}
+	}
+	return nil, &ChainExhausted{Last: lastErr}
+}
+
 // callAndCheck runs one model and, when that model cannot be handed a schema
 // through its API, verifies the reply here. A reply of the wrong shape earns
 // one more attempt on the same model before the chain moves on. Settles the

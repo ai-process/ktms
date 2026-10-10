@@ -194,6 +194,56 @@ func (a *OpenAIAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, erro
 	return a.toResponse(resp, abandoned)
 }
 
+// GenerateTextStream implements llm.StreamAdapter for OpenAI.
+func (a *OpenAIAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+	messages := a.toOpenAi(chat)
+	ceiling := chat.GetMaxOutputTokens()
+	params := a.buildCompletionParams(chat, messages, ceiling)
+	params.StreamOptions = openai.ChatCompletionStreamOptionsParam{
+		IncludeUsage: openai.Bool(true),
+	}
+
+	a.throttle.WaitForSlot()
+	stream := a.openAI.Chat.Completions.NewStreaming(ctx, params)
+	defer stream.Close()
+
+	for stream.Next() {
+		chunk := stream.Current()
+		var streamChunk llm.StreamChunk
+
+		if chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
+			streamChunk.Usage = &llm.TokensUsage{
+				Input:  int(chunk.Usage.PromptTokens),
+				Output: int(chunk.Usage.CompletionTokens),
+			}
+		}
+
+		if len(chunk.Choices) > 0 {
+			ch := chunk.Choices[0]
+			streamChunk.Delta = ch.Delta.Content
+			streamChunk.FinishReason = ch.FinishReason
+
+			for _, tc := range ch.Delta.ToolCalls {
+				streamChunk.ToolCallChunks = append(streamChunk.ToolCallChunks, &llm.ToolCallChunk{
+					Index:          int32(tc.Index),
+					ID:             tc.ID,
+					Type:           tc.Type,
+					Name:           tc.Function.Name,
+					ArgumentsDelta: tc.Function.Arguments,
+				})
+			}
+		}
+
+		if streamChunk.Delta != "" || streamChunk.FinishReason != "" || streamChunk.Usage != nil || len(streamChunk.ToolCallChunks) > 0 {
+			if err := onChunk(streamChunk); err != nil {
+				return err
+			}
+		}
+	}
+
+	return stream.Err()
+}
+
 // usageOf reads the token counts OpenAI charged for one completion.
 func usageOf(resp *openai.ChatCompletion) llm.TokensUsage {
 	if resp == nil {
@@ -217,9 +267,22 @@ func (a *OpenAIAdapter) toResponse(resp *openai.ChatCompletion, carried llm.Toke
 		if choice.FinishReason == openAIFinishReasonLength {
 			return nil, llm.TruncatedError("OpenAIAdapter", a.model, len(choice.Message.Content))
 		}
+		var tcs []*llm.ToolCall
+		for _, tc := range choice.Message.ToolCalls {
+			tcs = append(tcs, &llm.ToolCall{
+				ID:   tc.ID,
+				Type: tc.Type,
+				Function: llm.FunctionCall{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			})
+		}
 		response.AddMessage(&llm.Message{
-			Type: llm.MessageTypeBot,
-			Text: choice.Message.Content,
+			Type:         llm.MessageTypeBot,
+			Text:         choice.Message.Content,
+			ToolCalls:    tcs,
+			FinishReason: choice.FinishReason,
 		})
 	}
 	// Uphold the contract every caller relies on: a nil error means at least
@@ -275,6 +338,39 @@ func (a *OpenAIAdapter) buildCompletionParams(chat *llm.ChatContext, messages []
 	if a.noThinking {
 		params.SetExtraFields(map[string]any{"thinking": map[string]string{"type": "disabled"}})
 	}
+
+	if len(chat.GetTools()) > 0 {
+		var tools []openai.ChatCompletionToolUnionParam
+		for _, t := range chat.GetTools() {
+			fnParam := shared.FunctionDefinitionParam{
+				Name: t.Function.Name,
+			}
+			if t.Function.Description != "" {
+				fnParam.Description = openai.String(t.Function.Description)
+			}
+			if t.Function.Strict {
+				fnParam.Strict = openai.Bool(true)
+			}
+			if t.Function.Parameters != nil {
+				fnParam.Parameters = shared.FunctionParameters(convertLLMResponseSchemaToOpenAISchema(t.Function.Parameters))
+			}
+			tools = append(tools, openai.ChatCompletionFunctionTool(fnParam))
+		}
+		params.Tools = tools
+	}
+
+	if tc := chat.GetToolChoice(); tc != nil {
+		switch tc.Mode {
+		case "auto", "none", "required":
+			params.ToolChoice = openai.ChatCompletionToolChoiceOptionUnionParam{
+				OfAuto: openai.String(tc.Mode),
+			}
+		case "specific":
+			params.ToolChoice = openai.ToolChoiceOptionFunctionToolChoice(openai.ChatCompletionNamedToolChoiceFunctionParam{
+				Name: tc.SpecificFunctionName,
+			})
+		}
+	}
 	return params
 }
 
@@ -297,7 +393,34 @@ func (a *OpenAIAdapter) convertMessageToOpenAi(message *llm.Message) openai.Chat
 		return openai.SystemMessage(message.Text)
 	case llm.MessageTypeUser:
 		return openai.UserMessage(message.Text)
+	case llm.MessageTypeTool:
+		return openai.ToolMessage(message.Text, message.ToolCallID)
 	case llm.MessageTypeBot:
+		if len(message.ToolCalls) > 0 {
+			var tcs []openai.ChatCompletionMessageToolCallUnionParam
+			for _, tc := range message.ToolCalls {
+				tcs = append(tcs, openai.ChatCompletionMessageToolCallUnionParam{
+					OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
+						ID: tc.ID,
+						Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
+							Name:      tc.Function.Name,
+							Arguments: tc.Function.Arguments,
+						},
+					},
+				})
+			}
+			param := openai.ChatCompletionAssistantMessageParam{
+				ToolCalls: tcs,
+			}
+			if message.Text != "" {
+				param.Content = openai.ChatCompletionAssistantMessageParamContentUnion{
+					OfString: openai.String(message.Text),
+				}
+			}
+			return openai.ChatCompletionMessageParamUnion{
+				OfAssistant: &param,
+			}
+		}
 		return openai.AssistantMessage(message.Text)
 	}
 	return openai.ChatCompletionMessageParamUnion{}

@@ -54,7 +54,7 @@ Two gRPC services share port `9090`:
 
 | Service | Purpose | Needed scope |
 | --- | --- | --- |
-| `llmproxy.v1.LLMProxyService` | `GenerateText`, `SubmitBatch`, `GetBatch`, `ListBatchResults`, `CancelBatch`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `ListModels` | `generate` |
+| `llmproxy.v1.LLMProxyService` | `GenerateText`, `GenerateTextStream`, `SubmitBatch`, `GetBatch`, `ListBatchResults`, `CancelBatch`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `ListModels` | `generate` |
 | `llmproxy.v1.LLMProxyAdminService` | models, rules, vendor keys, API keys, key rotation | `admin` |
 
 Port `8080` serves the health probes (`/healthz`, `/readyz`) and the
@@ -382,13 +382,24 @@ Python, TypeScript… clients from [`proto/llmproxy/v1`](proto/llmproxy/v1) with
 | `attributes` | Opaque key/values matched by rules and copied to usage events. `user_id` charges the per-user daily budget (falls back to `svc:<key_name>` for service callers without `user_id`). `usage_project` overrides the usage project (see below). |
 | `base_system_instruction`, `request_instruction` | System content never travels as a message. |
 | `response_schema` | Unset = free text. Set = JSON output validated against the schema; a vendor that can't enforce it is verified by the proxy. |
+| `tools`, `tool_choice` | Function/tool declarations with JSON Schema parameters. `tool_choice` specifies auto, required, none, or a specific named function. |
+| `messages` | Chat history. Supports `MESSAGE_ROLE_USER`, `MESSAGE_ROLE_ASSISTANT`, and `MESSAGE_ROLE_TOOL` (with `tool_call_id`). Assistant messages can carry `tool_calls`. |
 | `max_output_tokens` | Ceiling, `0` = none. Output tokens are the expensive ones; set it. |
 | `enable_google_search` | Only Google models declaring `google_search` can serve it. |
 | `action_id` | Free-form label for usage attribution. |
 | `model_override` | Exact model id; bypasses rules but **not** throttles. |
 
-The response carries `choices`, token `usage`, `resolved_model`, `resolved_vendor` and
-`matched_rule` (empty on override).
+The response carries `choices`, token `usage`, `resolved_model`, `resolved_vendor`,
+`matched_rule` (empty on override), and structured `details` (`Choice` objects with text, tool calls, and finish reasons).
+
+### GenerateTextStream
+
+Server-streaming RPC `rpc GenerateTextStream(GenerateTextStreamRequest) returns (stream GenerateTextChunk)`.
+
+- Takes a `GenerateTextStreamRequest` containing the standard `GenerateTextRequest`.
+- Streams incremental `GenerateTextChunk` items containing `delta` (token text), `tool_call_chunks`, `resolved_model`, `resolved_vendor`, and final `finish_reason` with token `usage`.
+- **Fallback guarantee:** If upstream models fail before the first chunk is sent, the router falls back to the next model in the rule's chain. Once the first chunk is transmitted to the caller, the stream is locked to that model to guarantee integrity.
+- Usage events and daily token budgets are settled on stream completion.
 
 ### Batch text generation
 
@@ -562,12 +573,13 @@ fields: `metadata` is passed through as attributes, `user` becomes `attributes["
 | `messages` | `system`/`developer` messages become the system instruction, `user`/`assistant` the conversation. Content is a string or text parts. |
 | `max_tokens`, `max_completion_tokens` | Output ceiling (`max_output_tokens`). Set one: an unbounded answer is the costliest failure. |
 | `response_format` | `json_schema` is enforced (converted to the proxy's schema; keywords such as `enum` and `additionalProperties` are dropped). `json_object` asks for JSON in the prompt. |
-| `stream` | Accepted. The proxy retries and verifies whole answers, so the full reply arrives as a single SSE chunk followed by `[DONE]`; `stream_options.include_usage` is honoured. |
+| `stream` | Real incremental SSE streaming backed by gRPC server streaming. Once the first chunk is emitted, stream is locked to the selected model; `stream_options.include_usage` is honoured on completion. |
 | `reasoning_effort`, `user`, `metadata` | Routing, as above. |
 | `enable_google_search` | Extension: let a Google model ground the answer in search. |
 | `n` | Must be 1. |
-| `tools`, `tool_choice`, `functions` | Rejected with `400`. |
-| Image/audio content parts, `tool`/`function` roles | Rejected with `400`. |
+| `tools`, `tool_choice` | Supported. Function declarations with JSON Schema parameters. `tool_choice` supports `"auto"`, `"none"`, `"required"`, or specific function names. |
+| `role: "tool"` | Supported. Tool responses with `tool_call_id`. |
+| Image/audio content parts | Rejected with `400`. |
 | `temperature`, `top_p`, `stop`, `seed`, `logprobs`, penalties… | Accepted and ignored. |
 
 The response is a standard `chat.completion` with `finish_reason: "stop"` and token `usage`.

@@ -3,6 +3,8 @@ package grpcapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"google.golang.org/grpc"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -31,6 +34,7 @@ type fakeVendor struct {
 	failFirstN   int    // respond 500 to the first N calls
 	finishReason string // default "stop"
 	reply        string
+	toolCalls    []map[string]any
 }
 
 func (f *fakeVendor) handler(w http.ResponseWriter, r *http.Request) {
@@ -42,22 +46,69 @@ func (f *fakeVendor) handler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":{"message":"boom"}}`, http.StatusInternalServerError)
 		return
 	}
+	bodyBytes, _ := io.ReadAll(r.Body)
+	var body struct {
+		Stream bool `json:"stream"`
+	}
+	_ = json.Unmarshal(bodyBytes, &body)
+
+	if body.Stream {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", `{"id":"cmpl-1","choices":[{"index":0,"delta":{"role":"assistant","content":"`+f.reply+`"},"finish_reason":null}]}`)
+		if ok {
+			flusher.Flush()
+		}
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", `{"id":"cmpl-1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}}`)
+		if ok {
+			flusher.Flush()
+		}
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		if ok {
+			flusher.Flush()
+		}
+		return
+	}
+
 	finish := f.finishReason
 	if finish == "" {
-		finish = "stop"
+		if len(f.toolCalls) > 0 {
+			finish = "tool_calls"
+		} else {
+			finish = "stop"
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
+	msg := map[string]any{"role": "assistant", "content": f.reply}
+	if len(f.toolCalls) > 0 {
+		msg["tool_calls"] = f.toolCalls
+	}
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"id":     "cmpl-1",
 		"object": "chat.completion",
 		"model":  "fake",
 		"choices": []map[string]any{{
 			"index":         0,
-			"message":       map[string]any{"role": "assistant", "content": f.reply},
+			"message":       msg,
 			"finish_reason": finish,
 		}},
 		"usage": map[string]any{"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18},
 	})
+}
+
+type mockStreamServer struct {
+	grpc.ServerStream
+	ctx    context.Context
+	chunks []*pb.GenerateTextChunk
+}
+
+func (m *mockStreamServer) Context() context.Context {
+	return m.ctx
+}
+
+func (m *mockStreamServer) Send(chunk *pb.GenerateTextChunk) error {
+	m.chunks = append(m.chunks, chunk)
+	return nil
 }
 
 func (f *fakeVendor) count() int {
@@ -170,6 +221,141 @@ func TestGenerateTextHappyPath(t *testing.T) {
 	if e.meta["subject"] != "french" || e.meta["api_key"] != "generation" ||
 		e.meta["rule"] != "any-default" || e.meta["effort"] != "low" {
 		t.Fatalf("meta = %v", e.meta)
+	}
+}
+
+func TestGenerateTextStreamHappyPath(t *testing.T) {
+	vendor := &fakeVendor{reply: "bonjour stream"}
+	srv := httptest.NewServer(http.HandlerFunc(vendor.handler))
+	defer srv.Close()
+
+	tracker := &fakeTracker{}
+	models := []*proxydb.Model{testModel("m1", registry.VendorOpenAI, srv.URL,
+		registry.EffortLow, registry.EffortMedium, registry.EffortHigh)}
+	s := newTestServer(t, models, catchAllRules("m1"), tracker)
+
+	stream := &mockStreamServer{ctx: testIdentity()}
+	err := s.GenerateTextStream(&pb.GenerateTextStreamRequest{
+		Request: &pb.GenerateTextRequest{
+			Effort:     pb.Effort_EFFORT_LOW,
+			Attributes: map[string]string{"subject": "french", "user_id": "u-42"},
+			Messages:   []*pb.ChatMessage{{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: "say hi"}},
+			ActionId:   "test.stream.hi",
+		},
+	}, stream)
+	if err != nil {
+		t.Fatalf("GenerateTextStream: %v", err)
+	}
+	if len(stream.chunks) < 2 {
+		t.Fatalf("expected at least 2 chunks, got %d", len(stream.chunks))
+	}
+	if stream.chunks[0].Delta != "bonjour stream" {
+		t.Errorf("expected chunk delta 'bonjour stream', got %q", stream.chunks[0].Delta)
+	}
+	lastChunk := stream.chunks[len(stream.chunks)-1]
+	if lastChunk.FinishReason != "stop" {
+		t.Errorf("expected finish_reason stop, got %q", lastChunk.FinishReason)
+	}
+	if lastChunk.Usage == nil || lastChunk.Usage.Input != 11 || lastChunk.Usage.Output != 7 {
+		t.Errorf("unexpected usage: %+v", lastChunk.Usage)
+	}
+
+	events := tracker.list()
+	if len(events) != 1 {
+		t.Fatalf("tracked %d events, want 1", len(events))
+	}
+	e := events[0]
+	if e.userID != "u-42" || e.actionID != "test.stream.hi" || e.vendor != registry.VendorOpenAI || e.model != "m1" {
+		t.Fatalf("event = %+v", e)
+	}
+}
+
+func TestGenerateTextStreamChainFallback(t *testing.T) {
+	broken := &fakeVendor{failFirstN: 1000}
+	healthy := &fakeVendor{reply: "stream rescued"}
+	srvBroken := httptest.NewServer(http.HandlerFunc(broken.handler))
+	defer srvBroken.Close()
+	srvHealthy := httptest.NewServer(http.HandlerFunc(healthy.handler))
+	defer srvHealthy.Close()
+
+	tracker := &fakeTracker{}
+	models := []*proxydb.Model{
+		testModel("first", registry.VendorDeepSeek, srvBroken.URL, registry.EffortHigh),
+		testModel("second", registry.VendorOpenAI, srvHealthy.URL, registry.EffortHigh),
+	}
+	s := newTestServer(t, models, catchAllRules("first", "second"), tracker)
+
+	stream := &mockStreamServer{ctx: testIdentity()}
+	err := s.GenerateTextStream(&pb.GenerateTextStreamRequest{
+		Request: &pb.GenerateTextRequest{
+			Effort:   pb.Effort_EFFORT_HIGH,
+			Messages: []*pb.ChatMessage{{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: "hello"}},
+		},
+	}, stream)
+	if err != nil {
+		t.Fatalf("GenerateTextStream: %v", err)
+	}
+	if len(stream.chunks) < 2 {
+		t.Fatalf("expected at least 2 chunks, got %d", len(stream.chunks))
+	}
+	if stream.chunks[0].ResolvedModel != "second" || stream.chunks[0].Delta != "stream rescued" {
+		t.Errorf("expected fallback to second, got %+v", stream.chunks[0])
+	}
+}
+
+func TestGenerateTextWithTools(t *testing.T) {
+	vendor := &fakeVendor{
+		toolCalls: []map[string]any{
+			{
+				"id":   "call_999",
+				"type": "function",
+				"function": map[string]any{
+					"name":      "calc",
+					"arguments": "{\"x\":1}",
+				},
+			},
+		},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(vendor.handler))
+	defer srv.Close()
+
+	tracker := &fakeTracker{}
+	models := []*proxydb.Model{testModel("m1", registry.VendorOpenAI, srv.URL, registry.EffortLow)}
+	s := newTestServer(t, models, catchAllRules("m1"), tracker)
+
+	resp, err := s.GenerateText(testIdentity(), &pb.GenerateTextRequest{
+		Effort: pb.Effort_EFFORT_LOW,
+		Messages: []*pb.ChatMessage{
+			{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: "calc 1+1"},
+		},
+		Tools: []*pb.Tool{
+			{
+				Type: "function",
+				Function: &pb.FunctionDefinition{
+					Name:        "calc",
+					Description: "Calculate math",
+				},
+			},
+		},
+		ToolChoice: &pb.ToolChoice{
+			Mode: pb.ToolChoice_MODE_AUTO,
+		},
+	})
+	if err != nil {
+		t.Fatalf("GenerateText: %v", err)
+	}
+	if len(resp.Details) != 1 {
+		t.Fatalf("expected 1 detail choice, got %d", len(resp.Details))
+	}
+	detail := resp.Details[0]
+	if len(detail.ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(detail.ToolCalls))
+	}
+	if detail.ToolCalls[0].Id != "call_999" || detail.ToolCalls[0].Function.Name != "calc" {
+		t.Errorf("unexpected tool call: %+v", detail.ToolCalls[0])
+	}
+	if detail.FinishReason != "tool_calls" {
+		t.Errorf("expected finish reason tool_calls, got %s", detail.FinishReason)
 	}
 }
 

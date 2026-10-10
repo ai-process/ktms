@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -125,8 +126,33 @@ type responseFormat struct {
 }
 
 type chatMessage struct {
-	Role    string          `json:"role"`
-	Content json.RawMessage `json:"content"`
+	Role       string          `json:"role"`
+	Content    json.RawMessage `json:"content"`
+	ToolCalls  []chatToolCall  `json:"tool_calls,omitempty"`
+	ToolCallID string          `json:"tool_call_id,omitempty"`
+}
+
+type chatToolCall struct {
+	ID       string           `json:"id"`
+	Type     string           `json:"type"`
+	Function chatFunctionCall `json:"function"`
+}
+
+type chatFunctionCall struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+type chatTool struct {
+	Type     string                 `json:"type"`
+	Function chatFunctionDefinition `json:"function"`
+}
+
+type chatFunctionDefinition struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Parameters  json.RawMessage `json:"parameters,omitempty"`
+	Strict      *bool           `json:"strict,omitempty"`
 }
 
 func invalid(format string, args ...any) error {
@@ -221,10 +247,6 @@ func attributes(metadata map[string]string, user string) (attrs map[string]strin
 }
 
 func (req *chatRequest) toProto() (*pb.GenerateTextRequest, error) {
-	if len(req.Tools) > 0 && string(req.Tools) != "null" || len(req.Functions) > 0 && string(req.Functions) != "null" ||
-		len(req.ToolChoice) > 0 && string(req.ToolChoice) != "null" {
-		return nil, invalid("tools and function calling are not supported")
-	}
 	if req.N != nil && *req.N != 1 {
 		return nil, invalid("n must be 1")
 	}
@@ -236,11 +258,72 @@ func (req *chatRequest) toProto() (*pb.GenerateTextRequest, error) {
 		return nil, err
 	}
 
+	var tools []*pb.Tool
+	if len(req.Tools) > 0 && string(req.Tools) != "null" {
+		var rawTools []chatTool
+		if err := json.Unmarshal(req.Tools, &rawTools); err != nil {
+			return nil, invalid("tools must be a list of tool objects")
+		}
+		for _, rt := range rawTools {
+			t := &pb.Tool{
+				Type: rt.Type,
+				Function: &pb.FunctionDefinition{
+					Name:        rt.Function.Name,
+					Description: rt.Function.Description,
+				},
+			}
+			if rt.Function.Strict != nil {
+				t.Function.Strict = *rt.Function.Strict
+			}
+			if len(rt.Function.Parameters) > 0 && string(rt.Function.Parameters) != "null" {
+				params, err := responseSchemaFromJSON(rt.Function.Parameters)
+				if err != nil {
+					return nil, invalid("invalid tool parameters schema: %v", err)
+				}
+				t.Function.Parameters = params
+			}
+			tools = append(tools, t)
+		}
+	}
+
+	var toolChoice *pb.ToolChoice
+	if len(req.ToolChoice) > 0 && string(req.ToolChoice) != "null" {
+		var s string
+		if err := json.Unmarshal(req.ToolChoice, &s); err == nil {
+			switch s {
+			case "auto":
+				toolChoice = &pb.ToolChoice{Mode: pb.ToolChoice_MODE_AUTO}
+			case "none":
+				toolChoice = &pb.ToolChoice{Mode: pb.ToolChoice_MODE_NONE}
+			case "required":
+				toolChoice = &pb.ToolChoice{Mode: pb.ToolChoice_MODE_REQUIRED}
+			default:
+				return nil, invalid("unsupported tool_choice %q", s)
+			}
+		} else {
+			var obj struct {
+				Type     string `json:"type"`
+				Function struct {
+					Name string `json:"name"`
+				} `json:"function"`
+			}
+			if err := json.Unmarshal(req.ToolChoice, &obj); err != nil {
+				return nil, invalid("tool_choice must be a string or object")
+			}
+			toolChoice = &pb.ToolChoice{
+				Mode:                 pb.ToolChoice_MODE_SPECIFIC,
+				SpecificFunctionName: obj.Function.Name,
+			}
+		}
+	}
+
 	out := &pb.GenerateTextRequest{
 		Effort:             effort,
 		ModelOverride:      override,
 		MaxOutputTokens:    req.MaxCompletionTokens,
 		EnableGoogleSearch: req.EnableGoogleSearch,
+		Tools:              tools,
+		ToolChoice:         toolChoice,
 	}
 	if out.MaxOutputTokens == 0 {
 		out.MaxOutputTokens = req.MaxTokens
@@ -262,7 +345,28 @@ func (req *chatRequest) toProto() (*pb.GenerateTextRequest, error) {
 		case "user":
 			out.Messages = append(out.Messages, &pb.ChatMessage{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: text})
 		case "assistant":
-			out.Messages = append(out.Messages, &pb.ChatMessage{Role: pb.MessageRole_MESSAGE_ROLE_ASSISTANT, Text: text})
+			var tcs []*pb.ToolCall
+			for _, tc := range m.ToolCalls {
+				tcs = append(tcs, &pb.ToolCall{
+					Id:   tc.ID,
+					Type: tc.Type,
+					Function: &pb.FunctionCall{
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					},
+				})
+			}
+			out.Messages = append(out.Messages, &pb.ChatMessage{
+				Role:      pb.MessageRole_MESSAGE_ROLE_ASSISTANT,
+				Text:      text,
+				ToolCalls: tcs,
+			})
+		case "tool":
+			out.Messages = append(out.Messages, &pb.ChatMessage{
+				Role:       pb.MessageRole_MESSAGE_ROLE_TOOL,
+				Text:       text,
+				ToolCallId: m.ToolCallID,
+			})
 		default:
 			return nil, invalid("messages[%d]: role %q is not supported", i, m.Role)
 		}
@@ -297,26 +401,61 @@ func (a *OpenAIAPI) chatCompletions(ctx context.Context, w http.ResponseWriter, 
 	if err != nil {
 		return err
 	}
+
+	id, created := "chatcmpl-"+randomID(), time.Now().Unix()
+	if req.Stream {
+		includeUsage := req.StreamOptions != nil && req.StreamOptions.IncludeUsage
+		return a.streamChat(ctx, w, preq, id, created, includeUsage)
+	}
+
 	resp, err := a.proxy.GenerateText(ctx, preq)
 	if err != nil {
 		return err
 	}
 	setResolvedHeaders(w, resp.ResolvedVendor, resp.MatchedRule)
 
-	id, created := "chatcmpl-"+randomID(), time.Now().Unix()
 	usage := usageJSON(resp.GetUsage())
-	if req.Stream {
-		includeUsage := req.StreamOptions != nil && req.StreamOptions.IncludeUsage
-		return writeChatStream(w, id, created, resp, usage, includeUsage)
-	}
-
 	choices := make([]map[string]any, 0, len(resp.Choices))
-	for i, c := range resp.Choices {
-		choices = append(choices, map[string]any{
-			"index":         i,
-			"message":       map[string]any{"role": "assistant", "content": c},
-			"finish_reason": "stop",
-		})
+	if len(resp.Details) > 0 {
+		for i, d := range resp.Details {
+			msg := map[string]any{"role": "assistant"}
+			if d.Text != "" || len(d.ToolCalls) == 0 {
+				msg["content"] = d.Text
+			} else {
+				msg["content"] = nil
+			}
+			if len(d.ToolCalls) > 0 {
+				var tcs []map[string]any
+				for _, tc := range d.ToolCalls {
+					tcs = append(tcs, map[string]any{
+						"id":   tc.Id,
+						"type": "function",
+						"function": map[string]any{
+							"name":      tc.Function.Name,
+							"arguments": tc.Function.Arguments,
+						},
+					})
+				}
+				msg["tool_calls"] = tcs
+			}
+			finish := d.FinishReason
+			if finish == "" {
+				finish = "stop"
+			}
+			choices = append(choices, map[string]any{
+				"index":         i,
+				"message":       msg,
+				"finish_reason": finish,
+			})
+		}
+	} else {
+		for i, c := range resp.Choices {
+			choices = append(choices, map[string]any{
+				"index":         i,
+				"message":       map[string]any{"role": "assistant", "content": c},
+				"finish_reason": "stop",
+			})
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": id, "object": "chat.completion", "created": created,
@@ -325,47 +464,133 @@ func (a *OpenAIAPI) chatCompletions(ctx context.Context, w http.ResponseWriter, 
 	return nil
 }
 
-// writeChatStream replays the finished answer as server-sent events. The proxy
-// retries and verifies whole responses, so there is nothing to stream
-// incrementally; clients that insist on SSE get the answer in one chunk.
-func writeChatStream(w http.ResponseWriter, id string, created int64, resp *pb.GenerateTextResponse,
-	usage map[string]any, includeUsage bool) error {
+func (a *OpenAIAPI) streamChat(ctx context.Context, w http.ResponseWriter, preq *pb.GenerateTextRequest,
+	id string, created int64, includeUsage bool) error {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return status.Error(codes.Internal, "streaming unsupported by response writer")
+	}
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
 
-	chunk := func(delta map[string]any, finish any, withUsage bool) {
-		body := map[string]any{
-			"id": id, "object": "chat.completion.chunk", "created": created, "model": resp.ResolvedModel,
-			"choices": []map[string]any{{"index": 0, "delta": delta, "finish_reason": finish}},
-		}
-		if includeUsage {
-			if withUsage {
-				body["usage"] = usage
-			} else {
-				body["usage"] = nil
-			}
-		}
-		b, _ := json.Marshal(body)
-		_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
+	s := &httpStreamAdapter{
+		ctx:          ctx,
+		w:            w,
+		flusher:      flusher,
+		id:           id,
+		created:      created,
+		includeUsage: includeUsage,
 	}
-	text := ""
-	if len(resp.Choices) > 0 {
-		text = resp.Choices[0]
-	}
-	chunk(map[string]any{"role": "assistant", "content": text}, nil, false)
-	chunk(map[string]any{}, "stop", false)
-	if includeUsage {
-		b, _ := json.Marshal(map[string]any{
-			"id": id, "object": "chat.completion.chunk", "created": created, "model": resp.ResolvedModel,
-			"choices": []any{}, "usage": usage,
+
+	err := a.proxy.GenerateTextStream(&pb.GenerateTextStreamRequest{Request: preq}, s)
+	if err != nil {
+		errData, _ := json.Marshal(map[string]any{
+			"error": map[string]any{
+				"message": err.Error(),
+				"type":    "api_error",
+			},
 		})
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", errData)
+	}
+
+	if s.lastUsage != nil && includeUsage {
+		usageBody := map[string]any{
+			"id":      id,
+			"object":  "chat.completion.chunk",
+			"created": created,
+			"model":   s.resolvedModel,
+			"choices": []any{},
+			"usage":   usageJSON(s.lastUsage),
+		}
+		b, _ := json.Marshal(usageBody)
 		_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
 	}
+
 	_, _ = io.WriteString(w, "data: [DONE]\n\n")
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
+	flusher.Flush()
+	return nil
+}
+
+type httpStreamAdapter struct {
+	grpc.ServerStream
+	ctx           context.Context
+	w             http.ResponseWriter
+	flusher       http.Flusher
+	id            string
+	created       int64
+	resolvedModel string
+	includeUsage  bool
+	lastUsage     *pb.TokensUsage
+}
+
+func (s *httpStreamAdapter) Context() context.Context {
+	return s.ctx
+}
+
+func (s *httpStreamAdapter) Send(chunk *pb.GenerateTextChunk) error {
+	if chunk.ResolvedModel != "" {
+		s.resolvedModel = chunk.ResolvedModel
 	}
+	if chunk.Usage != nil {
+		s.lastUsage = chunk.Usage
+	}
+
+	delta := map[string]any{}
+	if chunk.Delta != "" {
+		delta["content"] = chunk.Delta
+	}
+	if len(chunk.ToolCallChunks) > 0 {
+		var tcDeltas []map[string]any
+		for _, tc := range chunk.ToolCallChunks {
+			tcMap := map[string]any{
+				"index": tc.Index,
+			}
+			if tc.Id != "" {
+				tcMap["id"] = tc.Id
+			}
+			if tc.Type != "" {
+				tcMap["type"] = tc.Type
+			}
+			fnMap := map[string]any{}
+			if tc.Name != "" {
+				fnMap["name"] = tc.Name
+			}
+			if tc.ArgumentsDelta != "" {
+				fnMap["arguments"] = tc.ArgumentsDelta
+			}
+			tcMap["function"] = fnMap
+			tcDeltas = append(tcDeltas, tcMap)
+		}
+		delta["tool_calls"] = tcDeltas
+	}
+
+	var finishReason any
+	if chunk.FinishReason != "" {
+		finishReason = chunk.FinishReason
+	}
+
+	body := map[string]any{
+		"id":      s.id,
+		"object":  "chat.completion.chunk",
+		"created": s.created,
+		"model":   s.resolvedModel,
+		"choices": []map[string]any{{
+			"index":         0,
+			"delta":         delta,
+			"finish_reason": finishReason,
+		}},
+	}
+	b, _ := json.Marshal(body)
+	_, err := fmt.Fprintf(s.w, "data: %s\n\n", b)
+	if err != nil {
+		return err
+	}
+	s.flusher.Flush()
 	return nil
 }
 

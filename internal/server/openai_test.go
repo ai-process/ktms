@@ -19,9 +19,11 @@ import (
 
 type fakeProxy struct {
 	pb.UnimplementedLLMProxyServiceServer
-	text    *pb.GenerateTextRequest
-	textErr error
-	media   map[string]string
+	text         *pb.GenerateTextRequest
+	textErr      error
+	respDetails  []*pb.Choice
+	streamChunks []*pb.GenerateTextChunk
+	media        map[string]string
 }
 
 func (f *fakeProxy) GenerateText(_ context.Context, r *pb.GenerateTextRequest) (*pb.GenerateTextResponse, error) {
@@ -29,10 +31,40 @@ func (f *fakeProxy) GenerateText(_ context.Context, r *pb.GenerateTextRequest) (
 	if f.textErr != nil {
 		return nil, f.textErr
 	}
-	return &pb.GenerateTextResponse{
+	resp := &pb.GenerateTextResponse{
 		Choices: []string{"hello"}, Usage: &pb.TokensUsage{Input: 3, Output: 2},
 		ResolvedModel: "m1", ResolvedVendor: "openai", MatchedRule: "default",
-	}, nil
+	}
+	if len(f.respDetails) > 0 {
+		resp.Details = f.respDetails
+	}
+	return resp, nil
+}
+
+func (f *fakeProxy) GenerateTextStream(r *pb.GenerateTextStreamRequest, s pb.LLMProxyService_GenerateTextStreamServer) error {
+	f.text = r.Request
+	if f.textErr != nil {
+		return f.textErr
+	}
+	if len(f.streamChunks) > 0 {
+		for _, chunk := range f.streamChunks {
+			if err := s.Send(chunk); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := s.Send(&pb.GenerateTextChunk{
+		Delta:         "hello",
+		ResolvedModel: "m1",
+	}); err != nil {
+		return err
+	}
+	return s.Send(&pb.GenerateTextChunk{
+		FinishReason:  "stop",
+		Usage:         &pb.TokensUsage{Input: 3, Output: 2},
+		ResolvedModel: "m1",
+	})
 }
 
 func (f *fakeProxy) ListModels(context.Context, *pb.ListModelsRequest) (*pb.ListModelsResponse, error) {
@@ -181,9 +213,7 @@ func TestChatJSONSchema(t *testing.T) {
 func TestChatRejectsUnsupported(t *testing.T) {
 	_, h, key := newTestAPI(t)
 	cases := map[string]string{
-		"tools":      `{"messages":[{"role":"user","content":"x"}],"tools":[{"type":"function"}]}`,
 		"n":          `{"messages":[{"role":"user","content":"x"}],"n":2}`,
-		"tool role":  `{"messages":[{"role":"tool","content":"x"}]}`,
 		"image part": `{"messages":[{"role":"user","content":[{"type":"image_url"}]}]}`,
 		"no msgs":    `{"messages":[]}`,
 		"bad json":   `{`,
@@ -194,6 +224,106 @@ func TestChatRejectsUnsupported(t *testing.T) {
 		if rec.Code != 400 || errBody(t, rec)["type"] != "invalid_request_error" {
 			t.Errorf("%s: %d %s", name, rec.Code, rec.Body)
 		}
+	}
+}
+
+func TestChatToolsAndToolRoles(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	body := `{
+		"model": "m1",
+		"messages": [
+			{"role": "user", "content": "What is the weather?"},
+			{"role": "assistant", "content": null, "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Tokyo\"}"}}]},
+			{"role": "tool", "content": "{\"temp\": 22}", "tool_call_id": "call_1"}
+		],
+		"tools": [
+			{
+				"type": "function",
+				"function": {
+					"name": "get_weather",
+					"description": "Get current weather",
+					"parameters": {
+						"type": "object",
+						"properties": {
+							"city": {"type": "string"}
+						},
+						"required": ["city"]
+					}
+				}
+			}
+		],
+		"tool_choice": "auto"
+	}`
+
+	fp.respDetails = []*pb.Choice{
+		{
+			ToolCalls: []*pb.ToolCall{
+				{
+					Id:   "call_2",
+					Type: "function",
+					Function: &pb.FunctionCall{
+						Name:      "get_weather",
+						Arguments: "{\"city\":\"Osaka\"}",
+					},
+				},
+			},
+			FinishReason: "tool_calls",
+		},
+	}
+
+	rec := do(h, "POST", "/v1/chat/completions", key, body)
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if len(fp.text.Messages) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(fp.text.Messages))
+	}
+	if fp.text.Messages[2].Role != pb.MessageRole_MESSAGE_ROLE_TOOL {
+		t.Errorf("expected MESSAGE_ROLE_TOOL, got %v", fp.text.Messages[2].Role)
+	}
+	if fp.text.Messages[2].ToolCallId != "call_1" {
+		t.Errorf("expected tool_call_id call_1, got %v", fp.text.Messages[2].ToolCallId)
+	}
+	if len(fp.text.Tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(fp.text.Tools))
+	}
+	if fp.text.Tools[0].Function.Name != "get_weather" {
+		t.Errorf("expected get_weather, got %s", fp.text.Tools[0].Function.Name)
+	}
+	if fp.text.ToolChoice == nil || fp.text.ToolChoice.Mode != pb.ToolChoice_MODE_AUTO {
+		t.Errorf("expected tool choice mode auto, got %v", fp.text.ToolChoice)
+	}
+
+	var resp struct {
+		Choices []struct {
+			Message struct {
+				Role      string `json:"role"`
+				Content   *string `json:"content"`
+				ToolCalls []struct {
+					ID       string `json:"id"`
+					Type     string `json:"type"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal resp: %v", err)
+	}
+	if len(resp.Choices) != 1 || len(resp.Choices[0].Message.ToolCalls) != 1 {
+		t.Fatalf("unexpected response choices: %+v", resp.Choices)
+	}
+	tc := resp.Choices[0].Message.ToolCalls[0]
+	if tc.ID != "call_2" || tc.Function.Name != "get_weather" || tc.Function.Arguments != "{\"city\":\"Osaka\"}" {
+		t.Errorf("unexpected tool call in resp: %+v", tc)
+	}
+	if resp.Choices[0].FinishReason != "tool_calls" {
+		t.Errorf("unexpected finish_reason: %s", resp.Choices[0].FinishReason)
 	}
 }
 
@@ -234,6 +364,58 @@ func TestChatStream(t *testing.T) {
 	}
 	b := rec.Body.String()
 	for _, want := range []string{`"content":"hello"`, `"finish_reason":"stop"`, `"total_tokens":5`, "data: [DONE]"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("stream missing %s:\n%s", want, b)
+		}
+	}
+}
+
+func TestChatStreamWithTools(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	fp.streamChunks = []*pb.GenerateTextChunk{
+		{
+			ResolvedModel: "m1",
+			ToolCallChunks: []*pb.ToolCallChunk{
+				{
+					Index:          0,
+					Id:             "call_abc",
+					Type:           "function",
+					Name:           "fetch_data",
+					ArgumentsDelta: "{\"q\":",
+				},
+			},
+		},
+		{
+			ResolvedModel: "m1",
+			ToolCallChunks: []*pb.ToolCallChunk{
+				{
+					Index:          0,
+					ArgumentsDelta: "\"test\"}",
+				},
+			},
+		},
+		{
+			ResolvedModel: "m1",
+			FinishReason:  "tool_calls",
+			Usage:         &pb.TokensUsage{Input: 10, Output: 15},
+		},
+	}
+
+	rec := do(h, "POST", "/v1/chat/completions", key,
+		`{"stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"x"}]}`)
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("content-type %q", ct)
+	}
+	b := rec.Body.String()
+	for _, want := range []string{
+		`"id":"call_abc"`,
+		`"name":"fetch_data"`,
+		`"arguments":"{\"q\":"`,
+		`"arguments":"\"test\"}"`,
+		`"finish_reason":"tool_calls"`,
+		`"total_tokens":25`,
+		"data: [DONE]",
+	} {
 		if !strings.Contains(b, want) {
 			t.Errorf("stream missing %s:\n%s", want, b)
 		}

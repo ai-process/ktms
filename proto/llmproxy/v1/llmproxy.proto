@@ -21,11 +21,57 @@ enum MessageRole {
   MESSAGE_ROLE_UNSPECIFIED = 0;
   MESSAGE_ROLE_USER = 1;
   MESSAGE_ROLE_ASSISTANT = 2;
+  MESSAGE_ROLE_TOOL = 3;
+}
+
+message ToolCall {
+  string id = 1;
+  string type = 2; // "function"
+  FunctionCall function = 3;
+}
+
+message FunctionCall {
+  string name = 1;
+  string arguments = 2; // JSON-encoded arguments
+}
+
+message ToolCallChunk {
+  int32 index = 1;
+  string id = 2;
+  string type = 3;
+  string name = 4;
+  string arguments_delta = 5;
+}
+
+message Tool {
+  string type = 1; // "function"
+  FunctionDefinition function = 2;
+}
+
+message FunctionDefinition {
+  string name = 1;
+  string description = 2;
+  ResponseSchema parameters = 3;
+  bool strict = 4;
+}
+
+message ToolChoice {
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+    MODE_AUTO = 1;
+    MODE_NONE = 2;
+    MODE_REQUIRED = 3;
+    MODE_SPECIFIC = 4;
+  }
+  Mode mode = 1;
+  string specific_function_name = 2;
 }
 
 message ChatMessage {
   MessageRole role = 1;
   string text = 2;
+  repeated ToolCall tool_calls = 3;
+  string tool_call_id = 4;
 }
 
 // SchemaProperty mirrors the vendor-neutral llm.SchemaProperty.
@@ -64,11 +110,20 @@ message GenerateTextRequest {
   bool enable_google_search = 8; // only google-capable models can serve it
   string action_id = 9; // usage attribution, e.g. "app.summarize"
   string model_override = 10; // exact registry model id; bypasses rules, not throttles
+  repeated Tool tools = 11;
+  ToolChoice tool_choice = 12;
 }
 
 message TokensUsage {
   int64 input = 1;
   int64 output = 2;
+}
+
+message Choice {
+  int32 index = 1;
+  string text = 2;
+  repeated ToolCall tool_calls = 3;
+  string finish_reason = 4;
 }
 
 message GenerateTextResponse {
@@ -77,6 +132,17 @@ message GenerateTextResponse {
   string resolved_model = 3; // registry model id actually used
   string resolved_vendor = 4; // "openai" | "google" | "deepseek"
   string matched_rule = 5; // rule name, "" on model_override
+  repeated Choice details = 6;
+}
+
+message GenerateTextChunk {
+  string delta = 1;
+  string finish_reason = 2;
+  TokensUsage usage = 3;
+  string resolved_model = 4;
+  string resolved_vendor = 5;
+  string matched_rule = 6;
+  repeated ToolCallChunk tool_call_chunks = 7;
 }
 
 message ListModelsRequest {}
@@ -98,6 +164,10 @@ message ListModelsResponse {
   repeated ModelInfo models = 1;
 }
 
+message GenerateTextStreamRequest {
+  GenerateTextRequest request = 1;
+}
+
 // Error contract: retry only on UNAVAILABLE ("vendors_unavailable").
 // RESOURCE_EXHAUSTED = throttled ("throttled:rpm" | "throttled:budget_key" |
 // "throttled:budget_user") — back off, do not hot-retry.
@@ -106,6 +176,7 @@ message ListModelsResponse {
 // INTERNAL "vendor_error" = terminal vendor failure.
 service LLMProxyService {
   rpc GenerateText(GenerateTextRequest) returns (GenerateTextResponse);
+  rpc GenerateTextStream(GenerateTextStreamRequest) returns (stream GenerateTextChunk);
   // Speech and images route by the same rules as text. They carry no effort of
   // their own: the proxy routes them at EFFORT_LOW with a reserved
   // attributes["modality"] of "tts" or "image", so a rule pins them by matching

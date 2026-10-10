@@ -15,6 +15,7 @@ const (
 	MessageTypeSystem MessageType = "system"
 	MessageTypeUser   MessageType = "user"
 	MessageTypeBot    MessageType = "bot"
+	MessageTypeTool   MessageType = "tool"
 )
 
 const (
@@ -23,8 +24,11 @@ const (
 )
 
 type Message struct {
-	Text string
-	Type MessageType
+	Text         string
+	Type         MessageType
+	ToolCalls    []*ToolCall
+	ToolCallID   string
+	FinishReason string
 }
 
 type ChatContext struct {
@@ -42,6 +46,8 @@ type ChatContext struct {
 	enableGoogleSearch          bool   // per-request, never persisted; see SetEnableGoogleSearch
 	BaseSystemInstruction       string // Persistent system instructions (not in messages)
 	perRequestSystemInstruction string // Ephemeral per-request instruction (not persisted)
+	tools                       []*Tool
+	toolChoice                  *ToolChoice
 }
 
 func NewChatContext() *ChatContext {
@@ -147,6 +153,40 @@ func (c *ChatContext) AddUserMessage(message string) {
 		Type: MessageTypeUser,
 	}
 	c.addMessage(&userMessage, false)
+}
+
+func (c *ChatContext) AddToolMessage(toolCallID, text string) {
+	msg := Message{
+		Text:       text,
+		Type:       MessageTypeTool,
+		ToolCallID: toolCallID,
+	}
+	c.addMessage(&msg, false)
+}
+
+func (c *ChatContext) AddAssistantMessageWithToolCalls(message string, toolCalls []*ToolCall) {
+	assistantMessage := Message{
+		Text:      message,
+		Type:      MessageTypeBot,
+		ToolCalls: toolCalls,
+	}
+	c.addMessage(&assistantMessage, false)
+}
+
+func (c *ChatContext) SetTools(tools []*Tool) {
+	c.tools = tools
+}
+
+func (c *ChatContext) GetTools() []*Tool {
+	return c.tools
+}
+
+func (c *ChatContext) SetToolChoice(tc *ToolChoice) {
+	c.toolChoice = tc
+}
+
+func (c *ChatContext) GetToolChoice() *ToolChoice {
+	return c.toolChoice
 }
 
 func (c *ChatContext) GetMessages() []*Message {
