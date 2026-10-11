@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/anthropics/anthropic-sdk-go"
+	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"google.golang.org/genai"
@@ -95,6 +97,17 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 			endpoint = TypeSafeDefaultEndpoint
 		}
 		return adapters.NewTypeSafeAdapter(endpoint, key, m.ID), nil
+	case VendorAnthropic:
+		opts := []anthropicoption.RequestOption{anthropicoption.WithAPIKey(key)}
+		endpoint := m.Endpoint
+		if endpoint == "" {
+			endpoint = AnthropicDefaultEndpoint
+		}
+		opts = append(opts, anthropicoption.WithBaseURL(endpoint))
+		client := anthropic.NewClient(opts...)
+		adapter := adapters.NewAnthropicAdapter(&client, m.ID, noThrottle)
+		adapter.SetSoftSchema(SoftSchema(m))
+		return adapter, nil
 	default:
 		return nil, fmt.Errorf("unknown vendor %q", m.Vendor)
 	}
