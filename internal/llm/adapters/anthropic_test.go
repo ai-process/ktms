@@ -305,8 +305,21 @@ func TestAnthropicGenerateText_ToolCalls(t *testing.T) {
 
 func TestAnthropicGenerateText_CeilingRetry(t *testing.T) {
 	attempts := 0
+	var attempt2System string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
+		var reqBody struct {
+			System []struct {
+				Text string `json:"text"`
+			} `json:"system"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&reqBody)
+		if len(reqBody.System) > 0 {
+			if attempts == 2 {
+				attempt2System = reqBody.System[0].Text
+			}
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		if attempts == 1 {
 			// First attempt exhausted ceiling
@@ -342,6 +355,7 @@ func TestAnthropicGenerateText_CeilingRetry(t *testing.T) {
 
 	adapter := newTestAnthropicAdapter(server.URL, "claude-3-5-sonnet")
 	chat := llm.NewChatContext()
+	chat.SetRequestInstruction("per-request instruction")
 	chat.AddUserMessage("write essay")
 	chat.SetMaxOutputTokens(5)
 
@@ -354,6 +368,9 @@ func TestAnthropicGenerateText_CeilingRetry(t *testing.T) {
 	}
 	if resp.Choices[0].Text != "full completion" {
 		t.Errorf("text = %q, want 'full completion'", resp.Choices[0].Text)
+	}
+	if attempt2System != "per-request instruction" {
+		t.Errorf("attempt 2 system = %q, want 'per-request instruction'", attempt2System)
 	}
 	// Carried tokens from attempt 1 + attempt 2: input 10+10=20, output 5+20=25
 	if resp.Usage.Input != 20 || resp.Usage.Output != 25 {
@@ -466,12 +483,22 @@ func TestAnthropicGenerateTextStream_ToolCall(t *testing.T) {
 		events := []string{
 			`event: message_start` + "\n" +
 				`data: {"type":"message_start","message":{"id":"msg_s2","type":"message","role":"assistant","model":"claude-3-5-sonnet","content":[],"usage":{"input_tokens":15,"output_tokens":0}}}` + "\n\n",
+			// Block 0 is text
 			`event: content_block_start` + "\n" +
-				`data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"call_99","name":"calc","input":{}}}` + "\n\n",
+				`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}` + "\n\n",
 			`event: content_block_delta` + "\n" +
-				`data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"expr\":"}}` + "\n\n",
+				`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I will calculate."}}` + "\n\n",
+			`event: content_block_stop` + "\n" +
+				`data: {"type":"content_block_stop","index":0}` + "\n\n",
+			// Block 1 is tool_use (should be mapped to tool index 0)
+			`event: content_block_start` + "\n" +
+				`data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call_99","name":"calc","input":{}}}` + "\n\n",
 			`event: content_block_delta` + "\n" +
-				`data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"1+1\"}"}}` + "\n\n",
+				`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"expr\":"}}` + "\n\n",
+			`event: content_block_delta` + "\n" +
+				`data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"1+1\"}"}}` + "\n\n",
+			`event: content_block_stop` + "\n" +
+				`data: {"type":"content_block_stop","index":1}` + "\n\n",
 			`event: message_delta` + "\n" +
 				`data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":11}}` + "\n\n",
 			`event: message_stop` + "\n" +
@@ -490,11 +517,13 @@ func TestAnthropicGenerateTextStream_ToolCall(t *testing.T) {
 	chat.AddUserMessage("calc 1+1")
 
 	var (
+		textChunks   string
 		toolChunks   []*llm.ToolCallChunk
 		finishReason string
 	)
 
 	err := adapter.GenerateTextStream(context.Background(), chat, func(chunk llm.StreamChunk) error {
+		textChunks += chunk.Delta
 		toolChunks = append(toolChunks, chunk.ToolCallChunks...)
 		if chunk.FinishReason != "" {
 			finishReason = chunk.FinishReason
@@ -506,6 +535,9 @@ func TestAnthropicGenerateTextStream_ToolCall(t *testing.T) {
 		t.Fatalf("GenerateTextStream: %v", err)
 	}
 
+	if textChunks != "I will calculate." {
+		t.Errorf("textChunks = %q, want 'I will calculate.'", textChunks)
+	}
 	if finishReason != "tool_calls" {
 		t.Errorf("finish reason = %q, want 'tool_calls'", finishReason)
 	}
@@ -513,11 +545,63 @@ func TestAnthropicGenerateTextStream_ToolCall(t *testing.T) {
 	if len(toolChunks) != 3 {
 		t.Fatalf("expected 3 tool chunks, got %d", len(toolChunks))
 	}
+	// Verify tool index is 0 despite being block 1
+	if toolChunks[0].Index != 0 {
+		t.Errorf("tool chunk 0 index = %d, want 0", toolChunks[0].Index)
+	}
+	if toolChunks[1].Index != 0 || toolChunks[2].Index != 0 {
+		t.Errorf("tool arg chunk indices = %d, %d, want 0, 0", toolChunks[1].Index, toolChunks[2].Index)
+	}
 	if toolChunks[0].ID != "call_99" || toolChunks[0].Name != "calc" {
 		t.Errorf("chunk 0 = %+v", toolChunks[0])
 	}
 	fullArgs := toolChunks[1].ArgumentsDelta + toolChunks[2].ArgumentsDelta
 	if fullArgs != `{"expr":"1+1"}` {
 		t.Errorf("accumulated args = %q, want '{\"expr\":\"1+1\"}'", fullArgs)
+	}
+}
+
+func TestAnthropicGenerateText_EmptyArgsToolCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":    "msg_empty_args",
+			"type":  "message",
+			"role":  "assistant",
+			"model": "claude-3-5-sonnet",
+			"content": []map[string]any{
+				{
+					"type":  "tool_use",
+					"id":    "",
+					"name":  "get_time",
+					"input": nil,
+				},
+			},
+			"stop_reason": "tool_use",
+			"usage": map[string]any{
+				"input_tokens":  5,
+				"output_tokens": 5,
+			},
+		})
+	}))
+	defer server.Close()
+
+	adapter := newTestAnthropicAdapter(server.URL, "claude-3-5-sonnet")
+	chat := llm.NewChatContext()
+	chat.AddUserMessage("what time is it?")
+
+	resp, err := adapter.GenerateText(chat)
+	if err != nil {
+		t.Fatalf("GenerateText: %v", err)
+	}
+	if len(resp.Choices[0].ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(resp.Choices[0].ToolCalls))
+	}
+	tc := resp.Choices[0].ToolCalls[0]
+	if tc.Function.Arguments != "{}" {
+		t.Errorf("arguments = %q, want '{}'", tc.Function.Arguments)
+	}
+	if tc.ID == "" {
+		t.Error("expected non-empty tool call ID")
 	}
 }

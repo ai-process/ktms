@@ -37,7 +37,11 @@ func (a *AnthropicAdapter) SetSoftSchema(soft bool) { a.softSchema = soft }
 
 func (a *AnthropicAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error) {
 	ceiling := chat.GetMaxOutputTokens()
-	resp, err := a.completeOnce(chat, ceiling)
+	// Built once, not per attempt: buildParams consumes the chat's per-request
+	// instruction, so rebuilding would silently drop it on retry.
+	params := a.buildParams(chat, ceiling)
+
+	resp, err := a.completeOnce(params)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +51,8 @@ func (a *AnthropicAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, e
 		log.Warn().Str("model", a.model).Int("ceiling", ceiling).
 			Msg("AnthropicAdapter: output ceiling exhausted, retrying uncapped")
 		abandoned = anthropicUsage(resp)
-		resp, err = a.completeOnce(chat, 0)
+		params.MaxTokens = defaultAnthropicMaxTokens
+		resp, err = a.completeOnce(params)
 		if err != nil {
 			return nil, err
 		}
@@ -66,6 +71,8 @@ func (a *AnthropicAdapter) GenerateTextStream(ctx context.Context, chat *llm.Cha
 	var (
 		accumulatedInputTokens int64
 		stopReason             anthropic.StopReason
+		toolIndexByBlock       = make(map[int64]int32)
+		nextToolIndex          int32
 	)
 
 	for stream.Next() {
@@ -84,8 +91,11 @@ func (a *AnthropicAdapter) GenerateTextStream(ctx context.Context, chat *llm.Cha
 			}
 		case "content_block_start":
 			if event.ContentBlock.Type == "tool_use" {
+				toolIdx := nextToolIndex
+				toolIndexByBlock[event.Index] = toolIdx
+				nextToolIndex++
 				streamChunk.ToolCallChunks = append(streamChunk.ToolCallChunks, &llm.ToolCallChunk{
-					Index: int32(event.Index),
+					Index: toolIdx,
 					ID:    event.ContentBlock.ID,
 					Type:  "function",
 					Name:  event.ContentBlock.Name,
@@ -96,8 +106,9 @@ func (a *AnthropicAdapter) GenerateTextStream(ctx context.Context, chat *llm.Cha
 			case "text_delta":
 				streamChunk.Delta = event.Delta.Text
 			case "input_json_delta":
+				toolIdx := toolIndexByBlock[event.Index]
 				streamChunk.ToolCallChunks = append(streamChunk.ToolCallChunks, &llm.ToolCallChunk{
-					Index:          int32(event.Index),
+					Index:          toolIdx,
 					ArgumentsDelta: event.Delta.PartialJSON,
 				})
 			}
@@ -166,12 +177,20 @@ func (a *AnthropicAdapter) toResponse(resp *anthropic.Message, carried llm.Token
 				textParts = append(textParts, block.Text)
 			}
 		case "tool_use":
+			args := string(block.Input)
+			if len(block.Input) == 0 || args == "null" {
+				args = "{}"
+			}
+			id := block.ID
+			if id == "" {
+				id = fmt.Sprintf("call_%s_%d", block.Name, len(toolCalls))
+			}
 			toolCalls = append(toolCalls, &llm.ToolCall{
-				ID:   block.ID,
+				ID:   id,
 				Type: "function",
 				Function: llm.FunctionCall{
 					Name:      block.Name,
-					Arguments: string(block.Input),
+					Arguments: args,
 				},
 			})
 		}
@@ -206,8 +225,7 @@ func (a *AnthropicAdapter) toResponse(resp *anthropic.Message, carried llm.Token
 	return response, nil
 }
 
-func (a *AnthropicAdapter) completeOnce(chat *llm.ChatContext, ceiling int) (*anthropic.Message, error) {
-	params := a.buildParams(chat, ceiling)
+func (a *AnthropicAdapter) completeOnce(params anthropic.MessageNewParams) (*anthropic.Message, error) {
 	a.throttle.WaitForSlot()
 	return a.client.Messages.New(context.Background(), params)
 }
@@ -226,11 +244,19 @@ func (a *AnthropicAdapter) contextToMessages(messages []*llm.Message) []anthropi
 			for i < len(messages) && (messages[i].Type == llm.MessageTypeUser || messages[i].Type == llm.MessageTypeTool) {
 				m := messages[i]
 				if m.Type == llm.MessageTypeUser {
-					if m.Text != "" {
+					if strings.TrimSpace(m.Text) != "" {
 						blocks = append(blocks, anthropic.NewTextBlock(m.Text))
 					}
 				} else if m.Type == llm.MessageTypeTool {
-					blocks = append(blocks, anthropic.NewToolResultBlock(m.ToolCallID, m.Text, false))
+					id := m.ToolCallID
+					if id == "" {
+						id = "call_default"
+					}
+					text := m.Text
+					if text == "" {
+						text = "{}"
+					}
+					blocks = append(blocks, anthropic.NewToolResultBlock(id, text, false))
 				}
 				i++
 			}
@@ -241,10 +267,10 @@ func (a *AnthropicAdapter) contextToMessages(messages []*llm.Message) []anthropi
 			var blocks []anthropic.ContentBlockParamUnion
 			for i < len(messages) && messages[i].Type == llm.MessageTypeBot {
 				m := messages[i]
-				if m.Text != "" {
+				if strings.TrimSpace(m.Text) != "" {
 					blocks = append(blocks, anthropic.NewTextBlock(m.Text))
 				}
-				for _, tc := range m.ToolCalls {
+				for idx, tc := range m.ToolCalls {
 					var input any
 					if tc.Function.Arguments != "" {
 						_ = json.Unmarshal([]byte(tc.Function.Arguments), &input)
@@ -252,7 +278,11 @@ func (a *AnthropicAdapter) contextToMessages(messages []*llm.Message) []anthropi
 					if input == nil {
 						input = map[string]any{}
 					}
-					blocks = append(blocks, anthropic.NewToolUseBlock(tc.ID, input, tc.Function.Name))
+					id := tc.ID
+					if id == "" {
+						id = fmt.Sprintf("call_%s_%d", tc.Function.Name, idx)
+					}
+					blocks = append(blocks, anthropic.NewToolUseBlock(id, input, tc.Function.Name))
 				}
 				i++
 			}
@@ -308,6 +338,9 @@ func (a *AnthropicAdapter) buildParams(chat *llm.ChatContext, ceiling int) anthr
 			var propertiesMap map[string]any
 			var required []string
 			if t.Function.Parameters != nil {
+				if t.Function.Strict {
+					llm.EnforceAllRequired(t.Function.Parameters)
+				}
 				required = t.Function.Parameters.Required
 				if len(t.Function.Parameters.Properties) > 0 {
 					propertiesMap = make(map[string]any)
@@ -319,6 +352,9 @@ func (a *AnthropicAdapter) buildParams(chat *llm.ChatContext, ceiling int) anthr
 			inputSchema := anthropic.ToolInputSchemaParam{
 				Properties: propertiesMap,
 				Required:   required,
+				ExtraFields: map[string]any{
+					"additionalProperties": false,
+				},
 			}
 			toolParam := anthropic.ToolParam{
 				Name:        t.Function.Name,
