@@ -4,9 +4,38 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/openai/openai-go/v3"
 	"google.golang.org/genai"
 )
+
+func TestIsRetryableError_Anthropic_429(t *testing.T) {
+	err := &anthropic.Error{StatusCode: 429}
+	if !IsRetryableError(err) {
+		t.Error("Anthropic 429 should be retryable")
+	}
+}
+
+func TestIsRetryableError_Anthropic_500(t *testing.T) {
+	err := &anthropic.Error{StatusCode: 500}
+	if !IsRetryableError(err) {
+		t.Error("Anthropic 500 should be retryable")
+	}
+}
+
+func TestIsRetryableError_Anthropic_503(t *testing.T) {
+	err := &anthropic.Error{StatusCode: 503}
+	if !IsRetryableError(err) {
+		t.Error("Anthropic 503 should be retryable")
+	}
+}
+
+func TestIsRetryableError_Anthropic_400_NotRetryable(t *testing.T) {
+	err := &anthropic.Error{StatusCode: 400}
+	if IsRetryableError(err) {
+		t.Error("Anthropic 400 should not be retryable")
+	}
+}
 
 func TestIsRetryableError_OpenAI_429(t *testing.T) {
 	err := &openai.Error{StatusCode: 429}

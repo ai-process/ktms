@@ -3,6 +3,7 @@ package llm
 import (
 	"errors"
 
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/openai/openai-go/v3"
 	"google.golang.org/genai"
 )
@@ -38,6 +39,12 @@ func IsRetryableError(err error) bool {
 	var openaiErr *openai.Error
 	if errors.As(err, &openaiErr) && openaiErr != nil {
 		code := openaiErr.StatusCode
+		return code == 429 || (code >= 500 && code < 600)
+	}
+	// Anthropic SDK: Error (alias for apierror.Error) with StatusCode
+	var anthropicErr *anthropic.Error
+	if errors.As(err, &anthropicErr) && anthropicErr != nil {
+		code := anthropicErr.StatusCode
 		return code == 429 || (code >= 500 && code < 600)
 	}
 	// Google genai: APIError (value type) with Code

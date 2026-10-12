@@ -8,7 +8,7 @@ A self-hosted LLM gateway. Your services talk to one gRPC endpoint; the proxy ho
 the vendor API keys, decides which model answers each request, falls back when a
 vendor is down, enforces rate and spend limits, and records usage.
 
-- **One place for vendor keys.** OpenAI, Google Gemini, DeepSeek and TypeSafe credentials
+- **One place for vendor keys.** OpenAI, Anthropic (Claude), Google Gemini, DeepSeek and TypeSafe credentials
   live encrypted in Postgres (AES-256-GCM). Client services never see them.
 - **Routing by rules, not code.** Clients send an *effort* (`LOW` / `MEDIUM` / `HIGH`) and
   free-form *attributes*; an ordered rule list maps them to a model chain with fallbacks.
@@ -44,7 +44,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 ## How it works
 
 ```
- your services ──gRPC (Bearer llm_…)──▶ llm-proxy ──▶ OpenAI / Gemini / DeepSeek / TypeSafe
+ your services ──gRPC (Bearer llm_…)──▶ llm-proxy ──▶ OpenAI / Anthropic / Gemini / DeepSeek / TypeSafe
                                           │  │
                                  Postgres ┘  └ Redis (limits)      └─▶ usage sink (optional)
                                  config, keys, encrypted vendor keys
@@ -249,7 +249,7 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
   localhost:9090 llmproxy.v1.LLMProxyAdminService/SetVendorKey
 ```
 
-Vendors: `openai`, `google`, `deepseek` (OpenAI-compatible API, default endpoint
+Vendors: `openai`, `anthropic`, `google`, `deepseek` (OpenAI-compatible API, default endpoint
 `https://api.deepseek.com`), `ollama` (any self-hosted OpenAI-compatible server
 such as Ollama or llama.cpp; the model's `endpoint` is required, e.g.
 `https://host/v1`, and the vendor key is the server's own) and `typesafe`
