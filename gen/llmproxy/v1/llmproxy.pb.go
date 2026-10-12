@@ -1146,7 +1146,7 @@ type GenerateTextResponse struct {
 	Choices        []string               `protobuf:"bytes,1,rep,name=choices,proto3" json:"choices,omitempty"`
 	Usage          *TokensUsage           `protobuf:"bytes,2,opt,name=usage,proto3" json:"usage,omitempty"`
 	ResolvedModel  string                 `protobuf:"bytes,3,opt,name=resolved_model,json=resolvedModel,proto3" json:"resolved_model,omitempty"`    // registry model id actually used
-	ResolvedVendor string                 `protobuf:"bytes,4,opt,name=resolved_vendor,json=resolvedVendor,proto3" json:"resolved_vendor,omitempty"` // "openai" | "google" | "deepseek"
+	ResolvedVendor string                 `protobuf:"bytes,4,opt,name=resolved_vendor,json=resolvedVendor,proto3" json:"resolved_vendor,omitempty"` // "openai" | "anthropic" | "google" | "deepseek"
 	MatchedRule    string                 `protobuf:"bytes,5,opt,name=matched_rule,json=matchedRule,proto3" json:"matched_rule,omitempty"`          // rule name, "" on model_override
 	Details        []*Choice              `protobuf:"bytes,6,rep,name=details,proto3" json:"details,omitempty"`
 	unknownFields  protoimpl.UnknownFields

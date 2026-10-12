@@ -5,11 +5,15 @@ import "github.com/ai-process/llm-proxy/internal/proxydb"
 // Vendors the engine can construct adapters for. DeepSeek rides the OpenAI
 // adapter with a different base URL.
 const (
-	VendorOpenAI   = "openai"
-	VendorGoogle   = "google"
-	VendorDeepSeek = "deepseek"
-	VendorTypeSafe = "typesafe"
+	VendorOpenAI    = "openai"
+	VendorGoogle    = "google"
+	VendorDeepSeek  = "deepseek"
+	VendorTypeSafe  = "typesafe"
+	VendorAnthropic = "anthropic"
 )
+
+// AnthropicDefaultEndpoint is used when an anthropic model has no endpoint override.
+const AnthropicDefaultEndpoint = "https://api.anthropic.com"
 
 // DeepSeekDefaultEndpoint is used when a deepseek model has no endpoint override.
 const DeepSeekDefaultEndpoint = "https://api.deepseek.com"
@@ -54,7 +58,7 @@ const CapabilityJudge = "judge"
 const CapabilityBatch = "batch"
 
 func ValidVendor(v string) bool {
-	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorTypeSafe
+	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorTypeSafe || v == VendorAnthropic
 }
 
 // SoftSchema reports whether this model needs the prompt-and-verify path.
