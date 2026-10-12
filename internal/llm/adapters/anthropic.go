@@ -13,9 +13,19 @@ import (
 	"github.com/ai-process/llm-proxy/internal/llm"
 )
 
-// defaultAnthropicMaxTokens is used when the caller does not specify a ceiling,
-// as Anthropic requires max_tokens on every message creation.
-const defaultAnthropicMaxTokens = 4096
+// modelMaxOutputTokens returns the output token limit for Claude models.
+// Claude 3.5 and 3.7 support 8192 output tokens; Claude 3 supports 4096.
+func modelMaxOutputTokens(model string) int {
+	m := strings.ToLower(model)
+	if strings.Contains(m, "claude-3-5") || strings.Contains(m, "claude-3.5") ||
+		strings.Contains(m, "claude-3-7") || strings.Contains(m, "claude-3.7") {
+		return 8192
+	}
+	if strings.Contains(m, "claude-3") {
+		return 4096
+	}
+	return 8192
+}
 
 type AnthropicAdapter struct {
 	client     *anthropic.Client
@@ -46,12 +56,13 @@ func (a *AnthropicAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, e
 		return nil, err
 	}
 
+	modelMax := int64(modelMaxOutputTokens(a.model))
 	var abandoned llm.TokensUsage
-	if ceiling > 0 && resp.StopReason == anthropic.StopReasonMaxTokens {
-		log.Warn().Str("model", a.model).Int("ceiling", ceiling).
+	if params.MaxTokens < modelMax && resp.StopReason == anthropic.StopReasonMaxTokens {
+		log.Warn().Str("model", a.model).Int64("ceiling", params.MaxTokens).
 			Msg("AnthropicAdapter: output ceiling exhausted, retrying uncapped")
 		abandoned = anthropicUsage(resp)
-		params.MaxTokens = defaultAnthropicMaxTokens
+		params.MaxTokens = modelMax
 		resp, err = a.completeOnce(params)
 		if err != nil {
 			return nil, err
@@ -72,6 +83,7 @@ func (a *AnthropicAdapter) GenerateTextStream(ctx context.Context, chat *llm.Cha
 		accumulatedInputTokens int64
 		stopReason             anthropic.StopReason
 		toolIndexByBlock       = make(map[int64]int32)
+		toolArgsReceived       = make(map[int64]bool)
 		nextToolIndex          int32
 	)
 
@@ -81,18 +93,16 @@ func (a *AnthropicAdapter) GenerateTextStream(ctx context.Context, chat *llm.Cha
 
 		switch event.Type {
 		case "message_start":
+			// Token counts are buffered until message_delta so no chunk is emitted
+			// before actual content, preserving router fallback on early errors.
 			accumulatedInputTokens = event.Message.Usage.InputTokens +
 				event.Message.Usage.CacheCreationInputTokens +
 				event.Message.Usage.CacheReadInputTokens
-			if accumulatedInputTokens > 0 {
-				streamChunk.Usage = &llm.TokensUsage{
-					Input: int(accumulatedInputTokens),
-				}
-			}
 		case "content_block_start":
 			if event.ContentBlock.Type == "tool_use" {
 				toolIdx := nextToolIndex
 				toolIndexByBlock[event.Index] = toolIdx
+				toolArgsReceived[event.Index] = false
 				nextToolIndex++
 				streamChunk.ToolCallChunks = append(streamChunk.ToolCallChunks, &llm.ToolCallChunk{
 					Index: toolIdx,
@@ -107,9 +117,19 @@ func (a *AnthropicAdapter) GenerateTextStream(ctx context.Context, chat *llm.Cha
 				streamChunk.Delta = event.Delta.Text
 			case "input_json_delta":
 				toolIdx := toolIndexByBlock[event.Index]
+				toolArgsReceived[event.Index] = true
 				streamChunk.ToolCallChunks = append(streamChunk.ToolCallChunks, &llm.ToolCallChunk{
 					Index:          toolIdx,
 					ArgumentsDelta: event.Delta.PartialJSON,
+				})
+			}
+		case "content_block_stop":
+			// Anthropic omits deltas for empty input; downstream expects valid JSON.
+			if toolIdx, ok := toolIndexByBlock[event.Index]; ok && !toolArgsReceived[event.Index] {
+				toolArgsReceived[event.Index] = true
+				streamChunk.ToolCallChunks = append(streamChunk.ToolCallChunks, &llm.ToolCallChunk{
+					Index:          toolIdx,
+					ArgumentsDelta: "{}",
 				})
 			}
 		case "message_delta":
@@ -230,10 +250,18 @@ func (a *AnthropicAdapter) completeOnce(params anthropic.MessageNewParams) (*ant
 	return a.client.Messages.New(context.Background(), params)
 }
 
-// contextToMessages maps llm.Message items to Anthropic turns, grouping consecutive
-// user and tool results into alternating user turns, as required by the Anthropic API.
-func (a *AnthropicAdapter) contextToMessages(messages []*llm.Message) []anthropic.MessageParam {
+type assistantToolCall struct {
+	id   string
+	name string
+	used bool
+}
+
+// contextToMessages maps llm.Message items to Anthropic turns.
+// Consecutive user and tool messages are grouped into alternating user turns.
+func (a *AnthropicAdapter) contextToMessages(messages []*llm.Message, systemInstruction string) ([]anthropic.MessageParam, bool) {
 	var out []anthropic.MessageParam
+	var prevBotCalls []assistantToolCall
+
 	for i := 0; i < len(messages); {
 		msg := messages[i]
 		switch msg.Type {
@@ -248,23 +276,27 @@ func (a *AnthropicAdapter) contextToMessages(messages []*llm.Message) []anthropi
 						blocks = append(blocks, anthropic.NewTextBlock(m.Text))
 					}
 				} else if m.Type == llm.MessageTypeTool {
-					id := m.ToolCallID
-					if id == "" {
-						id = "call_default"
-					}
 					text := m.Text
 					if text == "" {
 						text = "{}"
 					}
-					blocks = append(blocks, anthropic.NewToolResultBlock(id, text, false))
+					// Match against preceding assistant tool_use blocks to avoid Anthropic 400.
+					matchedID := matchToolCallID(prevBotCalls, m.ToolCallID)
+					if matchedID != "" {
+						blocks = append(blocks, anthropic.NewToolResultBlock(matchedID, text, false))
+					} else {
+						blocks = append(blocks, anthropic.NewTextBlock(text))
+					}
 				}
 				i++
 			}
+			prevBotCalls = nil
 			if len(blocks) > 0 {
 				out = append(out, anthropic.NewUserMessage(blocks...))
 			}
 		case llm.MessageTypeBot:
 			var blocks []anthropic.ContentBlockParamUnion
+			prevBotCalls = nil
 			for i < len(messages) && messages[i].Type == llm.MessageTypeBot {
 				m := messages[i]
 				if strings.TrimSpace(m.Text) != "" {
@@ -282,6 +314,10 @@ func (a *AnthropicAdapter) contextToMessages(messages []*llm.Message) []anthropi
 					if id == "" {
 						id = fmt.Sprintf("call_%s_%d", tc.Function.Name, idx)
 					}
+					prevBotCalls = append(prevBotCalls, assistantToolCall{
+						id:   id,
+						name: tc.Function.Name,
+					})
 					blocks = append(blocks, anthropic.NewToolUseBlock(id, input, tc.Function.Name))
 				}
 				i++
@@ -293,24 +329,54 @@ func (a *AnthropicAdapter) contextToMessages(messages []*llm.Message) []anthropi
 			i++
 		}
 	}
+
+	systemConsumed := false
 	if len(out) == 0 {
-		out = append(out, anthropic.NewUserMessage(anthropic.NewTextBlock("Hello")))
+		if strings.TrimSpace(systemInstruction) != "" {
+			out = append(out, anthropic.NewUserMessage(anthropic.NewTextBlock(systemInstruction)))
+			systemConsumed = true
+		} else {
+			out = append(out, anthropic.NewUserMessage(anthropic.NewTextBlock("Please continue.")))
+		}
 	} else if out[0].Role == anthropic.MessageParamRoleAssistant {
-		out = append([]anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock("Hello"))}, out...)
+		out = append([]anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock("Please continue."))}, out...)
 	}
-	return out
+	return out, systemConsumed
+}
+
+func matchToolCallID(calls []assistantToolCall, targetID string) string {
+	if targetID != "" {
+		for i := range calls {
+			if !calls[i].used && calls[i].id == targetID {
+				calls[i].used = true
+				return calls[i].id
+			}
+		}
+		for i := range calls {
+			if !calls[i].used && calls[i].name == targetID {
+				calls[i].used = true
+				return calls[i].id
+			}
+		}
+	}
+	for i := range calls {
+		if !calls[i].used {
+			calls[i].used = true
+			return calls[i].id
+		}
+	}
+	return ""
 }
 
 func (a *AnthropicAdapter) buildParams(chat *llm.ChatContext, ceiling int) anthropic.MessageNewParams {
-	maxTokens := int64(defaultAnthropicMaxTokens)
+	modelMax := modelMaxOutputTokens(a.model)
+	maxTokens := int64(modelMax)
 	if ceiling > 0 {
-		maxTokens = int64(ceiling)
-	}
-
-	params := anthropic.MessageNewParams{
-		Model:     anthropic.Model(a.model),
-		Messages:  a.contextToMessages(chat.GetMessages()),
-		MaxTokens: maxTokens,
+		if ceiling > modelMax {
+			maxTokens = int64(modelMax)
+		} else {
+			maxTokens = int64(ceiling)
+		}
 	}
 
 	system := buildSystemInstructionText(chat)
@@ -319,15 +385,25 @@ func (a *AnthropicAdapter) buildParams(chat *llm.ChatContext, ceiling int) anthr
 			system = strings.TrimSpace(system + systemInstructionSeparator + shape)
 		}
 	}
-	if system != "" {
+
+	messages, systemConsumed := a.contextToMessages(chat.GetMessages(), system)
+
+	params := anthropic.MessageNewParams{
+		Model:     anthropic.Model(a.model),
+		Messages:  messages,
+		MaxTokens: maxTokens,
+	}
+
+	if system != "" && !systemConsumed {
 		params.System = []anthropic.TextBlockParam{{Text: system}}
 	}
 
 	if chat.GetResponseSchema() != nil && !a.softSchema {
-		llm.EnforceAllRequired(chat.GetResponseSchema())
+		schema := cloneResponseSchema(chat.GetResponseSchema())
+		llm.EnforceAllRequired(schema)
 		params.OutputConfig = anthropic.OutputConfigParam{
 			Format: anthropic.JSONOutputFormatParam{
-				Schema: convertLLMResponseSchemaToOpenAISchema(chat.GetResponseSchema()),
+				Schema: convertLLMResponseSchemaToOpenAISchema(schema),
 			},
 		}
 	}
@@ -338,13 +414,15 @@ func (a *AnthropicAdapter) buildParams(chat *llm.ChatContext, ceiling int) anthr
 			var propertiesMap map[string]any
 			var required []string
 			if t.Function.Parameters != nil {
+				paramSchema := t.Function.Parameters
 				if t.Function.Strict {
-					llm.EnforceAllRequired(t.Function.Parameters)
+					paramSchema = cloneResponseSchema(paramSchema)
+					llm.EnforceAllRequired(paramSchema)
 				}
-				required = t.Function.Parameters.Required
-				if len(t.Function.Parameters.Properties) > 0 {
+				required = paramSchema.Required
+				if len(paramSchema.Properties) > 0 {
 					propertiesMap = make(map[string]any)
-					for name, prop := range t.Function.Parameters.Properties {
+					for name, prop := range paramSchema.Properties {
 						propertiesMap[name] = convertLLMSchemaPropertyToOpenAISchemaProperty(prop)
 					}
 				}
@@ -352,9 +430,11 @@ func (a *AnthropicAdapter) buildParams(chat *llm.ChatContext, ceiling int) anthr
 			inputSchema := anthropic.ToolInputSchemaParam{
 				Properties: propertiesMap,
 				Required:   required,
-				ExtraFields: map[string]any{
+			}
+			if t.Function.Strict {
+				inputSchema.ExtraFields = map[string]any{
 					"additionalProperties": false,
-				},
+				}
 			}
 			toolParam := anthropic.ToolParam{
 				Name:        t.Function.Name,
@@ -391,4 +471,46 @@ func (a *AnthropicAdapter) buildParams(chat *llm.ChatContext, ceiling int) anthr
 	}
 
 	return params
+}
+
+func cloneResponseSchema(s *llm.ResponseSchema) *llm.ResponseSchema {
+	if s == nil {
+		return nil
+	}
+	clone := &llm.ResponseSchema{
+		Type:     s.Type,
+		Required: append([]string(nil), s.Required...),
+	}
+	if s.Items != nil {
+		clone.Items = cloneSchemaProperty(s.Items)
+	}
+	if s.Properties != nil {
+		clone.Properties = make(map[string]*llm.SchemaProperty, len(s.Properties))
+		for k, v := range s.Properties {
+			clone.Properties[k] = cloneSchemaProperty(v)
+		}
+	}
+	return clone
+}
+
+func cloneSchemaProperty(p *llm.SchemaProperty) *llm.SchemaProperty {
+	if p == nil {
+		return nil
+	}
+	clone := &llm.SchemaProperty{
+		Type:        p.Type,
+		Description: p.Description,
+		Required:    append([]string(nil), p.Required...),
+		Nullable:    p.Nullable,
+	}
+	if p.Items != nil {
+		clone.Items = cloneSchemaProperty(p.Items)
+	}
+	if p.Properties != nil {
+		clone.Properties = make(map[string]*llm.SchemaProperty, len(p.Properties))
+		for k, v := range p.Properties {
+			clone.Properties[k] = cloneSchemaProperty(v)
+		}
+	}
+	return clone
 }
