@@ -25,6 +25,7 @@ type fakeProxy struct {
 	streamChunks []*pb.GenerateTextChunk
 	emptyStream  bool
 	media        map[string]string
+	judgeReq     *pb.JudgeRequest
 }
 
 func (f *fakeProxy) GenerateText(_ context.Context, r *pb.GenerateTextRequest) (*pb.GenerateTextResponse, error) {
@@ -90,9 +91,35 @@ func (f *fakeProxy) GenerateImage(_ context.Context, r *pb.GenerateImageRequest)
 }
 
 func (f *fakeProxy) Judge(_ context.Context, r *pb.JudgeRequest) (*pb.JudgeResponse, error) {
-	return &pb.JudgeResponse{Answers: map[string]*pb.JudgeAnswer{
-		"q": {Type: pb.JudgeType_JUDGE_TYPE_NOUL, Noul: 0.9},
-	}, ResolvedModel: "jev"}, nil
+	f.judgeReq = r
+	answers := make(map[string]*pb.JudgeAnswer, len(r.Questions))
+	for id, q := range r.Questions {
+		switch q.Type {
+		case pb.JudgeType_JUDGE_TYPE_NOUL:
+			answers[id] = &pb.JudgeAnswer{Type: q.Type, Noul: 0.9}
+		case pb.JudgeType_JUDGE_TYPE_CHOICE:
+			answers[id] = &pb.JudgeAnswer{Type: q.Type, Choice: "opt1", Confidence: 0.95}
+		case pb.JudgeType_JUDGE_TYPE_SCORE:
+			answers[id] = &pb.JudgeAnswer{
+				Type:          q.Type,
+				Score:         2.5,
+				Probabilities: map[string]float64{"0": 0.2, "1": 0.8},
+				Confidence:    0.85,
+			}
+		}
+	}
+	if len(answers) == 0 {
+		answers["q"] = &pb.JudgeAnswer{Type: pb.JudgeType_JUDGE_TYPE_NOUL, Noul: 0.9}
+	}
+	model := "jev"
+	if r.ModelOverride != "" {
+		model = r.ModelOverride
+	}
+	return &pb.JudgeResponse{
+		Answers:       answers,
+		ResolvedModel: model,
+		Usage:         &pb.TokensUsage{Input: 15, Output: 0},
+	}, nil
 }
 
 func newTestAPI(t *testing.T) (*fakeProxy, http.Handler, string) {
@@ -515,6 +542,115 @@ func TestJudge(t *testing.T) {
 	}
 	if rec := do(h, "POST", "/v1/judge", key, `{"bogus":1}`); rec.Code != 400 {
 		t.Errorf("unknown field = %d", rec.Code)
+	}
+}
+
+func TestDecisions(t *testing.T) {
+	proxy, h, key := newTestAPI(t)
+	body := `{
+		"model": "gpt-6-luna",
+		"input": "User wants refund",
+		"user": "user-123",
+		"metadata": {"team": "ops"},
+		"questions": [
+			{"name": "is_urgent", "type": "predicate", "instructions": "Urgent?"},
+			{"name": "dept", "type": "choice", "instructions": "Which dept?", "choices": [{"value":"a","description":"A"},{"value":"b","description":"B"}]},
+			{"name": "severity", "type": "score", "instructions": "Rate", "levels": ["low", "high"]}
+		]
+	}`
+	rec := do(h, "POST", "/v1/decisions", key, body)
+	if rec.Code != 200 {
+		t.Fatalf("decisions returned status %d: %s", rec.Code, rec.Body)
+	}
+	var out decisionsResponseOut
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("unmarshal decisions response: %v", err)
+	}
+	if out.Model != "gpt-6-luna" {
+		t.Errorf("model = %q, want gpt-6-luna", out.Model)
+	}
+	if len(out.Answers) != 3 {
+		t.Fatalf("answers count = %d, want 3", len(out.Answers))
+	}
+	if out.Answers[0].Name != "is_urgent" || out.Answers[0].Type != "predicate" || *out.Answers[0].Probability != 0.9 {
+		t.Errorf("answer 0 = %+v", out.Answers[0])
+	}
+	if out.Answers[1].Name != "dept" || out.Answers[1].Type != "choice" || out.Answers[1].Choice != "opt1" {
+		t.Errorf("answer 1 = %+v", out.Answers[1])
+	}
+	if out.Answers[2].Name != "severity" || out.Answers[2].Type != "score" || *out.Answers[2].Score != 2.5 {
+		t.Errorf("answer 2 = %+v", out.Answers[2])
+	}
+	if out.Answers[2].Probabilities["low"] != 0.2 || out.Answers[2].Probabilities["high"] != 0.8 {
+		t.Errorf("mapped probabilities = %+v, want low: 0.2, high: 0.8", out.Answers[2].Probabilities)
+	}
+	if proxy.judgeReq == nil || proxy.judgeReq.Attributes["user_id"] != "user-123" || proxy.judgeReq.Attributes["team"] != "ops" {
+		t.Errorf("judge request attributes = %+v, want user_id: user-123, team: ops", proxy.judgeReq.GetAttributes())
+	}
+	if out.Usage["input_tokens"] != 15 {
+		t.Errorf("usage = %+v", out.Usage)
+	}
+
+	// Test object-style levels mapping
+	objLevelsReq := `{
+		"input": "ok",
+		"questions": [
+			{"name": "severity_obj", "type": "score", "instructions": "Rate", "levels": [{"label": "bad", "description": "poor"}, {"label": "good", "description": "fine"}]}
+		]
+	}`
+	recObj := do(h, "POST", "/v1/decisions", key, objLevelsReq)
+	if recObj.Code != 200 {
+		t.Fatalf("obj levels status = %d: %s", recObj.Code, recObj.Body)
+	}
+	var outObj decisionsResponseOut
+	_ = json.Unmarshal(recObj.Body.Bytes(), &outObj)
+	if outObj.Answers[0].Probabilities["bad"] != 0.2 || outObj.Answers[0].Probabilities["good"] != 0.8 {
+		t.Errorf("mapped probabilities = %+v, want bad: 0.2, good: 0.8", outObj.Answers[0].Probabilities)
+	}
+
+	if rec := do(h, "POST", "/v1/decisions", key, `{"questions":[]}`); rec.Code != 400 {
+		t.Errorf("empty input = %d, want 400", rec.Code)
+	}
+	if rec := do(h, "POST", "/v1/decisions", key, `{"input":"ok","questions":[{"name":"q","type":"unknown","instructions":"x"}]}`); rec.Code != 400 {
+		t.Errorf("unknown type = %d, want 400", rec.Code)
+	}
+	// Duplicate question name
+	dupQ := `{"input":"ok","questions":[{"name":"q","type":"predicate","instructions":"x"},{"name":"q","type":"predicate","instructions":"y"}]}`
+	if rec := do(h, "POST", "/v1/decisions", key, dupQ); rec.Code != 400 {
+		t.Errorf("dup question name = %d, want 400", rec.Code)
+	}
+	// Duplicate choice values
+	dupChoice := `{"input":"ok","questions":[{"name":"q","type":"choice","instructions":"x","choices":[{"value":"a","description":"A"},{"value":"a","description":"B"}]}]}`
+	if rec := do(h, "POST", "/v1/decisions", key, dupChoice); rec.Code != 400 {
+		t.Errorf("dup choice value = %d, want 400", rec.Code)
+	}
+	// Duplicate level labels
+	dupLevels := `{"input":"ok","questions":[{"name":"q","type":"score","instructions":"x","levels":["low","low"]}]}`
+	if rec := do(h, "POST", "/v1/decisions", key, dupLevels); rec.Code != 400 {
+		t.Errorf("dup level label = %d, want 400", rec.Code)
+	}
+
+	// Test model "auto" and "auto:low" route with empty override
+	autoReq := `{"model":"auto","input":"ok","questions":[{"name":"q","type":"predicate","instructions":"test"}]}`
+	recAuto := do(h, "POST", "/v1/decisions", key, autoReq)
+	if recAuto.Code != 200 {
+		t.Fatalf("auto model status = %d: %s", recAuto.Code, recAuto.Body)
+	}
+	if proxy.judgeReq.ModelOverride != "" {
+		t.Errorf("model override for auto = %q, want empty", proxy.judgeReq.ModelOverride)
+	}
+
+	autoLowReq := `{"model":"auto:low","input":"ok","questions":[{"name":"q","type":"predicate","instructions":"test"}]}`
+	recAutoLow := do(h, "POST", "/v1/decisions", key, autoLowReq)
+	if recAutoLow.Code != 200 {
+		t.Fatalf("auto:low status = %d: %s", recAutoLow.Code, recAutoLow.Body)
+	}
+	if proxy.judgeReq.ModelOverride != "" {
+		t.Errorf("model override for auto:low = %q, want empty", proxy.judgeReq.ModelOverride)
+	}
+
+	if rec := do(h, "POST", "/v1/decisions", key, `{"model":"auto:invalid","input":"ok","questions":[{"name":"q","type":"predicate","instructions":"test"}]}`); rec.Code != 400 {
+		t.Errorf("auto:invalid status = %d, want 400", rec.Code)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"math"
 	"strings"
@@ -138,6 +139,9 @@ func schemaNameFromActionID(actionID string) string {
 
 type OpenAIAdapter struct {
 	openAI     *openai.Client
+	http       *http.Client
+	endpoint   string
+	apiKey     string
 	throttle   *llm.ThrottleControl
 	model      string
 	ttsModel   string
@@ -156,6 +160,21 @@ func NewOpenAIAdapter(client *openai.Client, model string, throttle *llm.Throttl
 		model:    model,
 		throttle: throttle,
 	}
+}
+
+// SetDecisionsConfig configures endpoint and apiKey for OpenAI Decisions API calls.
+func (a *OpenAIAdapter) SetDecisionsConfig(endpoint, apiKey string) {
+	if endpoint != "" {
+		a.endpoint = strings.TrimSuffix(strings.TrimSuffix(endpoint, "/"), "/v1")
+	}
+	if apiKey != "" {
+		a.apiKey = apiKey
+	}
+}
+
+// SetHTTPClient overrides the HTTP client for REST calls like the Decisions API.
+func (a *OpenAIAdapter) SetHTTPClient(client *http.Client) {
+	a.http = client
 }
 
 // SetSoftSchema switches this adapter to prompt-described schemas.

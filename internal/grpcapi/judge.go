@@ -39,10 +39,9 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			judge, ok := adapter.(llm.Judge)
 			if !ok {
-				// The capability filter should have excluded this model; if the
-				// registry and the adapter disagree, say so rather than panic.
-				return llm.TokensUsage{}, status.Errorf(codes.FailedPrecondition,
-					"no_capable_model: %s cannot judge", m.ID)
+				// Models misconfigured with the judge capability should yield to
+				// capable fallback models in the chain instead of failing immediately.
+				return llm.TokensUsage{}, llm.ErrJudgmentUnsupported
 			}
 			res, err := judge.Judge(ctx, judgeReq, router.UserID(plan.attrs, plan.identity.Name), plan.meta)
 			if err != nil {
