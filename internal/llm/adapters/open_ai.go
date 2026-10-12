@@ -165,7 +165,7 @@ func NewOpenAIAdapter(client *openai.Client, model string, throttle *llm.Throttl
 // SetDecisionsConfig configures endpoint and apiKey for OpenAI Decisions API calls.
 func (a *OpenAIAdapter) SetDecisionsConfig(endpoint, apiKey string) {
 	if endpoint != "" {
-		a.endpoint = strings.TrimSuffix(endpoint, "/")
+		a.endpoint = strings.TrimSuffix(strings.TrimSuffix(endpoint, "/"), "/v1")
 	}
 	if apiKey != "" {
 		a.apiKey = apiKey

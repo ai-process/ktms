@@ -90,7 +90,7 @@ func judgeRule(use ...string) *proxydb.Rule {
 func newJudgeServer(t *testing.T, models []*proxydb.Model, rules []*proxydb.Rule, tracker *fakeTracker) *ProxyServer {
 	t.Helper()
 	keys := map[string]map[string]string{
-		"key1": {registry.VendorTypeSafe: "ts-test", registry.VendorOpenAI: "sk-test"},
+		"key1": {registry.VendorTypeSafe: "ts-test", registry.VendorOpenAI: "sk-test", registry.VendorDeepSeek: "ds-test"},
 	}
 	if tracker != nil {
 		return NewProxyServer(fixedSnapshot{registry.NewSnapshotForTest(models, rules, keys, tracker)}, nil)
@@ -459,5 +459,51 @@ func TestJudgeFallsBackFromTypeSafeToOpenAI(t *testing.T) {
 	}
 	if ans := resp.Answers["is_answer"]; ans.GetNoul() != 0.91 {
 		t.Errorf("answer = %+v, want noul 0.91", ans)
+	}
+}
+
+func TestJudgeFallsBackFromUnsupportedJudgeModel(t *testing.T) {
+	oaiFake := &fakeOpenAIDecisions{}
+	oaiSrv := httptest.NewServer(http.HandlerFunc(oaiFake.handler))
+	defer oaiSrv.Close()
+
+	// deepseek model has judge capability in DB, but its adapter cannot judge.
+	m1 := &proxydb.Model{
+		ID: "deepseek-chat", Vendor: registry.VendorDeepSeek, Endpoint: "http://example.com",
+		Efforts: []string{registry.EffortLow}, Capabilities: []string{registry.CapabilityJudge},
+		Enabled: true,
+	}
+	m2 := openAIJudgeModel("gpt-6-luna", oaiSrv.URL)
+	rule := judgeRule("deepseek-chat", "gpt-6-luna")
+
+	s := newJudgeServer(t, []*proxydb.Model{m1, m2}, []*proxydb.Rule{rule}, nil)
+
+	resp, err := s.Judge(testIdentity(), &pb.JudgeRequest{
+		StateJson: `{"ctx":"hello"}`,
+		Questions: map[string]*pb.JudgeQuestion{
+			"is_answer": {Type: pb.JudgeType_JUDGE_TYPE_NOUL, Instructions: "is it an answer?"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Judge: %v", err)
+	}
+
+	if resp.GetResolvedVendor() != registry.VendorOpenAI || resp.GetResolvedModel() != "gpt-6-luna" {
+		t.Errorf("resolved %s/%s, want openai/gpt-6-luna", resp.GetResolvedVendor(), resp.GetResolvedModel())
+	}
+	if oaiFake.calls != 1 {
+		t.Errorf("openai calls = %d, want 1", oaiFake.calls)
+	}
+
+	// Chain containing only the unsupported model returns no_capable_model.
+	sOnlyUnsupported := newJudgeServer(t, []*proxydb.Model{m1}, []*proxydb.Rule{judgeRule("deepseek-chat")}, nil)
+	_, errOnly := sOnlyUnsupported.Judge(testIdentity(), &pb.JudgeRequest{
+		StateJson: `{"ctx":"hello"}`,
+		Questions: map[string]*pb.JudgeQuestion{
+			"is_answer": {Type: pb.JudgeType_JUDGE_TYPE_NOUL, Instructions: "is it an answer?"},
+		},
+	})
+	if status.Code(errOnly) != codes.FailedPrecondition || !strings.Contains(errOnly.Error(), "no_capable_model") {
+		t.Errorf("errOnly = %v, want FailedPrecondition no_capable_model", errOnly)
 	}
 }

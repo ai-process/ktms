@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -235,5 +236,72 @@ func TestOpenAIJudgeHonoursCallerDeadline(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "context deadline exceeded") {
 		t.Errorf("err = %v, want context deadline exceeded", err)
+	}
+}
+
+func TestOpenAIJudgePreservesStateVerbatim(t *testing.T) {
+	var capturedBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bodyBytes, _ := io.ReadAll(r.Body)
+		capturedBody = string(bodyBytes)
+		prob := 0.7
+		_ = json.NewEncoder(w).Encode(openAIDecisionResponse{
+			Model: "gpt-6-luna",
+			Answers: []openAIDecisionAnswer{
+				{Name: "q", Type: "predicate", Probability: &prob},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	adapter := NewOpenAIAdapter(nil, "gpt-6-luna", nil)
+	adapter.SetDecisionsConfig(srv.URL, "sk-test")
+
+	// State with large int that would lose precision if parsed as float64, plus specific key order
+	rawState := `{"large_id":9007199254740993,"zeta":"last","alpha":"first"}`
+	_, err := adapter.Judge(context.Background(), &llm.JudgeRequest{
+		StateJSON: rawState,
+		Questions: map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "test"}},
+	}, "", nil)
+	if err != nil {
+		t.Fatalf("Judge: %v", err)
+	}
+
+	if !strings.Contains(capturedBody, `"input":{"large_id":9007199254740993,"zeta":"last","alpha":"first"}`) {
+		t.Errorf("state not preserved verbatim in body: %s", capturedBody)
+	}
+}
+
+func TestOpenAIJudgeCustomEndpointWithV1(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		prob := 0.5
+		_ = json.NewEncoder(w).Encode(openAIDecisionResponse{
+			Model: "gpt-6-luna",
+			Answers: []openAIDecisionAnswer{
+				{Name: "q", Type: "predicate", Probability: &prob},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	// Test endpoints configured with /v1 and trailing slash
+	endpoints := []string{srv.URL + "/v1", srv.URL + "/v1/"}
+	for _, ep := range endpoints {
+		gotPath = ""
+		adapter := NewOpenAIAdapter(nil, "gpt-6-luna", nil)
+		adapter.SetDecisionsConfig(ep, "sk-test")
+
+		_, err := adapter.Judge(context.Background(), &llm.JudgeRequest{
+			StateJSON: `{}`,
+			Questions: map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "test"}},
+		}, "", nil)
+		if err != nil {
+			t.Fatalf("endpoint %s Judge: %v", ep, err)
+		}
+		if gotPath != "/v1/decisions" {
+			t.Errorf("endpoint %s called path %q, want /v1/decisions", ep, gotPath)
+		}
 	}
 }

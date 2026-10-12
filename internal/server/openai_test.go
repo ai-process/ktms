@@ -25,6 +25,7 @@ type fakeProxy struct {
 	streamChunks []*pb.GenerateTextChunk
 	emptyStream  bool
 	media        map[string]string
+	judgeReq     *pb.JudgeRequest
 }
 
 func (f *fakeProxy) GenerateText(_ context.Context, r *pb.GenerateTextRequest) (*pb.GenerateTextResponse, error) {
@@ -90,6 +91,7 @@ func (f *fakeProxy) GenerateImage(_ context.Context, r *pb.GenerateImageRequest)
 }
 
 func (f *fakeProxy) Judge(_ context.Context, r *pb.JudgeRequest) (*pb.JudgeResponse, error) {
+	f.judgeReq = r
 	answers := make(map[string]*pb.JudgeAnswer, len(r.Questions))
 	for id, q := range r.Questions {
 		switch q.Type {
@@ -98,7 +100,12 @@ func (f *fakeProxy) Judge(_ context.Context, r *pb.JudgeRequest) (*pb.JudgeRespo
 		case pb.JudgeType_JUDGE_TYPE_CHOICE:
 			answers[id] = &pb.JudgeAnswer{Type: q.Type, Choice: "opt1", Confidence: 0.95}
 		case pb.JudgeType_JUDGE_TYPE_SCORE:
-			answers[id] = &pb.JudgeAnswer{Type: q.Type, Score: 2.5, Confidence: 0.85}
+			answers[id] = &pb.JudgeAnswer{
+				Type:          q.Type,
+				Score:         2.5,
+				Probabilities: map[string]float64{"0": 0.2, "1": 0.8},
+				Confidence:    0.85,
+			}
 		}
 	}
 	if len(answers) == 0 {
@@ -539,10 +546,12 @@ func TestJudge(t *testing.T) {
 }
 
 func TestDecisions(t *testing.T) {
-	_, h, key := newTestAPI(t)
+	proxy, h, key := newTestAPI(t)
 	body := `{
 		"model": "gpt-6-luna",
 		"input": "User wants refund",
+		"user": "user-123",
+		"metadata": {"team": "ops"},
 		"questions": [
 			{"name": "is_urgent", "type": "predicate", "instructions": "Urgent?"},
 			{"name": "dept", "type": "choice", "instructions": "Which dept?", "choices": [{"value":"a","description":"A"},{"value":"b","description":"B"}]},
@@ -572,8 +581,31 @@ func TestDecisions(t *testing.T) {
 	if out.Answers[2].Name != "severity" || out.Answers[2].Type != "score" || *out.Answers[2].Score != 2.5 {
 		t.Errorf("answer 2 = %+v", out.Answers[2])
 	}
+	if out.Answers[2].Probabilities["low"] != 0.2 || out.Answers[2].Probabilities["high"] != 0.8 {
+		t.Errorf("mapped probabilities = %+v, want low: 0.2, high: 0.8", out.Answers[2].Probabilities)
+	}
+	if proxy.judgeReq == nil || proxy.judgeReq.Attributes["user_id"] != "user-123" || proxy.judgeReq.Attributes["team"] != "ops" {
+		t.Errorf("judge request attributes = %+v, want user_id: user-123, team: ops", proxy.judgeReq.GetAttributes())
+	}
 	if out.Usage["input_tokens"] != 15 {
 		t.Errorf("usage = %+v", out.Usage)
+	}
+
+	// Test object-style levels mapping
+	objLevelsReq := `{
+		"input": "ok",
+		"questions": [
+			{"name": "severity_obj", "type": "score", "instructions": "Rate", "levels": [{"label": "bad", "description": "poor"}, {"label": "good", "description": "fine"}]}
+		]
+	}`
+	recObj := do(h, "POST", "/v1/decisions", key, objLevelsReq)
+	if recObj.Code != 200 {
+		t.Fatalf("obj levels status = %d: %s", recObj.Code, recObj.Body)
+	}
+	var outObj decisionsResponseOut
+	_ = json.Unmarshal(recObj.Body.Bytes(), &outObj)
+	if outObj.Answers[0].Probabilities["bad"] != 0.2 || outObj.Answers[0].Probabilities["good"] != 0.8 {
+		t.Errorf("mapped probabilities = %+v, want bad: 0.2, good: 0.8", outObj.Answers[0].Probabilities)
 	}
 
 	if rec := do(h, "POST", "/v1/decisions", key, `{"questions":[]}`); rec.Code != 400 {
@@ -581,6 +613,21 @@ func TestDecisions(t *testing.T) {
 	}
 	if rec := do(h, "POST", "/v1/decisions", key, `{"input":"ok","questions":[{"name":"q","type":"unknown","instructions":"x"}]}`); rec.Code != 400 {
 		t.Errorf("unknown type = %d, want 400", rec.Code)
+	}
+	// Duplicate question name
+	dupQ := `{"input":"ok","questions":[{"name":"q","type":"predicate","instructions":"x"},{"name":"q","type":"predicate","instructions":"y"}]}`
+	if rec := do(h, "POST", "/v1/decisions", key, dupQ); rec.Code != 400 {
+		t.Errorf("dup question name = %d, want 400", rec.Code)
+	}
+	// Duplicate choice values
+	dupChoice := `{"input":"ok","questions":[{"name":"q","type":"choice","instructions":"x","choices":[{"value":"a","description":"A"},{"value":"a","description":"B"}]}]}`
+	if rec := do(h, "POST", "/v1/decisions", key, dupChoice); rec.Code != 400 {
+		t.Errorf("dup choice value = %d, want 400", rec.Code)
+	}
+	// Duplicate level labels
+	dupLevels := `{"input":"ok","questions":[{"name":"q","type":"score","instructions":"x","levels":["low","low"]}]}`
+	if rec := do(h, "POST", "/v1/decisions", key, dupLevels); rec.Code != 400 {
+		t.Errorf("dup level label = %d, want 400", rec.Code)
 	}
 }
 

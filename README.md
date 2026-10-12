@@ -503,7 +503,7 @@ are answered against the same state in parallel.
 }
 ```
 
-Supported decision vendors are [TypeSafe](https://typesafe.ai) (`jev-latest`) and [OpenAI](https://openai.com) (`gpt-6-luna`), which bill input only and write no text; their models declare the `judge` capability.
+Supported decision vendors are [TypeSafe](https://typesafe.ai) (`jev-latest`, billing input only) and [OpenAI](https://openai.com) (`gpt-6-luna`, billing input and output tokens); both write no text and declare the `judge` capability.
 
 ### ListModels
 

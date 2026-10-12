@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -771,6 +772,8 @@ type decisionsRequest struct {
 	Model     string                 `json:"model"`
 	Input     json.RawMessage        `json:"input"`
 	Questions []decisionsQuestionReq `json:"questions"`
+	Metadata  map[string]string      `json:"metadata,omitempty"`
+	User      string                 `json:"user,omitempty"`
 }
 
 type decisionsAnswerOut struct {
@@ -790,13 +793,9 @@ type decisionsResponseOut struct {
 }
 
 func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-	raw, err := io.ReadAll(http.MaxBytesReader(nil, r.Body, maxRequestBytes))
-	if err != nil {
-		return invalid("cannot read body: %v", err)
-	}
 	var decReq decisionsRequest
-	if err := json.Unmarshal(raw, &decReq); err != nil {
-		return invalid("invalid request JSON: %v", err)
+	if err := decodeBody(r, &decReq); err != nil {
+		return err
 	}
 	if len(decReq.Input) == 0 {
 		return invalid("input is required")
@@ -808,10 +807,14 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 		return invalid("questions are required")
 	}
 
+	scoreLabels := make(map[string][]string)
 	pbQuestions := make(map[string]*pb.JudgeQuestion, len(decReq.Questions))
 	for _, q := range decReq.Questions {
 		if q.Name == "" {
 			return invalid("question name is required")
+		}
+		if _, exists := pbQuestions[q.Name]; exists {
+			return invalid("duplicate question name %q", q.Name)
 		}
 		if q.Instructions == "" {
 			return invalid("question %q has no instructions", q.Name)
@@ -829,6 +832,9 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 			}
 			jq.Options = make(map[string]string, len(q.Choices))
 			for _, c := range q.Choices {
+				if _, exists := jq.Options[c.Value]; exists {
+					return invalid("choice %q has duplicate value %q", q.Name, c.Value)
+				}
 				jq.Options[c.Value] = c.Description
 			}
 		case "score":
@@ -837,9 +843,24 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 				return invalid("score %q needs levels", q.Name)
 			}
 			var objLevels []decisionsLevelReq
+			var labels []string
 			if err := json.Unmarshal(q.Levels, &objLevels); err == nil && len(objLevels) > 0 {
 				jq.Levels = make([]string, len(objLevels))
+				labels = make([]string, len(objLevels))
+				seenLabels := make(map[string]bool, len(objLevels))
 				for i, l := range objLevels {
+					lbl := l.Label
+					if lbl == "" {
+						lbl = l.Description
+					}
+					if lbl == "" {
+						lbl = strconv.Itoa(i)
+					}
+					if seenLabels[lbl] {
+						return invalid("score %q has duplicate level %q", q.Name, lbl)
+					}
+					seenLabels[lbl] = true
+					labels[i] = lbl
 					if l.Description != "" {
 						jq.Levels[i] = l.Description
 					} else {
@@ -850,6 +871,15 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 				var strLevels []string
 				if err := json.Unmarshal(q.Levels, &strLevels); err == nil {
 					jq.Levels = strLevels
+					labels = make([]string, len(strLevels))
+					seenLabels := make(map[string]bool, len(strLevels))
+					for i, s := range strLevels {
+						if seenLabels[s] {
+							return invalid("score %q has duplicate level %q", q.Name, s)
+						}
+						seenLabels[s] = true
+						labels[i] = s
+					}
 				} else {
 					return invalid("invalid levels format for %q", q.Name)
 				}
@@ -857,16 +887,20 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 			if len(jq.Levels) < 2 {
 				return invalid("score %q needs at least two levels", q.Name)
 			}
+			scoreLabels[q.Name] = labels
 		default:
 			return invalid("unsupported question type %q", q.Type)
 		}
 		pbQuestions[q.Name] = jq
 	}
 
+	attrs, actionID := attributes(decReq.Metadata, decReq.User)
 	req := &pb.JudgeRequest{
 		StateJson:     string(decReq.Input),
 		Questions:     pbQuestions,
 		ModelOverride: decReq.Model,
+		Attributes:    attrs,
+		ActionId:      actionID,
 	}
 
 	resp, err := a.proxy.Judge(ctx, req)
@@ -896,9 +930,22 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 			outAns.Type = "score"
 			sc := ans.Score
 			outAns.Score = &sc
-			outAns.Probabilities = ans.Probabilities
 			conf := ans.Confidence
 			outAns.Confidence = &conf
+			if labels, ok := scoreLabels[q.Name]; ok && len(ans.Probabilities) > 0 {
+				mappedProbs := make(map[string]float64, len(ans.Probabilities))
+				for k, v := range ans.Probabilities {
+					idx, err := strconv.Atoi(k)
+					if err == nil && idx >= 0 && idx < len(labels) {
+						mappedProbs[labels[idx]] = v
+					} else {
+						mappedProbs[k] = v
+					}
+				}
+				outAns.Probabilities = mappedProbs
+			} else {
+				outAns.Probabilities = ans.Probabilities
+			}
 		}
 		answers = append(answers, outAns)
 	}

@@ -1,11 +1,9 @@
 package adapters
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -51,7 +49,7 @@ type openAIDecisionQuestion struct {
 
 type openAIDecisionRequest struct {
 	Model     string                   `json:"model"`
-	Input     any                      `json:"input"`
+	Input     json.RawMessage          `json:"input"`
 	Questions []openAIDecisionQuestion `json:"questions"`
 }
 
@@ -93,17 +91,14 @@ func (a *OpenAIAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ stri
 		return failed(err)
 	}
 
-	var inputVal any = req.StateJSON
-	if json.Valid([]byte(req.StateJSON)) {
-		var decoded any
-		if err := json.Unmarshal([]byte(req.StateJSON), &decoded); err == nil {
-			inputVal = decoded
-		}
+	inputRaw := json.RawMessage(req.StateJSON)
+	if len(req.StateJSON) == 0 {
+		inputRaw = json.RawMessage("{}")
 	}
 
 	body, err := json.Marshal(openAIDecisionRequest{
 		Model:     a.model,
-		Input:     inputVal,
+		Input:     inputRaw,
 		Questions: questions,
 	})
 	if err != nil {
@@ -114,39 +109,14 @@ func (a *OpenAIAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ stri
 	if endpoint == "" {
 		endpoint = "https://api.openai.com"
 	}
+	endpoint = strings.TrimSuffix(strings.TrimSuffix(endpoint, "/"), "/v1")
 
-	ctx, cancel := context.WithTimeout(ctx, judgeTimeout)
-	defer cancel()
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint+"/v1/decisions", bytes.NewReader(body))
+	raw, statusCode, err := executeJudgeRequest(ctx, a.http, endpoint+"/v1/decisions", a.apiKey, body)
 	if err != nil {
-		return failed(fmt.Errorf("openai decisions: build request: %w", err))
-	}
-	httpReq.Header.Set("Authorization", "Bearer "+a.apiKey)
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	client := a.http
-	if client == nil {
-		client = &http.Client{}
-	}
-
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return failed(fmt.Errorf("openai decisions: %w", err))
-	}
-	defer resp.Body.Close()
-
-	// Limit response size to prevent malformed or proxy HTML error pages from bloating memory.
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return failed(fmt.Errorf("openai decisions: read response: %w", err))
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		snippet := string(raw)
-		if len(snippet) > 300 {
-			snippet = snippet[:300]
+		if statusCode > 0 {
+			return failed(&OpenAIDecisionError{Status: statusCode, Body: err.Error()})
 		}
-		return failed(&OpenAIDecisionError{Status: resp.StatusCode, Body: snippet})
+		return failed(fmt.Errorf("openai decisions: %w", err))
 	}
 
 	var parsed openAIDecisionResponse
