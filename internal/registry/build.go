@@ -3,7 +3,6 @@ package registry
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -67,7 +66,6 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 			if decEndpoint == "" {
 				decEndpoint = OpenAIDefaultEndpoint
 			}
-			decEndpoint = strings.TrimSuffix(strings.TrimSuffix(decEndpoint, "/"), "/v1")
 			adapter.SetDecisionsConfig(decEndpoint, key)
 		}
 		adapter.SetSoftSchema(SoftSchema(m))

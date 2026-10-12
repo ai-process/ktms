@@ -109,7 +109,6 @@ func (a *OpenAIAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ stri
 	if endpoint == "" {
 		endpoint = "https://api.openai.com"
 	}
-	endpoint = strings.TrimSuffix(strings.TrimSuffix(endpoint, "/"), "/v1")
 
 	raw, statusCode, err := executeJudgeRequest(ctx, a.http, endpoint+"/v1/decisions", a.apiKey, body)
 	if err != nil {

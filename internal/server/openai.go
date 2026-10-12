@@ -894,11 +894,15 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 		pbQuestions[q.Name] = jq
 	}
 
+	_, override, err := route(decReq.Model, "")
+	if err != nil {
+		return err
+	}
 	attrs, actionID := attributes(decReq.Metadata, decReq.User)
 	req := &pb.JudgeRequest{
 		StateJson:     string(decReq.Input),
 		Questions:     pbQuestions,
-		ModelOverride: decReq.Model,
+		ModelOverride: override,
 		Attributes:    attrs,
 		ActionId:      actionID,
 	}

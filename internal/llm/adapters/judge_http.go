@@ -32,7 +32,7 @@ func executeJudgeRequest(ctx context.Context, client *http.Client, url, apiKey s
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return nil, resp.StatusCode, err
+		return nil, 0, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		snippet := string(raw)

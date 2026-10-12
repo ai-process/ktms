@@ -629,6 +629,29 @@ func TestDecisions(t *testing.T) {
 	if rec := do(h, "POST", "/v1/decisions", key, dupLevels); rec.Code != 400 {
 		t.Errorf("dup level label = %d, want 400", rec.Code)
 	}
+
+	// Test model "auto" and "auto:low" route with empty override
+	autoReq := `{"model":"auto","input":"ok","questions":[{"name":"q","type":"predicate","instructions":"test"}]}`
+	recAuto := do(h, "POST", "/v1/decisions", key, autoReq)
+	if recAuto.Code != 200 {
+		t.Fatalf("auto model status = %d: %s", recAuto.Code, recAuto.Body)
+	}
+	if proxy.judgeReq.ModelOverride != "" {
+		t.Errorf("model override for auto = %q, want empty", proxy.judgeReq.ModelOverride)
+	}
+
+	autoLowReq := `{"model":"auto:low","input":"ok","questions":[{"name":"q","type":"predicate","instructions":"test"}]}`
+	recAutoLow := do(h, "POST", "/v1/decisions", key, autoLowReq)
+	if recAutoLow.Code != 200 {
+		t.Fatalf("auto:low status = %d: %s", recAutoLow.Code, recAutoLow.Body)
+	}
+	if proxy.judgeReq.ModelOverride != "" {
+		t.Errorf("model override for auto:low = %q, want empty", proxy.judgeReq.ModelOverride)
+	}
+
+	if rec := do(h, "POST", "/v1/decisions", key, `{"model":"auto:invalid","input":"ok","questions":[{"name":"q","type":"predicate","instructions":"test"}]}`); rec.Code != 400 {
+		t.Errorf("auto:invalid status = %d, want 400", rec.Code)
+	}
 }
 
 func TestAdminKeyCannotGenerate(t *testing.T) {
