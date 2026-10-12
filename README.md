@@ -290,7 +290,7 @@ Capabilities a model may declare:
 | `no_thinking` | The model reasons by default and bills the reasoning as output (DeepSeek V4, Gemma 4 on Ollama). The proxy turns it off: `thinking: {"type": "disabled"}` for DeepSeek, `reasoning_effort: "none"` for Ollama. OpenAI-compatible vendors only. |
 | `tts` | Can serve `SynthesizeSpeech`. |
 | `image` | Can serve `GenerateImage`. |
-| `judge` | Can serve `Judge` (TypeSafe models). |
+| `judge` | Can serve `Judge` (TypeSafe `jev-latest`, OpenAI `gpt-6-luna`). |
 
 ### 4. Rules
 
@@ -503,8 +503,7 @@ are answered against the same state in parallel.
 }
 ```
 
-The vendor is [TypeSafe](https://typesafe.ai) (`jev-latest`), which bills input only and
-writes no text, so its models must declare the `judge` capability and refuse `GenerateText`.
+Supported decision vendors are [TypeSafe](https://typesafe.ai) (`jev-latest`, billing input only) and [OpenAI](https://openai.com) (`gpt-6-luna`, billing input and output tokens); both write no text and declare the `judge` capability.
 
 ### ListModels
 
@@ -543,8 +542,9 @@ curl -s localhost:8080/v1/chat/completions \
 | `POST /v1/chat/completions` | `GenerateText` | Text and structured output. |
 | `POST /v1/audio/speech` | `SynthesizeSpeech` | Returns OGG/Opus audio. |
 | `POST /v1/images/generations` | `GenerateImage` | Returns `b64_json`. |
+| `POST /v1/decisions` | `Judge` | OpenAI Decisions API format (`predicate`, `choice`, `score`). |
+| `POST /v1/judge` | `Judge` | Protobuf JSON of `JudgeRequest` / `JudgeResponse`. |
 | `GET /v1/models`, `GET /v1/models/{id}` | `ListModels` | Only models the key holds a vendor credential for. |
-| `POST /v1/judge` | `Judge` | Not part of OpenAI's API. Body and response are the protobuf JSON of `JudgeRequest` / `JudgeResponse`. |
 
 Authentication is `Authorization: Bearer llm_…`. The response headers `X-LLM-Proxy-Vendor`
 and `X-LLM-Proxy-Rule` (and `X-LLM-Proxy-Model` for speech and images) tell you which

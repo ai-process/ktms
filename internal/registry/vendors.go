@@ -13,6 +13,9 @@ const (
 	VendorTypeSafe = "typesafe"
 )
 
+// OpenAIDefaultEndpoint is used when an openai model has no endpoint override.
+const OpenAIDefaultEndpoint = "https://api.openai.com"
+
 // DeepSeekDefaultEndpoint is used when a deepseek model has no endpoint override.
 const DeepSeekDefaultEndpoint = "https://api.deepseek.com"
 

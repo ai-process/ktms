@@ -1,11 +1,9 @@
 package adapters
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -116,33 +114,12 @@ func (a *TypeSafeAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ st
 		return failed(fmt.Errorf("typesafe: encode request: %w", err))
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, judgeTimeout)
-	defer cancel()
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, a.endpoint+"/v1/systemone", bytes.NewReader(body))
+	raw, statusCode, err := executeJudgeRequest(ctx, a.http, a.endpoint+"/v1/systemone", a.apiKey, body)
 	if err != nil {
-		return failed(fmt.Errorf("typesafe: build request: %w", err))
-	}
-	httpReq.Header.Set("Authorization", "Bearer "+a.apiKey)
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := a.http.Do(httpReq)
-	if err != nil {
-		return failed(fmt.Errorf("typesafe: %w", err))
-	}
-	defer resp.Body.Close()
-
-	// Capped: an HTML error page from a proxy in front of the vendor would
-	// otherwise ride into logs and error messages whole.
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return failed(fmt.Errorf("typesafe: read response: %w", err))
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		snippet := string(raw)
-		if len(snippet) > 300 {
-			snippet = snippet[:300]
+		if statusCode > 0 {
+			return failed(&TypeSafeError{Status: statusCode, Body: err.Error()})
 		}
-		return failed(&TypeSafeError{Status: resp.StatusCode, Body: snippet})
+		return failed(fmt.Errorf("typesafe: %w", err))
 	}
 
 	var parsed typeSafeResponse

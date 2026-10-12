@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,6 +54,7 @@ func (a *OpenAIAPI) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/audio/speech", a.wrap(speech, a.audioSpeech))
 	mux.HandleFunc("POST /v1/images/generations", a.wrap(image, a.imageGenerations))
 	mux.HandleFunc("POST /v1/judge", a.wrap(judge, a.judge))
+	mux.HandleFunc("POST /v1/decisions", a.wrap(judge, a.decisions))
 	mux.HandleFunc("GET /v1/models", a.wrap(models, a.listModels))
 	mux.HandleFunc("GET /v1/models/{id...}", a.wrap(models, a.getModel))
 }
@@ -743,6 +745,228 @@ func (a *OpenAIAPI) judge(ctx context.Context, w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(out)
+	return nil
+}
+
+// ---- decisions (OpenAI Decisions API wire format) ----
+
+type decisionsChoiceReq struct {
+	Value       string `json:"value"`
+	Description string `json:"description"`
+}
+
+type decisionsLevelReq struct {
+	Label       string `json:"label"`
+	Description string `json:"description"`
+}
+
+type decisionsQuestionReq struct {
+	Name         string               `json:"name"`
+	Type         string               `json:"type"` // "predicate" | "choice" | "score"
+	Instructions string               `json:"instructions"`
+	Choices      []decisionsChoiceReq `json:"choices"`
+	Levels       json.RawMessage      `json:"levels"`
+}
+
+type decisionsRequest struct {
+	Model     string                 `json:"model"`
+	Input     json.RawMessage        `json:"input"`
+	Questions []decisionsQuestionReq `json:"questions"`
+	Metadata  map[string]string      `json:"metadata,omitempty"`
+	User      string                 `json:"user,omitempty"`
+}
+
+type decisionsAnswerOut struct {
+	Name          string             `json:"name"`
+	Type          string             `json:"type"`
+	Probability   *float64           `json:"probability,omitempty"`
+	Choice        string             `json:"choice,omitempty"`
+	Score         *float64           `json:"score,omitempty"`
+	Probabilities map[string]float64 `json:"probabilities,omitempty"`
+	Confidence    *float64           `json:"confidence,omitempty"`
+}
+
+type decisionsResponseOut struct {
+	Model   string               `json:"model"`
+	Answers []decisionsAnswerOut `json:"answers"`
+	Usage   map[string]int       `json:"usage"`
+}
+
+func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+	var decReq decisionsRequest
+	if err := decodeBody(r, &decReq); err != nil {
+		return err
+	}
+	if len(decReq.Input) == 0 {
+		return invalid("input is required")
+	}
+	if !json.Valid(decReq.Input) {
+		return invalid("input must be valid JSON")
+	}
+	if len(decReq.Questions) == 0 {
+		return invalid("questions are required")
+	}
+
+	scoreLabels := make(map[string][]string)
+	pbQuestions := make(map[string]*pb.JudgeQuestion, len(decReq.Questions))
+	for _, q := range decReq.Questions {
+		if q.Name == "" {
+			return invalid("question name is required")
+		}
+		if _, exists := pbQuestions[q.Name]; exists {
+			return invalid("duplicate question name %q", q.Name)
+		}
+		if q.Instructions == "" {
+			return invalid("question %q has no instructions", q.Name)
+		}
+		jq := &pb.JudgeQuestion{
+			Instructions: q.Instructions,
+		}
+		switch q.Type {
+		case "predicate":
+			jq.Type = pb.JudgeType_JUDGE_TYPE_NOUL
+		case "choice":
+			jq.Type = pb.JudgeType_JUDGE_TYPE_CHOICE
+			if len(q.Choices) < 2 {
+				return invalid("choice %q needs at least two choices", q.Name)
+			}
+			jq.Options = make(map[string]string, len(q.Choices))
+			for _, c := range q.Choices {
+				if _, exists := jq.Options[c.Value]; exists {
+					return invalid("choice %q has duplicate value %q", q.Name, c.Value)
+				}
+				jq.Options[c.Value] = c.Description
+			}
+		case "score":
+			jq.Type = pb.JudgeType_JUDGE_TYPE_SCORE
+			if len(q.Levels) == 0 {
+				return invalid("score %q needs levels", q.Name)
+			}
+			var objLevels []decisionsLevelReq
+			var labels []string
+			if err := json.Unmarshal(q.Levels, &objLevels); err == nil && len(objLevels) > 0 {
+				jq.Levels = make([]string, len(objLevels))
+				labels = make([]string, len(objLevels))
+				seenLabels := make(map[string]bool, len(objLevels))
+				for i, l := range objLevels {
+					lbl := l.Label
+					if lbl == "" {
+						lbl = l.Description
+					}
+					if lbl == "" {
+						lbl = strconv.Itoa(i)
+					}
+					if seenLabels[lbl] {
+						return invalid("score %q has duplicate level %q", q.Name, lbl)
+					}
+					seenLabels[lbl] = true
+					labels[i] = lbl
+					if l.Description != "" {
+						jq.Levels[i] = l.Description
+					} else {
+						jq.Levels[i] = l.Label
+					}
+				}
+			} else {
+				var strLevels []string
+				if err := json.Unmarshal(q.Levels, &strLevels); err == nil {
+					jq.Levels = strLevels
+					labels = make([]string, len(strLevels))
+					seenLabels := make(map[string]bool, len(strLevels))
+					for i, s := range strLevels {
+						if seenLabels[s] {
+							return invalid("score %q has duplicate level %q", q.Name, s)
+						}
+						seenLabels[s] = true
+						labels[i] = s
+					}
+				} else {
+					return invalid("invalid levels format for %q", q.Name)
+				}
+			}
+			if len(jq.Levels) < 2 {
+				return invalid("score %q needs at least two levels", q.Name)
+			}
+			scoreLabels[q.Name] = labels
+		default:
+			return invalid("unsupported question type %q", q.Type)
+		}
+		pbQuestions[q.Name] = jq
+	}
+
+	_, override, err := route(decReq.Model, "")
+	if err != nil {
+		return err
+	}
+	attrs, actionID := attributes(decReq.Metadata, decReq.User)
+	req := &pb.JudgeRequest{
+		StateJson:     string(decReq.Input),
+		Questions:     pbQuestions,
+		ModelOverride: override,
+		Attributes:    attrs,
+		ActionId:      actionID,
+	}
+
+	resp, err := a.proxy.Judge(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	answers := make([]decisionsAnswerOut, 0, len(decReq.Questions))
+	for _, q := range decReq.Questions {
+		ans, ok := resp.Answers[q.Name]
+		if !ok {
+			continue
+		}
+		outAns := decisionsAnswerOut{Name: q.Name}
+		switch ans.Type {
+		case pb.JudgeType_JUDGE_TYPE_NOUL:
+			outAns.Type = "predicate"
+			prob := ans.Noul
+			outAns.Probability = &prob
+		case pb.JudgeType_JUDGE_TYPE_CHOICE:
+			outAns.Type = "choice"
+			outAns.Choice = ans.Choice
+			outAns.Probabilities = ans.Probabilities
+			conf := ans.Confidence
+			outAns.Confidence = &conf
+		case pb.JudgeType_JUDGE_TYPE_SCORE:
+			outAns.Type = "score"
+			sc := ans.Score
+			outAns.Score = &sc
+			conf := ans.Confidence
+			outAns.Confidence = &conf
+			if labels, ok := scoreLabels[q.Name]; ok && len(ans.Probabilities) > 0 {
+				mappedProbs := make(map[string]float64, len(ans.Probabilities))
+				for k, v := range ans.Probabilities {
+					idx, err := strconv.Atoi(k)
+					if err == nil && idx >= 0 && idx < len(labels) {
+						mappedProbs[labels[idx]] = v
+					} else {
+						mappedProbs[k] = v
+					}
+				}
+				outAns.Probabilities = mappedProbs
+			} else {
+				outAns.Probabilities = ans.Probabilities
+			}
+		}
+		answers = append(answers, outAns)
+	}
+
+	usage := map[string]int{
+		"input_tokens":  int(resp.Usage.Input),
+		"output_tokens": int(resp.Usage.Output),
+		"total_tokens":  int(resp.Usage.Input + resp.Usage.Output),
+	}
+
+	setResolvedHeaders(w, resp.ResolvedVendor, resp.MatchedRule)
+	w.Header().Set("X-LLM-Proxy-Model", resp.ResolvedModel)
+	writeJSON(w, http.StatusOK, decisionsResponseOut{
+		Model:   resp.ResolvedModel,
+		Answers: answers,
+		Usage:   usage,
+	})
 	return nil
 }
 

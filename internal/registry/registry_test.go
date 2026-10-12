@@ -215,3 +215,19 @@ func TestTypeSafeVendorBuildsAJudgeAdapter(t *testing.T) {
 		t.Error("typesafe adapter accepted a text generation")
 	}
 }
+
+func TestOpenAIVendorBuildsAJudgeAdapter(t *testing.T) {
+	m := model("gpt-6-luna", VendorOpenAI, EffortLow)
+	m.Capabilities = []string{CapabilityJudge}
+	if err := ValidateModel(m); err != nil {
+		t.Fatalf("ValidateModel: %v", err)
+	}
+
+	adapter, err := buildAdapter(m, "sk-secret")
+	if err != nil {
+		t.Fatalf("buildAdapter: %v", err)
+	}
+	if _, ok := adapter.(llm.Judge); !ok {
+		t.Error("openai adapter with judge capability does not implement llm.Judge")
+	}
+}
