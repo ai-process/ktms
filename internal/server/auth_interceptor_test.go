@@ -108,6 +108,12 @@ func TestEveryProtoMethodHasAScope(t *testing.T) {
 				t.Errorf("method %s has no scope configured", full)
 			}
 		}
+		for _, s := range desc.Streams {
+			full := "/" + desc.ServiceName + "/" + s.StreamName
+			if _, ok := methodScopes[full]; !ok {
+				t.Errorf("stream method %s has no scope configured", full)
+			}
+		}
 	}
 }
 
@@ -124,5 +130,52 @@ func TestJudgeIsReachableWithAGenerateKey(t *testing.T) {
 	}
 	if id == nil || id.Name != "chatbot" {
 		t.Errorf("identity = %+v, want the calling client", id)
+	}
+}
+
+type fakeServerStream struct {
+	grpclib.ServerStream
+	ctx context.Context
+}
+
+func (f *fakeServerStream) Context() context.Context {
+	return f.ctx
+}
+
+func TestStreamAuthInterceptor(t *testing.T) {
+	store := &fakeStore{rows: map[string]*proxydb.APIKey{}}
+	genKey := mintKey(t, store, "streamer", apikeys.ScopeGenerate)
+	v := apikeys.NewVerifier(store, "")
+
+	// 1. Valid generate key passes and injects identity into stream context
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+genKey))
+	ss := &fakeServerStream{ctx: ctx}
+	var gotIdentity *apikeys.Identity
+	handler := func(_ any, stream grpclib.ServerStream) error {
+		gotIdentity = apikeys.IdentityFrom(stream.Context())
+		return nil
+	}
+	err := authStreamInterceptor(v)(nil, ss, &grpclib.StreamServerInfo{FullMethod: pb.LLMProxyService_GenerateTextStream_FullMethodName}, handler)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotIdentity == nil || gotIdentity.Name != "streamer" {
+		t.Fatalf("identity = %+v, want streamer", gotIdentity)
+	}
+
+	// 2. Missing authorization fails unauthenticated
+	ssNoAuth := &fakeServerStream{ctx: context.Background()}
+	err = authStreamInterceptor(v)(nil, ssNoAuth, &grpclib.StreamServerInfo{FullMethod: pb.LLMProxyService_GenerateTextStream_FullMethodName}, handler)
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("got code %v, want Unauthenticated", status.Code(err))
+	}
+
+	// 3. Key without generate scope fails with permission denied
+	otherKey := mintKey(t, store, "other-only", "other")
+	ctxOther := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+otherKey))
+	ssOther := &fakeServerStream{ctx: ctxOther}
+	err = authStreamInterceptor(v)(nil, ssOther, &grpclib.StreamServerInfo{FullMethod: pb.LLMProxyService_GenerateTextStream_FullMethodName}, handler)
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("got code %v, want PermissionDenied", status.Code(err))
 	}
 }

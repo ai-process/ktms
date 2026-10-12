@@ -19,15 +19,16 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LLMProxyService_GenerateText_FullMethodName     = "/llmproxy.v1.LLMProxyService/GenerateText"
-	LLMProxyService_SynthesizeSpeech_FullMethodName = "/llmproxy.v1.LLMProxyService/SynthesizeSpeech"
-	LLMProxyService_GenerateImage_FullMethodName    = "/llmproxy.v1.LLMProxyService/GenerateImage"
-	LLMProxyService_Judge_FullMethodName            = "/llmproxy.v1.LLMProxyService/Judge"
-	LLMProxyService_ListModels_FullMethodName       = "/llmproxy.v1.LLMProxyService/ListModels"
-	LLMProxyService_SubmitBatch_FullMethodName      = "/llmproxy.v1.LLMProxyService/SubmitBatch"
-	LLMProxyService_GetBatch_FullMethodName         = "/llmproxy.v1.LLMProxyService/GetBatch"
-	LLMProxyService_ListBatchResults_FullMethodName = "/llmproxy.v1.LLMProxyService/ListBatchResults"
-	LLMProxyService_CancelBatch_FullMethodName      = "/llmproxy.v1.LLMProxyService/CancelBatch"
+	LLMProxyService_GenerateText_FullMethodName       = "/llmproxy.v1.LLMProxyService/GenerateText"
+	LLMProxyService_GenerateTextStream_FullMethodName = "/llmproxy.v1.LLMProxyService/GenerateTextStream"
+	LLMProxyService_SynthesizeSpeech_FullMethodName   = "/llmproxy.v1.LLMProxyService/SynthesizeSpeech"
+	LLMProxyService_GenerateImage_FullMethodName      = "/llmproxy.v1.LLMProxyService/GenerateImage"
+	LLMProxyService_Judge_FullMethodName              = "/llmproxy.v1.LLMProxyService/Judge"
+	LLMProxyService_ListModels_FullMethodName         = "/llmproxy.v1.LLMProxyService/ListModels"
+	LLMProxyService_SubmitBatch_FullMethodName        = "/llmproxy.v1.LLMProxyService/SubmitBatch"
+	LLMProxyService_GetBatch_FullMethodName           = "/llmproxy.v1.LLMProxyService/GetBatch"
+	LLMProxyService_ListBatchResults_FullMethodName   = "/llmproxy.v1.LLMProxyService/ListBatchResults"
+	LLMProxyService_CancelBatch_FullMethodName        = "/llmproxy.v1.LLMProxyService/CancelBatch"
 )
 
 // LLMProxyServiceClient is the client API for LLMProxyService service.
@@ -42,6 +43,7 @@ const (
 // INTERNAL "vendor_error" = terminal vendor failure.
 type LLMProxyServiceClient interface {
 	GenerateText(ctx context.Context, in *GenerateTextRequest, opts ...grpc.CallOption) (*GenerateTextResponse, error)
+	GenerateTextStream(ctx context.Context, in *GenerateTextStreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GenerateTextChunk], error)
 	// Speech and images route by the same rules as text. They carry no effort of
 	// their own: the proxy routes them at EFFORT_LOW with a reserved
 	// attributes["modality"] of "tts" or "image", so a rule pins them by matching
@@ -80,6 +82,25 @@ func (c *lLMProxyServiceClient) GenerateText(ctx context.Context, in *GenerateTe
 	}
 	return out, nil
 }
+
+func (c *lLMProxyServiceClient) GenerateTextStream(ctx context.Context, in *GenerateTextStreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GenerateTextChunk], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &LLMProxyService_ServiceDesc.Streams[0], LLMProxyService_GenerateTextStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[GenerateTextStreamRequest, GenerateTextChunk]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type LLMProxyService_GenerateTextStreamClient = grpc.ServerStreamingClient[GenerateTextChunk]
 
 func (c *lLMProxyServiceClient) SynthesizeSpeech(ctx context.Context, in *SynthesizeSpeechRequest, opts ...grpc.CallOption) (*SynthesizeSpeechResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -173,6 +194,7 @@ func (c *lLMProxyServiceClient) CancelBatch(ctx context.Context, in *CancelBatch
 // INTERNAL "vendor_error" = terminal vendor failure.
 type LLMProxyServiceServer interface {
 	GenerateText(context.Context, *GenerateTextRequest) (*GenerateTextResponse, error)
+	GenerateTextStream(*GenerateTextStreamRequest, grpc.ServerStreamingServer[GenerateTextChunk]) error
 	// Speech and images route by the same rules as text. They carry no effort of
 	// their own: the proxy routes them at EFFORT_LOW with a reserved
 	// attributes["modality"] of "tts" or "image", so a rule pins them by matching
@@ -204,6 +226,9 @@ type UnimplementedLLMProxyServiceServer struct{}
 
 func (UnimplementedLLMProxyServiceServer) GenerateText(context.Context, *GenerateTextRequest) (*GenerateTextResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GenerateText not implemented")
+}
+func (UnimplementedLLMProxyServiceServer) GenerateTextStream(*GenerateTextStreamRequest, grpc.ServerStreamingServer[GenerateTextChunk]) error {
+	return status.Error(codes.Unimplemented, "method GenerateTextStream not implemented")
 }
 func (UnimplementedLLMProxyServiceServer) SynthesizeSpeech(context.Context, *SynthesizeSpeechRequest) (*SynthesizeSpeechResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SynthesizeSpeech not implemented")
@@ -267,6 +292,17 @@ func _LLMProxyService_GenerateText_Handler(srv interface{}, ctx context.Context,
 	}
 	return interceptor(ctx, in, info, handler)
 }
+
+func _LLMProxyService_GenerateTextStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GenerateTextStreamRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(LLMProxyServiceServer).GenerateTextStream(m, &grpc.GenericServerStream[GenerateTextStreamRequest, GenerateTextChunk]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type LLMProxyService_GenerateTextStreamServer = grpc.ServerStreamingServer[GenerateTextChunk]
 
 func _LLMProxyService_SynthesizeSpeech_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SynthesizeSpeechRequest)
@@ -456,6 +492,12 @@ var LLMProxyService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _LLMProxyService_CancelBatch_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "GenerateTextStream",
+			Handler:       _LLMProxyService_GenerateTextStream_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "llmproxy/v1/llmproxy.proto",
 }

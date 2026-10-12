@@ -124,10 +124,124 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		ResolvedVendor: model.Vendor,
 		MatchedRule:    ruleName,
 	}
-	for _, choice := range resp.Choices {
+	for i, choice := range resp.Choices {
 		out.Choices = append(out.Choices, choice.Text)
+		var tcs []*pb.ToolCall
+		for _, tc := range choice.ToolCalls {
+			tcs = append(tcs, &pb.ToolCall{
+				Id:   tc.ID,
+				Type: tc.Type,
+				Function: &pb.FunctionCall{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			})
+		}
+		finish := choice.FinishReason
+		if finish == "" {
+			finish = "stop"
+		}
+		out.Details = append(out.Details, &pb.Choice{
+			Index:        int32(i),
+			Text:         choice.Text,
+			ToolCalls:    tcs,
+			FinishReason: finish,
+		})
 	}
 	return out, nil
+}
+
+// GenerateTextStream handles streaming text generation.
+func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stream pb.LLMProxyService_GenerateTextStreamServer) error {
+	id := apikeys.IdentityFrom(stream.Context())
+	if id == nil {
+		return status.Error(codes.Unauthenticated, "no identity")
+	}
+	inner := req.GetRequest()
+	if inner == nil {
+		return status.Error(codes.InvalidArgument, "bad_request: request is required")
+	}
+	if len(inner.GetMessages()) == 0 && inner.GetBaseSystemInstruction() == "" && inner.GetRequestInstruction() == "" {
+		return status.Error(codes.InvalidArgument, "bad_request: no messages or instructions")
+	}
+
+	snap := s.snapshots.Snapshot()
+	if !snap.Configured() {
+		return router.ToStatus(router.ErrNotConfigured)
+	}
+
+	effort := effortToString(inner.GetEffort())
+	var (
+		chain    []string
+		ruleName string
+	)
+	switch {
+	case inner.GetModelOverride() != "":
+		if _, ok := snap.Models[inner.GetModelOverride()]; !ok {
+			return status.Errorf(codes.InvalidArgument, "bad_request: unknown model %q", inner.GetModelOverride())
+		}
+		chain = []string{inner.GetModelOverride()}
+		if effort == "" {
+			effort = snap.Models[inner.GetModelOverride()].Efforts[0]
+		}
+	case effort == "":
+		return status.Error(codes.InvalidArgument, "bad_request: effort is required")
+	default:
+		rule := router.Match(snap, effort, inner.GetAttributes())
+		if rule == nil {
+			return router.ToStatus(router.ErrNotConfigured)
+		}
+		chain = rule.Use
+		ruleName = rule.Name
+	}
+
+	models, err := router.FilterChain(snap, chain, id.KeyID, effort, inner.GetEnableGoogleSearch(), "")
+	if err != nil {
+		return router.ToStatus(err)
+	}
+
+	chat := buildChat(inner, id, ruleName, effort)
+	var sentFirst bool
+	_, err = router.ExecuteStream(stream.Context(), s.throttle, router.Request{
+		Chain:      models,
+		KeyName:    id.Name,
+		UserID:     router.UserID(inner.GetAttributes(), id.Name),
+		Estimate:   estimateTokens(inner),
+		Chat:       chat,
+		Adapter:    func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
+		SoftSchema: registry.SoftSchema,
+	}, func(m *proxydb.Model, chunk llm.StreamChunk) error {
+		outChunk := &pb.GenerateTextChunk{
+			Delta:        chunk.Delta,
+			FinishReason: chunk.FinishReason,
+		}
+		if !sentFirst {
+			sentFirst = true
+			outChunk.ResolvedModel = m.ID
+			outChunk.ResolvedVendor = m.Vendor
+			outChunk.MatchedRule = ruleName
+		}
+		if chunk.Usage != nil {
+			outChunk.Usage = &pb.TokensUsage{
+				Input:  int64(chunk.Usage.Input),
+				Output: int64(chunk.Usage.Output),
+			}
+		}
+		for _, tc := range chunk.ToolCallChunks {
+			outChunk.ToolCallChunks = append(outChunk.ToolCallChunks, &pb.ToolCallChunk{
+				Index:          tc.Index,
+				Id:             tc.ID,
+				Type:           tc.Type,
+				Name:           tc.Name,
+				ArgumentsDelta: tc.ArgumentsDelta,
+			})
+		}
+		return stream.Send(outChunk)
+	})
+	if err != nil {
+		return router.ToStatus(err)
+	}
+	return nil
 }
 
 // buildChat maps the wire request onto the vendored ChatContext.
@@ -142,13 +256,62 @@ func buildChat(req *pb.GenerateTextRequest, id *apikeys.Identity, ruleName, effo
 	for _, m := range req.GetMessages() {
 		switch m.GetRole() {
 		case pb.MessageRole_MESSAGE_ROLE_ASSISTANT:
-			chat.AddAssistantMessage(m.GetText())
+			if len(m.GetToolCalls()) > 0 {
+				var tcs []*llm.ToolCall
+				for _, tc := range m.GetToolCalls() {
+					tcs = append(tcs, &llm.ToolCall{
+						ID:   tc.GetId(),
+						Type: tc.GetType(),
+						Function: llm.FunctionCall{
+							Name:      tc.GetFunction().GetName(),
+							Arguments: tc.GetFunction().GetArguments(),
+						},
+					})
+				}
+				chat.AddAssistantMessageWithToolCalls(m.GetText(), tcs)
+			} else {
+				chat.AddAssistantMessage(m.GetText())
+			}
+		case pb.MessageRole_MESSAGE_ROLE_TOOL:
+			chat.AddToolMessage(m.GetToolCallId(), m.GetText())
 		default:
 			chat.AddUserMessage(m.GetText())
 		}
 	}
 	if schema := schemaFromProto(req.GetResponseSchema()); schema != nil {
 		chat.SetResponseSchema(schema)
+	}
+	if len(req.GetTools()) > 0 {
+		var tools []*llm.Tool
+		for _, t := range req.GetTools() {
+			tools = append(tools, &llm.Tool{
+				Type: t.GetType(),
+				Function: llm.FunctionDefinition{
+					Name:        t.GetFunction().GetName(),
+					Description: t.GetFunction().GetDescription(),
+					Parameters:  schemaFromProto(t.GetFunction().GetParameters()),
+					Strict:      t.GetFunction().GetStrict(),
+				},
+			})
+		}
+		chat.SetTools(tools)
+	}
+	if tc := req.GetToolChoice(); tc != nil {
+		var mode string
+		switch tc.GetMode() {
+		case pb.ToolChoice_MODE_AUTO:
+			mode = "auto"
+		case pb.ToolChoice_MODE_NONE:
+			mode = "none"
+		case pb.ToolChoice_MODE_REQUIRED:
+			mode = "required"
+		case pb.ToolChoice_MODE_SPECIFIC:
+			mode = "specific"
+		}
+		chat.SetToolChoice(&llm.ToolChoice{
+			Mode:                 mode,
+			SpecificFunctionName: tc.GetSpecificFunctionName(),
+		})
 	}
 	if req.GetMaxOutputTokens() > 0 {
 		chat.SetMaxOutputTokens(int(req.GetMaxOutputTokens()))

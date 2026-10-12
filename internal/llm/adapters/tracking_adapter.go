@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	usagev1 "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1"
@@ -109,6 +110,104 @@ func (t *TrackingAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, er
 	}
 
 	return resp, err
+}
+
+// SupportsStreaming reports whether the underlying adapter supports streaming.
+func (t *TrackingAdapter) SupportsStreaming() bool {
+	streamer, ok := t.adapter.(llm.StreamAdapter)
+	if !ok {
+		return false
+	}
+	if sc, ok := streamer.(interface{ SupportsStreaming() bool }); ok {
+		return sc.SupportsStreaming()
+	}
+	return true
+}
+
+// GenerateTextStream forwards streaming text generation and tracks usage upon completion.
+func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+	streamer, ok := t.adapter.(llm.StreamAdapter)
+	if !ok {
+		return fmt.Errorf("%w: model %s", llm.ErrStreamingNotSupported, t.model)
+	}
+
+	startTime := time.Now()
+	var userID string
+	if chat != nil {
+		userID = chat.GetInternalUserID()
+	}
+
+	actionID := "llm.generate_text"
+	var meta map[string]string
+	if chat != nil {
+		if actionIDFromContext := chat.GetActionID(); actionIDFromContext != "" {
+			actionID = actionIDFromContext
+		}
+		meta = chat.GetMeta()
+	}
+
+	var (
+		lastUsage        llm.TokensUsage
+		outputCharsCount int
+		chunksEmitted    int
+	)
+	wrappedChunk := func(chunk llm.StreamChunk) error {
+		chunksEmitted++
+		outputCharsCount += len([]rune(chunk.Delta))
+		for _, tc := range chunk.ToolCallChunks {
+			outputCharsCount += len([]rune(tc.ArgumentsDelta)) + len([]rune(tc.Name))
+		}
+		if chunk.Usage != nil {
+			lastUsage = *chunk.Usage
+		}
+		return onChunk(chunk)
+	}
+
+	err := streamer.GenerateTextStream(ctx, chat, wrappedChunk)
+	durationMs := time.Since(startTime).Milliseconds()
+
+	// If the stream ended without vendor token accounting (cut short, mid-stream disconnect,
+	// or aborted before first chunk while thinking), fall back to estimating consumed tokens.
+	disconnected := ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+	if lastUsage.Input == 0 && (chunksEmitted > 0 || disconnected) {
+		if chat != nil {
+			lastUsage.Input = chat.EstimateInputTokens()
+		}
+	}
+	if lastUsage.Output == 0 && chunksEmitted > 0 {
+		lastUsage.Output = llm.EstimateOutputTokens(outputCharsCount)
+	}
+
+	if t.tracker != nil {
+		var status usagev1.Status
+		if err != nil {
+			status = usagev1.Status_STATUS_ERROR
+		} else {
+			status = usagev1.Status_STATUS_SUCCESS
+		}
+		if trackErr := t.tracker.RecordUsage(
+			userID,
+			actionID,
+			t.vendor,
+			t.model,
+			lastUsage.Input,
+			lastUsage.Output,
+			durationMs,
+			status,
+			meta,
+		); trackErr != nil {
+			log.Error().
+				Stack().
+				Err(trackErr).
+				Str("userID", userID).
+				Str("actionID", actionID).
+				Str("vendor", t.vendor).
+				Str("model", t.model).
+				Msg("Failed to record usage for stream")
+		}
+	}
+
+	return err
 }
 
 // SynthesizeSpeech synthesizes speech and tracks usage
