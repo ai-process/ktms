@@ -2,12 +2,14 @@ package registry
 
 import "github.com/ai-process/llm-proxy/internal/proxydb"
 
-// Vendors the engine can construct adapters for. DeepSeek rides the OpenAI
-// adapter with a different base URL.
+// Vendors the engine can construct adapters for. DeepSeek and Ollama ride
+// the OpenAI adapter with a different base URL; Ollama is any self-hosted
+// OpenAI-compatible server, so its endpoint is required and its key is its own.
 const (
 	VendorOpenAI   = "openai"
 	VendorGoogle   = "google"
 	VendorDeepSeek = "deepseek"
+	VendorOllama   = "ollama"
 	VendorTypeSafe = "typesafe"
 )
 
@@ -34,8 +36,18 @@ const CapabilityGoogleSearch = "google_search"
 const CapabilityNoStructuredOutput = "no_structured_output"
 
 // CapabilityNoThinking marks models that reason by default unless told not to
-// (DeepSeek V4 thinks at high effort, billed as output). The proxy turns it off.
+// (DeepSeek V4 thinks at high effort, billed as output). The proxy turns it off
+// the way the vendor understands.
 const CapabilityNoThinking = "no_thinking"
+
+// thinkingOff are the request fields that turn a vendor's default reasoning
+// off: Ollama takes reasoning_effort, DeepSeek a thinking switch.
+func thinkingOff(vendor string) map[string]any {
+	if vendor == VendorOllama {
+		return map[string]any{"reasoning_effort": "none"}
+	}
+	return map[string]any{"thinking": map[string]string{"type": "disabled"}}
+}
 
 // CapabilityTTS and CapabilityImage mark models that can serve the speech and
 // image RPCs. Opt-in: a chain filtered for one of these keeps only models that
@@ -54,7 +66,7 @@ const CapabilityJudge = "judge"
 const CapabilityBatch = "batch"
 
 func ValidVendor(v string) bool {
-	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorTypeSafe
+	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe
 }
 
 // SoftSchema reports whether this model needs the prompt-and-verify path.

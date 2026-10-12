@@ -27,7 +27,7 @@ const (
 type ModelSpec struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                                     // unique registry id, referenced by rules and model_override
-	Vendor          string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`                                             // openai | google | deepseek
+	Vendor          string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`                                             // openai | google | deepseek | ollama | typesafe
 	Endpoint        string                 `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"`                                         // optional base-URL override
 	Efforts         []Effort               `protobuf:"varint,4,rep,packed,name=efforts,proto3,enum=llmproxy.v1.Effort" json:"efforts,omitempty"`           // tiers this model may serve
 	Capabilities    []string               `protobuf:"bytes,5,rep,name=capabilities,proto3" json:"capabilities,omitempty"`                                 // e.g. "google_search"

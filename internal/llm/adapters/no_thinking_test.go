@@ -7,13 +7,21 @@ import (
 	"github.com/ai-process/llm-proxy/internal/llm"
 )
 
-func TestBuildCompletionParamsThinkingSwitch(t *testing.T) {
+func TestBuildCompletionParamsThinkingOff(t *testing.T) {
 	chat := llm.NewChatContext()
 	chat.AddUserMessage("go")
 
-	for _, off := range []bool{false, true} {
+	for _, c := range []struct {
+		name string
+		off  map[string]any
+		want map[string]string
+	}{
+		{"none", nil, nil},
+		{"deepseek", map[string]any{"thinking": map[string]string{"type": "disabled"}}, map[string]string{"thinking": `{"type":"disabled"}`}},
+		{"ollama", map[string]any{"reasoning_effort": "none"}, map[string]string{"reasoning_effort": `"none"`}},
+	} {
 		a := &OpenAIAdapter{}
-		a.SetNoThinking(off)
+		a.SetThinkingOff(c.off)
 		body, err := json.Marshal(a.buildCompletionParams(chat, nil, 0))
 		if err != nil {
 			t.Fatal(err)
@@ -22,12 +30,15 @@ func TestBuildCompletionParamsThinkingSwitch(t *testing.T) {
 		if err := json.Unmarshal(body, &got); err != nil {
 			t.Fatal(err)
 		}
-		thinking, sent := got["thinking"]
-		if sent != off {
-			t.Fatalf("noThinking=%v: thinking sent=%v (%s)", off, sent, body)
+		_, thinking := got["thinking"]
+		_, effort := got["reasoning_effort"]
+		if c.want == nil && (thinking || effort) {
+			t.Fatalf("%s: no switch expected, got %s", c.name, body)
 		}
-		if off && string(thinking) != `{"type":"disabled"}` {
-			t.Fatalf("want thinking disabled, got %s", thinking)
+		for k, v := range c.want {
+			if string(got[k]) != v {
+				t.Fatalf("%s: %s = %s, want %s", c.name, k, got[k], v)
+			}
 		}
 	}
 }
