@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/rs/zerolog/log"
 )
@@ -15,6 +16,7 @@ const (
 	MessageTypeSystem MessageType = "system"
 	MessageTypeUser   MessageType = "user"
 	MessageTypeBot    MessageType = "bot"
+	MessageTypeTool   MessageType = "tool"
 )
 
 const (
@@ -23,8 +25,11 @@ const (
 )
 
 type Message struct {
-	Text string
-	Type MessageType
+	Text         string
+	Type         MessageType
+	ToolCalls    []*ToolCall
+	ToolCallID   string
+	FinishReason string
 }
 
 type ChatContext struct {
@@ -42,6 +47,8 @@ type ChatContext struct {
 	enableGoogleSearch          bool   // per-request, never persisted; see SetEnableGoogleSearch
 	BaseSystemInstruction       string // Persistent system instructions (not in messages)
 	perRequestSystemInstruction string // Ephemeral per-request instruction (not persisted)
+	tools                       []*Tool
+	toolChoice                  *ToolChoice
 }
 
 func NewChatContext() *ChatContext {
@@ -147,6 +154,40 @@ func (c *ChatContext) AddUserMessage(message string) {
 		Type: MessageTypeUser,
 	}
 	c.addMessage(&userMessage, false)
+}
+
+func (c *ChatContext) AddToolMessage(toolCallID, text string) {
+	msg := Message{
+		Text:       text,
+		Type:       MessageTypeTool,
+		ToolCallID: toolCallID,
+	}
+	c.addMessage(&msg, false)
+}
+
+func (c *ChatContext) AddAssistantMessageWithToolCalls(message string, toolCalls []*ToolCall) {
+	assistantMessage := Message{
+		Text:      message,
+		Type:      MessageTypeBot,
+		ToolCalls: toolCalls,
+	}
+	c.addMessage(&assistantMessage, false)
+}
+
+func (c *ChatContext) SetTools(tools []*Tool) {
+	c.tools = tools
+}
+
+func (c *ChatContext) GetTools() []*Tool {
+	return c.tools
+}
+
+func (c *ChatContext) SetToolChoice(tc *ToolChoice) {
+	c.toolChoice = tc
+}
+
+func (c *ChatContext) GetToolChoice() *ToolChoice {
+	return c.toolChoice
 }
 
 func (c *ChatContext) GetMessages() []*Message {
@@ -410,4 +451,28 @@ func (c *ChatContext) GobEncode() ([]byte, error) {
 // GobDecode implements the gob.GobDecoder interface for ChatContext
 func (c *ChatContext) GobDecode(data []byte) error {
 	return c.UnmarshalBinary(data)
+}
+
+// EstimateInputTokens estimates input tokens based on runes in instructions and messages.
+func (c *ChatContext) EstimateInputTokens() int {
+	if c == nil {
+		return 1
+	}
+	runes := utf8.RuneCountInString(c.BaseSystemInstruction) +
+		utf8.RuneCountInString(c.perRequestSystemInstruction)
+	for _, m := range c.GetMessages() {
+		runes += utf8.RuneCountInString(m.Text)
+		for _, tc := range m.ToolCalls {
+			runes += utf8.RuneCountInString(tc.Function.Name) + utf8.RuneCountInString(tc.Function.Arguments)
+		}
+	}
+	return runes/4 + 1
+}
+
+// EstimateOutputTokens estimates output tokens from character or rune count.
+func EstimateOutputTokens(runes int) int {
+	if runes <= 0 {
+		return 1
+	}
+	return runes/4 + 1
 }

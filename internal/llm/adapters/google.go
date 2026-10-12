@@ -90,7 +90,29 @@ func (a *GoogleAdapter) parseGenerateContentResponse(result *genai.GenerateConte
 	if finishReason == genai.FinishReasonMaxTokens {
 		return nil, llm.TruncatedError("GoogleAdapter", a.model, len(text))
 	}
-	if text == "" {
+
+	var toolCalls []*llm.ToolCall
+	if len(result.Candidates) > 0 && result.Candidates[0].Content != nil {
+		for _, part := range result.Candidates[0].Content.Parts {
+			if part.FunctionCall != nil {
+				argsJSON, _ := json.Marshal(part.FunctionCall.Args)
+				id := part.FunctionCall.ID
+				if id == "" {
+					id = fmt.Sprintf("call_%s_%d", part.FunctionCall.Name, len(toolCalls))
+				}
+				toolCalls = append(toolCalls, &llm.ToolCall{
+					ID:   id,
+					Type: "function",
+					Function: llm.FunctionCall{
+						Name:      part.FunctionCall.Name,
+						Arguments: string(argsJSON),
+					},
+				})
+			}
+		}
+	}
+
+	if text == "" && len(toolCalls) == 0 {
 		return nil, fmt.Errorf("GoogleAdapter: empty response (finish reason: %s)", finishReason)
 	}
 
@@ -108,10 +130,14 @@ func (a *GoogleAdapter) parseGenerateContentResponse(result *genai.GenerateConte
 		}
 	}
 
+	calculatedFinishReason := mapGeminiFinishReason(finishReason, len(toolCalls) > 0)
+
 	response := &llm.Response{}
 	response.AddMessage(&llm.Message{
-		Type: llm.MessageTypeBot,
-		Text: text,
+		Type:         llm.MessageTypeBot,
+		Text:         text,
+		ToolCalls:    toolCalls,
+		FinishReason: calculatedFinishReason,
 	})
 	if result.UsageMetadata != nil {
 		response.Usage.Input = int(result.UsageMetadata.PromptTokenCount)
@@ -131,18 +157,68 @@ func (a *GoogleAdapter) parseGenerateContentResponse(result *genai.GenerateConte
 // exercise question is a bot turn) keep their intended semantics.
 // System messages are excluded: they go through buildSystemInstruction.
 func (a *GoogleAdapter) contextToContents(messages []*llm.Message) []*genai.Content {
-	var contents []*genai.Content
-	for i, message := range messages {
-		if message.Text == "" {
-			log.Printf("GoogleAdapter: Message %d is empty, skipping.\n", i)
-			continue
+	functionNameByID := make(map[string]string)
+	for _, message := range messages {
+		for _, tc := range message.ToolCalls {
+			if tc.ID != "" && tc.Function.Name != "" {
+				functionNameByID[tc.ID] = tc.Function.Name
+			}
 		}
+	}
 
+	var contents []*genai.Content
+	for i := 0; i < len(messages); {
+		message := messages[i]
 		switch message.Type {
 		case llm.MessageTypeUser:
-			contents = append(contents, genai.NewContentFromText(message.Text, genai.RoleUser))
+			if message.Text != "" {
+				contents = append(contents, genai.NewContentFromText(message.Text, genai.RoleUser))
+			}
+			i++
 		case llm.MessageTypeBot:
-			contents = append(contents, genai.NewContentFromText(message.Text, genai.RoleModel))
+			var parts []*genai.Part
+			if message.Text != "" {
+				parts = append(parts, genai.NewPartFromText(message.Text))
+			}
+			for _, tc := range message.ToolCalls {
+				var args map[string]any
+				if tc.Function.Arguments != "" {
+					_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
+				}
+				fcPart := genai.NewPartFromFunctionCall(tc.Function.Name, args)
+				if fcPart.FunctionCall != nil {
+					fcPart.FunctionCall.ID = tc.ID
+				}
+				parts = append(parts, fcPart)
+			}
+			if len(parts) > 0 {
+				contents = append(contents, genai.NewContentFromParts(parts, genai.RoleModel))
+			}
+			i++
+		case llm.MessageTypeTool:
+			var parts []*genai.Part
+			for i < len(messages) && messages[i].Type == llm.MessageTypeTool {
+				toolMsg := messages[i]
+				fnName := functionNameByID[toolMsg.ToolCallID]
+				if fnName == "" {
+					fnName = toolMsg.ToolCallID
+				}
+				var respMap map[string]any
+				if err := json.Unmarshal([]byte(toolMsg.Text), &respMap); err != nil {
+					respMap = map[string]any{"output": toolMsg.Text}
+				}
+				respPart := genai.NewPartFromFunctionResponse(fnName, respMap)
+				if respPart.FunctionResponse != nil {
+					respPart.FunctionResponse.ID = toolMsg.ToolCallID
+				}
+				parts = append(parts, respPart)
+				i++
+			}
+			if len(parts) > 0 {
+				contents = append(contents, genai.NewContentFromParts(parts, genai.RoleUser))
+			}
+		default:
+			i++
 		}
 	}
 	return contents
@@ -161,6 +237,105 @@ func (a *GoogleAdapter) generateOnce(ctx context.Context, contents []*genai.Cont
 		finishReason = result.Candidates[0].FinishReason
 	}
 	return result, finishReason, nil
+}
+
+// GenerateTextStream implements llm.StreamAdapter for Google Gemini.
+func (a *GoogleAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+	config := a.buildGenerateConfig(chat)
+	contents := a.contextToContents(chat.GetMessages())
+	if len(contents) == 0 {
+		return fmt.Errorf("GoogleAdapter: no non-empty messages, cannot generate text")
+	}
+
+	a.throttle.WaitForSlot()
+	var (
+		callIndex   int
+		hasToolCall bool
+	)
+	for resp, err := range a.geminiClient.Models.GenerateContentStream(ctx, a.model, contents, config) {
+		if err != nil {
+			return err
+		}
+
+		var streamChunk llm.StreamChunk
+		if resp.UsageMetadata != nil {
+			streamChunk.Usage = &llm.TokensUsage{
+				Input: int(resp.UsageMetadata.PromptTokenCount),
+			}
+			if resp.UsageMetadata.CandidatesTokenCount > 0 {
+				streamChunk.Usage.Output = int(resp.UsageMetadata.CandidatesTokenCount)
+			}
+		}
+
+		if len(resp.Candidates) > 0 {
+			cand := resp.Candidates[0]
+			if cand.Content != nil {
+				for _, part := range cand.Content.Parts {
+					if part.Text != "" {
+						streamChunk.Delta += part.Text
+					}
+					if part.FunctionCall != nil {
+						hasToolCall = true
+						argsJSON, _ := json.Marshal(part.FunctionCall.Args)
+						id := part.FunctionCall.ID
+						if id == "" {
+							id = fmt.Sprintf("call_%s_%d", part.FunctionCall.Name, callIndex)
+						}
+						streamChunk.ToolCallChunks = append(streamChunk.ToolCallChunks, &llm.ToolCallChunk{
+							Index:          int32(callIndex),
+							ID:             id,
+							Type:           "function",
+							Name:           part.FunctionCall.Name,
+							ArgumentsDelta: string(argsJSON),
+						})
+						callIndex++
+					}
+				}
+			}
+
+			if cand.FinishReason != "" && cand.FinishReason != genai.FinishReasonUnspecified {
+				streamChunk.FinishReason = mapGeminiFinishReason(cand.FinishReason, hasToolCall)
+			}
+		}
+
+		if len(streamChunk.ToolCallChunks) > 0 && streamChunk.FinishReason == "" {
+			streamChunk.FinishReason = "tool_calls"
+		}
+
+		if streamChunk.Delta != "" || streamChunk.FinishReason != "" || streamChunk.Usage != nil || len(streamChunk.ToolCallChunks) > 0 {
+			if err := onChunk(streamChunk); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// mapGeminiFinishReason maps vendor stop conditions to OpenAI standards
+// so clients receive content_filter or tool_calls rather than vendor enums.
+func mapGeminiFinishReason(fr genai.FinishReason, hasToolCall bool) string {
+	if hasToolCall {
+		return "tool_calls"
+	}
+	switch fr {
+	case genai.FinishReasonStop:
+		return "stop"
+	case genai.FinishReasonMaxTokens:
+		return "length"
+	case genai.FinishReasonSafety,
+		genai.FinishReasonImageSafety,
+		genai.FinishReasonBlocklist,
+		genai.FinishReasonProhibitedContent,
+		genai.FinishReasonSPII,
+		genai.FinishReasonRecitation:
+		return "content_filter"
+	default:
+		if fr == "" || fr == genai.FinishReasonUnspecified {
+			return "stop"
+		}
+		return strings.ToLower(string(fr))
+	}
 }
 
 // buildGenerateConfig assembles the per-request vendor config: system instruction,
@@ -189,7 +364,54 @@ func (a *GoogleAdapter) buildGenerateConfig(chat *llm.ChatContext) *genai.Genera
 		}
 	}
 
-	if chat.GoogleSearchEnabled() {
+	if len(chat.GetTools()) > 0 {
+		var fds []*genai.FunctionDeclaration
+		for _, t := range chat.GetTools() {
+			fd := &genai.FunctionDeclaration{
+				Name:        t.Function.Name,
+				Description: t.Function.Description,
+			}
+			if t.Function.Parameters != nil {
+				fd.Parameters = convertSchemaToGenai(t.Function.Parameters)
+			}
+			fds = append(fds, fd)
+		}
+		tool := &genai.Tool{FunctionDeclarations: fds}
+		if chat.GoogleSearchEnabled() && config.ResponseSchema == nil {
+			tool.GoogleSearch = &genai.GoogleSearch{}
+		}
+		config.Tools = append(config.Tools, tool)
+
+		if tc := chat.GetToolChoice(); tc != nil {
+			switch tc.Mode {
+			case "auto":
+				config.ToolConfig = &genai.ToolConfig{
+					FunctionCallingConfig: &genai.FunctionCallingConfig{
+						Mode: genai.FunctionCallingConfigModeAuto,
+					},
+				}
+			case "none":
+				config.ToolConfig = &genai.ToolConfig{
+					FunctionCallingConfig: &genai.FunctionCallingConfig{
+						Mode: genai.FunctionCallingConfigModeNone,
+					},
+				}
+			case "required":
+				config.ToolConfig = &genai.ToolConfig{
+					FunctionCallingConfig: &genai.FunctionCallingConfig{
+						Mode: genai.FunctionCallingConfigModeAny,
+					},
+				}
+			case "specific":
+				config.ToolConfig = &genai.ToolConfig{
+					FunctionCallingConfig: &genai.FunctionCallingConfig{
+						Mode:                 genai.FunctionCallingConfigModeAny,
+						AllowedFunctionNames: []string{tc.SpecificFunctionName},
+					},
+				}
+			}
+		}
+	} else if chat.GoogleSearchEnabled() {
 		if config.ResponseSchema != nil {
 			// Gemini rejects search grounding combined with a JSON response schema;
 			// the schema is the caller's contract, so the tool is what gets dropped.

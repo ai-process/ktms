@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -144,6 +145,165 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 		return nil, nil, &ChainExhausted{AllThrottled: true, ThrottleKind: throttleKind}
 	}
 	return nil, nil, &ChainExhausted{Last: lastErr}
+}
+
+// ExecuteStream walks the model chain for streaming requests. Pre-stream failures
+// fallback to the next model; once the first chunk is emitted, the stream locks.
+func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*proxydb.Model, llm.StreamChunk) error) (*proxydb.Model, error) {
+	var lastErr error
+	allThrottled := true
+	throttleKind := "rpm"
+
+	for _, m := range r.Chain {
+		if !th.AllowRPM(ctx, r.KeyName, m) {
+			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Msg("model rpm-saturated, trying next in chain")
+			continue
+		}
+		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate)
+		if tripped != "" {
+			throttleKind = tripped
+			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("budget", tripped).
+				Msg("budget exhausted, trying next in chain")
+			continue
+		}
+		allThrottled = false
+
+		adapter, err := r.Adapter(m)
+		if err != nil {
+			th.Settle(res, llm.TokensUsage{})
+			lastErr = err
+			continue
+		}
+
+		type streamChecker interface {
+			SupportsStreaming() bool
+		}
+		if sc, ok := adapter.(streamChecker); ok && !sc.SupportsStreaming() {
+			th.Settle(res, llm.TokensUsage{})
+			log.Warn().Str("model", m.ID).Msg("model does not support streaming, trying next in chain")
+			continue
+		}
+
+		streamAdapter, ok := adapter.(llm.StreamAdapter)
+		if !ok {
+			th.Settle(res, llm.TokensUsage{})
+			log.Warn().Str("model", m.ID).Msg("model does not support streaming, trying next in chain")
+			continue
+		}
+
+		schema := r.Chat.GetResponseSchema()
+		soft := schema != nil && r.SoftSchema != nil && r.SoftSchema(m)
+
+		var (
+			firstChunkSent bool
+			spent          llm.TokensUsage
+			outChars       int
+			bufferedChunks []llm.StreamChunk
+			fullText       strings.Builder
+		)
+
+		err = streamAdapter.GenerateTextStream(ctx, r.Chat, func(chunk llm.StreamChunk) error {
+			if soft {
+				bufferedChunks = append(bufferedChunks, chunk)
+				fullText.WriteString(chunk.Delta)
+				if chunk.Usage != nil {
+					spent.Input = chunk.Usage.Input
+					spent.Output = chunk.Usage.Output
+				}
+				return nil
+			}
+			firstChunkSent = true
+			outChars += len([]rune(chunk.Delta))
+			for _, tc := range chunk.ToolCallChunks {
+				outChars += len([]rune(tc.ArgumentsDelta)) + len([]rune(tc.Name))
+			}
+			if chunk.Usage != nil {
+				spent.Input = chunk.Usage.Input
+				spent.Output = chunk.Usage.Output
+			}
+			return onChunk(m, chunk)
+		})
+
+		if soft && err == nil {
+			if checkErr := llm.CheckResponseSchema(fullText.String(), schema); checkErr != nil {
+				log.Error().Err(checkErr).Str("model", m.ID).Str("vendor", m.Vendor).
+					Msg("stream reply did not match requested schema, trying next in chain")
+				if spent.Input == 0 {
+					if r.Chat != nil {
+						spent.Input = r.Chat.EstimateInputTokens()
+					}
+					if spent.Input == 0 && r.Estimate > 0 {
+						spent.Input = int(r.Estimate)
+					}
+				}
+				if spent.Output == 0 {
+					spent.Output = llm.EstimateOutputTokens(len([]rune(fullText.String())))
+				}
+				th.Settle(res, spent)
+				lastErr = &SchemaFailure{Model: m.ID, Err: checkErr}
+				continue
+			}
+			firstChunkSent = true
+			for _, c := range bufferedChunks {
+				outChars += len([]rune(c.Delta))
+				for _, tc := range c.ToolCallChunks {
+					outChars += len([]rune(tc.ArgumentsDelta)) + len([]rune(tc.Name))
+				}
+				if c.Usage != nil {
+					spent.Input = c.Usage.Input
+					spent.Output = c.Usage.Output
+				}
+				if emitErr := onChunk(m, c); emitErr != nil {
+					th.Settle(res, spent)
+					return m, emitErr
+				}
+			}
+		}
+
+		disconnected := ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+		if (firstChunkSent || disconnected || (soft && len(bufferedChunks) > 0)) && spent.Input == 0 {
+			if r.Chat != nil {
+				spent.Input = r.Chat.EstimateInputTokens()
+			}
+			if spent.Input == 0 && r.Estimate > 0 {
+				spent.Input = int(r.Estimate)
+			}
+		}
+		if spent.Output == 0 {
+			if outChars > 0 {
+				spent.Output = llm.EstimateOutputTokens(outChars)
+			} else if soft && fullText.Len() > 0 {
+				spent.Output = llm.EstimateOutputTokens(len([]rune(fullText.String())))
+			}
+		}
+
+		th.Settle(res, spent)
+
+		if err == nil {
+			return m, nil
+		}
+
+		lastErr = err
+		if firstChunkSent {
+			return m, err
+		}
+
+		if errors.Is(err, llm.ErrStreamingNotSupported) {
+			log.Warn().Str("model", m.ID).Msg("streaming not supported, trying next in chain")
+			continue
+		}
+
+		if errors.Is(err, llm.ErrOutputTruncated) || !llm.IsRetryableError(err) {
+			log.Error().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).
+				Str("key", r.KeyName).Msg("terminal vendor error, ending stream chain")
+			return m, err
+		}
+	}
+
+	if allThrottled {
+		return nil, &ChainExhausted{AllThrottled: true, ThrottleKind: throttleKind}
+	}
+	return nil, &ChainExhausted{Last: lastErr}
 }
 
 // callAndCheck runs one model and, when that model cannot be handed a schema

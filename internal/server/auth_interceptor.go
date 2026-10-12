@@ -20,15 +20,16 @@ const metadataKeyAuthorization = "authorization"
 // refused, so adding an RPC without deciding who may call it fails closed
 // instead of shipping an open endpoint.
 var methodScopes = map[string]string{
-	method(pb.LLMProxyService_GenerateText_FullMethodName):     apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_SynthesizeSpeech_FullMethodName): apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_GenerateImage_FullMethodName):    apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_Judge_FullMethodName):            apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_ListModels_FullMethodName):       apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_SubmitBatch_FullMethodName):      apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_GetBatch_FullMethodName):         apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_ListBatchResults_FullMethodName): apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_CancelBatch_FullMethodName):      apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_GenerateText_FullMethodName):       apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_GenerateTextStream_FullMethodName): apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_SynthesizeSpeech_FullMethodName):   apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_GenerateImage_FullMethodName):      apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_Judge_FullMethodName):              apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_ListModels_FullMethodName):         apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_SubmitBatch_FullMethodName):        apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_GetBatch_FullMethodName):           apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_ListBatchResults_FullMethodName):   apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_CancelBatch_FullMethodName):        apikeys.ScopeGenerate,
 
 	method(pb.LLMProxyAdminService_UpsertModel_FullMethodName):      apikeys.ScopeAdmin,
 	method(pb.LLMProxyAdminService_DeleteModel_FullMethodName):      apikeys.ScopeAdmin,
@@ -66,6 +67,33 @@ func authUnaryInterceptor(verifier *apikeys.Verifier) grpclib.UnaryServerInterce
 			return nil, err
 		}
 		return handler(apikeys.WithIdentity(ctx, id), req)
+	}
+}
+
+type wrappedServerStream struct {
+	grpclib.ServerStream
+	ctx context.Context
+}
+
+func (w *wrappedServerStream) Context() context.Context {
+	return w.ctx
+}
+
+func authStreamInterceptor(verifier *apikeys.Verifier) grpclib.StreamServerInterceptor {
+	return func(
+		srv any, ss grpclib.ServerStream, info *grpclib.StreamServerInfo, handler grpclib.StreamHandler,
+	) error {
+		if isAuthExempt(info.FullMethod) {
+			return handler(srv, ss)
+		}
+		id, err := authorize(ss.Context(), verifier, info.FullMethod)
+		if err != nil {
+			return err
+		}
+		return handler(srv, &wrappedServerStream{
+			ServerStream: ss,
+			ctx:          apikeys.WithIdentity(ss.Context(), id),
+		})
 	}
 }
 
