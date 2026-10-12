@@ -393,3 +393,71 @@ func TestJudgeEstimateCountsQuestions(t *testing.T) {
 		t.Errorf("estimate %d did not grow with the questions (state alone %d)", withQuestions, stateOnly)
 	}
 }
+
+func openAIJudgeModel(id, endpoint string) *proxydb.Model {
+	return &proxydb.Model{
+		ID: id, Vendor: registry.VendorOpenAI, Endpoint: endpoint,
+		Efforts: []string{registry.EffortLow}, Capabilities: []string{registry.CapabilityJudge},
+		Enabled: true,
+	}
+}
+
+type fakeOpenAIDecisions struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (f *fakeOpenAIDecisions) handler(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	f.calls++
+	f.mu.Unlock()
+
+	prob := 0.91
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"model": "gpt-6-luna",
+		"answers": []map[string]any{
+			{"name": "is_answer", "type": "predicate", "probability": prob},
+		},
+		"usage": map[string]any{"input_tokens": 150, "output_tokens": 0},
+	})
+}
+
+func TestJudgeFallsBackFromTypeSafeToOpenAI(t *testing.T) {
+	tsFake := &fakeJudge{failFirstN: 1, failStatus: http.StatusInternalServerError}
+	tsSrv := httptest.NewServer(http.HandlerFunc(tsFake.handler))
+	defer tsSrv.Close()
+
+	oaiFake := &fakeOpenAIDecisions{}
+	oaiSrv := httptest.NewServer(http.HandlerFunc(oaiFake.handler))
+	defer oaiSrv.Close()
+
+	m1 := judgeModel("jev-latest", tsSrv.URL)
+	m2 := openAIJudgeModel("gpt-6-luna", oaiSrv.URL)
+	rule := judgeRule("jev-latest", "gpt-6-luna")
+
+	s := newJudgeServer(t, []*proxydb.Model{m1, m2}, []*proxydb.Rule{rule}, nil)
+
+	resp, err := s.Judge(testIdentity(), &pb.JudgeRequest{
+		StateJson: `{"ctx":"hello"}`,
+		Questions: map[string]*pb.JudgeQuestion{
+			"is_answer": {Type: pb.JudgeType_JUDGE_TYPE_NOUL, Instructions: "is it an answer?"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Judge: %v", err)
+	}
+
+	if resp.GetResolvedVendor() != registry.VendorOpenAI || resp.GetResolvedModel() != "gpt-6-luna" {
+		t.Errorf("resolved %s/%s, want openai/gpt-6-luna", resp.GetResolvedVendor(), resp.GetResolvedModel())
+	}
+	if tsFake.count() != 1 {
+		t.Errorf("typesafe calls = %d, want 1", tsFake.count())
+	}
+	if oaiFake.calls != 1 {
+		t.Errorf("openai calls = %d, want 1", oaiFake.calls)
+	}
+	if ans := resp.Answers["is_answer"]; ans.GetNoul() != 0.91 {
+		t.Errorf("answer = %+v, want noul 0.91", ans)
+	}
+}

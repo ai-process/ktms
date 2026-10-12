@@ -61,6 +61,13 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		}
 		client := openai.NewClient(opts...)
 		adapter := adapters.NewOpenAIAdapter(&client, m.ID, noThrottle)
+		if m.Vendor == VendorOpenAI {
+			decEndpoint := endpoint
+			if decEndpoint == "" {
+				decEndpoint = OpenAIDefaultEndpoint
+			}
+			adapter.SetDecisionsConfig(decEndpoint, key)
+		}
 		adapter.SetSoftSchema(SoftSchema(m))
 		if HasCapability(m, CapabilityNoThinking) {
 			adapter.SetThinkingOff(thinkingOff(m.Vendor))
