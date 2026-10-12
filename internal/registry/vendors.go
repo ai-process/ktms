@@ -6,12 +6,16 @@ import "github.com/ai-process/llm-proxy/internal/proxydb"
 // the OpenAI adapter with a different base URL; Ollama is any self-hosted
 // OpenAI-compatible server, so its endpoint is required and its key is its own.
 const (
-	VendorOpenAI   = "openai"
-	VendorGoogle   = "google"
-	VendorDeepSeek = "deepseek"
-	VendorOllama   = "ollama"
-	VendorTypeSafe = "typesafe"
+	VendorOpenAI    = "openai"
+	VendorGoogle    = "google"
+	VendorDeepSeek  = "deepseek"
+	VendorOllama    = "ollama"
+	VendorTypeSafe  = "typesafe"
+	VendorAnthropic = "anthropic"
 )
+
+// AnthropicDefaultEndpoint is used when an anthropic model has no endpoint override.
+const AnthropicDefaultEndpoint = "https://api.anthropic.com"
 
 // OpenAIDefaultEndpoint is used when an openai model has no endpoint override.
 const OpenAIDefaultEndpoint = "https://api.openai.com"
@@ -69,7 +73,7 @@ const CapabilityJudge = "judge"
 const CapabilityBatch = "batch"
 
 func ValidVendor(v string) bool {
-	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe
+	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorAnthropic
 }
 
 // SoftSchema reports whether this model needs the prompt-and-verify path.

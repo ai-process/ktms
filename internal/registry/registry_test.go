@@ -49,7 +49,7 @@ func TestValidateRejections(t *testing.T) {
 	}{
 		"unknown vendor": {
 			func(m []*proxydb.Model, r []*proxydb.Rule) ([]*proxydb.Model, []*proxydb.Rule) {
-				m[0].Vendor = "anthropic"
+				m[0].Vendor = "unknown_vendor"
 				return m, r
 			}, "unknown vendor"},
 		"ollama without endpoint": {
@@ -229,5 +229,26 @@ func TestOpenAIVendorBuildsAJudgeAdapter(t *testing.T) {
 	}
 	if _, ok := adapter.(llm.Judge); !ok {
 		t.Error("openai adapter with judge capability does not implement llm.Judge")
+	}
+}
+
+func TestAnthropicVendorBuildsAnAdapter(t *testing.T) {
+	if !ValidVendor(VendorAnthropic) {
+		t.Fatal("anthropic is not a valid vendor")
+	}
+	m := model("claude-3-5-sonnet-20241022", VendorAnthropic, EffortHigh)
+	if err := ValidateModel(m); err != nil {
+		t.Fatalf("ValidateModel: %v", err)
+	}
+
+	adapter, err := buildAdapter(m, "anthropic-secret")
+	if err != nil {
+		t.Fatalf("buildAdapter: %v", err)
+	}
+	if _, ok := adapter.(llm.ClientAdapter); !ok {
+		t.Error("anthropic adapter does not implement llm.ClientAdapter")
+	}
+	if _, ok := adapter.(llm.StreamAdapter); !ok {
+		t.Error("anthropic adapter does not implement llm.StreamAdapter")
 	}
 }
