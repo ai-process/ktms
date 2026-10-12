@@ -52,6 +52,11 @@ func TestValidateRejections(t *testing.T) {
 				m[0].Vendor = "anthropic"
 				return m, r
 			}, "unknown vendor"},
+		"ollama without endpoint": {
+			func(m []*proxydb.Model, r []*proxydb.Rule) ([]*proxydb.Model, []*proxydb.Rule) {
+				m[0].Vendor, m[0].Endpoint = "ollama", ""
+				return m, r
+			}, "needs its endpoint"},
 		"empty efforts": {
 			func(m []*proxydb.Model, r []*proxydb.Rule) ([]*proxydb.Model, []*proxydb.Rule) {
 				m[0].Efforts = nil

@@ -50,7 +50,7 @@ const (
 func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 	noThrottle := llm.NewThrottleControl(0, 60)
 	switch m.Vendor {
-	case VendorOpenAI, VendorDeepSeek:
+	case VendorOpenAI, VendorDeepSeek, VendorOllama:
 		opts := []option.RequestOption{option.WithAPIKey(key)}
 		endpoint := m.Endpoint
 		if endpoint == "" && m.Vendor == VendorDeepSeek {
@@ -62,7 +62,9 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		client := openai.NewClient(opts...)
 		adapter := adapters.NewOpenAIAdapter(&client, m.ID, noThrottle)
 		adapter.SetSoftSchema(SoftSchema(m))
-		adapter.SetNoThinking(HasCapability(m, CapabilityNoThinking))
+		if HasCapability(m, CapabilityNoThinking) {
+			adapter.SetThinkingOff(thinkingOff(m.Vendor))
+		}
 		// The registry id is the model to call, whichever modality it serves.
 		if HasCapability(m, CapabilityTTS) {
 			adapter.SetTTS(m.ID, openAITTSVoice)

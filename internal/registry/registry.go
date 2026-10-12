@@ -56,6 +56,9 @@ func ValidateModel(m *proxydb.Model) error {
 	if !ValidVendor(m.Vendor) {
 		return fmt.Errorf("model %s: unknown vendor %q", m.ID, m.Vendor)
 	}
+	if m.Vendor == VendorOllama && m.Endpoint == "" {
+		return fmt.Errorf("model %s: an ollama model needs its endpoint", m.ID)
+	}
 	if len(m.Efforts) == 0 {
 		return fmt.Errorf("model %s: at least one effort is required", m.ID)
 	}
