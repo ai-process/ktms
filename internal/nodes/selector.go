@@ -5,6 +5,8 @@ import (
 	"math"
 	"sync"
 
+	"github.com/rs/zerolog/log"
+
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 )
 
@@ -39,7 +41,7 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 		return nil, err
 	}
 
-	var healthyWarm, healthyCold, suspectWarm, suspectCold, probeCandidates []*Candidate
+	var healthyWarm, healthyCold, suspectWarm, suspectCold, circuitBrokenCandidates []*Candidate
 	var matchingHealthyOrSuspect int
 
 	// Reference pool averages for F_perf calculation
@@ -156,18 +158,14 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 				suspectCold = append(suspectCold, cand)
 			}
 		} else if n.State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
-			// Probe only if no healthy/suspect candidates exist or to test recovery
-			probeAcquired, _ := s.mgr.Circuit().TryAcquireProbe(ctx, n.Meta.NodeID)
-			if probeAcquired {
-				probeCandidates = append(probeCandidates, cand)
-			}
+			circuitBrokenCandidates = append(circuitBrokenCandidates, cand)
 		}
 	}
 
 	// Two-stage filtering:
 	// Stage 1: HEALTHY over SUSPECT
 	// Stage 2: Warm over Cold
-	// Stage 3: Circuit broken probe (if no healthy/suspect nodes)
+	// Stage 3: Circuit broken probe (only if no healthy/suspect candidates available)
 	var eligible []*Candidate
 	switch {
 	case len(healthyWarm) > 0:
@@ -178,13 +176,25 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 		eligible = suspectWarm
 	case len(suspectCold) > 0:
 		eligible = suspectCold
-	case len(probeCandidates) > 0:
-		eligible = probeCandidates
 	default:
-		if matchingHealthyOrSuspect > 0 {
-			return nil, ErrNodePoolFull
+		var probeCandidates []*Candidate
+		for _, cand := range circuitBrokenCandidates {
+			probeAcquired, err := s.mgr.Circuit().TryAcquireProbe(ctx, cand.Snapshot.Meta.NodeID)
+			if err != nil {
+				log.Warn().Err(err).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("nodes: failed to acquire circuit probe lease")
+				continue
+			}
+			if probeAcquired {
+				probeCandidates = append(probeCandidates, cand)
+			}
 		}
-		return nil, ErrNoAvailableNodes
+		if len(probeCandidates) > 0 {
+			eligible = probeCandidates
+		} else if matchingHealthyOrSuspect > 0 {
+			return nil, ErrNodePoolFull
+		} else {
+			return nil, ErrNoAvailableNodes
+		}
 	}
 
 	// Smooth Weighted Round Robin
