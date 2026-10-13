@@ -20,6 +20,7 @@ type Loader struct {
 	db      *proxydb.DB
 	keyring *crypto.Keyring
 	tracker llm.UsageTracker
+	nodePool NodePoolResolver
 	current atomic.Pointer[Snapshot]
 	// refreshCh coalesces manual refresh requests from admin mutations.
 	refreshCh chan struct{}
@@ -29,6 +30,13 @@ func NewLoader(db *proxydb.DB, keyring *crypto.Keyring, tracker llm.UsageTracker
 	l := &Loader{db: db, keyring: keyring, tracker: tracker, refreshCh: make(chan struct{}, 1)}
 	l.current.Store(&Snapshot{Models: map[string]*proxydb.Model{}})
 	return l
+}
+
+func (l *Loader) SetNodePool(np NodePoolResolver) {
+	l.nodePool = np
+	if cur := l.current.Load(); cur != nil {
+		cur.SetNodePool(np)
+	}
 }
 
 // Snapshot returns the active config view; never nil.
@@ -118,6 +126,7 @@ func (l *Loader) build(ctx context.Context, version int64) (*Snapshot, error) {
 		Models:     map[string]*proxydb.Model{},
 		vendorKeys: map[string]map[string]string{},
 		tracker:    l.tracker,
+		nodePool:   l.nodePool,
 	}
 	for _, m := range models {
 		if m.Enabled {

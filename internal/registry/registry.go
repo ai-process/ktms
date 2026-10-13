@@ -22,6 +22,11 @@ type Snapshot struct {
 	// snapshot's lifetime; dropped wholesale on config change.
 	adapters sync.Map
 	tracker  llm.UsageTracker
+	nodePool NodePoolResolver
+}
+
+func (s *Snapshot) SetNodePool(np NodePoolResolver) {
+	s.nodePool = np
 }
 
 // VendorKey returns the calling client's decrypted credential for a vendor.

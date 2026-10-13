@@ -134,3 +134,25 @@ func (k *Keyring) Decrypt(blob []byte, version int) (string, error) {
 	}
 	return string(plaintext), nil
 }
+
+// EncodeVersioned encodes a version and ciphertext blob as "v:<base64>".
+func EncodeVersioned(blob []byte, version int) string {
+	return fmt.Sprintf("%d:%s", version, base64.StdEncoding.EncodeToString(blob))
+}
+
+// DecodeVersioned decodes an encoded string and decrypts it with the keyring.
+func (k *Keyring) DecodeVersioned(encoded string) (string, error) {
+	colon := strings.Index(encoded, ":")
+	if colon <= 0 {
+		return "", errors.New("crypto: invalid encoded format")
+	}
+	v, err := strconv.Atoi(encoded[:colon])
+	if err != nil {
+		return "", fmt.Errorf("crypto: invalid version in encoded string: %w", err)
+	}
+	blob, err := base64.StdEncoding.DecodeString(encoded[colon+1:])
+	if err != nil {
+		return "", fmt.Errorf("crypto: invalid base64 in encoded string: %w", err)
+	}
+	return k.Decrypt(blob, v)
+}

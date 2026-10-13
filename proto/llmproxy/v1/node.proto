@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package llmproxy.v1;
+
+option go_package = "github.com/ai-process/llm-proxy/gen/llmproxy/v1;llmproxyv1";
+
+enum NodeState {
+  NODE_STATE_UNSPECIFIED = 0;
+  NODE_STATE_HEALTHY = 1;
+  NODE_STATE_SUSPECT = 2;
+  NODE_STATE_OFFLINE = 3;
+  NODE_STATE_DRAINING = 4;
+  NODE_STATE_CIRCUIT_BROKEN = 5;
+}
+
+message NodeResources {
+  double base_weight = 1;
+  uint32 max_concurrent = 2;
+  uint64 vram_total_mb = 3;
+  uint64 vram_free_mb = 4;
+  double gpu_util_percent = 5;
+  uint32 gpu_temp_c = 6;
+  string gpu_model = 7;
+  uint64 ram_total_mb = 8;
+  uint64 ram_free_mb = 9;
+}
+
+message NodeModelSpec {
+  string model_id = 1; // model id in the llm-proxy registry
+  string remote_model_name = 2; // underlying model name on the engine (empty = model_id)
+  uint32 context_length = 3;
+  bool is_warm = 4; // true when weights are loaded in VRAM
+  uint64 size_mb = 5;
+  string quantization = 6;
+  string family = 7;
+  repeated string capabilities = 8;
+}
+
+message RegisterNodeRequest {
+  string node_id = 1;
+  string name = 2;
+  string endpoint = 3;
+  string engine = 4; // ollama | vllm | tgi | llamacpp | openai
+  string node_auth_token = 5; // optional bearer token for the node's own endpoint; encrypted at rest
+  NodeResources resources = 6;
+  repeated NodeModelSpec models = 7;
+  map<string, string> tags = 8;
+}
+
+message RegisterNodeResponse {
+  string assigned_node_id = 1;
+  int32 heartbeat_interval_seconds = 2;
+  int32 heartbeat_ttl_seconds = 3;
+}
+
+message HeartbeatRequest {
+  string node_id = 1;
+  bool draining = 2;
+  uint32 active_requests = 3;
+  uint32 queue_depth = 4;
+  NodeResources resources = 5;
+  repeated NodeModelSpec models = 6;
+}
+
+message HeartbeatResponse {
+  bool ok = 1;
+  bool re_register_required = 2;
+  bool drain_requested = 3;
+  int32 active_proxy_requests = 4;
+}
+
+message UnregisterNodeRequest {
+  string node_id = 1;
+  string reason = 2;
+}
+
+message UnregisterNodeResponse {
+  bool ok = 1;
+}
+
+// NodeRegistryService is called by self-registering local inference nodes
+// using a dedicated llm_node_... key (scope "node").
+service NodeRegistryService {
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc UnregisterNode(UnregisterNodeRequest) returns (UnregisterNodeResponse);
+}

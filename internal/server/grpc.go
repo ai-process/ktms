@@ -25,9 +25,9 @@ type GRPCServer struct {
 }
 
 // NewGRPCServer wires interceptors (logging first, auth second) and registers
-// the two services.
+// the services.
 func NewGRPCServer(proxy pb.LLMProxyServiceServer, admin pb.LLMProxyAdminServiceServer,
-	verifier *apikeys.Verifier, addr string) *GRPCServer {
+	nodeReg pb.NodeRegistryServiceServer, verifier *apikeys.Verifier, addr string) *GRPCServer {
 	srv := grpclib.NewServer(
 		grpclib.ChainUnaryInterceptor(unaryLoggingInterceptor, authUnaryInterceptor(verifier)),
 		grpclib.ChainStreamInterceptor(streamLoggingInterceptor, authStreamInterceptor(verifier)),
@@ -35,6 +35,9 @@ func NewGRPCServer(proxy pb.LLMProxyServiceServer, admin pb.LLMProxyAdminService
 
 	pb.RegisterLLMProxyServiceServer(srv, proxy)
 	pb.RegisterLLMProxyAdminServiceServer(srv, admin)
+	if nodeReg != nil {
+		pb.RegisterNodeRegistryServiceServer(srv, nodeReg)
+	}
 	reflection.Register(srv)
 
 	return &GRPCServer{server: srv, addr: addr}
@@ -63,7 +66,11 @@ func unaryLoggingInterceptor(
 	start := time.Now()
 	defer recoverToStatus(info.FullMethod, &err)()
 	resp, err = handler(ctx, req)
-	rpcLogEvent(err).Str("method", info.FullMethod).Dur("duration", time.Since(start)).Msg("grpc request")
+	evt := rpcLogEvent(err)
+	if info.FullMethod == method(pb.NodeRegistryService_Heartbeat_FullMethodName) && err == nil {
+		evt = log.Debug()
+	}
+	evt.Str("method", info.FullMethod).Dur("duration", time.Since(start)).Msg("grpc request")
 	return resp, err
 }
 

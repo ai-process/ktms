@@ -5,12 +5,14 @@ import "github.com/ai-process/llm-proxy/internal/proxydb"
 // Vendors the engine can construct adapters for. DeepSeek and Ollama ride
 // the OpenAI adapter with a different base URL; Ollama is any self-hosted
 // OpenAI-compatible server, so its endpoint is required and its key is its own.
+// Local routes to self-registering local inference nodes.
 const (
 	VendorOpenAI   = "openai"
 	VendorGoogle   = "google"
 	VendorDeepSeek = "deepseek"
 	VendorOllama   = "ollama"
 	VendorTypeSafe = "typesafe"
+	VendorLocal    = "local"
 )
 
 // OpenAIDefaultEndpoint is used when an openai model has no endpoint override.
@@ -69,7 +71,7 @@ const CapabilityJudge = "judge"
 const CapabilityBatch = "batch"
 
 func ValidVendor(v string) bool {
-	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe
+	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorLocal
 }
 
 // SoftSchema reports whether this model needs the prompt-and-verify path.

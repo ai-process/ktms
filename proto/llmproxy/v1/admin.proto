@@ -11,7 +11,7 @@ option go_package = "github.com/ai-process/llm-proxy/gen/llmproxy/v1;llmproxyv1"
 // they are per-client rows managed via SetVendorKey.
 message ModelSpec {
   string id = 1; // unique registry id, referenced by rules and model_override
-  string vendor = 2; // openai | google | deepseek | ollama | typesafe
+  string vendor = 2; // openai | google | deepseek | ollama | local | typesafe
   string endpoint = 3; // optional base-URL override
   repeated Effort efforts = 4; // tiers this model may serve
   repeated string capabilities = 5; // e.g. "google_search"
@@ -123,6 +123,77 @@ message RotateEncryptionResponse {
   int32 reencrypted = 1; // vendor keys re-encrypted with the active keyring version
 }
 
+message MintNodeKeyRequest {
+  string name = 1;
+  string node_id = 2;
+  repeated string allowed_cidrs = 3;
+  repeated string allowed_models = 4;
+  double max_base_weight = 5;
+  int32 max_concurrency = 6;
+}
+
+message MintNodeKeyResponse {
+  int64 id = 1;
+  string plain_key = 2; // llm_node_... returned once
+}
+
+message RevokeNodeKeyRequest {
+  int64 id = 1;
+}
+
+message RevokeNodeKeyResponse {}
+
+message ListNodeKeysRequest {}
+
+message NodeKeyInfo {
+  int64 id = 1;
+  string name = 2;
+  string node_id = 3;
+  google.protobuf.Timestamp created_at = 4;
+  bool disabled = 5;
+  repeated string allowed_cidrs = 6;
+  repeated string allowed_models = 7;
+  double max_base_weight = 8;
+  int32 max_concurrency = 9;
+}
+
+message ListNodeKeysResponse {
+  repeated NodeKeyInfo keys = 1;
+}
+
+message ListNodesRequest {}
+
+message NodeInfo {
+  string node_id = 1;
+  string name = 2;
+  string endpoint = 3;
+  string state = 4; // HEALTHY | SUSPECT | DRAINING | CIRCUIT_BROKEN | OFFLINE
+  repeated string models = 5;
+  double effective_weight = 6;
+  int32 active_requests = 7;
+  int32 max_concurrent = 8;
+  uint64 vram_free_mb = 9;
+  uint64 vram_total_mb = 10;
+  double ttft_ema_ms = 11;
+  double tps_ema = 12;
+  google.protobuf.Timestamp last_heartbeat = 13;
+  double gpu_util_percent = 14;
+  uint32 gpu_temp_c = 15;
+  double base_weight = 16;
+  string engine = 17;
+  repeated string warm_models = 18;
+}
+
+message ListNodesResponse {
+  repeated NodeInfo nodes = 1;
+}
+
+message DrainNodeRequest {
+  string node_id = 1;
+}
+
+message DrainNodeResponse {}
+
 // All admin RPCs require the "admin" scope. Every config mutation validates
 // the resulting full config in one transaction and bumps the config version.
 service LLMProxyAdminService {
@@ -136,4 +207,10 @@ service LLMProxyAdminService {
   rpc RevokeAPIKey(RevokeAPIKeyRequest) returns (RevokeAPIKeyResponse);
   rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse);
   rpc RotateEncryption(RotateEncryptionRequest) returns (RotateEncryptionResponse);
+  rpc MintNodeKey(MintNodeKeyRequest) returns (MintNodeKeyResponse);
+  rpc RevokeNodeKey(RevokeNodeKeyRequest) returns (RevokeNodeKeyResponse);
+  rpc ListNodeKeys(ListNodeKeysRequest) returns (ListNodeKeysResponse);
+  rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
+  rpc DrainNode(DrainNodeRequest) returns (DrainNodeResponse);
 }
+

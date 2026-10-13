@@ -5,12 +5,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 
+	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 	"github.com/ai-process/llm-proxy/internal/apikeys"
 	"github.com/ai-process/llm-proxy/internal/batch"
 	"github.com/ai-process/llm-proxy/internal/config"
@@ -18,7 +20,9 @@ import (
 	"github.com/ai-process/llm-proxy/internal/grpcapi"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/logger"
+	"github.com/ai-process/llm-proxy/internal/nodes"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
+	"github.com/ai-process/llm-proxy/internal/rediskeys"
 	"github.com/ai-process/llm-proxy/internal/registry"
 	"github.com/ai-process/llm-proxy/internal/router"
 	"github.com/ai-process/llm-proxy/internal/server"
@@ -73,20 +77,6 @@ func main() {
 		log.Warn().Msg("bootstrap admin key is set; unset it once real keys are minted")
 	}
 
-	var limiter router.Throttle
-	if cfg.RedisConfigured() {
-		redisClient := redis.NewClient(&redis.Options{
-			Addr:     cfg.RedisAddr,
-			Password: cfg.RedisPassword,
-			DB:       cfg.RedisDB,
-		})
-		defer func() { _ = redisClient.Close() }()
-		limiter = throttle.New(redisClient, cfg.RedisKeyPrefix)
-		log.Info().Str("addr", cfg.RedisAddr).Msg("redis throttling enabled")
-	} else {
-		log.Warn().Msg("REDIS_ADDR unset: rpm and token budgets are NOT enforced")
-	}
-
 	// Typed-nil guard: a nil *UsageCollectorClient must not become a non-nil
 	// llm.UsageTracker interface, or every adapter would wrap a dead tracker.
 	var tracker llm.UsageTracker
@@ -102,6 +92,46 @@ func main() {
 	}
 
 	loader := registry.NewLoader(db, keyring, tracker)
+
+	var (
+		nodeMgr *nodes.Manager
+		nodeReg *grpcapi.NodeRegistryServer
+	)
+
+	var limiter router.Throttle
+	if cfg.RedisConfigured() {
+		redisClient := redis.NewClient(&redis.Options{
+			Addr:     cfg.RedisAddr,
+			Password: cfg.RedisPassword,
+			DB:       cfg.RedisDB,
+		})
+		defer func() { _ = redisClient.Close() }()
+		limiter = throttle.New(redisClient, cfg.RedisKeyPrefix)
+		log.Info().Str("addr", cfg.RedisAddr).Msg("redis throttling enabled")
+
+		rkeys := rediskeys.New(cfg.RedisKeyPrefix)
+		nStore := nodes.NewStore(redisClient, rkeys)
+		nSlots := nodes.NewLeaseManager(redisClient, nStore)
+		nCircuit := nodes.NewCircuitBreaker(redisClient, nStore, 5, 30*time.Second)
+		nTelemetry := nodes.NewTelemetryTracker(redisClient, nStore, 0.2, 24*time.Hour)
+		nodeMgr = nodes.NewManager(nStore, nSlots, nCircuit, nTelemetry, nodes.Config{
+			HeartbeatInterval: cfg.NodeHeartbeatInterval,
+			HeartbeatTTL:      cfg.NodeHeartbeatTTL,
+			RetentionTTL:      cfg.NodeRetentionTTL,
+			AllowLocalhost:    cfg.NodeAllowLocalhost,
+		})
+		nodeMgr.Start(context.Background())
+		defer nodeMgr.Stop()
+
+		nSelector := nodes.NewSelector(nodeMgr)
+		poolResolver := nodes.NewPoolResolver(nSelector, keyring, 60*time.Second)
+		loader.SetNodePool(poolResolver)
+
+		nodeReg = grpcapi.NewNodeRegistryServer(nodeMgr, keyring)
+	} else {
+		log.Warn().Msg("REDIS_ADDR unset: rpm and token budgets are NOT enforced, local node pool is disabled")
+	}
+
 	rootCtx, rootCancel := context.WithCancel(context.Background())
 	defer rootCancel()
 	if err := loader.Load(rootCtx); err != nil {
@@ -110,13 +140,20 @@ func main() {
 	loader.Start(rootCtx, cfg.RoutingReload)
 
 	adminSrv := grpcapi.NewAdminServer(db, keyring, loader.Refresh)
+	if nodeMgr != nil {
+		adminSrv.SetNodeManager(nodeMgr)
+	}
 	proxySrv := grpcapi.NewProxyServer(loader, limiter).WithBatch(db, cfg.BatchMaxItems)
 
 	batchPoller := batch.NewPoller(db, loader, limiter, tracker, cfg.BatchPollInterval, cfg.ResultsRetention)
 	batchPoller.Start(rootCtx)
 	defer batchPoller.Stop()
 
-	grpcSrv := server.NewGRPCServer(proxySrv, adminSrv, verifier, cfg.GRPCAddr)
+	var nodeRegServer pb.NodeRegistryServiceServer
+	if nodeReg != nil {
+		nodeRegServer = nodeReg
+	}
+	grpcSrv := server.NewGRPCServer(proxySrv, adminSrv, nodeRegServer, verifier, cfg.GRPCAddr)
 	var openaiAPI *server.OpenAIAPI
 	if cfg.HTTPAPIEnabled {
 		openaiAPI = server.NewOpenAIAPI(proxySrv, verifier)

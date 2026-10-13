@@ -29,3 +29,34 @@ func (k Keys) BudgetKey(keyName, modelID, day string) string {
 func (k Keys) BudgetUser(userID, modelID, day string) string {
 	return fmt.Sprintf("%sllmproxy:bud:u:%s:%s:%s", k.prefix, userID, modelID, day)
 }
+
+// NodeMeta holds the static & semi-static registration data of a node.
+func (k Keys) NodeMeta(nodeID string) string {
+	return fmt.Sprintf("%snode:meta:%s", k.prefix, nodeID)
+}
+
+// NodeHeartbeat holds the ephemeral heartbeat timestamp and dynamic telemetry.
+func (k Keys) NodeHeartbeat(nodeID string) string {
+	return fmt.Sprintf("%snode:heartbeat:%s", k.prefix, nodeID)
+}
+
+// NodeInflight is the ZSET of active in-flight requests on the node.
+func (k Keys) NodeInflight(nodeID string) string {
+	return fmt.Sprintf("%snode:inflight:%s", k.prefix, nodeID)
+}
+
+// NodePerf holds EWMA metrics (tps_ema, ttft_ema_ms) for a specific node and model.
+func (k Keys) NodePerf(nodeID, modelID string) string {
+	return fmt.Sprintf("%snode:perf:%s:%s", k.prefix, nodeID, modelID)
+}
+
+// NodeDrain is set when an operator requests a graceful drain of the node.
+func (k Keys) NodeDrain(nodeID string) string {
+	return fmt.Sprintf("%snode:drain:%s", k.prefix, nodeID)
+}
+
+// NodesSet is the SET of all known node IDs.
+func (k Keys) NodesSet() string {
+	return fmt.Sprintf("%snodes:all", k.prefix)
+}
+

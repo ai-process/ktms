@@ -13,6 +13,11 @@ import (
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 )
 
+// NodePoolResolver builds an adapter for a local node pool model.
+type NodePoolResolver interface {
+	PoolAdapter(m *proxydb.Model) (llm.ClientAdapter, error)
+}
+
 // Adapter returns the vendor adapter for a (client, model) pair, built with
 // the client's own decrypted credential and cached for the snapshot's
 // lifetime. Concurrent first calls may build twice; LoadOrStore keeps one.
@@ -20,6 +25,21 @@ func (s *Snapshot) Adapter(apiKeyID string, m *proxydb.Model) (llm.ClientAdapter
 	cacheKey := apiKeyID + "\x00" + m.ID
 	if cached, ok := s.adapters.Load(cacheKey); ok {
 		return cached.(llm.ClientAdapter), nil
+	}
+
+	if m.Vendor == VendorLocal {
+		if s.nodePool != nil {
+			adapter, err := s.nodePool.PoolAdapter(m)
+			if err != nil {
+				return nil, err
+			}
+			if s.tracker != nil {
+				adapter = adapters.NewTrackingAdapter(adapter, s.tracker, m.Vendor, m.ID)
+			}
+			actual, _ := s.adapters.LoadOrStore(cacheKey, adapter)
+			return actual.(llm.ClientAdapter), nil
+		}
+		return nil, fmt.Errorf("local node pool not configured")
 	}
 
 	key, ok := s.VendorKey(apiKeyID, m.Vendor)
