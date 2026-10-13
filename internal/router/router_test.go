@@ -128,7 +128,7 @@ type recordingThrottle struct {
 	reserves int
 }
 
-func (r *recordingThrottle) AllowRPM(_ context.Context, _ string, m *proxydb.Model) bool {
+func (r *recordingThrottle) AllowRPM(_ context.Context, _, _ string, m *proxydb.Model) bool {
 	return !r.rpmDeny[m.ID]
 }
 
@@ -531,3 +531,94 @@ func TestExecuteStreamSoftSchemaErrorPartwayChargesBudget(t *testing.T) {
 		t.Errorf("expected input and output tokens charged for partway soft schema stream, got %+v", th.settled[0])
 	}
 }
+
+type mockSkipError struct{}
+
+func (mockSkipError) Error() string         { return "slot exhausted" }
+func (mockSkipError) SkipToNextModel() bool { return true }
+
+func TestExecute_SkipToNextModel_Fallback(t *testing.T) {
+	m1 := model("node1", registry.VendorOpenAI, registry.EffortHigh)
+	m2 := model("cloud2", registry.VendorOpenAI, registry.EffortHigh)
+
+	ad1Calls := 0
+	ad1 := &fakeAdapter{
+		responses: []func() (*llm.Response, error){
+			func() (*llm.Response, error) {
+				ad1Calls++
+				return nil, mockSkipError{}
+			},
+		},
+	}
+	ad2 := &fakeAdapter{
+		responses: []func() (*llm.Response, error){
+			func() (*llm.Response, error) {
+				return &llm.Response{Choices: []*llm.Message{{Text: "hello from cloud"}}}, nil
+			},
+		},
+	}
+
+	resp, chosen, err := Execute(context.Background(), NoopThrottle{}, Request{
+		Chain: []*proxydb.Model{m1, m2},
+		Chat:  llm.NewChatContext(),
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "node1" {
+				return ad1, nil
+			}
+			return ad2, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if chosen.ID != "cloud2" {
+		t.Errorf("expected cloud2 to be chosen, got %s", chosen.ID)
+	}
+	if resp.Choices[0].Text != "hello from cloud" {
+		t.Errorf("unexpected response text: %s", resp.Choices[0].Text)
+	}
+	if ad1Calls != 1 {
+		t.Errorf("expected exactly 1 call to ad1 (no retries), got %d", ad1Calls)
+	}
+}
+
+func TestExecuteStream_SkipToNextModel_Fallback(t *testing.T) {
+	m1 := model("node1", registry.VendorOpenAI, registry.EffortHigh)
+	m2 := model("cloud2", registry.VendorOpenAI, registry.EffortHigh)
+
+	s1 := &fakeStreamAdapter{
+		stream: func(_ context.Context, _ *llm.ChatContext, _ func(llm.StreamChunk) error) error {
+			return mockSkipError{}
+		},
+	}
+	s2 := &fakeStreamAdapter{
+		stream: func(_ context.Context, _ *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+			return onChunk(llm.StreamChunk{Delta: "stream from cloud"})
+		},
+	}
+
+	var chunks []string
+	chosen, err := ExecuteStream(context.Background(), NoopThrottle{}, Request{
+		Chain: []*proxydb.Model{m1, m2},
+		Chat:  llm.NewChatContext(),
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "node1" {
+				return s1, nil
+			}
+			return s2, nil
+		},
+	}, func(_ *proxydb.Model, c llm.StreamChunk) error {
+		chunks = append(chunks, c.Delta)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if chosen.ID != "cloud2" {
+		t.Errorf("expected cloud2, got %s", chosen.ID)
+	}
+	if len(chunks) != 1 || chunks[0] != "stream from cloud" {
+		t.Errorf("unexpected chunks: %v", chunks)
+	}
+}
+

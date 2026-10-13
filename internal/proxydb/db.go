@@ -97,7 +97,8 @@ func loadModels(ctx context.Context, q querier) ([]*Model, error) {
 		`SELECT id, vendor, endpoint, efforts, capabilities, rpm, price_in_per_mtok,
 		        price_out_per_mtok, price_in_peak_per_mtok, price_out_peak_per_mtok,
 		        price_in_batch_per_mtok, price_out_batch_per_mtok,
-		        daily_tokens_per_key, daily_tokens_per_user, enabled
+		        daily_tokens_per_key, daily_tokens_per_user, enabled,
+		        burst, queue_timeout_ms, budget_grace_margin
 		 FROM model ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -109,7 +110,8 @@ func loadModels(ctx context.Context, q querier) ([]*Model, error) {
 		if err := rows.Scan(&m.ID, &m.Vendor, &m.Endpoint, &m.Efforts, &m.Capabilities, &m.RPM,
 			&m.PriceInPerMtok, &m.PriceOutPerMtok, &m.PriceInPeakPerMtok, &m.PriceOutPeakPerMtok,
 			&m.PriceInBatchPerMtok, &m.PriceOutBatchPerMtok,
-			&m.DailyTokensPerKey, &m.DailyTokensPerUser, &m.Enabled); err != nil {
+			&m.DailyTokensPerKey, &m.DailyTokensPerUser, &m.Enabled,
+			&m.Burst, &m.QueueTimeoutMs, &m.BudgetGraceMargin); err != nil {
 			return nil, err
 		}
 		out = append(out, &m)
@@ -222,17 +224,66 @@ func UpsertModel(ctx context.Context, tx pgx.Tx, m *Model) error {
 		`INSERT INTO model (id, vendor, endpoint, efforts, capabilities, rpm, price_in_per_mtok,
 		                    price_out_per_mtok, price_in_peak_per_mtok, price_out_peak_per_mtok,
 		                    price_in_batch_per_mtok, price_out_batch_per_mtok,
-		                    daily_tokens_per_key, daily_tokens_per_user, enabled)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		                    daily_tokens_per_key, daily_tokens_per_user, enabled,
+		                    burst, queue_timeout_ms, budget_grace_margin)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		 ON CONFLICT (id) DO UPDATE SET vendor = $2, endpoint = $3, efforts = $4, capabilities = $5,
 		   rpm = $6, price_in_per_mtok = $7, price_out_per_mtok = $8, price_in_peak_per_mtok = $9,
 		   price_out_peak_per_mtok = $10, price_in_batch_per_mtok = $11, price_out_batch_per_mtok = $12,
-		   daily_tokens_per_key = $13, daily_tokens_per_user = $14, enabled = $15, updated_at = NOW()`,
+		   daily_tokens_per_key = $13, daily_tokens_per_user = $14, enabled = $15,
+		   burst = $16, queue_timeout_ms = $17, budget_grace_margin = $18, updated_at = NOW()`,
 		m.ID, m.Vendor, m.Endpoint, m.Efforts, m.Capabilities, m.RPM,
 		m.PriceInPerMtok, m.PriceOutPerMtok, m.PriceInPeakPerMtok, m.PriceOutPeakPerMtok,
 		m.PriceInBatchPerMtok, m.PriceOutBatchPerMtok,
-		m.DailyTokensPerKey, m.DailyTokensPerUser, m.Enabled)
+		m.DailyTokensPerKey, m.DailyTokensPerUser, m.Enabled,
+		m.Burst, m.QueueTimeoutMs, m.BudgetGraceMargin)
 	return err
+}
+
+func (d *DB) LoadUserRateLimits(ctx context.Context) ([]*UserRateLimit, error) {
+	return loadUserRateLimits(ctx, d.pool)
+}
+
+func loadUserRateLimits(ctx context.Context, q querier) ([]*UserRateLimit, error) {
+	rows, err := q.Query(ctx,
+		`SELECT user_id, model_id, rpm, burst, queue_timeout_ms, daily_tokens
+		 FROM user_rate_limits ORDER BY user_id, model_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*UserRateLimit
+	for rows.Next() {
+		var u UserRateLimit
+		if err := rows.Scan(&u.UserID, &u.ModelID, &u.RPM, &u.Burst, &u.QueueTimeoutMs, &u.DailyTokens); err != nil {
+			return nil, err
+		}
+		out = append(out, &u)
+	}
+	return out, rows.Err()
+}
+
+func UpsertUserRateLimit(ctx context.Context, tx pgx.Tx, u *UserRateLimit) error {
+	_, err := tx.Exec(ctx,
+		`INSERT INTO user_rate_limits (user_id, model_id, rpm, burst, queue_timeout_ms, daily_tokens, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		 ON CONFLICT (user_id, model_id) DO UPDATE SET
+		   rpm = $3, burst = $4, queue_timeout_ms = $5, daily_tokens = $6, updated_at = NOW()`,
+		u.UserID, u.ModelID, u.RPM, u.Burst, u.QueueTimeoutMs, u.DailyTokens)
+	return err
+}
+
+func DeleteUserRateLimit(ctx context.Context, tx pgx.Tx, userID, modelID string) error {
+	tag, err := tx.Exec(ctx,
+		`DELETE FROM user_rate_limits WHERE user_id = $1 AND model_id = $2`,
+		userID, modelID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func DeleteModel(ctx context.Context, tx pgx.Tx, id string) error {

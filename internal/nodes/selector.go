@@ -2,14 +2,11 @@ package nodes
 
 import (
 	"context"
-	"errors"
 	"math"
 	"sync"
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 )
-
-var ErrNoAvailableNodes = errors.New("nodes: no healthy nodes available for model")
 
 type Candidate struct {
 	Snapshot        *NodeSnapshot
@@ -203,3 +200,46 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 	}
 	return best, nil
 }
+
+// PoolCapacity aggregates total active slots and average duration EMA for a model.
+func (s *Selector) PoolCapacity(ctx context.Context, modelID string) (totalSlots int32, avgDurationMs float64) {
+	nodes, err := s.mgr.ListNodes(ctx)
+	if err != nil || len(nodes) == 0 {
+		return 1, 2000
+	}
+	var slots int32
+	var totalDuration float64
+	var count int
+	for _, n := range nodes {
+		if n.State == pb.NodeState_NODE_STATE_OFFLINE || n.State == pb.NodeState_NODE_STATE_DRAINING || n.State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
+			continue
+		}
+		for _, m := range n.Meta.Models {
+			if m.ModelId == modelID {
+				slots += n.Meta.MaxConcurrent
+				if perf, ok := n.Perf[modelID]; ok && perf.TPSEMA > 0 {
+					dur := (100.0 / perf.TPSEMA) * 1000.0
+					if dur < 500 {
+						dur = 500
+					}
+					if dur > 10000 {
+						dur = 10000
+					}
+					totalDuration += dur
+					count++
+				}
+				break
+			}
+		}
+	}
+	if slots <= 0 {
+		slots = 1
+	}
+	if count > 0 {
+		avgDurationMs = totalDuration / float64(count)
+	} else {
+		avgDurationMs = 2000
+	}
+	return slots, avgDurationMs
+}
+

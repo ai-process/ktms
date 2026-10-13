@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog/log"
 )
 
 // CircuitBreaker manages failure tracking and half-open state for nodes.
@@ -63,7 +64,9 @@ func (cb *CircuitBreaker) RecordFailure(ctx context.Context, nodeID string) erro
 		return err
 	}
 	// Expire failure counter after 2x cooldown
-	_ = cb.rdb.Expire(ctx, key, cb.cooldown*2).Err()
+	if expErr := cb.rdb.Expire(ctx, key, cb.cooldown*2).Err(); expErr != nil {
+		log.Warn().Err(expErr).Str("key", key).Msg("circuit breaker: failed to set failure count expiry")
+	}
 
 	if int(val) >= cb.failThresh {
 		// Trip the breaker
