@@ -26,10 +26,14 @@ const (
 	// ScopeGenerate allows the data-plane RPCs (GenerateText, ListModels).
 	ScopeGenerate = "generate"
 	ScopeAdmin    = "admin"
+	ScopeNode     = "node"
 )
 
 // KeyPrefix marks our keys so a leaked string is recognisable in a log scan.
-const KeyPrefix = "llm_"
+const (
+	KeyPrefix     = "llm_"
+	NodeKeyPrefix = "llm_node_"
+)
 
 var (
 	ErrUnauthenticated = errors.New("apikeys: unauthenticated")
@@ -37,18 +41,24 @@ var (
 )
 
 // ValidScopes is the closed set the admin endpoint accepts.
-var ValidScopes = []string{ScopeGenerate, ScopeAdmin}
+var ValidScopes = []string{ScopeGenerate, ScopeAdmin, ScopeNode}
 
 // Store is the slice of proxydb the verifier needs, so tests can fake it.
 type Store interface {
 	GetAPIKeyByLookup(ctx context.Context, lookup string) (*proxydb.APIKey, error)
+	GetNodeKeyByLookup(ctx context.Context, lookup string) (*proxydb.NodeKey, error)
 }
 
 // Identity is the authenticated caller.
 type Identity struct {
-	KeyID  string
-	Name   string
-	Scopes []string
+	KeyID         string
+	Name          string
+	Scopes        []string
+	NodeID        string
+	AllowedCIDRs  []string
+	AllowedModels []string
+	MaxBaseWeight float64
+	MaxConcurrent int32
 }
 
 // HasScope reports whether the caller may perform an action needing want.
@@ -89,6 +99,27 @@ func Generate(name string, scopes []string) (plain string, row *proxydb.APIKey, 
 		KeyLookup: LookupHash(plain),
 		KeyHash:   VerifyHash(plain),
 		Scopes:    scopes,
+	}, nil
+}
+
+// GenerateNodeKey mints a node key (prefixed with llm_node_), returning the
+// plain secret alongside the database row to store.
+func GenerateNodeKey(name, nodeID string, allowedCIDRs, allowedModels []string, maxBaseWeight float64, maxConcurrency int32) (plain string, row *proxydb.NodeKey, err error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", nil, fmt.Errorf("apikeys: entropy: %w", err)
+	}
+	plain = NodeKeyPrefix + hex.EncodeToString(raw)
+
+	return plain, &proxydb.NodeKey{
+		NodeID:         nodeID,
+		Name:           name,
+		KeyLookup:      LookupHash(plain),
+		KeyHash:        VerifyHash(plain),
+		AllowedCIDRs:   allowedCIDRs,
+		AllowedModels:  allowedModels,
+		MaxBaseWeight:  maxBaseWeight,
+		MaxConcurrency: maxConcurrency,
 	}, nil
 }
 
@@ -158,6 +189,32 @@ func (v *Verifier) Verify(ctx context.Context, plain string) (*Identity, error) 
 	if v.bootstrapKey != "" &&
 		subtle.ConstantTimeCompare([]byte(plain), []byte(v.bootstrapKey)) == 1 {
 		return &Identity{KeyID: "bootstrap", Name: "bootstrap", Scopes: []string{ScopeAdmin}}, nil
+	}
+
+	if strings.HasPrefix(plain, NodeKeyPrefix) {
+		row, err := v.store.GetNodeKeyByLookup(ctx, LookupHash(plain))
+		if errors.Is(err, proxydb.ErrNotFound) {
+			return nil, ErrUnauthenticated
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !row.Active() {
+			return nil, ErrUnauthenticated
+		}
+		if subtle.ConstantTimeCompare([]byte(row.KeyHash), []byte(VerifyHash(plain))) != 1 {
+			return nil, ErrUnauthenticated
+		}
+		return &Identity{
+			KeyID:         fmt.Sprintf("%d", row.ID),
+			Name:          row.Name,
+			Scopes:        []string{ScopeNode},
+			NodeID:        row.NodeID,
+			AllowedCIDRs:  row.AllowedCIDRs,
+			AllowedModels: row.AllowedModels,
+			MaxBaseWeight: row.MaxBaseWeight,
+			MaxConcurrent: row.MaxConcurrency,
+		}, nil
 	}
 
 	row, err := v.store.GetAPIKeyByLookup(ctx, LookupHash(plain))

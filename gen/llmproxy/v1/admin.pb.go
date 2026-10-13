@@ -27,7 +27,7 @@ const (
 type ModelSpec struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                                     // unique registry id, referenced by rules and model_override
-	Vendor          string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`                                             // openai | anthropic | google | deepseek | ollama | typesafe
+	Vendor          string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`                                             // openai | anthropic | google | deepseek | ollama | local | typesafe
 	Endpoint        string                 `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"`                                         // optional base-URL override
 	Efforts         []Effort               `protobuf:"varint,4,rep,packed,name=efforts,proto3,enum=llmproxy.v1.Effort" json:"efforts,omitempty"`           // tiers this model may serve
 	Capabilities    []string               `protobuf:"bytes,5,rep,name=capabilities,proto3" json:"capabilities,omitempty"`                                 // e.g. "google_search"
@@ -1268,6 +1268,750 @@ func (x *RotateEncryptionResponse) GetReencrypted() int32 {
 	return 0
 }
 
+type MintNodeKeyRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Name           string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	NodeId         string                 `protobuf:"bytes,2,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	AllowedCidrs   []string               `protobuf:"bytes,3,rep,name=allowed_cidrs,json=allowedCidrs,proto3" json:"allowed_cidrs,omitempty"`
+	AllowedModels  []string               `protobuf:"bytes,4,rep,name=allowed_models,json=allowedModels,proto3" json:"allowed_models,omitempty"`
+	MaxBaseWeight  float64                `protobuf:"fixed64,5,opt,name=max_base_weight,json=maxBaseWeight,proto3" json:"max_base_weight,omitempty"`
+	MaxConcurrency int32                  `protobuf:"varint,6,opt,name=max_concurrency,json=maxConcurrency,proto3" json:"max_concurrency,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *MintNodeKeyRequest) Reset() {
+	*x = MintNodeKeyRequest{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MintNodeKeyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MintNodeKeyRequest) ProtoMessage() {}
+
+func (x *MintNodeKeyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MintNodeKeyRequest.ProtoReflect.Descriptor instead.
+func (*MintNodeKeyRequest) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *MintNodeKeyRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *MintNodeKeyRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *MintNodeKeyRequest) GetAllowedCidrs() []string {
+	if x != nil {
+		return x.AllowedCidrs
+	}
+	return nil
+}
+
+func (x *MintNodeKeyRequest) GetAllowedModels() []string {
+	if x != nil {
+		return x.AllowedModels
+	}
+	return nil
+}
+
+func (x *MintNodeKeyRequest) GetMaxBaseWeight() float64 {
+	if x != nil {
+		return x.MaxBaseWeight
+	}
+	return 0
+}
+
+func (x *MintNodeKeyRequest) GetMaxConcurrency() int32 {
+	if x != nil {
+		return x.MaxConcurrency
+	}
+	return 0
+}
+
+type MintNodeKeyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	PlainKey      string                 `protobuf:"bytes,2,opt,name=plain_key,json=plainKey,proto3" json:"plain_key,omitempty"` // llm_node_... returned once
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MintNodeKeyResponse) Reset() {
+	*x = MintNodeKeyResponse{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MintNodeKeyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MintNodeKeyResponse) ProtoMessage() {}
+
+func (x *MintNodeKeyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MintNodeKeyResponse.ProtoReflect.Descriptor instead.
+func (*MintNodeKeyResponse) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *MintNodeKeyResponse) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *MintNodeKeyResponse) GetPlainKey() string {
+	if x != nil {
+		return x.PlainKey
+	}
+	return ""
+}
+
+type RevokeNodeKeyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeNodeKeyRequest) Reset() {
+	*x = RevokeNodeKeyRequest{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeNodeKeyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeNodeKeyRequest) ProtoMessage() {}
+
+func (x *RevokeNodeKeyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeNodeKeyRequest.ProtoReflect.Descriptor instead.
+func (*RevokeNodeKeyRequest) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *RevokeNodeKeyRequest) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+type RevokeNodeKeyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeNodeKeyResponse) Reset() {
+	*x = RevokeNodeKeyResponse{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeNodeKeyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeNodeKeyResponse) ProtoMessage() {}
+
+func (x *RevokeNodeKeyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeNodeKeyResponse.ProtoReflect.Descriptor instead.
+func (*RevokeNodeKeyResponse) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{27}
+}
+
+type ListNodeKeysRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListNodeKeysRequest) Reset() {
+	*x = ListNodeKeysRequest{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListNodeKeysRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListNodeKeysRequest) ProtoMessage() {}
+
+func (x *ListNodeKeysRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListNodeKeysRequest.ProtoReflect.Descriptor instead.
+func (*ListNodeKeysRequest) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{28}
+}
+
+type NodeKeyInfo struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Id             int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name           string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	NodeId         string                 `protobuf:"bytes,3,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Disabled       bool                   `protobuf:"varint,5,opt,name=disabled,proto3" json:"disabled,omitempty"`
+	AllowedCidrs   []string               `protobuf:"bytes,6,rep,name=allowed_cidrs,json=allowedCidrs,proto3" json:"allowed_cidrs,omitempty"`
+	AllowedModels  []string               `protobuf:"bytes,7,rep,name=allowed_models,json=allowedModels,proto3" json:"allowed_models,omitempty"`
+	MaxBaseWeight  float64                `protobuf:"fixed64,8,opt,name=max_base_weight,json=maxBaseWeight,proto3" json:"max_base_weight,omitempty"`
+	MaxConcurrency int32                  `protobuf:"varint,9,opt,name=max_concurrency,json=maxConcurrency,proto3" json:"max_concurrency,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *NodeKeyInfo) Reset() {
+	*x = NodeKeyInfo{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeKeyInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeKeyInfo) ProtoMessage() {}
+
+func (x *NodeKeyInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeKeyInfo.ProtoReflect.Descriptor instead.
+func (*NodeKeyInfo) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *NodeKeyInfo) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *NodeKeyInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *NodeKeyInfo) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *NodeKeyInfo) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *NodeKeyInfo) GetDisabled() bool {
+	if x != nil {
+		return x.Disabled
+	}
+	return false
+}
+
+func (x *NodeKeyInfo) GetAllowedCidrs() []string {
+	if x != nil {
+		return x.AllowedCidrs
+	}
+	return nil
+}
+
+func (x *NodeKeyInfo) GetAllowedModels() []string {
+	if x != nil {
+		return x.AllowedModels
+	}
+	return nil
+}
+
+func (x *NodeKeyInfo) GetMaxBaseWeight() float64 {
+	if x != nil {
+		return x.MaxBaseWeight
+	}
+	return 0
+}
+
+func (x *NodeKeyInfo) GetMaxConcurrency() int32 {
+	if x != nil {
+		return x.MaxConcurrency
+	}
+	return 0
+}
+
+type ListNodeKeysResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Keys          []*NodeKeyInfo         `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListNodeKeysResponse) Reset() {
+	*x = ListNodeKeysResponse{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListNodeKeysResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListNodeKeysResponse) ProtoMessage() {}
+
+func (x *ListNodeKeysResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListNodeKeysResponse.ProtoReflect.Descriptor instead.
+func (*ListNodeKeysResponse) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *ListNodeKeysResponse) GetKeys() []*NodeKeyInfo {
+	if x != nil {
+		return x.Keys
+	}
+	return nil
+}
+
+type ListNodesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListNodesRequest) Reset() {
+	*x = ListNodesRequest{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListNodesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListNodesRequest) ProtoMessage() {}
+
+func (x *ListNodesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListNodesRequest.ProtoReflect.Descriptor instead.
+func (*ListNodesRequest) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{31}
+}
+
+type NodeInfo struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	NodeId          string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Name            string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Endpoint        string                 `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	State           string                 `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"` // HEALTHY | SUSPECT | DRAINING | CIRCUIT_BROKEN | OFFLINE
+	Models          []string               `protobuf:"bytes,5,rep,name=models,proto3" json:"models,omitempty"`
+	EffectiveWeight float64                `protobuf:"fixed64,6,opt,name=effective_weight,json=effectiveWeight,proto3" json:"effective_weight,omitempty"`
+	ActiveRequests  int32                  `protobuf:"varint,7,opt,name=active_requests,json=activeRequests,proto3" json:"active_requests,omitempty"`
+	MaxConcurrent   int32                  `protobuf:"varint,8,opt,name=max_concurrent,json=maxConcurrent,proto3" json:"max_concurrent,omitempty"`
+	VramFreeMb      uint64                 `protobuf:"varint,9,opt,name=vram_free_mb,json=vramFreeMb,proto3" json:"vram_free_mb,omitempty"`
+	VramTotalMb     uint64                 `protobuf:"varint,10,opt,name=vram_total_mb,json=vramTotalMb,proto3" json:"vram_total_mb,omitempty"`
+	TtftEmaMs       float64                `protobuf:"fixed64,11,opt,name=ttft_ema_ms,json=ttftEmaMs,proto3" json:"ttft_ema_ms,omitempty"`
+	TpsEma          float64                `protobuf:"fixed64,12,opt,name=tps_ema,json=tpsEma,proto3" json:"tps_ema,omitempty"`
+	LastHeartbeat   *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=last_heartbeat,json=lastHeartbeat,proto3" json:"last_heartbeat,omitempty"`
+	GpuUtilPercent  float64                `protobuf:"fixed64,14,opt,name=gpu_util_percent,json=gpuUtilPercent,proto3" json:"gpu_util_percent,omitempty"`
+	GpuTempC        uint32                 `protobuf:"varint,15,opt,name=gpu_temp_c,json=gpuTempC,proto3" json:"gpu_temp_c,omitempty"`
+	BaseWeight      float64                `protobuf:"fixed64,16,opt,name=base_weight,json=baseWeight,proto3" json:"base_weight,omitempty"`
+	Engine          string                 `protobuf:"bytes,17,opt,name=engine,proto3" json:"engine,omitempty"`
+	WarmModels      []string               `protobuf:"bytes,18,rep,name=warm_models,json=warmModels,proto3" json:"warm_models,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *NodeInfo) Reset() {
+	*x = NodeInfo{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeInfo) ProtoMessage() {}
+
+func (x *NodeInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeInfo.ProtoReflect.Descriptor instead.
+func (*NodeInfo) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *NodeInfo) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *NodeInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *NodeInfo) GetEndpoint() string {
+	if x != nil {
+		return x.Endpoint
+	}
+	return ""
+}
+
+func (x *NodeInfo) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *NodeInfo) GetModels() []string {
+	if x != nil {
+		return x.Models
+	}
+	return nil
+}
+
+func (x *NodeInfo) GetEffectiveWeight() float64 {
+	if x != nil {
+		return x.EffectiveWeight
+	}
+	return 0
+}
+
+func (x *NodeInfo) GetActiveRequests() int32 {
+	if x != nil {
+		return x.ActiveRequests
+	}
+	return 0
+}
+
+func (x *NodeInfo) GetMaxConcurrent() int32 {
+	if x != nil {
+		return x.MaxConcurrent
+	}
+	return 0
+}
+
+func (x *NodeInfo) GetVramFreeMb() uint64 {
+	if x != nil {
+		return x.VramFreeMb
+	}
+	return 0
+}
+
+func (x *NodeInfo) GetVramTotalMb() uint64 {
+	if x != nil {
+		return x.VramTotalMb
+	}
+	return 0
+}
+
+func (x *NodeInfo) GetTtftEmaMs() float64 {
+	if x != nil {
+		return x.TtftEmaMs
+	}
+	return 0
+}
+
+func (x *NodeInfo) GetTpsEma() float64 {
+	if x != nil {
+		return x.TpsEma
+	}
+	return 0
+}
+
+func (x *NodeInfo) GetLastHeartbeat() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastHeartbeat
+	}
+	return nil
+}
+
+func (x *NodeInfo) GetGpuUtilPercent() float64 {
+	if x != nil {
+		return x.GpuUtilPercent
+	}
+	return 0
+}
+
+func (x *NodeInfo) GetGpuTempC() uint32 {
+	if x != nil {
+		return x.GpuTempC
+	}
+	return 0
+}
+
+func (x *NodeInfo) GetBaseWeight() float64 {
+	if x != nil {
+		return x.BaseWeight
+	}
+	return 0
+}
+
+func (x *NodeInfo) GetEngine() string {
+	if x != nil {
+		return x.Engine
+	}
+	return ""
+}
+
+func (x *NodeInfo) GetWarmModels() []string {
+	if x != nil {
+		return x.WarmModels
+	}
+	return nil
+}
+
+type ListNodesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Nodes         []*NodeInfo            `protobuf:"bytes,1,rep,name=nodes,proto3" json:"nodes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListNodesResponse) Reset() {
+	*x = ListNodesResponse{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListNodesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListNodesResponse) ProtoMessage() {}
+
+func (x *ListNodesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListNodesResponse.ProtoReflect.Descriptor instead.
+func (*ListNodesResponse) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *ListNodesResponse) GetNodes() []*NodeInfo {
+	if x != nil {
+		return x.Nodes
+	}
+	return nil
+}
+
+type DrainNodeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DrainNodeRequest) Reset() {
+	*x = DrainNodeRequest{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DrainNodeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DrainNodeRequest) ProtoMessage() {}
+
+func (x *DrainNodeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DrainNodeRequest.ProtoReflect.Descriptor instead.
+func (*DrainNodeRequest) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *DrainNodeRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+type DrainNodeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DrainNodeResponse) Reset() {
+	*x = DrainNodeResponse{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DrainNodeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DrainNodeResponse) ProtoMessage() {}
+
+func (x *DrainNodeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DrainNodeResponse.ProtoReflect.Descriptor instead.
+func (*DrainNodeResponse) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{35}
+}
+
 var File_llmproxy_v1_admin_proto protoreflect.FileDescriptor
 
 const file_llmproxy_v1_admin_proto_rawDesc = "" +
@@ -1357,7 +2101,64 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"\x04keys\x18\x01 \x03(\v2\x17.llmproxy.v1.APIKeyInfoR\x04keys\"\x19\n" +
 	"\x17RotateEncryptionRequest\"<\n" +
 	"\x18RotateEncryptionResponse\x12 \n" +
-	"\vreencrypted\x18\x01 \x01(\x05R\vreencrypted2\xe5\x06\n" +
+	"\vreencrypted\x18\x01 \x01(\x05R\vreencrypted\"\xde\x01\n" +
+	"\x12MintNodeKeyRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x17\n" +
+	"\anode_id\x18\x02 \x01(\tR\x06nodeId\x12#\n" +
+	"\rallowed_cidrs\x18\x03 \x03(\tR\fallowedCidrs\x12%\n" +
+	"\x0eallowed_models\x18\x04 \x03(\tR\rallowedModels\x12&\n" +
+	"\x0fmax_base_weight\x18\x05 \x01(\x01R\rmaxBaseWeight\x12'\n" +
+	"\x0fmax_concurrency\x18\x06 \x01(\x05R\x0emaxConcurrency\"B\n" +
+	"\x13MintNodeKeyResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1b\n" +
+	"\tplain_key\x18\x02 \x01(\tR\bplainKey\"&\n" +
+	"\x14RevokeNodeKeyRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\"\x17\n" +
+	"\x15RevokeNodeKeyResponse\"\x15\n" +
+	"\x13ListNodeKeysRequest\"\xbe\x02\n" +
+	"\vNodeKeyInfo\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x17\n" +
+	"\anode_id\x18\x03 \x01(\tR\x06nodeId\x129\n" +
+	"\n" +
+	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1a\n" +
+	"\bdisabled\x18\x05 \x01(\bR\bdisabled\x12#\n" +
+	"\rallowed_cidrs\x18\x06 \x03(\tR\fallowedCidrs\x12%\n" +
+	"\x0eallowed_models\x18\a \x03(\tR\rallowedModels\x12&\n" +
+	"\x0fmax_base_weight\x18\b \x01(\x01R\rmaxBaseWeight\x12'\n" +
+	"\x0fmax_concurrency\x18\t \x01(\x05R\x0emaxConcurrency\"D\n" +
+	"\x14ListNodeKeysResponse\x12,\n" +
+	"\x04keys\x18\x01 \x03(\v2\x18.llmproxy.v1.NodeKeyInfoR\x04keys\"\x12\n" +
+	"\x10ListNodesRequest\"\xe0\x04\n" +
+	"\bNodeInfo\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
+	"\bendpoint\x18\x03 \x01(\tR\bendpoint\x12\x14\n" +
+	"\x05state\x18\x04 \x01(\tR\x05state\x12\x16\n" +
+	"\x06models\x18\x05 \x03(\tR\x06models\x12)\n" +
+	"\x10effective_weight\x18\x06 \x01(\x01R\x0feffectiveWeight\x12'\n" +
+	"\x0factive_requests\x18\a \x01(\x05R\x0eactiveRequests\x12%\n" +
+	"\x0emax_concurrent\x18\b \x01(\x05R\rmaxConcurrent\x12 \n" +
+	"\fvram_free_mb\x18\t \x01(\x04R\n" +
+	"vramFreeMb\x12\"\n" +
+	"\rvram_total_mb\x18\n" +
+	" \x01(\x04R\vvramTotalMb\x12\x1e\n" +
+	"\vttft_ema_ms\x18\v \x01(\x01R\tttftEmaMs\x12\x17\n" +
+	"\atps_ema\x18\f \x01(\x01R\x06tpsEma\x12A\n" +
+	"\x0elast_heartbeat\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\rlastHeartbeat\x12(\n" +
+	"\x10gpu_util_percent\x18\x0e \x01(\x01R\x0egpuUtilPercent\x12\x1c\n" +
+	"\n" +
+	"gpu_temp_c\x18\x0f \x01(\rR\bgpuTempC\x12\x1f\n" +
+	"\vbase_weight\x18\x10 \x01(\x01R\n" +
+	"baseWeight\x12\x16\n" +
+	"\x06engine\x18\x11 \x01(\tR\x06engine\x12\x1f\n" +
+	"\vwarm_models\x18\x12 \x03(\tR\n" +
+	"warmModels\"@\n" +
+	"\x11ListNodesResponse\x12+\n" +
+	"\x05nodes\x18\x01 \x03(\v2\x15.llmproxy.v1.NodeInfoR\x05nodes\"+\n" +
+	"\x10DrainNodeRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"\x13\n" +
+	"\x11DrainNodeResponse2\xfc\t\n" +
 	"\x14LLMProxyAdminService\x12P\n" +
 	"\vUpsertModel\x12\x1f.llmproxy.v1.UpsertModelRequest\x1a .llmproxy.v1.UpsertModelResponse\x12P\n" +
 	"\vDeleteModel\x12\x1f.llmproxy.v1.DeleteModelRequest\x1a .llmproxy.v1.DeleteModelResponse\x12S\n" +
@@ -1369,7 +2170,12 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"MintAPIKey\x12\x1e.llmproxy.v1.MintAPIKeyRequest\x1a\x1f.llmproxy.v1.MintAPIKeyResponse\x12S\n" +
 	"\fRevokeAPIKey\x12 .llmproxy.v1.RevokeAPIKeyRequest\x1a!.llmproxy.v1.RevokeAPIKeyResponse\x12P\n" +
 	"\vListAPIKeys\x12\x1f.llmproxy.v1.ListAPIKeysRequest\x1a .llmproxy.v1.ListAPIKeysResponse\x12_\n" +
-	"\x10RotateEncryption\x12$.llmproxy.v1.RotateEncryptionRequest\x1a%.llmproxy.v1.RotateEncryptionResponseB\xa6\x01\n" +
+	"\x10RotateEncryption\x12$.llmproxy.v1.RotateEncryptionRequest\x1a%.llmproxy.v1.RotateEncryptionResponse\x12P\n" +
+	"\vMintNodeKey\x12\x1f.llmproxy.v1.MintNodeKeyRequest\x1a .llmproxy.v1.MintNodeKeyResponse\x12V\n" +
+	"\rRevokeNodeKey\x12!.llmproxy.v1.RevokeNodeKeyRequest\x1a\".llmproxy.v1.RevokeNodeKeyResponse\x12S\n" +
+	"\fListNodeKeys\x12 .llmproxy.v1.ListNodeKeysRequest\x1a!.llmproxy.v1.ListNodeKeysResponse\x12J\n" +
+	"\tListNodes\x12\x1d.llmproxy.v1.ListNodesRequest\x1a\x1e.llmproxy.v1.ListNodesResponse\x12J\n" +
+	"\tDrainNode\x12\x1d.llmproxy.v1.DrainNodeRequest\x1a\x1e.llmproxy.v1.DrainNodeResponseB\xa6\x01\n" +
 	"\x0fcom.llmproxy.v1B\n" +
 	"AdminProtoP\x01Z:github.com/ai-process/llm-proxy/gen/llmproxy/v1;llmproxyv1\xa2\x02\x03LXX\xaa\x02\vLlmproxy.V1\xca\x02\vLlmproxy\\V1\xe2\x02\x17Llmproxy\\V1\\GPBMetadata\xea\x02\fLlmproxy::V1b\x06proto3"
 
@@ -1385,7 +2191,7 @@ func file_llmproxy_v1_admin_proto_rawDescGZIP() []byte {
 	return file_llmproxy_v1_admin_proto_rawDescData
 }
 
-var file_llmproxy_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_llmproxy_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
 var file_llmproxy_v1_admin_proto_goTypes = []any{
 	(*ModelSpec)(nil),                // 0: llmproxy.v1.ModelSpec
 	(*RuleSpec)(nil),                 // 1: llmproxy.v1.RuleSpec
@@ -1411,47 +2217,73 @@ var file_llmproxy_v1_admin_proto_goTypes = []any{
 	(*ListAPIKeysResponse)(nil),      // 21: llmproxy.v1.ListAPIKeysResponse
 	(*RotateEncryptionRequest)(nil),  // 22: llmproxy.v1.RotateEncryptionRequest
 	(*RotateEncryptionResponse)(nil), // 23: llmproxy.v1.RotateEncryptionResponse
-	nil,                              // 24: llmproxy.v1.RuleSpec.AttributesEntry
-	(Effort)(0),                      // 25: llmproxy.v1.Effort
-	(*timestamppb.Timestamp)(nil),    // 26: google.protobuf.Timestamp
+	(*MintNodeKeyRequest)(nil),       // 24: llmproxy.v1.MintNodeKeyRequest
+	(*MintNodeKeyResponse)(nil),      // 25: llmproxy.v1.MintNodeKeyResponse
+	(*RevokeNodeKeyRequest)(nil),     // 26: llmproxy.v1.RevokeNodeKeyRequest
+	(*RevokeNodeKeyResponse)(nil),    // 27: llmproxy.v1.RevokeNodeKeyResponse
+	(*ListNodeKeysRequest)(nil),      // 28: llmproxy.v1.ListNodeKeysRequest
+	(*NodeKeyInfo)(nil),              // 29: llmproxy.v1.NodeKeyInfo
+	(*ListNodeKeysResponse)(nil),     // 30: llmproxy.v1.ListNodeKeysResponse
+	(*ListNodesRequest)(nil),         // 31: llmproxy.v1.ListNodesRequest
+	(*NodeInfo)(nil),                 // 32: llmproxy.v1.NodeInfo
+	(*ListNodesResponse)(nil),        // 33: llmproxy.v1.ListNodesResponse
+	(*DrainNodeRequest)(nil),         // 34: llmproxy.v1.DrainNodeRequest
+	(*DrainNodeResponse)(nil),        // 35: llmproxy.v1.DrainNodeResponse
+	nil,                              // 36: llmproxy.v1.RuleSpec.AttributesEntry
+	(Effort)(0),                      // 37: llmproxy.v1.Effort
+	(*timestamppb.Timestamp)(nil),    // 38: google.protobuf.Timestamp
 }
 var file_llmproxy_v1_admin_proto_depIdxs = []int32{
-	25, // 0: llmproxy.v1.ModelSpec.efforts:type_name -> llmproxy.v1.Effort
-	25, // 1: llmproxy.v1.RuleSpec.effort:type_name -> llmproxy.v1.Effort
-	24, // 2: llmproxy.v1.RuleSpec.attributes:type_name -> llmproxy.v1.RuleSpec.AttributesEntry
+	37, // 0: llmproxy.v1.ModelSpec.efforts:type_name -> llmproxy.v1.Effort
+	37, // 1: llmproxy.v1.RuleSpec.effort:type_name -> llmproxy.v1.Effort
+	36, // 2: llmproxy.v1.RuleSpec.attributes:type_name -> llmproxy.v1.RuleSpec.AttributesEntry
 	0,  // 3: llmproxy.v1.UpsertModelRequest.model:type_name -> llmproxy.v1.ModelSpec
 	1,  // 4: llmproxy.v1.ReplaceRulesRequest.rules:type_name -> llmproxy.v1.RuleSpec
-	26, // 5: llmproxy.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	38, // 5: llmproxy.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 6: llmproxy.v1.GetConfigResponse.models:type_name -> llmproxy.v1.ModelSpec
 	1,  // 7: llmproxy.v1.GetConfigResponse.rules:type_name -> llmproxy.v1.RuleSpec
 	12, // 8: llmproxy.v1.GetConfigResponse.vendor_keys:type_name -> llmproxy.v1.VendorKeyInfo
-	26, // 9: llmproxy.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	38, // 9: llmproxy.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
 	20, // 10: llmproxy.v1.ListAPIKeysResponse.keys:type_name -> llmproxy.v1.APIKeyInfo
-	2,  // 11: llmproxy.v1.LLMProxyAdminService.UpsertModel:input_type -> llmproxy.v1.UpsertModelRequest
-	4,  // 12: llmproxy.v1.LLMProxyAdminService.DeleteModel:input_type -> llmproxy.v1.DeleteModelRequest
-	6,  // 13: llmproxy.v1.LLMProxyAdminService.ReplaceRules:input_type -> llmproxy.v1.ReplaceRulesRequest
-	8,  // 14: llmproxy.v1.LLMProxyAdminService.SetVendorKey:input_type -> llmproxy.v1.SetVendorKeyRequest
-	10, // 15: llmproxy.v1.LLMProxyAdminService.DeleteVendorKey:input_type -> llmproxy.v1.DeleteVendorKeyRequest
-	13, // 16: llmproxy.v1.LLMProxyAdminService.GetConfig:input_type -> llmproxy.v1.GetConfigRequest
-	15, // 17: llmproxy.v1.LLMProxyAdminService.MintAPIKey:input_type -> llmproxy.v1.MintAPIKeyRequest
-	17, // 18: llmproxy.v1.LLMProxyAdminService.RevokeAPIKey:input_type -> llmproxy.v1.RevokeAPIKeyRequest
-	19, // 19: llmproxy.v1.LLMProxyAdminService.ListAPIKeys:input_type -> llmproxy.v1.ListAPIKeysRequest
-	22, // 20: llmproxy.v1.LLMProxyAdminService.RotateEncryption:input_type -> llmproxy.v1.RotateEncryptionRequest
-	3,  // 21: llmproxy.v1.LLMProxyAdminService.UpsertModel:output_type -> llmproxy.v1.UpsertModelResponse
-	5,  // 22: llmproxy.v1.LLMProxyAdminService.DeleteModel:output_type -> llmproxy.v1.DeleteModelResponse
-	7,  // 23: llmproxy.v1.LLMProxyAdminService.ReplaceRules:output_type -> llmproxy.v1.ReplaceRulesResponse
-	9,  // 24: llmproxy.v1.LLMProxyAdminService.SetVendorKey:output_type -> llmproxy.v1.SetVendorKeyResponse
-	11, // 25: llmproxy.v1.LLMProxyAdminService.DeleteVendorKey:output_type -> llmproxy.v1.DeleteVendorKeyResponse
-	14, // 26: llmproxy.v1.LLMProxyAdminService.GetConfig:output_type -> llmproxy.v1.GetConfigResponse
-	16, // 27: llmproxy.v1.LLMProxyAdminService.MintAPIKey:output_type -> llmproxy.v1.MintAPIKeyResponse
-	18, // 28: llmproxy.v1.LLMProxyAdminService.RevokeAPIKey:output_type -> llmproxy.v1.RevokeAPIKeyResponse
-	21, // 29: llmproxy.v1.LLMProxyAdminService.ListAPIKeys:output_type -> llmproxy.v1.ListAPIKeysResponse
-	23, // 30: llmproxy.v1.LLMProxyAdminService.RotateEncryption:output_type -> llmproxy.v1.RotateEncryptionResponse
-	21, // [21:31] is the sub-list for method output_type
-	11, // [11:21] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	38, // 11: llmproxy.v1.NodeKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	29, // 12: llmproxy.v1.ListNodeKeysResponse.keys:type_name -> llmproxy.v1.NodeKeyInfo
+	38, // 13: llmproxy.v1.NodeInfo.last_heartbeat:type_name -> google.protobuf.Timestamp
+	32, // 14: llmproxy.v1.ListNodesResponse.nodes:type_name -> llmproxy.v1.NodeInfo
+	2,  // 15: llmproxy.v1.LLMProxyAdminService.UpsertModel:input_type -> llmproxy.v1.UpsertModelRequest
+	4,  // 16: llmproxy.v1.LLMProxyAdminService.DeleteModel:input_type -> llmproxy.v1.DeleteModelRequest
+	6,  // 17: llmproxy.v1.LLMProxyAdminService.ReplaceRules:input_type -> llmproxy.v1.ReplaceRulesRequest
+	8,  // 18: llmproxy.v1.LLMProxyAdminService.SetVendorKey:input_type -> llmproxy.v1.SetVendorKeyRequest
+	10, // 19: llmproxy.v1.LLMProxyAdminService.DeleteVendorKey:input_type -> llmproxy.v1.DeleteVendorKeyRequest
+	13, // 20: llmproxy.v1.LLMProxyAdminService.GetConfig:input_type -> llmproxy.v1.GetConfigRequest
+	15, // 21: llmproxy.v1.LLMProxyAdminService.MintAPIKey:input_type -> llmproxy.v1.MintAPIKeyRequest
+	17, // 22: llmproxy.v1.LLMProxyAdminService.RevokeAPIKey:input_type -> llmproxy.v1.RevokeAPIKeyRequest
+	19, // 23: llmproxy.v1.LLMProxyAdminService.ListAPIKeys:input_type -> llmproxy.v1.ListAPIKeysRequest
+	22, // 24: llmproxy.v1.LLMProxyAdminService.RotateEncryption:input_type -> llmproxy.v1.RotateEncryptionRequest
+	24, // 25: llmproxy.v1.LLMProxyAdminService.MintNodeKey:input_type -> llmproxy.v1.MintNodeKeyRequest
+	26, // 26: llmproxy.v1.LLMProxyAdminService.RevokeNodeKey:input_type -> llmproxy.v1.RevokeNodeKeyRequest
+	28, // 27: llmproxy.v1.LLMProxyAdminService.ListNodeKeys:input_type -> llmproxy.v1.ListNodeKeysRequest
+	31, // 28: llmproxy.v1.LLMProxyAdminService.ListNodes:input_type -> llmproxy.v1.ListNodesRequest
+	34, // 29: llmproxy.v1.LLMProxyAdminService.DrainNode:input_type -> llmproxy.v1.DrainNodeRequest
+	3,  // 30: llmproxy.v1.LLMProxyAdminService.UpsertModel:output_type -> llmproxy.v1.UpsertModelResponse
+	5,  // 31: llmproxy.v1.LLMProxyAdminService.DeleteModel:output_type -> llmproxy.v1.DeleteModelResponse
+	7,  // 32: llmproxy.v1.LLMProxyAdminService.ReplaceRules:output_type -> llmproxy.v1.ReplaceRulesResponse
+	9,  // 33: llmproxy.v1.LLMProxyAdminService.SetVendorKey:output_type -> llmproxy.v1.SetVendorKeyResponse
+	11, // 34: llmproxy.v1.LLMProxyAdminService.DeleteVendorKey:output_type -> llmproxy.v1.DeleteVendorKeyResponse
+	14, // 35: llmproxy.v1.LLMProxyAdminService.GetConfig:output_type -> llmproxy.v1.GetConfigResponse
+	16, // 36: llmproxy.v1.LLMProxyAdminService.MintAPIKey:output_type -> llmproxy.v1.MintAPIKeyResponse
+	18, // 37: llmproxy.v1.LLMProxyAdminService.RevokeAPIKey:output_type -> llmproxy.v1.RevokeAPIKeyResponse
+	21, // 38: llmproxy.v1.LLMProxyAdminService.ListAPIKeys:output_type -> llmproxy.v1.ListAPIKeysResponse
+	23, // 39: llmproxy.v1.LLMProxyAdminService.RotateEncryption:output_type -> llmproxy.v1.RotateEncryptionResponse
+	25, // 40: llmproxy.v1.LLMProxyAdminService.MintNodeKey:output_type -> llmproxy.v1.MintNodeKeyResponse
+	27, // 41: llmproxy.v1.LLMProxyAdminService.RevokeNodeKey:output_type -> llmproxy.v1.RevokeNodeKeyResponse
+	30, // 42: llmproxy.v1.LLMProxyAdminService.ListNodeKeys:output_type -> llmproxy.v1.ListNodeKeysResponse
+	33, // 43: llmproxy.v1.LLMProxyAdminService.ListNodes:output_type -> llmproxy.v1.ListNodesResponse
+	35, // 44: llmproxy.v1.LLMProxyAdminService.DrainNode:output_type -> llmproxy.v1.DrainNodeResponse
+	30, // [30:45] is the sub-list for method output_type
+	15, // [15:30] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_llmproxy_v1_admin_proto_init() }
@@ -1466,7 +2298,7 @@ func file_llmproxy_v1_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_llmproxy_v1_admin_proto_rawDesc), len(file_llmproxy_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   25,
+			NumMessages:   37,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

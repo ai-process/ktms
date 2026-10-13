@@ -49,6 +49,12 @@ type Config struct {
 	BatchPollInterval time.Duration
 	ResultsRetention  time.Duration
 
+	// Local Node Pool configuration
+	NodeHeartbeatInterval time.Duration
+	NodeHeartbeatTTL      time.Duration
+	NodeRetentionTTL      time.Duration
+	NodeAllowLocalhost    bool
+
 	SentryDSN         string
 	SentryEnvironment string
 	SentryRelease     string
@@ -81,6 +87,10 @@ func Load() *Config {
 		BatchMaxItems:      getIntEnv("BATCH_MAX_ITEMS", 10000),
 		BatchPollInterval:  time.Duration(getIntEnv("BATCH_POLL_SECONDS", 60)) * time.Second,
 		ResultsRetention:   getRetentionEnv("RESULTS_RETENTION_DAYS", 7*24*time.Hour),
+		NodeHeartbeatInterval: time.Duration(getIntEnv("NODE_HEARTBEAT_INTERVAL_SECONDS", 5)) * time.Second,
+		NodeHeartbeatTTL:      time.Duration(getIntEnv("NODE_HEARTBEAT_TTL_SECONDS", 15)) * time.Second,
+		NodeRetentionTTL:      getRetentionEnv("NODE_RETENTION_TTL_DAYS", 24*time.Hour),
+		NodeAllowLocalhost:    getBoolEnv("NODE_ALLOW_LOCALHOST_ENDPOINTS", false),
 		SentryDSN:          getEnv("SENTRY_DSN", ""),
 		SentryEnvironment:  getEnv("SENTRY_ENVIRONMENT", "development"),
 		SentryRelease:      getEnv("SENTRY_RELEASE", ""),

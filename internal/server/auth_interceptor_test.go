@@ -26,6 +26,10 @@ func (f *fakeStore) GetAPIKeyByLookup(_ context.Context, lookup string) (*proxyd
 	return row, nil
 }
 
+func (f *fakeStore) GetNodeKeyByLookup(_ context.Context, lookup string) (*proxydb.NodeKey, error) {
+	return nil, proxydb.ErrNotFound
+}
+
 func mintKey(t *testing.T, store *fakeStore, name string, scopes ...string) string {
 	t.Helper()
 	plain, row, err := apikeys.Generate(name, scopes)

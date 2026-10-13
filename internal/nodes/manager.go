@@ -1,0 +1,244 @@
+package nodes
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"time"
+
+	"github.com/rs/zerolog/log"
+
+	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+)
+
+type Config struct {
+	HeartbeatInterval time.Duration
+	HeartbeatTTL      time.Duration
+	RetentionTTL      time.Duration
+	AllowLocalhost    bool
+}
+
+type Manager struct {
+	store          *Store
+	slots          *LeaseManager
+	circuit        *CircuitBreaker
+	telemetry      *TelemetryTracker
+	cfg            Config
+	stopCh         chan struct{}
+	wg             sync.WaitGroup
+	selectorTokens sync.Map // map[string]*nodeWRR
+}
+
+func NewManager(store *Store, slots *LeaseManager, circuit *CircuitBreaker, telemetry *TelemetryTracker, cfg Config) *Manager {
+	if cfg.HeartbeatInterval <= 0 {
+		cfg.HeartbeatInterval = 5 * time.Second
+	}
+	if cfg.HeartbeatTTL <= 0 {
+		cfg.HeartbeatTTL = 15 * time.Second
+	}
+	if cfg.RetentionTTL <= 0 {
+		cfg.RetentionTTL = 24 * time.Hour
+	}
+
+	return &Manager{
+		store:     store,
+		slots:     slots,
+		circuit:   circuit,
+		telemetry: telemetry,
+		cfg:       cfg,
+		stopCh:    make(chan struct{}),
+	}
+}
+
+func (m *Manager) Start(ctx context.Context) {
+	m.wg.Add(1)
+	go m.sweepLoop(ctx)
+}
+
+func (m *Manager) Stop() {
+	close(m.stopCh)
+	m.wg.Wait()
+}
+
+func (m *Manager) Store() *Store { return m.store }
+func (m *Manager) Slots() *LeaseManager { return m.slots }
+func (m *Manager) Circuit() *CircuitBreaker { return m.circuit }
+func (m *Manager) Telemetry() *TelemetryTracker { return m.telemetry }
+func (m *Manager) Config() Config { return m.cfg }
+
+// Register handles node self-registration.
+func (m *Manager) Register(ctx context.Context, meta *NodeMeta) error {
+	// 1. SSRF validation
+	if err := ValidateEndpoint(ctx, meta.Endpoint, m.cfg.AllowLocalhost); err != nil {
+		return fmt.Errorf("validate endpoint: %w", err)
+	}
+
+	meta.RegisteredAt = time.Now()
+	// Meta persists with retention TTL
+	if err := m.store.SaveMeta(ctx, meta, m.cfg.RetentionTTL); err != nil {
+		return fmt.Errorf("save node meta: %w", err)
+	}
+
+	// 2. Clear circuit breaker if any
+	_ = m.circuit.RecordSuccess(ctx, meta.NodeID)
+	return nil
+}
+
+// Heartbeat processes node heartbeat and returns current state.
+func (m *Manager) Heartbeat(ctx context.Context, hb *NodeHeartbeatData) (drainRequested bool, activeProxyRequests int32, err error) {
+	// Check if node is registered
+	meta, err := m.store.GetMeta(ctx, hb.NodeID)
+	if err != nil {
+		return false, 0, err
+	}
+
+	// Save heartbeat record with TTL
+	hb.LastHeartbeat = time.Now()
+	if err := m.store.SaveHeartbeat(ctx, hb, m.cfg.HeartbeatTTL); err != nil {
+		return false, 0, err
+	}
+
+	// If heartbeat reported draining, mark drain in Redis
+	if hb.Draining {
+		_ = m.store.SetDrain(ctx, hb.NodeID)
+	}
+
+	// Check if operator requested drain
+	draining, err := m.store.IsDraining(ctx, hb.NodeID)
+	if err != nil {
+		return false, 0, err
+	}
+
+	// Get active proxy requests
+	active, err := m.store.GetInflightCount(ctx, hb.NodeID, hb.LastHeartbeat)
+	if err != nil {
+		return false, 0, err
+	}
+
+	_ = meta
+	return draining, active, nil
+}
+
+// Unregister handles graceful node unregistration.
+func (m *Manager) Unregister(ctx context.Context, nodeID string) error {
+	return m.store.RemoveNode(ctx, nodeID)
+}
+
+// Drain marks a node for draining.
+func (m *Manager) Drain(ctx context.Context, nodeID string) error {
+	return m.store.SetDrain(ctx, nodeID)
+}
+
+// GetNodeState calculates node state based on:
+// 1. OFFLINE (heartbeat missing / expired)
+// 2. DRAINING (operator requested or self reported)
+// 3. CIRCUIT_BROKEN (circuit tripped)
+// 4. SUSPECT (GPU temp >= 88C or high utilization)
+// 5. HEALTHY
+func (m *Manager) GetNodeState(ctx context.Context, nodeID string, hb *NodeHeartbeatData) (pb.NodeState, error) {
+	if hb == nil {
+		return pb.NodeState_NODE_STATE_OFFLINE, nil
+	}
+	if time.Since(hb.LastHeartbeat) > m.cfg.HeartbeatTTL {
+		return pb.NodeState_NODE_STATE_OFFLINE, nil
+	}
+
+	isDraining, err := m.store.IsDraining(ctx, nodeID)
+	if err == nil && (isDraining || hb.Draining) {
+		return pb.NodeState_NODE_STATE_DRAINING, nil
+	}
+
+	broken, err := m.circuit.IsBroken(ctx, nodeID)
+	if err == nil && broken {
+		return pb.NodeState_NODE_STATE_CIRCUIT_BROKEN, nil
+	}
+
+	if hb.GPUTempC >= 88 || hb.GPUUtilPercent >= 98 {
+		return pb.NodeState_NODE_STATE_SUSPECT, nil
+	}
+
+	return pb.NodeState_NODE_STATE_HEALTHY, nil
+}
+
+// ListNodes builds snapshot list for all known nodes.
+func (m *Manager) ListNodes(ctx context.Context) ([]*NodeSnapshot, error) {
+	nodeIDs, err := m.store.GetAllNodeIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	var out []*NodeSnapshot
+	for _, id := range nodeIDs {
+		meta, err := m.store.GetMeta(ctx, id)
+		if err != nil {
+			continue
+		}
+		hb, _ := m.store.GetHeartbeat(ctx, id)
+		st, _ := m.GetNodeState(ctx, id, hb)
+		inflight, _ := m.store.GetInflightCount(ctx, id, now)
+
+		perfMap := make(map[string]*NodePerfData)
+		for _, model := range meta.Models {
+			p, _ := m.telemetry.GetPerf(ctx, id, model.ModelId)
+			if p != nil {
+				perfMap[model.ModelId] = p
+			}
+		}
+
+		out = append(out, &NodeSnapshot{
+			Meta:      meta,
+			Heartbeat: hb,
+			Perf:      perfMap,
+			Inflight:  inflight,
+			State:     st,
+		})
+	}
+	return out, nil
+}
+
+func (m *Manager) sweepLoop(ctx context.Context) {
+	defer m.wg.Done()
+	ticker := time.NewTicker(m.cfg.HeartbeatInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-m.stopCh:
+			return
+		case <-ticker.C:
+			m.sweep(ctx)
+		}
+	}
+}
+
+// sweep cleans up stale inflight leases and removes nodes inactive past RetentionTTL.
+func (m *Manager) sweep(ctx context.Context) {
+	nodeIDs, err := m.store.GetAllNodeIDs(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("sweep: failed to list node IDs")
+		return
+	}
+
+	now := time.Now()
+	for _, id := range nodeIDs {
+		meta, err := m.store.GetMeta(ctx, id)
+		if err != nil {
+			// Meta expired past RetentionTTL -> remove from all set
+			_ = m.store.RemoveNode(ctx, id)
+			continue
+		}
+
+		hb, _ := m.store.GetHeartbeat(ctx, id)
+		if hb == nil && now.Sub(meta.RegisteredAt) > m.cfg.RetentionTTL {
+			log.Info().Str("node_id", id).Msg("sweep: evicting dead node past retention TTL")
+			_ = m.store.RemoveNode(ctx, id)
+			continue
+		}
+
+		// Purge expired leases from inflight ZSET
+		_, _ = m.store.GetInflightCount(ctx, id, now)
+	}
+}
