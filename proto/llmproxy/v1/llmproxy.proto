@@ -130,7 +130,7 @@ message GenerateTextResponse {
   repeated string choices = 1;
   TokensUsage usage = 2;
   string resolved_model = 3; // registry model id actually used
-  string resolved_vendor = 4; // "openai" | "google" | "deepseek"
+  string resolved_vendor = 4; // "openai" | "anthropic" | "google" | "deepseek"
   string matched_rule = 5; // rule name, "" on model_override
   repeated Choice details = 6;
 }

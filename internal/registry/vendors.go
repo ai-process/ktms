@@ -7,13 +7,17 @@ import "github.com/ai-process/llm-proxy/internal/proxydb"
 // OpenAI-compatible server, so its endpoint is required and its key is its own.
 // Local routes to self-registering local inference nodes.
 const (
-	VendorOpenAI   = "openai"
-	VendorGoogle   = "google"
-	VendorDeepSeek = "deepseek"
-	VendorOllama   = "ollama"
-	VendorTypeSafe = "typesafe"
-	VendorLocal    = "local"
+	VendorOpenAI    = "openai"
+	VendorGoogle    = "google"
+	VendorDeepSeek  = "deepseek"
+	VendorOllama    = "ollama"
+	VendorTypeSafe  = "typesafe"
+	VendorAnthropic = "anthropic"
+	VendorLocal     = "local"
 )
+
+// AnthropicDefaultEndpoint is used when an anthropic model has no endpoint override.
+const AnthropicDefaultEndpoint = "https://api.anthropic.com"
 
 // OpenAIDefaultEndpoint is used when an openai model has no endpoint override.
 const OpenAIDefaultEndpoint = "https://api.openai.com"
@@ -71,7 +75,7 @@ const CapabilityJudge = "judge"
 const CapabilityBatch = "batch"
 
 func ValidVendor(v string) bool {
-	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorLocal
+	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorAnthropic || v == VendorLocal
 }
 
 // SoftSchema reports whether this model needs the prompt-and-verify path.

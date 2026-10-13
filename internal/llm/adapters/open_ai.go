@@ -391,6 +391,39 @@ func (a *OpenAIAdapter) buildCompletionParams(chat *llm.ChatContext, messages []
 			})
 		}
 	}
+
+	if len(chat.GetTools()) > 0 {
+		var tools []openai.ChatCompletionToolUnionParam
+		for _, t := range chat.GetTools() {
+			fnParam := shared.FunctionDefinitionParam{
+				Name: t.Function.Name,
+			}
+			if t.Function.Description != "" {
+				fnParam.Description = openai.String(t.Function.Description)
+			}
+			if t.Function.Strict {
+				fnParam.Strict = openai.Bool(true)
+			}
+			if t.Function.Parameters != nil {
+				fnParam.Parameters = shared.FunctionParameters(convertLLMResponseSchemaToOpenAISchema(t.Function.Parameters))
+			}
+			tools = append(tools, openai.ChatCompletionFunctionTool(fnParam))
+		}
+		params.Tools = tools
+	}
+
+	if tc := chat.GetToolChoice(); tc != nil {
+		switch tc.Mode {
+		case "auto", "none", "required":
+			params.ToolChoice = openai.ChatCompletionToolChoiceOptionUnionParam{
+				OfAuto: openai.String(tc.Mode),
+			}
+		case "specific":
+			params.ToolChoice = openai.ToolChoiceOptionFunctionToolChoice(openai.ChatCompletionNamedToolChoiceFunctionParam{
+				Name: tc.SpecificFunctionName,
+			})
+		}
+	}
 	return params
 }
 
