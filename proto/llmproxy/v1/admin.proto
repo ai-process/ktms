@@ -27,6 +27,9 @@ message ModelSpec {
   int64 daily_tokens_per_key = 9; // per api key per UTC day, 0 = unlimited
   int64 daily_tokens_per_user = 10; // per attributes["user_id"] (or svc:<key_name> fallback) per UTC day
   bool enabled = 11;
+  int32 rpm_burst = 16; // extra burst allowed above steady-state rpm (0 = default burst)
+  int32 queue_timeout_ms = 17; // max wait for pool inference slot in ms (0 = fallback immediately)
+  double budget_grace_margin = 18; // allowed daily budget overdraft (0.0 = system default)
 }
 
 message RuleSpec {
@@ -87,6 +90,7 @@ message GetConfigResponse {
   repeated RuleSpec rules = 2;
   repeated VendorKeyInfo vendor_keys = 3;
   int64 version = 4;
+  repeated UserRateLimitSpec user_rate_limits = 5;
 }
 
 message MintAPIKeyRequest {
@@ -194,6 +198,36 @@ message DrainNodeRequest {
 
 message DrainNodeResponse {}
 
+message UserRateLimitSpec {
+  string user_id = 1;
+  string model_id = 2;
+  int32 rpm = 3;
+  int32 rpm_burst = 4;
+  int32 queue_timeout_ms = 5;
+  int64 daily_tokens = 6;
+}
+
+message SetUserRateLimitRequest {
+  UserRateLimitSpec rate_limit = 1;
+}
+
+message SetUserRateLimitResponse {}
+
+message DeleteUserRateLimitRequest {
+  string user_id = 1;
+  string model_id = 2;
+}
+
+message DeleteUserRateLimitResponse {}
+
+message ListUserRateLimitsRequest {
+  string user_id = 1; // optional filter
+}
+
+message ListUserRateLimitsResponse {
+  repeated UserRateLimitSpec rate_limits = 1;
+}
+
 // All admin RPCs require the "admin" scope. Every config mutation validates
 // the resulting full config in one transaction and bumps the config version.
 service LLMProxyAdminService {
@@ -212,5 +246,8 @@ service LLMProxyAdminService {
   rpc ListNodeKeys(ListNodeKeysRequest) returns (ListNodeKeysResponse);
   rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
   rpc DrainNode(DrainNodeRequest) returns (DrainNodeResponse);
+  rpc SetUserRateLimit(SetUserRateLimitRequest) returns (SetUserRateLimitResponse);
+  rpc DeleteUserRateLimit(DeleteUserRateLimitRequest) returns (DeleteUserRateLimitResponse);
+  rpc ListUserRateLimits(ListUserRateLimitsRequest) returns (ListUserRateLimitsResponse);
 }
 

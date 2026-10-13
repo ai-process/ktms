@@ -58,7 +58,33 @@ type Model struct {
 	PriceOutBatchPerMtok float64
 	DailyTokensPerKey    int64
 	DailyTokensPerUser   int64
+	Burst                int32
+	QueueTimeoutMs       int32
+	BudgetGraceMargin    float64
 	Enabled              bool
+}
+
+func (m *Model) EffectiveBurst() int32 {
+	if m.Burst > 0 {
+		return m.Burst
+	}
+	return 0
+}
+
+type UserRateLimit struct {
+	UserID         string
+	ModelID        string
+	RPM            int32
+	Burst          int32
+	QueueTimeoutMs int32
+	DailyTokens    int64
+}
+
+func (u *UserRateLimit) EffectiveBurst() int32 {
+	if u.Burst > 0 {
+		return u.Burst
+	}
+	return 0
 }
 
 func (m *Model) BatchPriceInPerMtok() float64 {

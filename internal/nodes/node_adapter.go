@@ -2,7 +2,9 @@ package nodes
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -11,16 +13,21 @@ import (
 	"github.com/openai/openai-go/v3/option"
 	"github.com/rs/zerolog/log"
 
+	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+
 	"github.com/ai-process/llm-proxy/internal/crypto"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/llm/adapters"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 )
 
+type UserRateLimitResolver func(userID, modelID string) *proxydb.UserRateLimit
+
 type PoolResolver struct {
-	selector *Selector
-	keyring  *crypto.Keyring
-	leaseTTL time.Duration
+	selector          *Selector
+	keyring           *crypto.Keyring
+	leaseTTL          time.Duration
+	userLimitResolver UserRateLimitResolver
 }
 
 func NewPoolResolver(selector *Selector, keyring *crypto.Keyring, leaseTTL time.Duration) *PoolResolver {
@@ -34,26 +41,32 @@ func NewPoolResolver(selector *Selector, keyring *crypto.Keyring, leaseTTL time.
 	}
 }
 
+func (pr *PoolResolver) SetUserRateLimitResolver(resolver UserRateLimitResolver) {
+	pr.userLimitResolver = resolver
+}
+
 func (pr *PoolResolver) PoolAdapter(m *proxydb.Model) (llm.ClientAdapter, error) {
-	return NewPoolAdapter(pr.selector, pr.keyring, m, pr.leaseTTL), nil
+	return NewPoolAdapter(pr.selector, pr.keyring, m, pr.leaseTTL, pr.userLimitResolver), nil
 }
 
 type PoolAdapter struct {
-	selector *Selector
-	keyring  *crypto.Keyring
-	model    *proxydb.Model
-	leaseTTL time.Duration
+	selector          *Selector
+	keyring           *crypto.Keyring
+	model             *proxydb.Model
+	leaseTTL          time.Duration
+	userLimitResolver UserRateLimitResolver
 }
 
-func NewPoolAdapter(selector *Selector, keyring *crypto.Keyring, model *proxydb.Model, leaseTTL time.Duration) *PoolAdapter {
+func NewPoolAdapter(selector *Selector, keyring *crypto.Keyring, model *proxydb.Model, leaseTTL time.Duration, userLimitResolver UserRateLimitResolver) *PoolAdapter {
 	if leaseTTL <= 0 {
 		leaseTTL = 60 * time.Second
 	}
 	return &PoolAdapter{
-		selector: selector,
-		keyring:  keyring,
-		model:    model,
-		leaseTTL: leaseTTL,
+		selector:          selector,
+		keyring:           keyring,
+		model:             model,
+		leaseTTL:          leaseTTL,
+		userLimitResolver: userLimitResolver,
 	}
 }
 
@@ -63,21 +76,17 @@ func (pa *PoolAdapter) SupportsStreaming() bool {
 
 func (pa *PoolAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error) {
 	ctx := context.Background()
-	cand, err := pa.selector.SelectNode(ctx, pa.model.ID)
-	if err != nil {
-		return nil, fmt.Errorf("local pool select node: %w", err)
+	if chat != nil {
+		ctx = chat.Context()
 	}
-
-	reqID := uuid.NewString()
-	acquired, err := pa.selector.mgr.Slots().AcquireLease(ctx, cand.Snapshot.Meta.NodeID, reqID, cand.Snapshot.Meta.MaxConcurrent, pa.leaseTTL)
+	cand, reqID, err := pa.acquireSlotWithWait(ctx, chat)
 	if err != nil {
-		return nil, fmt.Errorf("local pool acquire lease: %w", err)
-	}
-	if !acquired {
-		return nil, ErrNodeSlotExhausted
+		return nil, err
 	}
 	defer func() {
-		_ = pa.selector.mgr.Slots().ReleaseLease(context.Background(), cand.Snapshot.Meta.NodeID, reqID)
+		if relErr := pa.selector.mgr.Slots().ReleaseLease(context.Background(), cand.Snapshot.Meta.NodeID, reqID); relErr != nil {
+			log.Warn().Err(relErr).Str("node_id", cand.Snapshot.Meta.NodeID).Str("req_id", reqID).Msg("failed to release node slot lease")
+		}
 	}()
 
 	client, underlyingModel, err := pa.buildNodeClient(cand)
@@ -91,16 +100,24 @@ func (pa *PoolAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error
 	duration := time.Since(start)
 
 	if err != nil {
-		_ = pa.selector.mgr.Circuit().RecordFailure(ctx, cand.Snapshot.Meta.NodeID)
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(ctx.Err(), context.Canceled) {
+			if recErr := pa.selector.mgr.Circuit().RecordFailure(context.Background(), cand.Snapshot.Meta.NodeID); recErr != nil {
+				log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record circuit failure")
+			}
+		}
 		return nil, err
 	}
 
-	_ = pa.selector.mgr.Circuit().RecordSuccess(ctx, cand.Snapshot.Meta.NodeID)
+	if recErr := pa.selector.mgr.Circuit().RecordSuccess(context.Background(), cand.Snapshot.Meta.NodeID); recErr != nil {
+		log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record circuit success")
+	}
 
 	// Update telemetry
 	if resp != nil && resp.Usage.Output > 0 && duration > 0 {
 		tps := float64(resp.Usage.Output) / duration.Seconds()
-		_ = pa.selector.mgr.Telemetry().RecordMetrics(ctx, cand.Snapshot.Meta.NodeID, pa.model.ID, tps, -1)
+		if recErr := pa.selector.mgr.Telemetry().RecordMetrics(context.Background(), cand.Snapshot.Meta.NodeID, pa.model.ID, tps, -1); recErr != nil {
+			log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record node telemetry")
+		}
 	}
 
 	// Attach node metadata
@@ -117,21 +134,14 @@ func (pa *PoolAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error
 }
 
 func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
-	cand, err := pa.selector.SelectNode(ctx, pa.model.ID)
+	cand, reqID, err := pa.acquireSlotWithWait(ctx, chat)
 	if err != nil {
-		return fmt.Errorf("local pool select node: %w", err)
-	}
-
-	reqID := uuid.NewString()
-	acquired, err := pa.selector.mgr.Slots().AcquireLease(ctx, cand.Snapshot.Meta.NodeID, reqID, cand.Snapshot.Meta.MaxConcurrent, pa.leaseTTL)
-	if err != nil {
-		return fmt.Errorf("local pool acquire lease: %w", err)
-	}
-	if !acquired {
-		return ErrNodeSlotExhausted
+		return err
 	}
 	defer func() {
-		_ = pa.selector.mgr.Slots().ReleaseLease(context.Background(), cand.Snapshot.Meta.NodeID, reqID)
+		if relErr := pa.selector.mgr.Slots().ReleaseLease(context.Background(), cand.Snapshot.Meta.NodeID, reqID); relErr != nil {
+			log.Warn().Err(relErr).Str("node_id", cand.Snapshot.Meta.NodeID).Str("req_id", reqID).Msg("failed to release node slot lease")
+		}
 	}()
 
 	// Background renewal ticker for streaming
@@ -145,7 +155,12 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 			case <-renewCtx.Done():
 				return
 			case <-ticker.C:
-				_, _ = pa.selector.mgr.Slots().RenewLease(context.Background(), cand.Snapshot.Meta.NodeID, reqID, pa.leaseTTL)
+				renewed, renewErr := pa.selector.mgr.Slots().RenewLease(context.Background(), cand.Snapshot.Meta.NodeID, reqID, pa.leaseTTL)
+				if renewErr != nil {
+					log.Warn().Err(renewErr).Str("node_id", cand.Snapshot.Meta.NodeID).Str("req_id", reqID).Msg("failed to renew node slot lease")
+				} else if !renewed {
+					log.Warn().Str("node_id", cand.Snapshot.Meta.NodeID).Str("req_id", reqID).Msg("node slot lease expired or lost before renewal")
+				}
 			}
 		}
 	}()
@@ -172,11 +187,17 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 
 	duration := time.Since(start)
 	if err != nil {
-		_ = pa.selector.mgr.Circuit().RecordFailure(context.Background(), cand.Snapshot.Meta.NodeID)
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(ctx.Err(), context.Canceled) {
+			if recErr := pa.selector.mgr.Circuit().RecordFailure(context.Background(), cand.Snapshot.Meta.NodeID); recErr != nil {
+				log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record circuit failure")
+			}
+		}
 		return err
 	}
 
-	_ = pa.selector.mgr.Circuit().RecordSuccess(context.Background(), cand.Snapshot.Meta.NodeID)
+	if recErr := pa.selector.mgr.Circuit().RecordSuccess(context.Background(), cand.Snapshot.Meta.NodeID); recErr != nil {
+		log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record circuit success")
+	}
 
 	// Calculate and record telemetry (TTFT & TPS)
 	var ttftNorm float64 = -1
@@ -198,7 +219,9 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 	}
 
 	if tps > 0 || ttftNorm > 0 {
-		_ = pa.selector.mgr.Telemetry().RecordMetrics(context.Background(), cand.Snapshot.Meta.NodeID, pa.model.ID, tps, ttftNorm)
+		if recErr := pa.selector.mgr.Telemetry().RecordMetrics(context.Background(), cand.Snapshot.Meta.NodeID, pa.model.ID, tps, ttftNorm); recErr != nil {
+			log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record node telemetry")
+		}
 	}
 
 	return nil
@@ -236,4 +259,147 @@ func (pa *PoolAdapter) buildNodeClient(cand *Candidate) (*openai.Client, string,
 	}
 
 	return &cl, underlyingModel, nil
+}
+
+func (pa *PoolAdapter) acquireSlotWithWait(ctx context.Context, chat *llm.ChatContext) (*Candidate, string, error) {
+	// 1. Quick attempt without waiting
+	cand, err := pa.selector.SelectNode(ctx, pa.model.ID)
+	if err == nil {
+		reqID := uuid.NewString()
+		acquired, leaseErr := pa.selector.mgr.Slots().AcquireLease(ctx, cand.Snapshot.Meta.NodeID, reqID, cand.Snapshot.Meta.MaxConcurrent, pa.leaseTTL)
+		if leaseErr != nil {
+			return nil, "", fmt.Errorf("local pool acquire lease: %w", leaseErr)
+		}
+		if acquired {
+			return cand, reqID, nil
+		}
+	} else if !errors.Is(err, ErrNoAvailableNodes) {
+		return nil, "", err
+	}
+
+	// Determine user ID
+	var userID string
+	if chat != nil {
+		if meta := chat.GetMeta(); meta != nil {
+			userID = meta["user_id"]
+		}
+		if userID == "" {
+			userID = chat.GetInternalUserID()
+		}
+	}
+
+	// Determine queue wait timeout
+	timeout := time.Duration(pa.model.QueueTimeoutMs) * time.Millisecond
+	if pa.userLimitResolver != nil && userID != "" {
+		if ul := pa.userLimitResolver(userID, pa.model.ID); ul != nil && ul.QueueTimeoutMs > 0 {
+			timeout = time.Duration(ul.QueueTimeoutMs) * time.Millisecond
+		}
+	}
+	if timeout <= 0 {
+		return nil, "", ErrNodeSlotExhausted
+	}
+
+	// Prioritize interactive vs service traffic:
+	// If interactive (non-svc), cap timeout to 250ms to protect TTFT.
+	if userID != "" && !strings.HasPrefix(userID, "svc:") {
+		if timeout > 250*time.Millisecond {
+			timeout = 250 * time.Millisecond
+		}
+	}
+
+	// Predictive admission check via Little's Law: Wait_est = (QueuePos * Duration_ema) / TotalSlots
+	nodes, listErr := pa.selector.mgr.ListNodes(ctx)
+	if listErr == nil && len(nodes) > 0 {
+		var totalSlots int32
+		var totalInflight int32
+		var queueDepth int32
+		var totalTTFT float64
+		var ttftCount int
+
+		for _, n := range nodes {
+			if n.State == pb.NodeState_NODE_STATE_OFFLINE || n.State == pb.NodeState_NODE_STATE_DRAINING {
+				continue
+			}
+			hasModel := false
+			for _, m := range n.Meta.Models {
+				if m.ModelId == pa.model.ID {
+					hasModel = true
+					break
+				}
+			}
+			if !hasModel {
+				continue
+			}
+
+			totalSlots += n.Meta.MaxConcurrent
+			totalInflight += n.Inflight
+			if n.Heartbeat != nil {
+				queueDepth += n.Heartbeat.QueueDepth
+			}
+			if perf, ok := n.Perf[pa.model.ID]; ok && perf.TTFTEMAMs > 0 {
+				totalTTFT += perf.TTFTEMAMs
+				ttftCount++
+			}
+		}
+
+		if totalSlots > 0 {
+			durationEMA := 500.0 // Default 500ms duration estimate if telemetry not populated
+			if ttftCount > 0 {
+				durationEMA = totalTTFT / float64(ttftCount)
+			}
+			queuePos := totalInflight - totalSlots + 1 + queueDepth
+			if queuePos < 1 {
+				queuePos = 1
+			}
+			waitEstMs := (float64(queuePos) * durationEMA) / float64(totalSlots)
+			if waitEstMs > float64(timeout.Milliseconds()) {
+				log.Debug().
+					Float64("wait_est_ms", waitEstMs).
+					Int64("timeout_ms", timeout.Milliseconds()).
+					Str("model", pa.model.ID).
+					Msg("predictive queue admission: estimated wait exceeds timeout, skipping to next model")
+				return nil, "", ErrNodeSlotExhausted
+			}
+		}
+	}
+
+	// Jittered backoff polling loop
+	deadline := time.Now().Add(timeout)
+	backoff := 25 * time.Millisecond
+
+	for {
+		if time.Now().After(deadline) {
+			return nil, "", ErrNodeSlotExhausted
+		}
+
+		// Jitter +/- 10%
+		jitter := float64(backoff) * (0.9 + 0.2*rand.Float64())
+		sleepDur := time.Duration(jitter)
+		if time.Now().Add(sleepDur).After(deadline) {
+			sleepDur = time.Until(deadline)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, "", ctx.Err()
+		case <-time.After(sleepDur):
+		}
+
+		cand, err := pa.selector.SelectNode(ctx, pa.model.ID)
+		if err == nil {
+			reqID := uuid.NewString()
+			acquired, leaseErr := pa.selector.mgr.Slots().AcquireLease(ctx, cand.Snapshot.Meta.NodeID, reqID, cand.Snapshot.Meta.MaxConcurrent, pa.leaseTTL)
+			if leaseErr != nil {
+				return nil, "", fmt.Errorf("local pool acquire lease: %w", leaseErr)
+			}
+			if acquired {
+				return cand, reqID, nil
+			}
+		}
+
+		backoff *= 2
+		if backoff > 100*time.Millisecond {
+			backoff = 100 * time.Millisecond
+		}
+	}
 }

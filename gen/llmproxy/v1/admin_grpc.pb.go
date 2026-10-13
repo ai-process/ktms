@@ -19,21 +19,24 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LLMProxyAdminService_UpsertModel_FullMethodName      = "/llmproxy.v1.LLMProxyAdminService/UpsertModel"
-	LLMProxyAdminService_DeleteModel_FullMethodName      = "/llmproxy.v1.LLMProxyAdminService/DeleteModel"
-	LLMProxyAdminService_ReplaceRules_FullMethodName     = "/llmproxy.v1.LLMProxyAdminService/ReplaceRules"
-	LLMProxyAdminService_SetVendorKey_FullMethodName     = "/llmproxy.v1.LLMProxyAdminService/SetVendorKey"
-	LLMProxyAdminService_DeleteVendorKey_FullMethodName  = "/llmproxy.v1.LLMProxyAdminService/DeleteVendorKey"
-	LLMProxyAdminService_GetConfig_FullMethodName        = "/llmproxy.v1.LLMProxyAdminService/GetConfig"
-	LLMProxyAdminService_MintAPIKey_FullMethodName       = "/llmproxy.v1.LLMProxyAdminService/MintAPIKey"
-	LLMProxyAdminService_RevokeAPIKey_FullMethodName     = "/llmproxy.v1.LLMProxyAdminService/RevokeAPIKey"
-	LLMProxyAdminService_ListAPIKeys_FullMethodName      = "/llmproxy.v1.LLMProxyAdminService/ListAPIKeys"
-	LLMProxyAdminService_RotateEncryption_FullMethodName = "/llmproxy.v1.LLMProxyAdminService/RotateEncryption"
-	LLMProxyAdminService_MintNodeKey_FullMethodName      = "/llmproxy.v1.LLMProxyAdminService/MintNodeKey"
-	LLMProxyAdminService_RevokeNodeKey_FullMethodName    = "/llmproxy.v1.LLMProxyAdminService/RevokeNodeKey"
-	LLMProxyAdminService_ListNodeKeys_FullMethodName     = "/llmproxy.v1.LLMProxyAdminService/ListNodeKeys"
-	LLMProxyAdminService_ListNodes_FullMethodName        = "/llmproxy.v1.LLMProxyAdminService/ListNodes"
-	LLMProxyAdminService_DrainNode_FullMethodName        = "/llmproxy.v1.LLMProxyAdminService/DrainNode"
+	LLMProxyAdminService_UpsertModel_FullMethodName         = "/llmproxy.v1.LLMProxyAdminService/UpsertModel"
+	LLMProxyAdminService_DeleteModel_FullMethodName         = "/llmproxy.v1.LLMProxyAdminService/DeleteModel"
+	LLMProxyAdminService_ReplaceRules_FullMethodName        = "/llmproxy.v1.LLMProxyAdminService/ReplaceRules"
+	LLMProxyAdminService_SetVendorKey_FullMethodName        = "/llmproxy.v1.LLMProxyAdminService/SetVendorKey"
+	LLMProxyAdminService_DeleteVendorKey_FullMethodName     = "/llmproxy.v1.LLMProxyAdminService/DeleteVendorKey"
+	LLMProxyAdminService_GetConfig_FullMethodName           = "/llmproxy.v1.LLMProxyAdminService/GetConfig"
+	LLMProxyAdminService_MintAPIKey_FullMethodName          = "/llmproxy.v1.LLMProxyAdminService/MintAPIKey"
+	LLMProxyAdminService_RevokeAPIKey_FullMethodName        = "/llmproxy.v1.LLMProxyAdminService/RevokeAPIKey"
+	LLMProxyAdminService_ListAPIKeys_FullMethodName         = "/llmproxy.v1.LLMProxyAdminService/ListAPIKeys"
+	LLMProxyAdminService_RotateEncryption_FullMethodName    = "/llmproxy.v1.LLMProxyAdminService/RotateEncryption"
+	LLMProxyAdminService_MintNodeKey_FullMethodName         = "/llmproxy.v1.LLMProxyAdminService/MintNodeKey"
+	LLMProxyAdminService_RevokeNodeKey_FullMethodName       = "/llmproxy.v1.LLMProxyAdminService/RevokeNodeKey"
+	LLMProxyAdminService_ListNodeKeys_FullMethodName        = "/llmproxy.v1.LLMProxyAdminService/ListNodeKeys"
+	LLMProxyAdminService_ListNodes_FullMethodName           = "/llmproxy.v1.LLMProxyAdminService/ListNodes"
+	LLMProxyAdminService_DrainNode_FullMethodName           = "/llmproxy.v1.LLMProxyAdminService/DrainNode"
+	LLMProxyAdminService_SetUserRateLimit_FullMethodName    = "/llmproxy.v1.LLMProxyAdminService/SetUserRateLimit"
+	LLMProxyAdminService_DeleteUserRateLimit_FullMethodName = "/llmproxy.v1.LLMProxyAdminService/DeleteUserRateLimit"
+	LLMProxyAdminService_ListUserRateLimits_FullMethodName  = "/llmproxy.v1.LLMProxyAdminService/ListUserRateLimits"
 )
 
 // LLMProxyAdminServiceClient is the client API for LLMProxyAdminService service.
@@ -58,6 +61,9 @@ type LLMProxyAdminServiceClient interface {
 	ListNodeKeys(ctx context.Context, in *ListNodeKeysRequest, opts ...grpc.CallOption) (*ListNodeKeysResponse, error)
 	ListNodes(ctx context.Context, in *ListNodesRequest, opts ...grpc.CallOption) (*ListNodesResponse, error)
 	DrainNode(ctx context.Context, in *DrainNodeRequest, opts ...grpc.CallOption) (*DrainNodeResponse, error)
+	SetUserRateLimit(ctx context.Context, in *SetUserRateLimitRequest, opts ...grpc.CallOption) (*SetUserRateLimitResponse, error)
+	DeleteUserRateLimit(ctx context.Context, in *DeleteUserRateLimitRequest, opts ...grpc.CallOption) (*DeleteUserRateLimitResponse, error)
+	ListUserRateLimits(ctx context.Context, in *ListUserRateLimitsRequest, opts ...grpc.CallOption) (*ListUserRateLimitsResponse, error)
 }
 
 type lLMProxyAdminServiceClient struct {
@@ -218,6 +224,36 @@ func (c *lLMProxyAdminServiceClient) DrainNode(ctx context.Context, in *DrainNod
 	return out, nil
 }
 
+func (c *lLMProxyAdminServiceClient) SetUserRateLimit(ctx context.Context, in *SetUserRateLimitRequest, opts ...grpc.CallOption) (*SetUserRateLimitResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetUserRateLimitResponse)
+	err := c.cc.Invoke(ctx, LLMProxyAdminService_SetUserRateLimit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lLMProxyAdminServiceClient) DeleteUserRateLimit(ctx context.Context, in *DeleteUserRateLimitRequest, opts ...grpc.CallOption) (*DeleteUserRateLimitResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteUserRateLimitResponse)
+	err := c.cc.Invoke(ctx, LLMProxyAdminService_DeleteUserRateLimit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lLMProxyAdminServiceClient) ListUserRateLimits(ctx context.Context, in *ListUserRateLimitsRequest, opts ...grpc.CallOption) (*ListUserRateLimitsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListUserRateLimitsResponse)
+	err := c.cc.Invoke(ctx, LLMProxyAdminService_ListUserRateLimits_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LLMProxyAdminServiceServer is the server API for LLMProxyAdminService service.
 // All implementations must embed UnimplementedLLMProxyAdminServiceServer
 // for forward compatibility.
@@ -240,6 +276,9 @@ type LLMProxyAdminServiceServer interface {
 	ListNodeKeys(context.Context, *ListNodeKeysRequest) (*ListNodeKeysResponse, error)
 	ListNodes(context.Context, *ListNodesRequest) (*ListNodesResponse, error)
 	DrainNode(context.Context, *DrainNodeRequest) (*DrainNodeResponse, error)
+	SetUserRateLimit(context.Context, *SetUserRateLimitRequest) (*SetUserRateLimitResponse, error)
+	DeleteUserRateLimit(context.Context, *DeleteUserRateLimitRequest) (*DeleteUserRateLimitResponse, error)
+	ListUserRateLimits(context.Context, *ListUserRateLimitsRequest) (*ListUserRateLimitsResponse, error)
 	mustEmbedUnimplementedLLMProxyAdminServiceServer()
 }
 
@@ -294,6 +333,15 @@ func (UnimplementedLLMProxyAdminServiceServer) ListNodes(context.Context, *ListN
 }
 func (UnimplementedLLMProxyAdminServiceServer) DrainNode(context.Context, *DrainNodeRequest) (*DrainNodeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DrainNode not implemented")
+}
+func (UnimplementedLLMProxyAdminServiceServer) SetUserRateLimit(context.Context, *SetUserRateLimitRequest) (*SetUserRateLimitResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetUserRateLimit not implemented")
+}
+func (UnimplementedLLMProxyAdminServiceServer) DeleteUserRateLimit(context.Context, *DeleteUserRateLimitRequest) (*DeleteUserRateLimitResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteUserRateLimit not implemented")
+}
+func (UnimplementedLLMProxyAdminServiceServer) ListUserRateLimits(context.Context, *ListUserRateLimitsRequest) (*ListUserRateLimitsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListUserRateLimits not implemented")
 }
 func (UnimplementedLLMProxyAdminServiceServer) mustEmbedUnimplementedLLMProxyAdminServiceServer() {}
 func (UnimplementedLLMProxyAdminServiceServer) testEmbeddedByValue()                              {}
@@ -586,6 +634,60 @@ func _LLMProxyAdminService_DrainNode_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LLMProxyAdminService_SetUserRateLimit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetUserRateLimitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyAdminServiceServer).SetUserRateLimit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyAdminService_SetUserRateLimit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyAdminServiceServer).SetUserRateLimit(ctx, req.(*SetUserRateLimitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LLMProxyAdminService_DeleteUserRateLimit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteUserRateLimitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyAdminServiceServer).DeleteUserRateLimit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyAdminService_DeleteUserRateLimit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyAdminServiceServer).DeleteUserRateLimit(ctx, req.(*DeleteUserRateLimitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LLMProxyAdminService_ListUserRateLimits_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListUserRateLimitsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyAdminServiceServer).ListUserRateLimits(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyAdminService_ListUserRateLimits_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyAdminServiceServer).ListUserRateLimits(ctx, req.(*ListUserRateLimitsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LLMProxyAdminService_ServiceDesc is the grpc.ServiceDesc for LLMProxyAdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -652,6 +754,18 @@ var LLMProxyAdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DrainNode",
 			Handler:    _LLMProxyAdminService_DrainNode_Handler,
+		},
+		{
+			MethodName: "SetUserRateLimit",
+			Handler:    _LLMProxyAdminService_SetUserRateLimit_Handler,
+		},
+		{
+			MethodName: "DeleteUserRateLimit",
+			Handler:    _LLMProxyAdminService_DeleteUserRateLimit_Handler,
+		},
+		{
+			MethodName: "ListUserRateLimits",
+			Handler:    _LLMProxyAdminService_ListUserRateLimits_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

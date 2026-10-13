@@ -8,13 +8,22 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog/log"
 
 	"github.com/ai-process/llm-proxy/internal/rediskeys"
 )
 
+type nodeCapacityError struct {
+	msg string
+}
+
+func (e *nodeCapacityError) Error() string { return e.msg }
+func (e *nodeCapacityError) SkipToNextModel() bool { return true }
+
 var (
-	ErrNodeNotFound     = errors.New("nodes: node not found")
-	ErrNodeSlotExhausted = errors.New("nodes: max concurrent requests reached")
+	ErrNodeNotFound      = errors.New("nodes: node not found")
+	ErrNodeSlotExhausted = &nodeCapacityError{msg: "nodes: max concurrent requests reached"}
+	ErrNoAvailableNodes  = &nodeCapacityError{msg: "nodes: no healthy nodes available for model"}
 )
 
 // Store interacts with Redis to persist and query node status.
@@ -136,4 +145,27 @@ func (s *Store) GetInflightCount(ctx context.Context, nodeID string, now time.Ti
 		return 0, err
 	}
 	return int32(card.Val()), nil
+}
+
+// Keys returns the configured rediskeys.Keys.
+func (s *Store) Keys() rediskeys.Keys {
+	return s.keys
+}
+
+// IncrQueue increments the queue counter for the model and sets 1-minute TTL.
+func (s *Store) IncrQueue(ctx context.Context, modelID string) (int64, error) {
+	key := s.keys.NodeQueue(modelID)
+	val, err := s.rdb.Incr(ctx, key).Result()
+	if err == nil {
+		if expErr := s.rdb.Expire(ctx, key, time.Minute).Err(); expErr != nil {
+			log.Warn().Err(expErr).Str("key", key).Msg("failed to set node queue expiry")
+		}
+	}
+	return val, err
+}
+
+// DecrQueue decrements the queue counter for the model.
+func (s *Store) DecrQueue(ctx context.Context, modelID string) error {
+	key := s.keys.NodeQueue(modelID)
+	return s.rdb.Decr(ctx, key).Err()
 }

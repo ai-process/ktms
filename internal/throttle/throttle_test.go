@@ -30,30 +30,58 @@ func TestAllowRPMWindow(t *testing.T) {
 	th, mr := newTestThrottle(t)
 	ctx := context.Background()
 	m := model(2, 0, 0)
+	m.Burst = 1
 
-	if !th.AllowRPM(ctx, "gen", m) || !th.AllowRPM(ctx, "gen", m) {
+	if !th.AllowRPM(ctx, "gen", "", m) || !th.AllowRPM(ctx, "gen", "", m) {
 		t.Fatal("first two calls must pass")
 	}
-	if th.AllowRPM(ctx, "gen", m) {
-		t.Fatal("third call in the same minute must be throttled")
+	if th.AllowRPM(ctx, "gen", "", m) {
+		t.Fatal("third call in rapid succession must be throttled by GCRA")
 	}
-	// Another client key has its own window.
-	if !th.AllowRPM(ctx, "other", m) {
+	// Another client key has its own rate limiter.
+	if !th.AllowRPM(ctx, "other", "", m) {
 		t.Fatal("another key must not share the window")
 	}
 
-	// Next minute: fresh window.
+	// Advance time past emission interval: allows another call.
 	base := th.now
-	th.now = func() time.Time { return base().Add(time.Minute) }
-	if !th.AllowRPM(ctx, "gen", m) {
-		t.Fatal("next minute must open a fresh window")
+	th.now = func() time.Time { return base().Add(31 * time.Second) }
+	if !th.AllowRPM(ctx, "gen", "", m) {
+		t.Fatal("after emission interval must allow next call")
 	}
 
-	// TTL is set so stale windows expire on their own.
+	// Key has TTL.
 	th.now = base
-	key := th.keys.RPM("gen", m.ID, base().UTC().Unix()/60)
+	key := th.keys.GCRAKey("gen", m.ID)
 	if mr.TTL(key) <= 0 {
-		t.Fatal("rpm key has no TTL")
+		t.Fatal("gcra key has no TTL")
+	}
+}
+
+func TestAllowRPMUserOverride(t *testing.T) {
+	th, _ := newTestThrottle(t)
+	ctx := context.Background()
+	m := model(100, 0, 0) // key limit is 100 RPM
+	m.Burst = 10
+
+	// Set user override for u_slow: 1 RPM, burst 0
+	th.SetUserRateLimitResolver(func(userID, modelID string) *proxydb.UserRateLimit {
+		if userID == "u_slow" {
+			return &proxydb.UserRateLimit{UserID: "u_slow", ModelID: modelID, RPM: 1, Burst: 1}
+		}
+		return nil
+	})
+
+	if !th.AllowRPM(ctx, "gen", "u_slow", m) || !th.AllowRPM(ctx, "gen", "u_slow", m) {
+		t.Fatal("first two calls for u_slow should pass (1 RPM + 1 burst)")
+	}
+	if th.AllowRPM(ctx, "gen", "u_slow", m) {
+		t.Fatal("third call for u_slow should be throttled by user limit")
+	}
+
+	// Another user without override has normal key limit
+	if !th.AllowRPM(ctx, "gen", "u_normal", m) {
+		t.Fatal("call for u_normal should pass")
 	}
 }
 
@@ -68,7 +96,7 @@ func TestReserveOverLimitRestoresCounter(t *testing.T) {
 	if tripped != "" || len(res.Keys) != 1 {
 		t.Fatalf("res=%v tripped=%q", res, tripped)
 	}
-	// 60 + 60 > 100: refused, and the counter must roll back to 60.
+	// 60 + 60 > 100 without grace margin: refused, and the counter must roll back to 60.
 	res2, tripped := th.Reserve(ctx, m, "gen", "", 60)
 	if res2 != nil || tripped != "budget_key" {
 		t.Fatalf("res=%v tripped=%q, want budget_key", res2, tripped)
@@ -79,6 +107,45 @@ func TestReserveOverLimitRestoresCounter(t *testing.T) {
 	}
 	if mr.TTL(key) <= 0 {
 		t.Fatal("budget key has no TTL")
+	}
+}
+
+func TestReserveBudgetGraceMargin(t *testing.T) {
+	th, mr := newTestThrottle(t)
+	ctx := context.Background()
+	m := model(0, 100, 0)
+	m.BudgetGraceMargin = 0.20 // 20% grace allows up to 120 total if used < 100 beforehand
+	day := time.Now().UTC().Format("20060102")
+	key := th.keys.BudgetKey("gen", m.ID, day)
+
+	// 1. Used = 90 (below 100 limit)
+	res, tripped := th.Reserve(ctx, m, "gen", "", 90)
+	if tripped != "" || res == nil {
+		t.Fatalf("initial reservation failed: %s", tripped)
+	}
+
+	// 2. Next request: estimate 25.
+	// Used before was 90 < 100.
+	// New total = 115 <= 120 (within 20% grace). Must be allowed!
+	res2, tripped2 := th.Reserve(ctx, m, "gen", "", 25)
+	if tripped2 != "" || res2 == nil {
+		t.Fatalf("call within grace margin must pass, got: %s", tripped2)
+	}
+	val, _ := mr.Get(key)
+	if val != "115" {
+		t.Fatalf("counter = %s, want 115", val)
+	}
+
+	// 3. Now used = 115 >= 100. Balance is exhausted. Even a request of size 1 must be refused!
+	res3, tripped3 := th.Reserve(ctx, m, "gen", "", 1)
+	if tripped3 != "budget_key" || res3 != nil {
+		t.Fatalf("subsequent call once exhausted must fail, got: %s", tripped3)
+	}
+
+	// Counter stays at 115.
+	val, _ = mr.Get(key)
+	if val != "115" {
+		t.Fatalf("counter = %s, want 115 after rejected reservation", val)
 	}
 }
 
@@ -149,7 +216,7 @@ func TestFailOpenWhenRedisDown(t *testing.T) {
 
 	ctx := context.Background()
 	m := model(1, 100, 0)
-	if !th.AllowRPM(ctx, "gen", m) {
+	if !th.AllowRPM(ctx, "gen", "", m) {
 		t.Fatal("rpm must fail open")
 	}
 	res, tripped := th.Reserve(ctx, m, "gen", "", 50)
@@ -163,7 +230,7 @@ func TestNilClientAllowsEverything(t *testing.T) {
 	th := New(nil, "")
 	ctx := context.Background()
 	m := model(1, 1, 1)
-	if !th.AllowRPM(ctx, "gen", m) {
+	if !th.AllowRPM(ctx, "gen", "", m) {
 		t.Fatal("nil client must allow")
 	}
 	if res, tripped := th.Reserve(ctx, m, "gen", "u", 999); res != nil || tripped != "" {

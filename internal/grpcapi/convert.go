@@ -65,6 +65,9 @@ func modelFromProto(m *pb.ModelSpec) *proxydb.Model {
 		PriceOutBatchPerMtok: m.GetPriceOutBatchPerMtok(),
 		DailyTokensPerKey:    m.GetDailyTokensPerKey(),
 		DailyTokensPerUser:   m.GetDailyTokensPerUser(),
+		Burst:                m.GetRpmBurst(),
+		QueueTimeoutMs:       m.GetQueueTimeoutMs(),
+		BudgetGraceMargin:    m.GetBudgetGraceMargin(),
 		Enabled:              m.GetEnabled(),
 	}
 }
@@ -85,7 +88,38 @@ func modelToProto(m *proxydb.Model) *pb.ModelSpec {
 		PriceOutBatchPerMtok: m.PriceOutBatchPerMtok,
 		DailyTokensPerKey:    m.DailyTokensPerKey,
 		DailyTokensPerUser:   m.DailyTokensPerUser,
+		RpmBurst:             m.Burst,
+		QueueTimeoutMs:       m.QueueTimeoutMs,
+		BudgetGraceMargin:    m.BudgetGraceMargin,
 		Enabled:              m.Enabled,
+	}
+}
+
+func userRateLimitFromProto(u *pb.UserRateLimitSpec) *proxydb.UserRateLimit {
+	if u == nil {
+		return nil
+	}
+	return &proxydb.UserRateLimit{
+		UserID:         u.GetUserId(),
+		ModelID:        u.GetModelId(),
+		RPM:            u.GetRpm(),
+		Burst:          u.GetRpmBurst(),
+		QueueTimeoutMs: u.GetQueueTimeoutMs(),
+		DailyTokens:    u.GetDailyTokens(),
+	}
+}
+
+func userRateLimitToProto(u *proxydb.UserRateLimit) *pb.UserRateLimitSpec {
+	if u == nil {
+		return nil
+	}
+	return &pb.UserRateLimitSpec{
+		UserId:         u.UserID,
+		ModelId:        u.ModelID,
+		Rpm:            u.RPM,
+		RpmBurst:       u.Burst,
+		QueueTimeoutMs: u.QueueTimeoutMs,
+		DailyTokens:    u.DailyTokens,
 	}
 }
 

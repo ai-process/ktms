@@ -209,6 +209,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `REDIS_ADDR` | empty | Redis for throttling. Empty disables limits. |
 | `REDIS_PASSWORD` / `REDIS_DB` | empty / `0` | Redis auth and database. |
 | `REDIS_KEY_PREFIX` | empty | Namespace for counters when Redis is shared (compose uses `dev`). |
+| `BUDGET_GRACE_MARGIN` | `0.05` | Fraction of daily token budget allowed as grace overdraft (e.g. 0.05 = 5%). |
 | `BATCH_POLL_SECONDS` | `60` | Background polling interval in seconds for checking unfinished batch jobs. |
 | `BATCH_MAX_ITEMS` | `10000` | Maximum number of items allowed in a single batch submission. |
 | `RESULTS_RETENTION_DAYS` | `7` | Retention period in days for completed batch results before cleanup. |

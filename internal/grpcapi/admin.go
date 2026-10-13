@@ -116,6 +116,10 @@ func (s *AdminServer) GetConfig(ctx context.Context, _ *pb.GetConfigRequest) (*p
 	if err != nil {
 		return nil, dbStatus(err)
 	}
+	userRateLimits, err := s.db.LoadUserRateLimits(ctx)
+	if err != nil {
+		return nil, dbStatus(err)
+	}
 	version, err := s.db.ConfigVersion(ctx)
 	if err != nil {
 		return nil, dbStatus(err)
@@ -137,7 +141,55 @@ func (s *AdminServer) GetConfig(ctx context.Context, _ *pb.GetConfigRequest) (*p
 			CreatedAt:  timestamppb.New(vk.CreatedAt),
 		})
 	}
+	for _, u := range userRateLimits {
+		resp.UserRateLimits = append(resp.UserRateLimits, userRateLimitToProto(u))
+	}
 	return resp, nil
+}
+
+func (s *AdminServer) SetUserRateLimit(ctx context.Context, req *pb.SetUserRateLimitRequest) (*pb.SetUserRateLimitResponse, error) {
+	rl := req.GetRateLimit()
+	if rl == nil || rl.GetUserId() == "" || rl.GetModelId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "user_id and model_id are required")
+	}
+	u := userRateLimitFromProto(rl)
+	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {
+		return proxydb.UpsertUserRateLimit(ctx, tx, u)
+	}, nil)
+	if err != nil {
+		return nil, mutationStatus(err)
+	}
+	s.onChange()
+	return &pb.SetUserRateLimitResponse{}, nil
+}
+
+func (s *AdminServer) DeleteUserRateLimit(ctx context.Context, req *pb.DeleteUserRateLimitRequest) (*pb.DeleteUserRateLimitResponse, error) {
+	if req.GetUserId() == "" || req.GetModelId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "user_id and model_id are required")
+	}
+	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {
+		return proxydb.DeleteUserRateLimit(ctx, tx, req.GetUserId(), req.GetModelId())
+	}, nil)
+	if err != nil {
+		return nil, mutationStatus(err)
+	}
+	s.onChange()
+	return &pb.DeleteUserRateLimitResponse{}, nil
+}
+
+func (s *AdminServer) ListUserRateLimits(ctx context.Context, req *pb.ListUserRateLimitsRequest) (*pb.ListUserRateLimitsResponse, error) {
+	limits, err := s.db.LoadUserRateLimits(ctx)
+	if err != nil {
+		return nil, dbStatus(err)
+	}
+	var out []*pb.UserRateLimitSpec
+	for _, l := range limits {
+		if req.GetUserId() != "" && l.UserID != req.GetUserId() {
+			continue
+		}
+		out = append(out, userRateLimitToProto(l))
+	}
+	return &pb.ListUserRateLimitsResponse{RateLimits: out}, nil
 }
 
 // errInvalidConfig marks registry.Validate failures so mutationStatus can
