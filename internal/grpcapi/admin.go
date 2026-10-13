@@ -18,6 +18,7 @@ import (
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 	"github.com/ai-process/llm-proxy/internal/apikeys"
 	"github.com/ai-process/llm-proxy/internal/crypto"
+	"github.com/ai-process/llm-proxy/internal/nodes"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/registry"
 )
@@ -27,6 +28,7 @@ type AdminServer struct {
 	pb.UnimplementedLLMProxyAdminServiceServer
 	db      *proxydb.DB
 	keyring *crypto.Keyring
+	nodeMgr *nodes.Manager
 	// onChange is called after a successful config mutation so this replica
 	// picks the change up immediately instead of waiting for the poll.
 	onChange func()
@@ -37,6 +39,10 @@ func NewAdminServer(db *proxydb.DB, keyring *crypto.Keyring, onChange func()) *A
 		onChange = func() {}
 	}
 	return &AdminServer{db: db, keyring: keyring, onChange: onChange}
+}
+
+func (s *AdminServer) SetNodeManager(mgr *nodes.Manager) {
+	s.nodeMgr = mgr
 }
 
 // --- config: models and rules ---

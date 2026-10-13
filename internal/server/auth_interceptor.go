@@ -41,6 +41,15 @@ var methodScopes = map[string]string{
 	method(pb.LLMProxyAdminService_RevokeAPIKey_FullMethodName):     apikeys.ScopeAdmin,
 	method(pb.LLMProxyAdminService_ListAPIKeys_FullMethodName):      apikeys.ScopeAdmin,
 	method(pb.LLMProxyAdminService_RotateEncryption_FullMethodName): apikeys.ScopeAdmin,
+	method(pb.LLMProxyAdminService_MintNodeKey_FullMethodName):      apikeys.ScopeAdmin,
+	method(pb.LLMProxyAdminService_RevokeNodeKey_FullMethodName):    apikeys.ScopeAdmin,
+	method(pb.LLMProxyAdminService_ListNodeKeys_FullMethodName):     apikeys.ScopeAdmin,
+	method(pb.LLMProxyAdminService_ListNodes_FullMethodName):        apikeys.ScopeAdmin,
+	method(pb.LLMProxyAdminService_DrainNode_FullMethodName):        apikeys.ScopeAdmin,
+
+	method(pb.NodeRegistryService_RegisterNode_FullMethodName):   apikeys.ScopeNode,
+	method(pb.NodeRegistryService_Heartbeat_FullMethodName):      apikeys.ScopeNode,
+	method(pb.NodeRegistryService_UnregisterNode_FullMethodName): apikeys.ScopeNode,
 }
 
 // method normalises the generated constants, which carry no leading slash on

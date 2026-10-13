@@ -212,6 +212,10 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `BATCH_POLL_SECONDS` | `60` | Background polling interval in seconds for checking unfinished batch jobs. |
 | `BATCH_MAX_ITEMS` | `10000` | Maximum number of items allowed in a single batch submission. |
 | `RESULTS_RETENTION_DAYS` | `7` | Retention period in days for completed batch results before cleanup. |
+| `NODE_HEARTBEAT_INTERVAL_SECONDS` | `5` | Node agent heartbeat reporting interval in seconds. |
+| `NODE_HEARTBEAT_TTL_SECONDS` | `15` | Heartbeat TTL in seconds before an idle node transitions to `OFFLINE`. |
+| `NODE_RETENTION_TTL_DAYS` | `1` | Retention period in days for inactive/offline nodes before garbage collection. |
+| `NODE_ALLOW_LOCALHOST_ENDPOINTS` | `false` | Allow loopback/link-local endpoints for local inference nodes (useful in tests/dev). |
 | `BOOTSTRAP_ADMIN_KEY` | empty | Implicit admin key for creating the first real key. Unset afterwards. |
 | `USAGE_COLLECTOR_HOST` | empty | `host:port` of a gRPC usage sink. Empty disables reporting. |
 | `USAGE_PROJECT_ID` | `llm-proxy` | Default project name on usage events. |

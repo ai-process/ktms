@@ -29,6 +29,11 @@ const (
 	LLMProxyAdminService_RevokeAPIKey_FullMethodName     = "/llmproxy.v1.LLMProxyAdminService/RevokeAPIKey"
 	LLMProxyAdminService_ListAPIKeys_FullMethodName      = "/llmproxy.v1.LLMProxyAdminService/ListAPIKeys"
 	LLMProxyAdminService_RotateEncryption_FullMethodName = "/llmproxy.v1.LLMProxyAdminService/RotateEncryption"
+	LLMProxyAdminService_MintNodeKey_FullMethodName      = "/llmproxy.v1.LLMProxyAdminService/MintNodeKey"
+	LLMProxyAdminService_RevokeNodeKey_FullMethodName    = "/llmproxy.v1.LLMProxyAdminService/RevokeNodeKey"
+	LLMProxyAdminService_ListNodeKeys_FullMethodName     = "/llmproxy.v1.LLMProxyAdminService/ListNodeKeys"
+	LLMProxyAdminService_ListNodes_FullMethodName        = "/llmproxy.v1.LLMProxyAdminService/ListNodes"
+	LLMProxyAdminService_DrainNode_FullMethodName        = "/llmproxy.v1.LLMProxyAdminService/DrainNode"
 )
 
 // LLMProxyAdminServiceClient is the client API for LLMProxyAdminService service.
@@ -48,6 +53,11 @@ type LLMProxyAdminServiceClient interface {
 	RevokeAPIKey(ctx context.Context, in *RevokeAPIKeyRequest, opts ...grpc.CallOption) (*RevokeAPIKeyResponse, error)
 	ListAPIKeys(ctx context.Context, in *ListAPIKeysRequest, opts ...grpc.CallOption) (*ListAPIKeysResponse, error)
 	RotateEncryption(ctx context.Context, in *RotateEncryptionRequest, opts ...grpc.CallOption) (*RotateEncryptionResponse, error)
+	MintNodeKey(ctx context.Context, in *MintNodeKeyRequest, opts ...grpc.CallOption) (*MintNodeKeyResponse, error)
+	RevokeNodeKey(ctx context.Context, in *RevokeNodeKeyRequest, opts ...grpc.CallOption) (*RevokeNodeKeyResponse, error)
+	ListNodeKeys(ctx context.Context, in *ListNodeKeysRequest, opts ...grpc.CallOption) (*ListNodeKeysResponse, error)
+	ListNodes(ctx context.Context, in *ListNodesRequest, opts ...grpc.CallOption) (*ListNodesResponse, error)
+	DrainNode(ctx context.Context, in *DrainNodeRequest, opts ...grpc.CallOption) (*DrainNodeResponse, error)
 }
 
 type lLMProxyAdminServiceClient struct {
@@ -158,6 +168,56 @@ func (c *lLMProxyAdminServiceClient) RotateEncryption(ctx context.Context, in *R
 	return out, nil
 }
 
+func (c *lLMProxyAdminServiceClient) MintNodeKey(ctx context.Context, in *MintNodeKeyRequest, opts ...grpc.CallOption) (*MintNodeKeyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MintNodeKeyResponse)
+	err := c.cc.Invoke(ctx, LLMProxyAdminService_MintNodeKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lLMProxyAdminServiceClient) RevokeNodeKey(ctx context.Context, in *RevokeNodeKeyRequest, opts ...grpc.CallOption) (*RevokeNodeKeyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RevokeNodeKeyResponse)
+	err := c.cc.Invoke(ctx, LLMProxyAdminService_RevokeNodeKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lLMProxyAdminServiceClient) ListNodeKeys(ctx context.Context, in *ListNodeKeysRequest, opts ...grpc.CallOption) (*ListNodeKeysResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListNodeKeysResponse)
+	err := c.cc.Invoke(ctx, LLMProxyAdminService_ListNodeKeys_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lLMProxyAdminServiceClient) ListNodes(ctx context.Context, in *ListNodesRequest, opts ...grpc.CallOption) (*ListNodesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListNodesResponse)
+	err := c.cc.Invoke(ctx, LLMProxyAdminService_ListNodes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lLMProxyAdminServiceClient) DrainNode(ctx context.Context, in *DrainNodeRequest, opts ...grpc.CallOption) (*DrainNodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DrainNodeResponse)
+	err := c.cc.Invoke(ctx, LLMProxyAdminService_DrainNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LLMProxyAdminServiceServer is the server API for LLMProxyAdminService service.
 // All implementations must embed UnimplementedLLMProxyAdminServiceServer
 // for forward compatibility.
@@ -175,6 +235,11 @@ type LLMProxyAdminServiceServer interface {
 	RevokeAPIKey(context.Context, *RevokeAPIKeyRequest) (*RevokeAPIKeyResponse, error)
 	ListAPIKeys(context.Context, *ListAPIKeysRequest) (*ListAPIKeysResponse, error)
 	RotateEncryption(context.Context, *RotateEncryptionRequest) (*RotateEncryptionResponse, error)
+	MintNodeKey(context.Context, *MintNodeKeyRequest) (*MintNodeKeyResponse, error)
+	RevokeNodeKey(context.Context, *RevokeNodeKeyRequest) (*RevokeNodeKeyResponse, error)
+	ListNodeKeys(context.Context, *ListNodeKeysRequest) (*ListNodeKeysResponse, error)
+	ListNodes(context.Context, *ListNodesRequest) (*ListNodesResponse, error)
+	DrainNode(context.Context, *DrainNodeRequest) (*DrainNodeResponse, error)
 	mustEmbedUnimplementedLLMProxyAdminServiceServer()
 }
 
@@ -214,6 +279,21 @@ func (UnimplementedLLMProxyAdminServiceServer) ListAPIKeys(context.Context, *Lis
 }
 func (UnimplementedLLMProxyAdminServiceServer) RotateEncryption(context.Context, *RotateEncryptionRequest) (*RotateEncryptionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RotateEncryption not implemented")
+}
+func (UnimplementedLLMProxyAdminServiceServer) MintNodeKey(context.Context, *MintNodeKeyRequest) (*MintNodeKeyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method MintNodeKey not implemented")
+}
+func (UnimplementedLLMProxyAdminServiceServer) RevokeNodeKey(context.Context, *RevokeNodeKeyRequest) (*RevokeNodeKeyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RevokeNodeKey not implemented")
+}
+func (UnimplementedLLMProxyAdminServiceServer) ListNodeKeys(context.Context, *ListNodeKeysRequest) (*ListNodeKeysResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListNodeKeys not implemented")
+}
+func (UnimplementedLLMProxyAdminServiceServer) ListNodes(context.Context, *ListNodesRequest) (*ListNodesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListNodes not implemented")
+}
+func (UnimplementedLLMProxyAdminServiceServer) DrainNode(context.Context, *DrainNodeRequest) (*DrainNodeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DrainNode not implemented")
 }
 func (UnimplementedLLMProxyAdminServiceServer) mustEmbedUnimplementedLLMProxyAdminServiceServer() {}
 func (UnimplementedLLMProxyAdminServiceServer) testEmbeddedByValue()                              {}
@@ -416,6 +496,96 @@ func _LLMProxyAdminService_RotateEncryption_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LLMProxyAdminService_MintNodeKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MintNodeKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyAdminServiceServer).MintNodeKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyAdminService_MintNodeKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyAdminServiceServer).MintNodeKey(ctx, req.(*MintNodeKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LLMProxyAdminService_RevokeNodeKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeNodeKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyAdminServiceServer).RevokeNodeKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyAdminService_RevokeNodeKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyAdminServiceServer).RevokeNodeKey(ctx, req.(*RevokeNodeKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LLMProxyAdminService_ListNodeKeys_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNodeKeysRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyAdminServiceServer).ListNodeKeys(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyAdminService_ListNodeKeys_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyAdminServiceServer).ListNodeKeys(ctx, req.(*ListNodeKeysRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LLMProxyAdminService_ListNodes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNodesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyAdminServiceServer).ListNodes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyAdminService_ListNodes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyAdminServiceServer).ListNodes(ctx, req.(*ListNodesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LLMProxyAdminService_DrainNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DrainNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyAdminServiceServer).DrainNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyAdminService_DrainNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyAdminServiceServer).DrainNode(ctx, req.(*DrainNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LLMProxyAdminService_ServiceDesc is the grpc.ServiceDesc for LLMProxyAdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -462,6 +632,26 @@ var LLMProxyAdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RotateEncryption",
 			Handler:    _LLMProxyAdminService_RotateEncryption_Handler,
+		},
+		{
+			MethodName: "MintNodeKey",
+			Handler:    _LLMProxyAdminService_MintNodeKey_Handler,
+		},
+		{
+			MethodName: "RevokeNodeKey",
+			Handler:    _LLMProxyAdminService_RevokeNodeKey_Handler,
+		},
+		{
+			MethodName: "ListNodeKeys",
+			Handler:    _LLMProxyAdminService_ListNodeKeys_Handler,
+		},
+		{
+			MethodName: "ListNodes",
+			Handler:    _LLMProxyAdminService_ListNodes_Handler,
+		},
+		{
+			MethodName: "DrainNode",
+			Handler:    _LLMProxyAdminService_DrainNode_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

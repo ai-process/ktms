@@ -7,7 +7,10 @@ import (
 	"time"
 )
 
-var ErrNotFound = errors.New("proxydb: not found")
+var (
+	ErrNotFound      = errors.New("proxydb: not found")
+	ErrAlreadyExists = errors.New("proxydb: already exists")
+)
 
 type APIKey struct {
 	ID         string
@@ -20,6 +23,22 @@ type APIKey struct {
 }
 
 func (k *APIKey) Active() bool { return k.DisabledAt == nil }
+
+type NodeKey struct {
+	ID             int64
+	NodeID         string
+	Name           string
+	KeyLookup      string
+	KeyHash        string
+	AllowedCIDRs   []string
+	AllowedModels  []string
+	MaxBaseWeight  float64
+	MaxConcurrency int32
+	DisabledAt     *time.Time
+	CreatedAt      time.Time
+}
+
+func (k *NodeKey) Active() bool { return k.DisabledAt == nil }
 
 type Model struct {
 	ID              string

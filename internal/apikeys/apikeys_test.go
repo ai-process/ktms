@@ -12,14 +12,18 @@ import (
 )
 
 type fakeStore struct {
-	mu      sync.Mutex
-	rows    map[string]*proxydb.APIKey
-	lookups int
-	err     error
+	mu       sync.Mutex
+	rows     map[string]*proxydb.APIKey
+	nodeRows map[string]*proxydb.NodeKey
+	lookups  int
+	err      error
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{rows: map[string]*proxydb.APIKey{}}
+	return &fakeStore{
+		rows:     map[string]*proxydb.APIKey{},
+		nodeRows: map[string]*proxydb.NodeKey{},
+	}
 }
 
 func (f *fakeStore) GetAPIKeyByLookup(_ context.Context, lookup string) (*proxydb.APIKey, error) {
@@ -30,6 +34,20 @@ func (f *fakeStore) GetAPIKeyByLookup(_ context.Context, lookup string) (*proxyd
 		return nil, f.err
 	}
 	row, ok := f.rows[lookup]
+	if !ok {
+		return nil, proxydb.ErrNotFound
+	}
+	return row, nil
+}
+
+func (f *fakeStore) GetNodeKeyByLookup(_ context.Context, lookup string) (*proxydb.NodeKey, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lookups++
+	if f.err != nil {
+		return nil, f.err
+	}
+	row, ok := f.nodeRows[lookup]
 	if !ok {
 		return nil, proxydb.ErrNotFound
 	}
