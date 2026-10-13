@@ -31,7 +31,7 @@ func NewSelector(mgr *Manager) *Selector {
 }
 
 // SelectNode performs candidate filtering and weighted selection:
-// 1. Filter by model support, state (HEALTHY over SUSPECT, exclude DRAINING/OFFLINE/CIRCUIT_BROKEN), free slots.
+// 1. Filter by model support, state (HEALTHY over SUSPECT, probe CIRCUIT_BROKEN when no healthy/suspect).
 // 2. Strict warm over cold filter: if any warm node has capacity, cold nodes are eliminated.
 // 3. Compute effective weights: W_eff = base_weight * F_perf * F_load.
 // 4. Smooth WRR selection.
@@ -177,24 +177,36 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 	case len(suspectCold) > 0:
 		eligible = suspectCold
 	default:
-		var probeCandidates []*Candidate
-		for _, cand := range circuitBrokenCandidates {
+		// When no healthy or suspect nodes are available, try circuit-broken nodes one by one.
+		// Stop at the first successfully acquired probe lease so other nodes are not locked.
+		var orderedBroken []*Candidate
+		for _, c := range circuitBrokenCandidates {
+			if c.IsWarm {
+				orderedBroken = append(orderedBroken, c)
+			}
+		}
+		for _, c := range circuitBrokenCandidates {
+			if !c.IsWarm {
+				orderedBroken = append(orderedBroken, c)
+			}
+		}
+		for _, cand := range orderedBroken {
 			probeAcquired, err := s.mgr.Circuit().TryAcquireProbe(ctx, cand.Snapshot.Meta.NodeID)
 			if err != nil {
 				log.Warn().Err(err).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("nodes: failed to acquire circuit probe lease")
 				continue
 			}
 			if probeAcquired {
-				probeCandidates = append(probeCandidates, cand)
+				s.mu.Lock()
+				s.curWeight[cand.Snapshot.Meta.NodeID] = 0
+				s.mu.Unlock()
+				return cand, nil
 			}
 		}
-		if len(probeCandidates) > 0 {
-			eligible = probeCandidates
-		} else if matchingHealthyOrSuspect > 0 {
+		if matchingHealthyOrSuspect > 0 {
 			return nil, ErrNodePoolFull
-		} else {
-			return nil, ErrNoAvailableNodes
 		}
+		return nil, ErrNoAvailableNodes
 	}
 
 	// Smooth Weighted Round Robin

@@ -385,7 +385,10 @@ func TestPoolAdapter_CircuitBrokenFastFallback(t *testing.T) {
 	_ = mgr.Circuit().RecordFailure(ctx, nodeID)
 
 	// Consume probe slot so second probe attempt fails
-	acquired, _ := mgr.Circuit().TryAcquireProbe(ctx, nodeID)
+	acquired, err := mgr.Circuit().TryAcquireProbe(ctx, nodeID)
+	if err != nil {
+		t.Fatalf("unexpected error acquiring probe: %v", err)
+	}
 	if !acquired {
 		t.Fatal("expected first probe acquire to succeed")
 	}
@@ -397,11 +400,120 @@ func TestPoolAdapter_CircuitBrokenFastFallback(t *testing.T) {
 	}
 	pa := NewPoolAdapter(selector, nil, pm, 60*time.Second, nil)
 	start := time.Now()
-	_, _, err := pa.acquireSlotWithWait(ctx, llm.NewChatContext())
+	_, _, err = pa.acquireSlotWithWait(ctx, llm.NewChatContext())
 	if !errors.Is(err, ErrNoAvailableNodes) {
 		t.Fatalf("expected ErrNoAvailableNodes when circuit broken and probe unavailable, got %v", err)
 	}
 	if time.Since(start) > 50*time.Millisecond {
 		t.Errorf("expected immediate fast fallback without waiting queue timeout, took %v", time.Since(start))
+	}
+}
+
+func TestSelector_HealthyAvoidsProbeLease(t *testing.T) {
+	ctx := context.Background()
+	mgr, _ := setupTestManager(t)
+	modelID := "test-model"
+
+	// Register healthy node
+	_ = mgr.Register(ctx, &NodeMeta{
+		NodeID:        "healthy-node",
+		Name:          "healthy",
+		Endpoint:      "http://localhost:8001",
+		Engine:        "vllm",
+		BaseWeight:    1.0,
+		MaxConcurrent: 4,
+		Models: []*pb.NodeModelSpec{
+			{ModelId: modelID, IsWarm: true},
+		},
+	})
+	_, _, _ = mgr.Heartbeat(ctx, &NodeHeartbeatData{NodeID: "healthy-node"})
+
+	// Register broken node
+	_ = mgr.Register(ctx, &NodeMeta{
+		NodeID:        "broken-node",
+		Name:          "broken",
+		Endpoint:      "http://localhost:8002",
+		Engine:        "vllm",
+		BaseWeight:    1.0,
+		MaxConcurrent: 4,
+		Models: []*pb.NodeModelSpec{
+			{ModelId: modelID, IsWarm: true},
+		},
+	})
+	_, _, _ = mgr.Heartbeat(ctx, &NodeHeartbeatData{NodeID: "broken-node"})
+	_ = mgr.Circuit().RecordFailure(ctx, "broken-node")
+	_ = mgr.Circuit().RecordFailure(ctx, "broken-node")
+	_ = mgr.Circuit().RecordFailure(ctx, "broken-node")
+
+	selector := NewSelector(mgr)
+	cand, err := selector.SelectNode(ctx, modelID)
+	if err != nil {
+		t.Fatalf("expected successful selection, got %v", err)
+	}
+	if cand.Snapshot.Meta.NodeID != "healthy-node" {
+		t.Fatalf("expected healthy node to be selected, got %s", cand.Snapshot.Meta.NodeID)
+	}
+
+	// Verify that broken-node's probe lease was NOT consumed
+	acquired, err := mgr.Circuit().TryAcquireProbe(ctx, "broken-node")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !acquired {
+		t.Fatalf("expected broken node probe lease to still be available when healthy node was selected")
+	}
+}
+
+func TestSelector_MultipleBrokenNodesOnlyOneLeaseAcquired(t *testing.T) {
+	ctx := context.Background()
+	mgr, _ := setupTestManager(t)
+	modelID := "test-model"
+
+	for _, nodeID := range []string{"broken-1", "broken-2"} {
+		_ = mgr.Register(ctx, &NodeMeta{
+			NodeID:        nodeID,
+			Name:          nodeID,
+			Endpoint:      "http://localhost:8000",
+			Engine:        "vllm",
+			BaseWeight:    1.0,
+			MaxConcurrent: 4,
+			Models: []*pb.NodeModelSpec{
+				{ModelId: modelID, IsWarm: true},
+			},
+		})
+		_, _, _ = mgr.Heartbeat(ctx, &NodeHeartbeatData{NodeID: nodeID})
+		_ = mgr.Circuit().RecordFailure(ctx, nodeID)
+		_ = mgr.Circuit().RecordFailure(ctx, nodeID)
+		_ = mgr.Circuit().RecordFailure(ctx, nodeID)
+	}
+
+	selector := NewSelector(mgr)
+	cand, err := selector.SelectNode(ctx, modelID)
+	if err != nil {
+		t.Fatalf("expected successful probe selection, got %v", err)
+	}
+
+	chosen := cand.Snapshot.Meta.NodeID
+	other := "broken-2"
+	if chosen == "broken-2" {
+		other = "broken-1"
+	}
+
+	// Verify chosen node probe lease was taken
+	acquiredChosen, err := mgr.Circuit().TryAcquireProbe(ctx, chosen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if acquiredChosen {
+		t.Fatalf("expected chosen node probe lease to be acquired by SelectNode")
+	}
+
+	// Verify other node probe lease was NOT taken and remains available for recovery
+	acquiredOther, err := mgr.Circuit().TryAcquireProbe(ctx, other)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !acquiredOther {
+		t.Fatalf("expected unselected broken node probe lease to remain free so recovery is not blocked")
 	}
 }
