@@ -120,13 +120,24 @@ func (l *Loader) build(ctx context.Context, version int64) (*Snapshot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load vendor keys: %w", err)
 	}
+	userRateLimits, err := l.db.LoadUserRateLimits(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load user rate limits: %w", err)
+	}
 
 	snap := &Snapshot{
-		Version:    version,
-		Models:     map[string]*proxydb.Model{},
-		vendorKeys: map[string]map[string]string{},
-		tracker:    l.tracker,
-		nodePool:   l.nodePool,
+		Version:        version,
+		Models:         map[string]*proxydb.Model{},
+		vendorKeys:     map[string]map[string]string{},
+		UserRateLimits: map[string]map[string]*proxydb.UserRateLimit{},
+		tracker:        l.tracker,
+		nodePool:       l.nodePool,
+	}
+	for _, u := range userRateLimits {
+		if snap.UserRateLimits[u.UserID] == nil {
+			snap.UserRateLimits[u.UserID] = map[string]*proxydb.UserRateLimit{}
+		}
+		snap.UserRateLimits[u.UserID][u.ModelID] = u
 	}
 	for _, m := range models {
 		if m.Enabled {

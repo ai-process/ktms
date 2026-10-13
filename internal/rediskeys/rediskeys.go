@@ -20,6 +20,16 @@ func (k Keys) RPM(keyName, modelID string, unixMinute int64) string {
 	return fmt.Sprintf("%sllmproxy:rpm:%s:%s:%d", k.prefix, keyName, modelID, unixMinute)
 }
 
+// GCRAKey is the GCRA Theoretical Arrival Time key per client key and model.
+func (k Keys) GCRAKey(keyName, modelID string) string {
+	return fmt.Sprintf("%sllmproxy:gcra:k:%s:%s", k.prefix, keyName, modelID)
+}
+
+// GCRAUser is the GCRA Theoretical Arrival Time key per end user and model.
+func (k Keys) GCRAUser(userID, modelID string) string {
+	return fmt.Sprintf("%sllmproxy:gcra:u:%s:%s", k.prefix, userID, modelID)
+}
+
 // BudgetKey is the daily token budget per client key and model (UTC day).
 func (k Keys) BudgetKey(keyName, modelID, day string) string {
 	return fmt.Sprintf("%sllmproxy:bud:k:%s:%s:%s", k.prefix, keyName, modelID, day)
@@ -58,5 +68,10 @@ func (k Keys) NodeDrain(nodeID string) string {
 // NodesSet is the SET of all known node IDs.
 func (k Keys) NodesSet() string {
 	return fmt.Sprintf("%snodes:all", k.prefix)
+}
+
+// NodeQueue is the model-level in-flight queue counter for predictive admission.
+func (k Keys) NodeQueue(modelID string) string {
+	return fmt.Sprintf("%snode:queue:%s", k.prefix, modelID)
 }
 

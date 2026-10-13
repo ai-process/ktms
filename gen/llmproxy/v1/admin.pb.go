@@ -43,6 +43,9 @@ type ModelSpec struct {
 	DailyTokensPerKey    int64   `protobuf:"varint,9,opt,name=daily_tokens_per_key,json=dailyTokensPerKey,proto3" json:"daily_tokens_per_key,omitempty"`     // per api key per UTC day, 0 = unlimited
 	DailyTokensPerUser   int64   `protobuf:"varint,10,opt,name=daily_tokens_per_user,json=dailyTokensPerUser,proto3" json:"daily_tokens_per_user,omitempty"` // per attributes["user_id"] (or svc:<key_name> fallback) per UTC day
 	Enabled              bool    `protobuf:"varint,11,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	RpmBurst             int32   `protobuf:"varint,16,opt,name=rpm_burst,json=rpmBurst,proto3" json:"rpm_burst,omitempty"`                               // extra burst allowed above steady-state rpm (0 = default burst)
+	QueueTimeoutMs       int32   `protobuf:"varint,17,opt,name=queue_timeout_ms,json=queueTimeoutMs,proto3" json:"queue_timeout_ms,omitempty"`           // max wait for pool inference slot in ms (0 = fallback immediately)
+	BudgetGraceMargin    float64 `protobuf:"fixed64,18,opt,name=budget_grace_margin,json=budgetGraceMargin,proto3" json:"budget_grace_margin,omitempty"` // allowed daily budget overdraft (0.0 = system default)
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -180,6 +183,27 @@ func (x *ModelSpec) GetEnabled() bool {
 		return x.Enabled
 	}
 	return false
+}
+
+func (x *ModelSpec) GetRpmBurst() int32 {
+	if x != nil {
+		return x.RpmBurst
+	}
+	return 0
+}
+
+func (x *ModelSpec) GetQueueTimeoutMs() int32 {
+	if x != nil {
+		return x.QueueTimeoutMs
+	}
+	return 0
+}
+
+func (x *ModelSpec) GetBudgetGraceMargin() float64 {
+	if x != nil {
+		return x.BudgetGraceMargin
+	}
+	return 0
 }
 
 type RuleSpec struct {
@@ -797,13 +821,14 @@ func (*GetConfigRequest) Descriptor() ([]byte, []int) {
 }
 
 type GetConfigResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Models        []*ModelSpec           `protobuf:"bytes,1,rep,name=models,proto3" json:"models,omitempty"`
-	Rules         []*RuleSpec            `protobuf:"bytes,2,rep,name=rules,proto3" json:"rules,omitempty"`
-	VendorKeys    []*VendorKeyInfo       `protobuf:"bytes,3,rep,name=vendor_keys,json=vendorKeys,proto3" json:"vendor_keys,omitempty"`
-	Version       int64                  `protobuf:"varint,4,opt,name=version,proto3" json:"version,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Models         []*ModelSpec           `protobuf:"bytes,1,rep,name=models,proto3" json:"models,omitempty"`
+	Rules          []*RuleSpec            `protobuf:"bytes,2,rep,name=rules,proto3" json:"rules,omitempty"`
+	VendorKeys     []*VendorKeyInfo       `protobuf:"bytes,3,rep,name=vendor_keys,json=vendorKeys,proto3" json:"vendor_keys,omitempty"`
+	Version        int64                  `protobuf:"varint,4,opt,name=version,proto3" json:"version,omitempty"`
+	UserRateLimits []*UserRateLimitSpec   `protobuf:"bytes,5,rep,name=user_rate_limits,json=userRateLimits,proto3" json:"user_rate_limits,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *GetConfigResponse) Reset() {
@@ -862,6 +887,13 @@ func (x *GetConfigResponse) GetVersion() int64 {
 		return x.Version
 	}
 	return 0
+}
+
+func (x *GetConfigResponse) GetUserRateLimits() []*UserRateLimitSpec {
+	if x != nil {
+		return x.UserRateLimits
+	}
+	return nil
 }
 
 type MintAPIKeyRequest struct {
@@ -2012,11 +2044,351 @@ func (*DrainNodeResponse) Descriptor() ([]byte, []int) {
 	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{35}
 }
 
+type UserRateLimitSpec struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	UserId         string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	ModelId        string                 `protobuf:"bytes,2,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
+	Rpm            int32                  `protobuf:"varint,3,opt,name=rpm,proto3" json:"rpm,omitempty"`
+	RpmBurst       int32                  `protobuf:"varint,4,opt,name=rpm_burst,json=rpmBurst,proto3" json:"rpm_burst,omitempty"`
+	QueueTimeoutMs int32                  `protobuf:"varint,5,opt,name=queue_timeout_ms,json=queueTimeoutMs,proto3" json:"queue_timeout_ms,omitempty"`
+	DailyTokens    int64                  `protobuf:"varint,6,opt,name=daily_tokens,json=dailyTokens,proto3" json:"daily_tokens,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *UserRateLimitSpec) Reset() {
+	*x = UserRateLimitSpec{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UserRateLimitSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UserRateLimitSpec) ProtoMessage() {}
+
+func (x *UserRateLimitSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UserRateLimitSpec.ProtoReflect.Descriptor instead.
+func (*UserRateLimitSpec) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *UserRateLimitSpec) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *UserRateLimitSpec) GetModelId() string {
+	if x != nil {
+		return x.ModelId
+	}
+	return ""
+}
+
+func (x *UserRateLimitSpec) GetRpm() int32 {
+	if x != nil {
+		return x.Rpm
+	}
+	return 0
+}
+
+func (x *UserRateLimitSpec) GetRpmBurst() int32 {
+	if x != nil {
+		return x.RpmBurst
+	}
+	return 0
+}
+
+func (x *UserRateLimitSpec) GetQueueTimeoutMs() int32 {
+	if x != nil {
+		return x.QueueTimeoutMs
+	}
+	return 0
+}
+
+func (x *UserRateLimitSpec) GetDailyTokens() int64 {
+	if x != nil {
+		return x.DailyTokens
+	}
+	return 0
+}
+
+type SetUserRateLimitRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RateLimit     *UserRateLimitSpec     `protobuf:"bytes,1,opt,name=rate_limit,json=rateLimit,proto3" json:"rate_limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetUserRateLimitRequest) Reset() {
+	*x = SetUserRateLimitRequest{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetUserRateLimitRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetUserRateLimitRequest) ProtoMessage() {}
+
+func (x *SetUserRateLimitRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetUserRateLimitRequest.ProtoReflect.Descriptor instead.
+func (*SetUserRateLimitRequest) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *SetUserRateLimitRequest) GetRateLimit() *UserRateLimitSpec {
+	if x != nil {
+		return x.RateLimit
+	}
+	return nil
+}
+
+type SetUserRateLimitResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetUserRateLimitResponse) Reset() {
+	*x = SetUserRateLimitResponse{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetUserRateLimitResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetUserRateLimitResponse) ProtoMessage() {}
+
+func (x *SetUserRateLimitResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetUserRateLimitResponse.ProtoReflect.Descriptor instead.
+func (*SetUserRateLimitResponse) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{38}
+}
+
+type DeleteUserRateLimitRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	ModelId       string                 `protobuf:"bytes,2,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteUserRateLimitRequest) Reset() {
+	*x = DeleteUserRateLimitRequest{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteUserRateLimitRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteUserRateLimitRequest) ProtoMessage() {}
+
+func (x *DeleteUserRateLimitRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteUserRateLimitRequest.ProtoReflect.Descriptor instead.
+func (*DeleteUserRateLimitRequest) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *DeleteUserRateLimitRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *DeleteUserRateLimitRequest) GetModelId() string {
+	if x != nil {
+		return x.ModelId
+	}
+	return ""
+}
+
+type DeleteUserRateLimitResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteUserRateLimitResponse) Reset() {
+	*x = DeleteUserRateLimitResponse{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteUserRateLimitResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteUserRateLimitResponse) ProtoMessage() {}
+
+func (x *DeleteUserRateLimitResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteUserRateLimitResponse.ProtoReflect.Descriptor instead.
+func (*DeleteUserRateLimitResponse) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{40}
+}
+
+type ListUserRateLimitsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"` // optional filter
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListUserRateLimitsRequest) Reset() {
+	*x = ListUserRateLimitsRequest{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListUserRateLimitsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListUserRateLimitsRequest) ProtoMessage() {}
+
+func (x *ListUserRateLimitsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListUserRateLimitsRequest.ProtoReflect.Descriptor instead.
+func (*ListUserRateLimitsRequest) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *ListUserRateLimitsRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+type ListUserRateLimitsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RateLimits    []*UserRateLimitSpec   `protobuf:"bytes,1,rep,name=rate_limits,json=rateLimits,proto3" json:"rate_limits,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListUserRateLimitsResponse) Reset() {
+	*x = ListUserRateLimitsResponse{}
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListUserRateLimitsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListUserRateLimitsResponse) ProtoMessage() {}
+
+func (x *ListUserRateLimitsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_admin_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListUserRateLimitsResponse.ProtoReflect.Descriptor instead.
+func (*ListUserRateLimitsResponse) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *ListUserRateLimitsResponse) GetRateLimits() []*UserRateLimitSpec {
+	if x != nil {
+		return x.RateLimits
+	}
+	return nil
+}
+
 var File_llmproxy_v1_admin_proto protoreflect.FileDescriptor
 
 const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"\n" +
-	"\x17llmproxy/v1/admin.proto\x12\vllmproxy.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1allmproxy/v1/llmproxy.proto\"\xe2\x04\n" +
+	"\x17llmproxy/v1/admin.proto\x12\vllmproxy.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1allmproxy/v1/llmproxy.proto\"\xd9\x05\n" +
 	"\tModelSpec\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06vendor\x18\x02 \x01(\tR\x06vendor\x12\x1a\n" +
@@ -2033,7 +2405,10 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"\x14daily_tokens_per_key\x18\t \x01(\x03R\x11dailyTokensPerKey\x121\n" +
 	"\x15daily_tokens_per_user\x18\n" +
 	" \x01(\x03R\x12dailyTokensPerUser\x12\x18\n" +
-	"\aenabled\x18\v \x01(\bR\aenabled\"\x99\x02\n" +
+	"\aenabled\x18\v \x01(\bR\aenabled\x12\x1b\n" +
+	"\trpm_burst\x18\x10 \x01(\x05R\brpmBurst\x12(\n" +
+	"\x10queue_timeout_ms\x18\x11 \x01(\x05R\x0equeueTimeoutMs\x12.\n" +
+	"\x13budget_grace_margin\x18\x12 \x01(\x01R\x11budgetGraceMargin\"\x99\x02\n" +
 	"\bRuleSpec\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
 	"\bpriority\x18\x02 \x01(\x05R\bpriority\x12+\n" +
@@ -2074,13 +2449,14 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"keyVersion\x129\n" +
 	"\n" +
 	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x12\n" +
-	"\x10GetConfigRequest\"\xc7\x01\n" +
+	"\x10GetConfigRequest\"\x91\x02\n" +
 	"\x11GetConfigResponse\x12.\n" +
 	"\x06models\x18\x01 \x03(\v2\x16.llmproxy.v1.ModelSpecR\x06models\x12+\n" +
 	"\x05rules\x18\x02 \x03(\v2\x15.llmproxy.v1.RuleSpecR\x05rules\x12;\n" +
 	"\vvendor_keys\x18\x03 \x03(\v2\x1a.llmproxy.v1.VendorKeyInfoR\n" +
 	"vendorKeys\x12\x18\n" +
-	"\aversion\x18\x04 \x01(\x03R\aversion\"?\n" +
+	"\aversion\x18\x04 \x01(\x03R\aversion\x12H\n" +
+	"\x10user_rate_limits\x18\x05 \x03(\v2\x1e.llmproxy.v1.UserRateLimitSpecR\x0euserRateLimits\"?\n" +
 	"\x11MintAPIKeyRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06scopes\x18\x02 \x03(\tR\x06scopes\"1\n" +
@@ -2158,7 +2534,27 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"\x05nodes\x18\x01 \x03(\v2\x15.llmproxy.v1.NodeInfoR\x05nodes\"+\n" +
 	"\x10DrainNodeRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"\x13\n" +
-	"\x11DrainNodeResponse2\xfc\t\n" +
+	"\x11DrainNodeResponse\"\xc3\x01\n" +
+	"\x11UserRateLimitSpec\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x19\n" +
+	"\bmodel_id\x18\x02 \x01(\tR\amodelId\x12\x10\n" +
+	"\x03rpm\x18\x03 \x01(\x05R\x03rpm\x12\x1b\n" +
+	"\trpm_burst\x18\x04 \x01(\x05R\brpmBurst\x12(\n" +
+	"\x10queue_timeout_ms\x18\x05 \x01(\x05R\x0equeueTimeoutMs\x12!\n" +
+	"\fdaily_tokens\x18\x06 \x01(\x03R\vdailyTokens\"X\n" +
+	"\x17SetUserRateLimitRequest\x12=\n" +
+	"\n" +
+	"rate_limit\x18\x01 \x01(\v2\x1e.llmproxy.v1.UserRateLimitSpecR\trateLimit\"\x1a\n" +
+	"\x18SetUserRateLimitResponse\"P\n" +
+	"\x1aDeleteUserRateLimitRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x19\n" +
+	"\bmodel_id\x18\x02 \x01(\tR\amodelId\"\x1d\n" +
+	"\x1bDeleteUserRateLimitResponse\"4\n" +
+	"\x19ListUserRateLimitsRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\"]\n" +
+	"\x1aListUserRateLimitsResponse\x12?\n" +
+	"\vrate_limits\x18\x01 \x03(\v2\x1e.llmproxy.v1.UserRateLimitSpecR\n" +
+	"rateLimits2\xae\f\n" +
 	"\x14LLMProxyAdminService\x12P\n" +
 	"\vUpsertModel\x12\x1f.llmproxy.v1.UpsertModelRequest\x1a .llmproxy.v1.UpsertModelResponse\x12P\n" +
 	"\vDeleteModel\x12\x1f.llmproxy.v1.DeleteModelRequest\x1a .llmproxy.v1.DeleteModelResponse\x12S\n" +
@@ -2175,7 +2571,10 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"\rRevokeNodeKey\x12!.llmproxy.v1.RevokeNodeKeyRequest\x1a\".llmproxy.v1.RevokeNodeKeyResponse\x12S\n" +
 	"\fListNodeKeys\x12 .llmproxy.v1.ListNodeKeysRequest\x1a!.llmproxy.v1.ListNodeKeysResponse\x12J\n" +
 	"\tListNodes\x12\x1d.llmproxy.v1.ListNodesRequest\x1a\x1e.llmproxy.v1.ListNodesResponse\x12J\n" +
-	"\tDrainNode\x12\x1d.llmproxy.v1.DrainNodeRequest\x1a\x1e.llmproxy.v1.DrainNodeResponseB\xa6\x01\n" +
+	"\tDrainNode\x12\x1d.llmproxy.v1.DrainNodeRequest\x1a\x1e.llmproxy.v1.DrainNodeResponse\x12_\n" +
+	"\x10SetUserRateLimit\x12$.llmproxy.v1.SetUserRateLimitRequest\x1a%.llmproxy.v1.SetUserRateLimitResponse\x12h\n" +
+	"\x13DeleteUserRateLimit\x12'.llmproxy.v1.DeleteUserRateLimitRequest\x1a(.llmproxy.v1.DeleteUserRateLimitResponse\x12e\n" +
+	"\x12ListUserRateLimits\x12&.llmproxy.v1.ListUserRateLimitsRequest\x1a'.llmproxy.v1.ListUserRateLimitsResponseB\xa6\x01\n" +
 	"\x0fcom.llmproxy.v1B\n" +
 	"AdminProtoP\x01Z:github.com/ai-process/llm-proxy/gen/llmproxy/v1;llmproxyv1\xa2\x02\x03LXX\xaa\x02\vLlmproxy.V1\xca\x02\vLlmproxy\\V1\xe2\x02\x17Llmproxy\\V1\\GPBMetadata\xea\x02\fLlmproxy::V1b\x06proto3"
 
@@ -2191,99 +2590,115 @@ func file_llmproxy_v1_admin_proto_rawDescGZIP() []byte {
 	return file_llmproxy_v1_admin_proto_rawDescData
 }
 
-var file_llmproxy_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
+var file_llmproxy_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
 var file_llmproxy_v1_admin_proto_goTypes = []any{
-	(*ModelSpec)(nil),                // 0: llmproxy.v1.ModelSpec
-	(*RuleSpec)(nil),                 // 1: llmproxy.v1.RuleSpec
-	(*UpsertModelRequest)(nil),       // 2: llmproxy.v1.UpsertModelRequest
-	(*UpsertModelResponse)(nil),      // 3: llmproxy.v1.UpsertModelResponse
-	(*DeleteModelRequest)(nil),       // 4: llmproxy.v1.DeleteModelRequest
-	(*DeleteModelResponse)(nil),      // 5: llmproxy.v1.DeleteModelResponse
-	(*ReplaceRulesRequest)(nil),      // 6: llmproxy.v1.ReplaceRulesRequest
-	(*ReplaceRulesResponse)(nil),     // 7: llmproxy.v1.ReplaceRulesResponse
-	(*SetVendorKeyRequest)(nil),      // 8: llmproxy.v1.SetVendorKeyRequest
-	(*SetVendorKeyResponse)(nil),     // 9: llmproxy.v1.SetVendorKeyResponse
-	(*DeleteVendorKeyRequest)(nil),   // 10: llmproxy.v1.DeleteVendorKeyRequest
-	(*DeleteVendorKeyResponse)(nil),  // 11: llmproxy.v1.DeleteVendorKeyResponse
-	(*VendorKeyInfo)(nil),            // 12: llmproxy.v1.VendorKeyInfo
-	(*GetConfigRequest)(nil),         // 13: llmproxy.v1.GetConfigRequest
-	(*GetConfigResponse)(nil),        // 14: llmproxy.v1.GetConfigResponse
-	(*MintAPIKeyRequest)(nil),        // 15: llmproxy.v1.MintAPIKeyRequest
-	(*MintAPIKeyResponse)(nil),       // 16: llmproxy.v1.MintAPIKeyResponse
-	(*RevokeAPIKeyRequest)(nil),      // 17: llmproxy.v1.RevokeAPIKeyRequest
-	(*RevokeAPIKeyResponse)(nil),     // 18: llmproxy.v1.RevokeAPIKeyResponse
-	(*ListAPIKeysRequest)(nil),       // 19: llmproxy.v1.ListAPIKeysRequest
-	(*APIKeyInfo)(nil),               // 20: llmproxy.v1.APIKeyInfo
-	(*ListAPIKeysResponse)(nil),      // 21: llmproxy.v1.ListAPIKeysResponse
-	(*RotateEncryptionRequest)(nil),  // 22: llmproxy.v1.RotateEncryptionRequest
-	(*RotateEncryptionResponse)(nil), // 23: llmproxy.v1.RotateEncryptionResponse
-	(*MintNodeKeyRequest)(nil),       // 24: llmproxy.v1.MintNodeKeyRequest
-	(*MintNodeKeyResponse)(nil),      // 25: llmproxy.v1.MintNodeKeyResponse
-	(*RevokeNodeKeyRequest)(nil),     // 26: llmproxy.v1.RevokeNodeKeyRequest
-	(*RevokeNodeKeyResponse)(nil),    // 27: llmproxy.v1.RevokeNodeKeyResponse
-	(*ListNodeKeysRequest)(nil),      // 28: llmproxy.v1.ListNodeKeysRequest
-	(*NodeKeyInfo)(nil),              // 29: llmproxy.v1.NodeKeyInfo
-	(*ListNodeKeysResponse)(nil),     // 30: llmproxy.v1.ListNodeKeysResponse
-	(*ListNodesRequest)(nil),         // 31: llmproxy.v1.ListNodesRequest
-	(*NodeInfo)(nil),                 // 32: llmproxy.v1.NodeInfo
-	(*ListNodesResponse)(nil),        // 33: llmproxy.v1.ListNodesResponse
-	(*DrainNodeRequest)(nil),         // 34: llmproxy.v1.DrainNodeRequest
-	(*DrainNodeResponse)(nil),        // 35: llmproxy.v1.DrainNodeResponse
-	nil,                              // 36: llmproxy.v1.RuleSpec.AttributesEntry
-	(Effort)(0),                      // 37: llmproxy.v1.Effort
-	(*timestamppb.Timestamp)(nil),    // 38: google.protobuf.Timestamp
+	(*ModelSpec)(nil),                   // 0: llmproxy.v1.ModelSpec
+	(*RuleSpec)(nil),                    // 1: llmproxy.v1.RuleSpec
+	(*UpsertModelRequest)(nil),          // 2: llmproxy.v1.UpsertModelRequest
+	(*UpsertModelResponse)(nil),         // 3: llmproxy.v1.UpsertModelResponse
+	(*DeleteModelRequest)(nil),          // 4: llmproxy.v1.DeleteModelRequest
+	(*DeleteModelResponse)(nil),         // 5: llmproxy.v1.DeleteModelResponse
+	(*ReplaceRulesRequest)(nil),         // 6: llmproxy.v1.ReplaceRulesRequest
+	(*ReplaceRulesResponse)(nil),        // 7: llmproxy.v1.ReplaceRulesResponse
+	(*SetVendorKeyRequest)(nil),         // 8: llmproxy.v1.SetVendorKeyRequest
+	(*SetVendorKeyResponse)(nil),        // 9: llmproxy.v1.SetVendorKeyResponse
+	(*DeleteVendorKeyRequest)(nil),      // 10: llmproxy.v1.DeleteVendorKeyRequest
+	(*DeleteVendorKeyResponse)(nil),     // 11: llmproxy.v1.DeleteVendorKeyResponse
+	(*VendorKeyInfo)(nil),               // 12: llmproxy.v1.VendorKeyInfo
+	(*GetConfigRequest)(nil),            // 13: llmproxy.v1.GetConfigRequest
+	(*GetConfigResponse)(nil),           // 14: llmproxy.v1.GetConfigResponse
+	(*MintAPIKeyRequest)(nil),           // 15: llmproxy.v1.MintAPIKeyRequest
+	(*MintAPIKeyResponse)(nil),          // 16: llmproxy.v1.MintAPIKeyResponse
+	(*RevokeAPIKeyRequest)(nil),         // 17: llmproxy.v1.RevokeAPIKeyRequest
+	(*RevokeAPIKeyResponse)(nil),        // 18: llmproxy.v1.RevokeAPIKeyResponse
+	(*ListAPIKeysRequest)(nil),          // 19: llmproxy.v1.ListAPIKeysRequest
+	(*APIKeyInfo)(nil),                  // 20: llmproxy.v1.APIKeyInfo
+	(*ListAPIKeysResponse)(nil),         // 21: llmproxy.v1.ListAPIKeysResponse
+	(*RotateEncryptionRequest)(nil),     // 22: llmproxy.v1.RotateEncryptionRequest
+	(*RotateEncryptionResponse)(nil),    // 23: llmproxy.v1.RotateEncryptionResponse
+	(*MintNodeKeyRequest)(nil),          // 24: llmproxy.v1.MintNodeKeyRequest
+	(*MintNodeKeyResponse)(nil),         // 25: llmproxy.v1.MintNodeKeyResponse
+	(*RevokeNodeKeyRequest)(nil),        // 26: llmproxy.v1.RevokeNodeKeyRequest
+	(*RevokeNodeKeyResponse)(nil),       // 27: llmproxy.v1.RevokeNodeKeyResponse
+	(*ListNodeKeysRequest)(nil),         // 28: llmproxy.v1.ListNodeKeysRequest
+	(*NodeKeyInfo)(nil),                 // 29: llmproxy.v1.NodeKeyInfo
+	(*ListNodeKeysResponse)(nil),        // 30: llmproxy.v1.ListNodeKeysResponse
+	(*ListNodesRequest)(nil),            // 31: llmproxy.v1.ListNodesRequest
+	(*NodeInfo)(nil),                    // 32: llmproxy.v1.NodeInfo
+	(*ListNodesResponse)(nil),           // 33: llmproxy.v1.ListNodesResponse
+	(*DrainNodeRequest)(nil),            // 34: llmproxy.v1.DrainNodeRequest
+	(*DrainNodeResponse)(nil),           // 35: llmproxy.v1.DrainNodeResponse
+	(*UserRateLimitSpec)(nil),           // 36: llmproxy.v1.UserRateLimitSpec
+	(*SetUserRateLimitRequest)(nil),     // 37: llmproxy.v1.SetUserRateLimitRequest
+	(*SetUserRateLimitResponse)(nil),    // 38: llmproxy.v1.SetUserRateLimitResponse
+	(*DeleteUserRateLimitRequest)(nil),  // 39: llmproxy.v1.DeleteUserRateLimitRequest
+	(*DeleteUserRateLimitResponse)(nil), // 40: llmproxy.v1.DeleteUserRateLimitResponse
+	(*ListUserRateLimitsRequest)(nil),   // 41: llmproxy.v1.ListUserRateLimitsRequest
+	(*ListUserRateLimitsResponse)(nil),  // 42: llmproxy.v1.ListUserRateLimitsResponse
+	nil,                                 // 43: llmproxy.v1.RuleSpec.AttributesEntry
+	(Effort)(0),                         // 44: llmproxy.v1.Effort
+	(*timestamppb.Timestamp)(nil),       // 45: google.protobuf.Timestamp
 }
 var file_llmproxy_v1_admin_proto_depIdxs = []int32{
-	37, // 0: llmproxy.v1.ModelSpec.efforts:type_name -> llmproxy.v1.Effort
-	37, // 1: llmproxy.v1.RuleSpec.effort:type_name -> llmproxy.v1.Effort
-	36, // 2: llmproxy.v1.RuleSpec.attributes:type_name -> llmproxy.v1.RuleSpec.AttributesEntry
+	44, // 0: llmproxy.v1.ModelSpec.efforts:type_name -> llmproxy.v1.Effort
+	44, // 1: llmproxy.v1.RuleSpec.effort:type_name -> llmproxy.v1.Effort
+	43, // 2: llmproxy.v1.RuleSpec.attributes:type_name -> llmproxy.v1.RuleSpec.AttributesEntry
 	0,  // 3: llmproxy.v1.UpsertModelRequest.model:type_name -> llmproxy.v1.ModelSpec
 	1,  // 4: llmproxy.v1.ReplaceRulesRequest.rules:type_name -> llmproxy.v1.RuleSpec
-	38, // 5: llmproxy.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	45, // 5: llmproxy.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 6: llmproxy.v1.GetConfigResponse.models:type_name -> llmproxy.v1.ModelSpec
 	1,  // 7: llmproxy.v1.GetConfigResponse.rules:type_name -> llmproxy.v1.RuleSpec
 	12, // 8: llmproxy.v1.GetConfigResponse.vendor_keys:type_name -> llmproxy.v1.VendorKeyInfo
-	38, // 9: llmproxy.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
-	20, // 10: llmproxy.v1.ListAPIKeysResponse.keys:type_name -> llmproxy.v1.APIKeyInfo
-	38, // 11: llmproxy.v1.NodeKeyInfo.created_at:type_name -> google.protobuf.Timestamp
-	29, // 12: llmproxy.v1.ListNodeKeysResponse.keys:type_name -> llmproxy.v1.NodeKeyInfo
-	38, // 13: llmproxy.v1.NodeInfo.last_heartbeat:type_name -> google.protobuf.Timestamp
-	32, // 14: llmproxy.v1.ListNodesResponse.nodes:type_name -> llmproxy.v1.NodeInfo
-	2,  // 15: llmproxy.v1.LLMProxyAdminService.UpsertModel:input_type -> llmproxy.v1.UpsertModelRequest
-	4,  // 16: llmproxy.v1.LLMProxyAdminService.DeleteModel:input_type -> llmproxy.v1.DeleteModelRequest
-	6,  // 17: llmproxy.v1.LLMProxyAdminService.ReplaceRules:input_type -> llmproxy.v1.ReplaceRulesRequest
-	8,  // 18: llmproxy.v1.LLMProxyAdminService.SetVendorKey:input_type -> llmproxy.v1.SetVendorKeyRequest
-	10, // 19: llmproxy.v1.LLMProxyAdminService.DeleteVendorKey:input_type -> llmproxy.v1.DeleteVendorKeyRequest
-	13, // 20: llmproxy.v1.LLMProxyAdminService.GetConfig:input_type -> llmproxy.v1.GetConfigRequest
-	15, // 21: llmproxy.v1.LLMProxyAdminService.MintAPIKey:input_type -> llmproxy.v1.MintAPIKeyRequest
-	17, // 22: llmproxy.v1.LLMProxyAdminService.RevokeAPIKey:input_type -> llmproxy.v1.RevokeAPIKeyRequest
-	19, // 23: llmproxy.v1.LLMProxyAdminService.ListAPIKeys:input_type -> llmproxy.v1.ListAPIKeysRequest
-	22, // 24: llmproxy.v1.LLMProxyAdminService.RotateEncryption:input_type -> llmproxy.v1.RotateEncryptionRequest
-	24, // 25: llmproxy.v1.LLMProxyAdminService.MintNodeKey:input_type -> llmproxy.v1.MintNodeKeyRequest
-	26, // 26: llmproxy.v1.LLMProxyAdminService.RevokeNodeKey:input_type -> llmproxy.v1.RevokeNodeKeyRequest
-	28, // 27: llmproxy.v1.LLMProxyAdminService.ListNodeKeys:input_type -> llmproxy.v1.ListNodeKeysRequest
-	31, // 28: llmproxy.v1.LLMProxyAdminService.ListNodes:input_type -> llmproxy.v1.ListNodesRequest
-	34, // 29: llmproxy.v1.LLMProxyAdminService.DrainNode:input_type -> llmproxy.v1.DrainNodeRequest
-	3,  // 30: llmproxy.v1.LLMProxyAdminService.UpsertModel:output_type -> llmproxy.v1.UpsertModelResponse
-	5,  // 31: llmproxy.v1.LLMProxyAdminService.DeleteModel:output_type -> llmproxy.v1.DeleteModelResponse
-	7,  // 32: llmproxy.v1.LLMProxyAdminService.ReplaceRules:output_type -> llmproxy.v1.ReplaceRulesResponse
-	9,  // 33: llmproxy.v1.LLMProxyAdminService.SetVendorKey:output_type -> llmproxy.v1.SetVendorKeyResponse
-	11, // 34: llmproxy.v1.LLMProxyAdminService.DeleteVendorKey:output_type -> llmproxy.v1.DeleteVendorKeyResponse
-	14, // 35: llmproxy.v1.LLMProxyAdminService.GetConfig:output_type -> llmproxy.v1.GetConfigResponse
-	16, // 36: llmproxy.v1.LLMProxyAdminService.MintAPIKey:output_type -> llmproxy.v1.MintAPIKeyResponse
-	18, // 37: llmproxy.v1.LLMProxyAdminService.RevokeAPIKey:output_type -> llmproxy.v1.RevokeAPIKeyResponse
-	21, // 38: llmproxy.v1.LLMProxyAdminService.ListAPIKeys:output_type -> llmproxy.v1.ListAPIKeysResponse
-	23, // 39: llmproxy.v1.LLMProxyAdminService.RotateEncryption:output_type -> llmproxy.v1.RotateEncryptionResponse
-	25, // 40: llmproxy.v1.LLMProxyAdminService.MintNodeKey:output_type -> llmproxy.v1.MintNodeKeyResponse
-	27, // 41: llmproxy.v1.LLMProxyAdminService.RevokeNodeKey:output_type -> llmproxy.v1.RevokeNodeKeyResponse
-	30, // 42: llmproxy.v1.LLMProxyAdminService.ListNodeKeys:output_type -> llmproxy.v1.ListNodeKeysResponse
-	33, // 43: llmproxy.v1.LLMProxyAdminService.ListNodes:output_type -> llmproxy.v1.ListNodesResponse
-	35, // 44: llmproxy.v1.LLMProxyAdminService.DrainNode:output_type -> llmproxy.v1.DrainNodeResponse
-	30, // [30:45] is the sub-list for method output_type
-	15, // [15:30] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	36, // 9: llmproxy.v1.GetConfigResponse.user_rate_limits:type_name -> llmproxy.v1.UserRateLimitSpec
+	45, // 10: llmproxy.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	20, // 11: llmproxy.v1.ListAPIKeysResponse.keys:type_name -> llmproxy.v1.APIKeyInfo
+	45, // 12: llmproxy.v1.NodeKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	29, // 13: llmproxy.v1.ListNodeKeysResponse.keys:type_name -> llmproxy.v1.NodeKeyInfo
+	45, // 14: llmproxy.v1.NodeInfo.last_heartbeat:type_name -> google.protobuf.Timestamp
+	32, // 15: llmproxy.v1.ListNodesResponse.nodes:type_name -> llmproxy.v1.NodeInfo
+	36, // 16: llmproxy.v1.SetUserRateLimitRequest.rate_limit:type_name -> llmproxy.v1.UserRateLimitSpec
+	36, // 17: llmproxy.v1.ListUserRateLimitsResponse.rate_limits:type_name -> llmproxy.v1.UserRateLimitSpec
+	2,  // 18: llmproxy.v1.LLMProxyAdminService.UpsertModel:input_type -> llmproxy.v1.UpsertModelRequest
+	4,  // 19: llmproxy.v1.LLMProxyAdminService.DeleteModel:input_type -> llmproxy.v1.DeleteModelRequest
+	6,  // 20: llmproxy.v1.LLMProxyAdminService.ReplaceRules:input_type -> llmproxy.v1.ReplaceRulesRequest
+	8,  // 21: llmproxy.v1.LLMProxyAdminService.SetVendorKey:input_type -> llmproxy.v1.SetVendorKeyRequest
+	10, // 22: llmproxy.v1.LLMProxyAdminService.DeleteVendorKey:input_type -> llmproxy.v1.DeleteVendorKeyRequest
+	13, // 23: llmproxy.v1.LLMProxyAdminService.GetConfig:input_type -> llmproxy.v1.GetConfigRequest
+	15, // 24: llmproxy.v1.LLMProxyAdminService.MintAPIKey:input_type -> llmproxy.v1.MintAPIKeyRequest
+	17, // 25: llmproxy.v1.LLMProxyAdminService.RevokeAPIKey:input_type -> llmproxy.v1.RevokeAPIKeyRequest
+	19, // 26: llmproxy.v1.LLMProxyAdminService.ListAPIKeys:input_type -> llmproxy.v1.ListAPIKeysRequest
+	22, // 27: llmproxy.v1.LLMProxyAdminService.RotateEncryption:input_type -> llmproxy.v1.RotateEncryptionRequest
+	24, // 28: llmproxy.v1.LLMProxyAdminService.MintNodeKey:input_type -> llmproxy.v1.MintNodeKeyRequest
+	26, // 29: llmproxy.v1.LLMProxyAdminService.RevokeNodeKey:input_type -> llmproxy.v1.RevokeNodeKeyRequest
+	28, // 30: llmproxy.v1.LLMProxyAdminService.ListNodeKeys:input_type -> llmproxy.v1.ListNodeKeysRequest
+	31, // 31: llmproxy.v1.LLMProxyAdminService.ListNodes:input_type -> llmproxy.v1.ListNodesRequest
+	34, // 32: llmproxy.v1.LLMProxyAdminService.DrainNode:input_type -> llmproxy.v1.DrainNodeRequest
+	37, // 33: llmproxy.v1.LLMProxyAdminService.SetUserRateLimit:input_type -> llmproxy.v1.SetUserRateLimitRequest
+	39, // 34: llmproxy.v1.LLMProxyAdminService.DeleteUserRateLimit:input_type -> llmproxy.v1.DeleteUserRateLimitRequest
+	41, // 35: llmproxy.v1.LLMProxyAdminService.ListUserRateLimits:input_type -> llmproxy.v1.ListUserRateLimitsRequest
+	3,  // 36: llmproxy.v1.LLMProxyAdminService.UpsertModel:output_type -> llmproxy.v1.UpsertModelResponse
+	5,  // 37: llmproxy.v1.LLMProxyAdminService.DeleteModel:output_type -> llmproxy.v1.DeleteModelResponse
+	7,  // 38: llmproxy.v1.LLMProxyAdminService.ReplaceRules:output_type -> llmproxy.v1.ReplaceRulesResponse
+	9,  // 39: llmproxy.v1.LLMProxyAdminService.SetVendorKey:output_type -> llmproxy.v1.SetVendorKeyResponse
+	11, // 40: llmproxy.v1.LLMProxyAdminService.DeleteVendorKey:output_type -> llmproxy.v1.DeleteVendorKeyResponse
+	14, // 41: llmproxy.v1.LLMProxyAdminService.GetConfig:output_type -> llmproxy.v1.GetConfigResponse
+	16, // 42: llmproxy.v1.LLMProxyAdminService.MintAPIKey:output_type -> llmproxy.v1.MintAPIKeyResponse
+	18, // 43: llmproxy.v1.LLMProxyAdminService.RevokeAPIKey:output_type -> llmproxy.v1.RevokeAPIKeyResponse
+	21, // 44: llmproxy.v1.LLMProxyAdminService.ListAPIKeys:output_type -> llmproxy.v1.ListAPIKeysResponse
+	23, // 45: llmproxy.v1.LLMProxyAdminService.RotateEncryption:output_type -> llmproxy.v1.RotateEncryptionResponse
+	25, // 46: llmproxy.v1.LLMProxyAdminService.MintNodeKey:output_type -> llmproxy.v1.MintNodeKeyResponse
+	27, // 47: llmproxy.v1.LLMProxyAdminService.RevokeNodeKey:output_type -> llmproxy.v1.RevokeNodeKeyResponse
+	30, // 48: llmproxy.v1.LLMProxyAdminService.ListNodeKeys:output_type -> llmproxy.v1.ListNodeKeysResponse
+	33, // 49: llmproxy.v1.LLMProxyAdminService.ListNodes:output_type -> llmproxy.v1.ListNodesResponse
+	35, // 50: llmproxy.v1.LLMProxyAdminService.DrainNode:output_type -> llmproxy.v1.DrainNodeResponse
+	38, // 51: llmproxy.v1.LLMProxyAdminService.SetUserRateLimit:output_type -> llmproxy.v1.SetUserRateLimitResponse
+	40, // 52: llmproxy.v1.LLMProxyAdminService.DeleteUserRateLimit:output_type -> llmproxy.v1.DeleteUserRateLimitResponse
+	42, // 53: llmproxy.v1.LLMProxyAdminService.ListUserRateLimits:output_type -> llmproxy.v1.ListUserRateLimitsResponse
+	36, // [36:54] is the sub-list for method output_type
+	18, // [18:36] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_llmproxy_v1_admin_proto_init() }
@@ -2298,7 +2713,7 @@ func file_llmproxy_v1_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_llmproxy_v1_admin_proto_rawDesc), len(file_llmproxy_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   37,
+			NumMessages:   44,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

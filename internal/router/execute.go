@@ -25,7 +25,7 @@ const (
 // lives in internal/throttle; NoopThrottle allows everything.
 type Throttle interface {
 	// AllowRPM takes an RPM slot, or reports the model saturated this minute.
-	AllowRPM(ctx context.Context, keyName string, m *proxydb.Model) bool
+	AllowRPM(ctx context.Context, keyName, userID string, m *proxydb.Model) bool
 	// Reserve books the token estimate against the applicable daily budgets.
 	// tripped names the budget that refused ("budget_key" | "budget_user");
 	// empty tripped means reserved (res may still be nil when nothing applies).
@@ -47,7 +47,7 @@ type Reservation struct {
 // NoopThrottle admits everything; used when Redis is not configured.
 type NoopThrottle struct{}
 
-func (NoopThrottle) AllowRPM(context.Context, string, *proxydb.Model) bool { return true }
+func (NoopThrottle) AllowRPM(context.Context, string, string, *proxydb.Model) bool { return true }
 func (NoopThrottle) Reserve(context.Context, *proxydb.Model, string, string, int64) (*Reservation, string) {
 	return nil, ""
 }
@@ -96,13 +96,16 @@ type Request struct {
 // retryable errors, settle budgets. Terminal vendor errors stop the chain —
 // a schema rejection would fail identically on every model.
 func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxydb.Model, error) {
+	if r.Chat != nil {
+		r.Chat.WithContext(ctx)
+	}
 	var lastErr error
 	allThrottled := true
 	throttleKind := "rpm"
 
 	for _, m := range r.Chain {
-		if !th.AllowRPM(ctx, r.KeyName, m) {
-			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Msg("model rpm-saturated, trying next in chain")
+		if !th.AllowRPM(ctx, r.KeyName, r.UserID, m) {
+			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in chain")
 			continue
 		}
 		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate)
@@ -126,6 +129,11 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 			return resp, m, nil
 		}
 		lastErr = err
+		if llm.ShouldSkipToNextModel(err) {
+			log.Warn().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).
+				Msg("model capacity exhausted, trying next in chain")
+			continue
+		}
 		var schemaErr *SchemaFailure
 		if errors.As(err, &schemaErr) {
 			// The vendor answered; it just could not hold the shape. Another
@@ -150,13 +158,16 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 // ExecuteStream walks the model chain for streaming requests. Pre-stream failures
 // fallback to the next model; once the first chunk is emitted, the stream locks.
 func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*proxydb.Model, llm.StreamChunk) error) (*proxydb.Model, error) {
+	if r.Chat != nil {
+		r.Chat.WithContext(ctx)
+	}
 	var lastErr error
 	allThrottled := true
 	throttleKind := "rpm"
 
 	for _, m := range r.Chain {
-		if !th.AllowRPM(ctx, r.KeyName, m) {
-			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Msg("model rpm-saturated, trying next in chain")
+		if !th.AllowRPM(ctx, r.KeyName, r.UserID, m) {
+			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in stream chain")
 			continue
 		}
 		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate)
@@ -293,6 +304,12 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			continue
 		}
 
+		if llm.ShouldSkipToNextModel(err) {
+			log.Warn().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).
+				Msg("model capacity exhausted, trying next in chain")
+			continue
+		}
+
 		if errors.Is(err, llm.ErrOutputTruncated) || !llm.IsRetryableError(err) {
 			log.Error().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).
 				Str("key", r.KeyName).Msg("terminal vendor error, ending stream chain")
@@ -362,6 +379,9 @@ func callWithRetries(ctx context.Context, adapter llm.ClientAdapter, chat *llm.C
 			return resp, nil
 		}
 		lastErr = err
+		if llm.ShouldSkipToNextModel(err) {
+			return nil, err
+		}
 		if !llm.IsRetryableError(err) {
 			return nil, err
 		}
@@ -394,8 +414,8 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 	throttleKind := "rpm"
 
 	for _, m := range r.Chain {
-		if !th.AllowRPM(ctx, r.KeyName, m) {
-			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Msg("model rpm-saturated, trying next in chain")
+		if !th.AllowRPM(ctx, r.KeyName, r.UserID, m) {
+			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in chain")
 			continue
 		}
 		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate)
@@ -420,6 +440,11 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 			return m, nil
 		}
 		lastErr = err
+		if llm.ShouldSkipToNextModel(err) {
+			log.Warn().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).
+				Msg("model capacity exhausted, trying next in chain")
+			continue
+		}
 		if !llm.IsRetryableError(err) {
 			log.Error().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).
 				Str("key", r.KeyName).Msg("terminal vendor error, ending chain")

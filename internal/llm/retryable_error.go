@@ -55,3 +55,24 @@ func IsRetryableError(err error) bool {
 	}
 	return false
 }
+
+// SkipToNextModel is implemented by errors that should bypass model-level retries
+// and immediately advance to the next model in the fallback chain (e.g. pool capacity exhausted).
+type SkipToNextModel interface {
+	error
+	SkipToNextModel() bool
+}
+
+// ShouldSkipToNextModel reports whether err or any wrapped error indicates that
+// the chain should advance to the next candidate model immediately.
+func ShouldSkipToNextModel(err error) bool {
+	if err == nil {
+		return false
+	}
+	var s SkipToNextModel
+	if errors.As(err, &s) {
+		return s.SkipToNextModel()
+	}
+	return false
+}
+

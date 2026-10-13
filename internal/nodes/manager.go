@@ -80,15 +80,16 @@ func (m *Manager) Register(ctx context.Context, meta *NodeMeta) error {
 	}
 
 	// 2. Clear circuit breaker if any
-	_ = m.circuit.RecordSuccess(ctx, meta.NodeID)
+	if recErr := m.circuit.RecordSuccess(ctx, meta.NodeID); recErr != nil {
+		log.Warn().Err(recErr).Str("node_id", meta.NodeID).Msg("failed to clear circuit breaker on register")
+	}
 	return nil
 }
 
 // Heartbeat processes node heartbeat and returns current state.
 func (m *Manager) Heartbeat(ctx context.Context, hb *NodeHeartbeatData) (drainRequested bool, activeProxyRequests int32, err error) {
 	// Check if node is registered
-	meta, err := m.store.GetMeta(ctx, hb.NodeID)
-	if err != nil {
+	if _, err := m.store.GetMeta(ctx, hb.NodeID); err != nil {
 		return false, 0, err
 	}
 
@@ -100,7 +101,9 @@ func (m *Manager) Heartbeat(ctx context.Context, hb *NodeHeartbeatData) (drainRe
 
 	// If heartbeat reported draining, mark drain in Redis
 	if hb.Draining {
-		_ = m.store.SetDrain(ctx, hb.NodeID)
+		if setErr := m.store.SetDrain(ctx, hb.NodeID); setErr != nil {
+			log.Warn().Err(setErr).Str("node_id", hb.NodeID).Msg("failed to set node drain flag")
+		}
 	}
 
 	// Check if operator requested drain
@@ -115,7 +118,6 @@ func (m *Manager) Heartbeat(ctx context.Context, hb *NodeHeartbeatData) (drainRe
 		return false, 0, err
 	}
 
-	_ = meta
 	return draining, active, nil
 }
 
@@ -227,18 +229,24 @@ func (m *Manager) sweep(ctx context.Context) {
 		meta, err := m.store.GetMeta(ctx, id)
 		if err != nil {
 			// Meta expired past RetentionTTL -> remove from all set
-			_ = m.store.RemoveNode(ctx, id)
+			if remErr := m.store.RemoveNode(ctx, id); remErr != nil {
+				log.Warn().Err(remErr).Str("node_id", id).Msg("sweep: failed to remove expired node")
+			}
 			continue
 		}
 
 		hb, _ := m.store.GetHeartbeat(ctx, id)
 		if hb == nil && now.Sub(meta.RegisteredAt) > m.cfg.RetentionTTL {
 			log.Info().Str("node_id", id).Msg("sweep: evicting dead node past retention TTL")
-			_ = m.store.RemoveNode(ctx, id)
+			if remErr := m.store.RemoveNode(ctx, id); remErr != nil {
+				log.Warn().Err(remErr).Str("node_id", id).Msg("sweep: failed to evict dead node")
+			}
 			continue
 		}
 
 		// Purge expired leases from inflight ZSET
-		_, _ = m.store.GetInflightCount(ctx, id, now)
+		if _, cntErr := m.store.GetInflightCount(ctx, id, now); cntErr != nil {
+			log.Warn().Err(cntErr).Str("node_id", id).Msg("sweep: failed to purge expired leases")
+		}
 	}
 }

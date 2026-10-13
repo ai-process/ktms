@@ -2,6 +2,7 @@ package llm
 
 import (
 	"bytes"
+	"context"
 	"encoding/gob"
 	"slices"
 	"strings"
@@ -49,6 +50,24 @@ type ChatContext struct {
 	perRequestSystemInstruction string // Ephemeral per-request instruction (not persisted)
 	tools                       []*Tool
 	toolChoice                  *ToolChoice
+	ctx                         context.Context
+}
+
+// Context returns the request context associated with this chat, or context.Background().
+func (c *ChatContext) Context() context.Context {
+	if c == nil || c.ctx == nil {
+		return context.Background()
+	}
+	return c.ctx
+}
+
+// WithContext associates a request context with this chat.
+func (c *ChatContext) WithContext(ctx context.Context) *ChatContext {
+	if c == nil {
+		return nil
+	}
+	c.ctx = ctx
+	return c
 }
 
 func NewChatContext() *ChatContext {
