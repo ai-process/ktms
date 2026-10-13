@@ -70,8 +70,3 @@ func (k Keys) NodesSet() string {
 	return fmt.Sprintf("%snodes:all", k.prefix)
 }
 
-// NodeQueue is the model-level in-flight queue counter for predictive admission.
-func (k Keys) NodeQueue(modelID string) string {
-	return fmt.Sprintf("%snode:queue:%s", k.prefix, modelID)
-}
-

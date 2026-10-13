@@ -36,14 +36,21 @@ func (s *Snapshot) UserRateLimit(userID, modelID string) *proxydb.UserRateLimit 
 	if s == nil || s.UserRateLimits == nil || userID == "" {
 		return nil
 	}
-	userMap, ok := s.UserRateLimits[userID]
-	if !ok {
-		return nil
+	if userMap, ok := s.UserRateLimits[userID]; ok {
+		if limit, ok := userMap[modelID]; ok {
+			return limit
+		}
+		if limit, ok := userMap["*"]; ok {
+			return limit
+		}
 	}
-	if limit, ok := userMap[modelID]; ok {
-		return limit
+	if starMap, ok := s.UserRateLimits["*"]; ok {
+		if limit, ok := starMap[modelID]; ok {
+			return limit
+		}
+		return starMap["*"]
 	}
-	return userMap["*"]
+	return nil
 }
 
 // VendorKey returns the calling client's decrypted credential for a vendor.
@@ -91,8 +98,12 @@ func ValidateModel(m *proxydb.Model) error {
 	}
 	if m.RPM < 0 || m.PriceInPerMtok < 0 || m.PriceOutPerMtok < 0 ||
 		m.PriceInPeakPerMtok < 0 || m.PriceOutPeakPerMtok < 0 ||
-		m.DailyTokensPerKey < 0 || m.DailyTokensPerUser < 0 {
-		return fmt.Errorf("model %s: negative limits or prices", m.ID)
+		m.DailyTokensPerKey < 0 || m.DailyTokensPerUser < 0 ||
+		m.QueueTimeoutMs < 0 {
+		return fmt.Errorf("model %s: negative limits, prices, or queue timeout", m.ID)
+	}
+	if m.BudgetGraceMargin < -1.0 || m.BudgetGraceMargin > 1.0 {
+		return fmt.Errorf("model %s: budget grace margin must be between -1.0 and 1.0", m.ID)
 	}
 	return nil
 }

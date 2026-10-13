@@ -273,18 +273,18 @@ func (pa *PoolAdapter) acquireSlotWithWait(ctx context.Context, chat *llm.ChatCo
 		if acquired {
 			return cand, reqID, nil
 		}
-	} else if !errors.Is(err, ErrNoAvailableNodes) {
+	} else if !errors.Is(err, ErrNodePoolFull) {
 		return nil, "", err
 	}
 
 	// Determine user ID
 	var userID string
 	if chat != nil {
-		if meta := chat.GetMeta(); meta != nil {
-			userID = meta["user_id"]
-		}
+		userID = chat.GetInternalUserID()
 		if userID == "" {
-			userID = chat.GetInternalUserID()
+			if meta := chat.GetMeta(); meta != nil {
+				userID = meta["user_id"]
+			}
 		}
 	}
 
@@ -313,11 +313,11 @@ func (pa *PoolAdapter) acquireSlotWithWait(ctx context.Context, chat *llm.ChatCo
 		var totalSlots int32
 		var totalInflight int32
 		var queueDepth int32
-		var totalTTFT float64
-		var ttftCount int
+		var totalDuration float64
+		var perfCount int
 
 		for _, n := range nodes {
-			if n.State == pb.NodeState_NODE_STATE_OFFLINE || n.State == pb.NodeState_NODE_STATE_DRAINING {
+			if n.State == pb.NodeState_NODE_STATE_OFFLINE || n.State == pb.NodeState_NODE_STATE_DRAINING || n.State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
 				continue
 			}
 			hasModel := false
@@ -336,16 +336,30 @@ func (pa *PoolAdapter) acquireSlotWithWait(ctx context.Context, chat *llm.ChatCo
 			if n.Heartbeat != nil {
 				queueDepth += n.Heartbeat.QueueDepth
 			}
-			if perf, ok := n.Perf[pa.model.ID]; ok && perf.TTFTEMAMs > 0 {
-				totalTTFT += perf.TTFTEMAMs
-				ttftCount++
+			if perf, ok := n.Perf[pa.model.ID]; ok && perf.TPSEMA > 0 {
+				tokens := 50.0
+				if chat != nil && chat.GetMaxOutputTokens() > 0 {
+					tokens = float64(chat.GetMaxOutputTokens())
+					if tokens > 500 {
+						tokens = 500
+					}
+				}
+				dur := (tokens / perf.TPSEMA) * 1000.0
+				if dur < 10 {
+					dur = 10
+				}
+				if dur > 10000 {
+					dur = 10000
+				}
+				totalDuration += dur
+				perfCount++
 			}
 		}
 
 		if totalSlots > 0 {
 			durationEMA := 500.0 // Default 500ms duration estimate if telemetry not populated
-			if ttftCount > 0 {
-				durationEMA = totalTTFT / float64(ttftCount)
+			if perfCount > 0 {
+				durationEMA = totalDuration / float64(perfCount)
 			}
 			queuePos := totalInflight - totalSlots + 1 + queueDepth
 			if queuePos < 1 {
@@ -395,6 +409,8 @@ func (pa *PoolAdapter) acquireSlotWithWait(ctx context.Context, chat *llm.ChatCo
 			if acquired {
 				return cand, reqID, nil
 			}
+		} else if !errors.Is(err, ErrNodePoolFull) {
+			return nil, "", err
 		}
 
 		backoff *= 2

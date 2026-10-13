@@ -68,6 +68,12 @@ func (m *Model) EffectiveBurst() int32 {
 	if m.Burst > 0 {
 		return m.Burst
 	}
+	if m.Burst < 0 {
+		return 0
+	}
+	if m.RPM > 1 {
+		return m.RPM - 1
+	}
 	return 0
 }
 
@@ -83,6 +89,12 @@ type UserRateLimit struct {
 func (u *UserRateLimit) EffectiveBurst() int32 {
 	if u.Burst > 0 {
 		return u.Burst
+	}
+	if u.Burst < 0 {
+		return 0
+	}
+	if u.RPM > 1 {
+		return u.RPM - 1
 	}
 	return 0
 }

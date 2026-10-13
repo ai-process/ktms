@@ -43,9 +43,9 @@ type ModelSpec struct {
 	DailyTokensPerKey    int64   `protobuf:"varint,9,opt,name=daily_tokens_per_key,json=dailyTokensPerKey,proto3" json:"daily_tokens_per_key,omitempty"`     // per api key per UTC day, 0 = unlimited
 	DailyTokensPerUser   int64   `protobuf:"varint,10,opt,name=daily_tokens_per_user,json=dailyTokensPerUser,proto3" json:"daily_tokens_per_user,omitempty"` // per attributes["user_id"] (or svc:<key_name> fallback) per UTC day
 	Enabled              bool    `protobuf:"varint,11,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	RpmBurst             int32   `protobuf:"varint,16,opt,name=rpm_burst,json=rpmBurst,proto3" json:"rpm_burst,omitempty"`                               // extra burst allowed above steady-state rpm (0 = default burst)
-	QueueTimeoutMs       int32   `protobuf:"varint,17,opt,name=queue_timeout_ms,json=queueTimeoutMs,proto3" json:"queue_timeout_ms,omitempty"`           // max wait for pool inference slot in ms (0 = fallback immediately)
-	BudgetGraceMargin    float64 `protobuf:"fixed64,18,opt,name=budget_grace_margin,json=budgetGraceMargin,proto3" json:"budget_grace_margin,omitempty"` // allowed daily budget overdraft (0.0 = system default)
+	RpmBurst             int32   `protobuf:"varint,16,opt,name=rpm_burst,json=rpmBurst,proto3" json:"rpm_burst,omitempty"`                               // extra burst allowed above steady-state rpm (0 = default burst of rpm - 1, <0 = burst disabled)
+	QueueTimeoutMs       int32   `protobuf:"varint,17,opt,name=queue_timeout_ms,json=queueTimeoutMs,proto3" json:"queue_timeout_ms,omitempty"`           // max wait for pool inference slot in ms (0 = fallback immediately; capped to 250ms for interactive non-svc users)
+	BudgetGraceMargin    float64 `protobuf:"fixed64,18,opt,name=budget_grace_margin,json=budgetGraceMargin,proto3" json:"budget_grace_margin,omitempty"` // allowed daily budget overdraft (0.0 = system default 0.05, <0.0 = disabled)
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -2046,12 +2046,12 @@ func (*DrainNodeResponse) Descriptor() ([]byte, []int) {
 
 type UserRateLimitSpec struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	UserId         string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	ModelId        string                 `protobuf:"bytes,2,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
-	Rpm            int32                  `protobuf:"varint,3,opt,name=rpm,proto3" json:"rpm,omitempty"`
-	RpmBurst       int32                  `protobuf:"varint,4,opt,name=rpm_burst,json=rpmBurst,proto3" json:"rpm_burst,omitempty"`
-	QueueTimeoutMs int32                  `protobuf:"varint,5,opt,name=queue_timeout_ms,json=queueTimeoutMs,proto3" json:"queue_timeout_ms,omitempty"`
-	DailyTokens    int64                  `protobuf:"varint,6,opt,name=daily_tokens,json=dailyTokens,proto3" json:"daily_tokens,omitempty"`
+	UserId         string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`                            // user identity or "*" wildcard for default across users
+	ModelId        string                 `protobuf:"bytes,2,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`                         // target model id or "*" wildcard for default across models
+	Rpm            int32                  `protobuf:"varint,3,opt,name=rpm,proto3" json:"rpm,omitempty"`                                               // requests per minute (0 = unlimited)
+	RpmBurst       int32                  `protobuf:"varint,4,opt,name=rpm_burst,json=rpmBurst,proto3" json:"rpm_burst,omitempty"`                     // extra burst allowed (0 = default burst of rpm - 1, <0 = burst disabled)
+	QueueTimeoutMs int32                  `protobuf:"varint,5,opt,name=queue_timeout_ms,json=queueTimeoutMs,proto3" json:"queue_timeout_ms,omitempty"` // max wait in ms (0 = fallback immediately; capped to 250ms for interactive non-svc users)
+	DailyTokens    int64                  `protobuf:"varint,6,opt,name=daily_tokens,json=dailyTokens,proto3" json:"daily_tokens,omitempty"`            // daily token budget per UTC day (0 = unlimited)
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
