@@ -252,3 +252,47 @@ func TestAnthropicVendorBuildsAnAdapter(t *testing.T) {
 		t.Error("anthropic adapter does not implement llm.StreamAdapter")
 	}
 }
+
+func TestUserRateLimitWildcards(t *testing.T) {
+	snap := &Snapshot{
+		UserRateLimits: map[string]map[string]*proxydb.UserRateLimit{
+			"u_exact": {
+				"m_exact": &proxydb.UserRateLimit{UserID: "u_exact", ModelID: "m_exact", RPM: 10},
+				"*":       &proxydb.UserRateLimit{UserID: "u_exact", ModelID: "*", RPM: 20},
+			},
+			"*": {
+				"m_exact": &proxydb.UserRateLimit{UserID: "*", ModelID: "m_exact", RPM: 30},
+				"*":       &proxydb.UserRateLimit{UserID: "*", ModelID: "*", RPM: 40},
+			},
+		},
+	}
+
+	// 1. Exact user, exact model
+	l1 := snap.UserRateLimit("u_exact", "m_exact")
+	if l1 == nil || l1.RPM != 10 {
+		t.Fatalf("expected RPM 10 for exact user and exact model, got %v", l1)
+	}
+
+	// 2. Exact user, wildcard model
+	l2 := snap.UserRateLimit("u_exact", "m_other")
+	if l2 == nil || l2.RPM != 20 {
+		t.Fatalf("expected RPM 20 for exact user and wildcard model, got %v", l2)
+	}
+
+	// 3. Wildcard user, exact model
+	l3 := snap.UserRateLimit("u_other", "m_exact")
+	if l3 == nil || l3.RPM != 30 {
+		t.Fatalf("expected RPM 30 for wildcard user and exact model, got %v", l3)
+	}
+
+	// 4. Wildcard user, wildcard model
+	l4 := snap.UserRateLimit("u_other", "m_other")
+	if l4 == nil || l4.RPM != 40 {
+		t.Fatalf("expected RPM 40 for wildcard user and wildcard model, got %v", l4)
+	}
+
+	// 5. Empty user ID returns nil
+	if l5 := snap.UserRateLimit("", "m_exact"); l5 != nil {
+		t.Fatalf("empty userID must return nil, got %v", l5)
+	}
+}

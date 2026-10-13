@@ -27,9 +27,9 @@ message ModelSpec {
   int64 daily_tokens_per_key = 9; // per api key per UTC day, 0 = unlimited
   int64 daily_tokens_per_user = 10; // per attributes["user_id"] (or svc:<key_name> fallback) per UTC day
   bool enabled = 11;
-  int32 rpm_burst = 16; // extra burst allowed above steady-state rpm (0 = default burst)
-  int32 queue_timeout_ms = 17; // max wait for pool inference slot in ms (0 = fallback immediately)
-  double budget_grace_margin = 18; // allowed daily budget overdraft (0.0 = system default)
+  int32 rpm_burst = 16; // extra burst allowed above steady-state rpm (0 = default burst of rpm - 1, <0 = burst disabled)
+  int32 queue_timeout_ms = 17; // max wait for pool inference slot in ms (0 = fallback immediately; capped to 250ms for interactive non-svc users)
+  double budget_grace_margin = 18; // allowed daily budget overdraft (0.0 = system default 0.05, <0.0 = disabled)
 }
 
 message RuleSpec {
@@ -199,12 +199,12 @@ message DrainNodeRequest {
 message DrainNodeResponse {}
 
 message UserRateLimitSpec {
-  string user_id = 1;
-  string model_id = 2;
-  int32 rpm = 3;
-  int32 rpm_burst = 4;
-  int32 queue_timeout_ms = 5;
-  int64 daily_tokens = 6;
+  string user_id = 1; // user identity or "*" wildcard for default across users
+  string model_id = 2; // target model id or "*" wildcard for default across models
+  int32 rpm = 3; // requests per minute (0 = unlimited)
+  int32 rpm_burst = 4; // extra burst allowed (0 = default burst of rpm - 1, <0 = burst disabled)
+  int32 queue_timeout_ms = 5; // max wait in ms (0 = fallback immediately; capped to 250ms for interactive non-svc users)
+  int64 daily_tokens = 6; // daily token budget per UTC day (0 = unlimited)
 }
 
 message SetUserRateLimitRequest {

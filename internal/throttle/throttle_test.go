@@ -18,6 +18,7 @@ func newTestThrottle(t *testing.T) (*Redis, *miniredis.Miniredis) {
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
 	th := New(client, "test")
+	th.now = time.Now
 	return th, mr
 }
 
@@ -249,4 +250,53 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("condition not reached")
+}
+
+func TestAllowRPMAtomicUserRejectDoesNotChargeKey(t *testing.T) {
+	th, _ := newTestThrottle(t)
+	ctx := context.Background()
+	m := model(10, 0, 0)
+	m.Burst = 1
+
+	th.SetUserRateLimitResolver(func(userID, modelID string) *proxydb.UserRateLimit {
+		if userID == "u_blocked" {
+			return &proxydb.UserRateLimit{UserID: "u_blocked", ModelID: modelID, RPM: 1, Burst: -1}
+		}
+		return nil
+	})
+
+	if !th.AllowRPM(ctx, "gen", "u_blocked", m) {
+		t.Fatal("first call for u_blocked must pass")
+	}
+
+	if th.AllowRPM(ctx, "gen", "u_blocked", m) {
+		t.Fatal("second call for u_blocked should fail due to user limit")
+	}
+
+	if !th.AllowRPM(ctx, "gen", "u_other", m) {
+		t.Fatal("u_other should not be throttled because rejected user call did not charge key")
+	}
+}
+
+func TestReserveGraceMarginDisabled(t *testing.T) {
+	th, mr := newTestThrottle(t)
+	ctx := context.Background()
+	m := model(0, 100, 0)
+	m.BudgetGraceMargin = -1.0
+	day := time.Now().UTC().Format("20060102")
+	key := th.keys.BudgetKey("gen", m.ID, day)
+
+	res, tripped := th.Reserve(ctx, m, "gen", "", 90)
+	if tripped != "" || res == nil {
+		t.Fatalf("first reserve failed: %s", tripped)
+	}
+
+	res2, tripped2 := th.Reserve(ctx, m, "gen", "", 25)
+	if tripped2 != "budget_key" || res2 != nil {
+		t.Fatalf("call exceeding limit with grace disabled must fail, got res=%v tripped=%s", res2, tripped2)
+	}
+	val, _ := mr.Get(key)
+	if val != "90" {
+		t.Fatalf("counter = %s, want 90 after rejected reservation", val)
+	}
 }

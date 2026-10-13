@@ -5,6 +5,8 @@ import (
 	"math"
 	"sync"
 
+	"github.com/rs/zerolog/log"
+
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 )
 
@@ -29,7 +31,7 @@ func NewSelector(mgr *Manager) *Selector {
 }
 
 // SelectNode performs candidate filtering and weighted selection:
-// 1. Filter by model support, state (HEALTHY over SUSPECT, exclude DRAINING/OFFLINE/CIRCUIT_BROKEN), free slots.
+// 1. Filter by model support, state (HEALTHY over SUSPECT, probe CIRCUIT_BROKEN when no healthy/suspect).
 // 2. Strict warm over cold filter: if any warm node has capacity, cold nodes are eliminated.
 // 3. Compute effective weights: W_eff = base_weight * F_perf * F_load.
 // 4. Smooth WRR selection.
@@ -39,7 +41,8 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 		return nil, err
 	}
 
-	var healthyWarm, healthyCold, suspectWarm, suspectCold []*Candidate
+	var healthyWarm, healthyCold, suspectWarm, suspectCold, circuitBrokenCandidates []*Candidate
+	var matchingHealthyOrSuspect int
 
 	// Reference pool averages for F_perf calculation
 	var totalTPS, totalTTFT float64
@@ -76,13 +79,6 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 			n.State == pb.NodeState_NODE_STATE_DRAINING {
 			continue
 		}
-		if n.State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
-			// Check if half-open probe can be acquired
-			probeAcquired, _ := s.mgr.Circuit().TryAcquireProbe(ctx, n.Meta.NodeID)
-			if !probeAcquired {
-				continue
-			}
-		}
 
 		// Find model spec
 		var spec *pb.NodeModelSpec
@@ -94,6 +90,10 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 		}
 		if spec == nil {
 			continue
+		}
+
+		if n.State == pb.NodeState_NODE_STATE_HEALTHY || n.State == pb.NodeState_NODE_STATE_SUSPECT {
+			matchingHealthyOrSuspect++
 		}
 
 		// Check capacity
@@ -157,12 +157,15 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 			} else {
 				suspectCold = append(suspectCold, cand)
 			}
+		} else if n.State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
+			circuitBrokenCandidates = append(circuitBrokenCandidates, cand)
 		}
 	}
 
 	// Two-stage filtering:
 	// Stage 1: HEALTHY over SUSPECT
 	// Stage 2: Warm over Cold
+	// Stage 3: Circuit broken probe (only if no healthy/suspect candidates available)
 	var eligible []*Candidate
 	switch {
 	case len(healthyWarm) > 0:
@@ -174,6 +177,35 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 	case len(suspectCold) > 0:
 		eligible = suspectCold
 	default:
+		// When no healthy or suspect nodes are available, try circuit-broken nodes one by one.
+		// Stop at the first successfully acquired probe lease so other nodes are not locked.
+		var orderedBroken []*Candidate
+		for _, c := range circuitBrokenCandidates {
+			if c.IsWarm {
+				orderedBroken = append(orderedBroken, c)
+			}
+		}
+		for _, c := range circuitBrokenCandidates {
+			if !c.IsWarm {
+				orderedBroken = append(orderedBroken, c)
+			}
+		}
+		for _, cand := range orderedBroken {
+			probeAcquired, err := s.mgr.Circuit().TryAcquireProbe(ctx, cand.Snapshot.Meta.NodeID)
+			if err != nil {
+				log.Warn().Err(err).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("nodes: failed to acquire circuit probe lease")
+				continue
+			}
+			if probeAcquired {
+				s.mu.Lock()
+				s.curWeight[cand.Snapshot.Meta.NodeID] = 0
+				s.mu.Unlock()
+				return cand, nil
+			}
+		}
+		if matchingHealthyOrSuspect > 0 {
+			return nil, ErrNodePoolFull
+		}
 		return nil, ErrNoAvailableNodes
 	}
 
@@ -199,47 +231,5 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 		s.curWeight[best.Snapshot.Meta.NodeID] -= totalWeight
 	}
 	return best, nil
-}
-
-// PoolCapacity aggregates total active slots and average duration EMA for a model.
-func (s *Selector) PoolCapacity(ctx context.Context, modelID string) (totalSlots int32, avgDurationMs float64) {
-	nodes, err := s.mgr.ListNodes(ctx)
-	if err != nil || len(nodes) == 0 {
-		return 1, 2000
-	}
-	var slots int32
-	var totalDuration float64
-	var count int
-	for _, n := range nodes {
-		if n.State == pb.NodeState_NODE_STATE_OFFLINE || n.State == pb.NodeState_NODE_STATE_DRAINING || n.State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
-			continue
-		}
-		for _, m := range n.Meta.Models {
-			if m.ModelId == modelID {
-				slots += n.Meta.MaxConcurrent
-				if perf, ok := n.Perf[modelID]; ok && perf.TPSEMA > 0 {
-					dur := (100.0 / perf.TPSEMA) * 1000.0
-					if dur < 500 {
-						dur = 500
-					}
-					if dur > 10000 {
-						dur = 10000
-					}
-					totalDuration += dur
-					count++
-				}
-				break
-			}
-		}
-	}
-	if slots <= 0 {
-		slots = 1
-	}
-	if count > 0 {
-		avgDurationMs = totalDuration / float64(count)
-	} else {
-		avgDurationMs = 2000
-	}
-	return slots, avgDurationMs
 }
 

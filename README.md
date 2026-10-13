@@ -209,7 +209,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `REDIS_ADDR` | empty | Redis for throttling. Empty disables limits. |
 | `REDIS_PASSWORD` / `REDIS_DB` | empty / `0` | Redis auth and database. |
 | `REDIS_KEY_PREFIX` | empty | Namespace for counters when Redis is shared (compose uses `dev`). |
-| `BUDGET_GRACE_MARGIN` | `0.05` | Fraction of daily token budget allowed as grace overdraft (e.g. 0.05 = 5%). |
+| `BUDGET_GRACE_MARGIN` | `0.05` | Fraction of daily token budget allowed as grace overdraft (0.05 = 5%, 0.0 or negative disables grace overdraft). |
 | `BATCH_POLL_SECONDS` | `60` | Background polling interval in seconds for checking unfinished batch jobs. |
 | `BATCH_MAX_ITEMS` | `10000` | Maximum number of items allowed in a single batch submission. |
 | `RESULTS_RETENTION_DAYS` | `7` | Retention period in days for completed batch results before cleanup. |
@@ -624,10 +624,12 @@ disable that (`max_retries=0`) and handle them yourself.
 **Effort** is the only routing field the proxy understands; everything else about a request's
 purpose travels in free-form attributes, so the proxy knows nothing about your product.
 
-**Throttling** has two layers per model: a fixed per-minute request window
-(`rpm`, per API key) and daily token budgets (`daily_tokens_per_key`, `daily_tokens_per_user`,
-UTC day). A throttled model is skipped in the fallback chain; if none of the chain is
-available the caller gets `RESOURCE_EXHAUSTED`.
+**Throttling & Wait Buffer:**
+- **GCRA Rate Limiting:** Enforces requests-per-minute (`rpm`) via the Generic Cell Rate Algorithm in Redis, with configurable burst capacity (`rpm_burst`, defaulting to `rpm - 1` to preserve classic fixed-window behavior, `< 0` to disable burst). Key limits and user limits are evaluated atomically.
+- **User & Model Overrides:** Configure fine-grained limits per user and model with `SetUserRateLimit` (supports `*` wildcards for user-wide or model-wide defaults).
+- **Daily Token Budgets:** Limits tokens per API key (`daily_tokens_per_key`) and per end-user (`daily_tokens_per_user`, UTC day). A configurable grace margin (`budget_grace_margin`, default 5%, `< 0` to strictly disable) absorbs requests that exceed the budget on their last call without refusing them mid-stream.
+- **Inference Pool Wait Buffer:** For local node pools, requests waiting for free slots use jittered backoff polling up to `queue_timeout_ms`. Interactive requests (non-service callers) are automatically capped to 250ms to safeguard Time-To-First-Token (TTFT). Little's Law predictive admission evaluates the queue depth and estimated duration, immediately falling back to the next model in the chain if expected wait time exceeds the timeout.
+- A throttled model is skipped in the fallback chain; if none of the chain is available the caller gets `RESOURCE_EXHAUSTED`.
 
 **Usage reporting.** When `USAGE_COLLECTOR_HOST` is set, every call emits an event (vendor,
 model, tokens, duration, status, `action_id`, rule name and your attributes as metadata) to a
