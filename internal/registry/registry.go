@@ -18,6 +18,8 @@ type Snapshot struct {
 	Rules   []*proxydb.Rule           // enabled only, sorted by priority desc
 	// vendorKeys[apiKeyID][vendor] = decrypted credential.
 	vendorKeys map[string]map[string]string
+	// UserRateLimits[userID][modelID] = user rate limit overrides.
+	UserRateLimits map[string]map[string]*proxydb.UserRateLimit
 	// adapters caches built vendor adapters per (apiKeyID, modelID) for this
 	// snapshot's lifetime; dropped wholesale on config change.
 	adapters sync.Map
@@ -27,6 +29,21 @@ type Snapshot struct {
 
 func (s *Snapshot) SetNodePool(np NodePoolResolver) {
 	s.nodePool = np
+}
+
+// UserRateLimit returns the rate limit override for a user and model, or for the user wildcard "*".
+func (s *Snapshot) UserRateLimit(userID, modelID string) *proxydb.UserRateLimit {
+	if s == nil || s.UserRateLimits == nil || userID == "" {
+		return nil
+	}
+	userMap, ok := s.UserRateLimits[userID]
+	if !ok {
+		return nil
+	}
+	if limit, ok := userMap[modelID]; ok {
+		return limit
+	}
+	return userMap["*"]
 }
 
 // VendorKey returns the calling client's decrypted credential for a vendor.

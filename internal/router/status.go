@@ -54,7 +54,7 @@ func ToStatus(err error) error {
 		if exhausted.AllThrottled {
 			return status.Error(codes.ResourceExhausted, "throttled:"+exhausted.ThrottleKind)
 		}
-		if llm.IsRetryableError(exhausted.Last) {
+		if llm.IsRetryableError(exhausted.Last) || llm.ShouldSkipToNextModel(exhausted.Last) {
 			return status.Error(codes.Unavailable, "vendors_unavailable")
 		}
 		return status.Error(codes.Internal, "vendor_error")

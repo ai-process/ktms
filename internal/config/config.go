@@ -55,6 +55,8 @@ type Config struct {
 	NodeRetentionTTL      time.Duration
 	NodeAllowLocalhost    bool
 
+	BudgetGraceMargin float64
+
 	SentryDSN         string
 	SentryEnvironment string
 	SentryRelease     string
@@ -91,10 +93,11 @@ func Load() *Config {
 		NodeHeartbeatTTL:      time.Duration(getIntEnv("NODE_HEARTBEAT_TTL_SECONDS", 15)) * time.Second,
 		NodeRetentionTTL:      getRetentionEnv("NODE_RETENTION_TTL_DAYS", 24*time.Hour),
 		NodeAllowLocalhost:    getBoolEnv("NODE_ALLOW_LOCALHOST_ENDPOINTS", false),
-		SentryDSN:          getEnv("SENTRY_DSN", ""),
-		SentryEnvironment:  getEnv("SENTRY_ENVIRONMENT", "development"),
-		SentryRelease:      getEnv("SENTRY_RELEASE", ""),
-		SentryTracing:      getEnv("SENTRY_ENABLE_TRACING", "false") == "true",
+		BudgetGraceMargin:     getFloatEnv("BUDGET_GRACE_MARGIN", 0.05),
+		SentryDSN:             getEnv("SENTRY_DSN", ""),
+		SentryEnvironment:     getEnv("SENTRY_ENVIRONMENT", "development"),
+		SentryRelease:         getEnv("SENTRY_RELEASE", ""),
+		SentryTracing:         getEnv("SENTRY_ENABLE_TRACING", "false") == "true",
 	}
 }
 
@@ -125,6 +128,15 @@ func getIntEnv(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if i, err := strconv.Atoi(value); err == nil {
 			return i
+		}
+	}
+	return defaultValue
+}
+
+func getFloatEnv(key string, defaultValue float64) float64 {
+	if value := os.Getenv(key); value != "" {
+		if f, err := strconv.ParseFloat(value, 64); err == nil {
+			return f
 		}
 	}
 	return defaultValue

@@ -2,6 +2,7 @@ package nodes
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -9,6 +10,8 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+	"github.com/ai-process/llm-proxy/internal/llm"
+	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/rediskeys"
 )
 
@@ -246,5 +249,93 @@ func TestTelemetryEWMAAtomicLua(t *testing.T) {
 	}
 	if p2.TPSEMA != 60.0 {
 		t.Errorf("expected TPS EMA 60.0, got %f", p2.TPSEMA)
+	}
+}
+
+func TestPoolAdapter_SlotWaitAndAdmission(t *testing.T) {
+	ctx := context.Background()
+	mgr, _ := setupTestManager(t)
+	nodeID := "node-wait-test"
+	modelID := "local-llama"
+
+	meta := &NodeMeta{
+		NodeID:        nodeID,
+		Name:          "node-wait",
+		Endpoint:      "http://localhost:8000",
+		Engine:        "vllm",
+		BaseWeight:    10.0,
+		MaxConcurrent: 1, // Only 1 slot
+		Models: []*pb.NodeModelSpec{
+			{ModelId: modelID, IsWarm: true},
+		},
+	}
+	if err := mgr.Register(ctx, meta); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	_, _, _ = mgr.Heartbeat(ctx, &NodeHeartbeatData{NodeID: nodeID})
+
+	selector := NewSelector(mgr)
+	pm := &proxydb.Model{
+		ID:             modelID,
+		QueueTimeoutMs: 150,
+	}
+	pa := NewPoolAdapter(selector, nil, pm, 60*time.Second, nil)
+	_ = mgr.Telemetry().RecordMetrics(ctx, nodeID, modelID, 100.0, 50.0) // 50ms TTFT
+
+	// Fill the 1 available slot
+	firstReqID := "req-1"
+	acquired, err := mgr.Slots().AcquireLease(ctx, nodeID, firstReqID, 1, 60*time.Second)
+	if err != nil || !acquired {
+		t.Fatalf("failed to fill slot: %v, %v", acquired, err)
+	}
+
+	// 1. Test successful wait: slot is released in background after 40ms
+	go func() {
+		time.Sleep(40 * time.Millisecond)
+		_ = mgr.Slots().ReleaseLease(context.Background(), nodeID, firstReqID)
+	}()
+
+	start := time.Now()
+	cand, reqID, err := pa.acquireSlotWithWait(ctx, llm.NewChatContext())
+	if err != nil {
+		t.Fatalf("acquireSlotWithWait should succeed after slot release: %v", err)
+	}
+	if cand == nil || reqID == "" {
+		t.Fatal("expected valid candidate and reqID")
+	}
+	if time.Since(start) < 30*time.Millisecond {
+		t.Errorf("expected to wait for slot release, but returned in %v", time.Since(start))
+	}
+
+	// 2. Test timeout: slot is occupied and NOT released
+	timeoutPM := &proxydb.Model{
+		ID:             modelID,
+		QueueTimeoutMs: 60,
+	}
+	paTimeout := NewPoolAdapter(selector, nil, timeoutPM, 60*time.Second, nil)
+	start = time.Now()
+	_, _, err = paTimeout.acquireSlotWithWait(ctx, llm.NewChatContext())
+	if !errors.Is(err, ErrNodeSlotExhausted) {
+		t.Fatalf("expected ErrNodeSlotExhausted on timeout, got %v", err)
+	}
+	if time.Since(start) < 50*time.Millisecond {
+		t.Errorf("expected to wait near timeout duration, but returned in %v", time.Since(start))
+	}
+
+	// 3. Test predictive admission drop:
+	// Set huge QueueDepth on heartbeat so Wait_est >> timeout
+	_, _, _ = mgr.Heartbeat(ctx, &NodeHeartbeatData{
+		NodeID:     nodeID,
+		QueueDepth: 100, // 100 requests in queue
+	})
+	_ = mgr.Telemetry().RecordMetrics(ctx, nodeID, modelID, 10.0, 5000.0) // 5000ms TTFT
+	start = time.Now()
+	_, _, err = paTimeout.acquireSlotWithWait(ctx, llm.NewChatContext())
+	if !errors.Is(err, ErrNodeSlotExhausted) {
+		t.Fatalf("expected predictive drop ErrNodeSlotExhausted, got %v", err)
+	}
+	// Must return almost immediately (< 20ms), not waiting the full 60ms timeout!
+	if time.Since(start) > 40*time.Millisecond {
+		t.Errorf("predictive drop took too long: %v", time.Since(start))
 	}
 }

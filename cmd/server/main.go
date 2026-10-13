@@ -106,7 +106,12 @@ func main() {
 			DB:       cfg.RedisDB,
 		})
 		defer func() { _ = redisClient.Close() }()
-		limiter = throttle.New(redisClient, cfg.RedisKeyPrefix)
+		rLimiter := throttle.New(redisClient, cfg.RedisKeyPrefix)
+		rLimiter.SetGraceMargin(cfg.BudgetGraceMargin)
+		rLimiter.SetUserRateLimitResolver(func(userID, modelID string) *proxydb.UserRateLimit {
+			return loader.Snapshot().UserRateLimit(userID, modelID)
+		})
+		limiter = rLimiter
 		log.Info().Str("addr", cfg.RedisAddr).Msg("redis throttling enabled")
 
 		rkeys := rediskeys.New(cfg.RedisKeyPrefix)
@@ -125,6 +130,9 @@ func main() {
 
 		nSelector := nodes.NewSelector(nodeMgr)
 		poolResolver := nodes.NewPoolResolver(nSelector, keyring, 60*time.Second)
+		poolResolver.SetUserRateLimitResolver(func(userID, modelID string) *proxydb.UserRateLimit {
+			return loader.Snapshot().UserRateLimit(userID, modelID)
+		})
 		loader.SetNodePool(poolResolver)
 
 		nodeReg = grpcapi.NewNodeRegistryServer(nodeMgr, keyring)
