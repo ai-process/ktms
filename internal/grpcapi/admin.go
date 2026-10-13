@@ -152,7 +152,7 @@ func (s *AdminServer) SetUserRateLimit(ctx context.Context, req *pb.SetUserRateL
 	if rl == nil || rl.GetUserId() == "" || rl.GetModelId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "user_id and model_id are required")
 	}
-	if rl.GetRpm() < 0 || rl.GetRpmBurst() < 0 || rl.GetQueueTimeoutMs() < 0 || rl.GetDailyTokens() < 0 {
+	if rl.GetRpm() < 0 || rl.GetQueueTimeoutMs() < 0 || rl.GetDailyTokens() < 0 {
 		return nil, status.Error(codes.InvalidArgument, "limits must be non-negative")
 	}
 	u := userRateLimitFromProto(rl)

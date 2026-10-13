@@ -358,3 +358,50 @@ func TestPoolAdapter_NoNodesFastFallback(t *testing.T) {
 		t.Errorf("fast fallback should not wait, took %v", time.Since(start))
 	}
 }
+
+func TestPoolAdapter_CircuitBrokenFastFallback(t *testing.T) {
+	ctx := context.Background()
+	mgr, _ := setupTestManager(t)
+	nodeID := "node-cb-test"
+	modelID := "cb-model"
+
+	meta := &NodeMeta{
+		NodeID:        nodeID,
+		Name:          "node-cb",
+		Endpoint:      "http://localhost:8000",
+		Engine:        "vllm",
+		BaseWeight:    10.0,
+		MaxConcurrent: 2,
+		Models: []*pb.NodeModelSpec{
+			{ModelId: modelID, IsWarm: true},
+		},
+	}
+	_ = mgr.Register(ctx, meta)
+	_, _, _ = mgr.Heartbeat(ctx, &NodeHeartbeatData{NodeID: nodeID})
+
+	// Trip the circuit (threshold 3)
+	_ = mgr.Circuit().RecordFailure(ctx, nodeID)
+	_ = mgr.Circuit().RecordFailure(ctx, nodeID)
+	_ = mgr.Circuit().RecordFailure(ctx, nodeID)
+
+	// Consume probe slot so second probe attempt fails
+	acquired, _ := mgr.Circuit().TryAcquireProbe(ctx, nodeID)
+	if !acquired {
+		t.Fatal("expected first probe acquire to succeed")
+	}
+
+	selector := NewSelector(mgr)
+	pm := &proxydb.Model{
+		ID:             modelID,
+		QueueTimeoutMs: 5000,
+	}
+	pa := NewPoolAdapter(selector, nil, pm, 60*time.Second, nil)
+	start := time.Now()
+	_, _, err := pa.acquireSlotWithWait(ctx, llm.NewChatContext())
+	if !errors.Is(err, ErrNoAvailableNodes) {
+		t.Fatalf("expected ErrNoAvailableNodes when circuit broken and probe unavailable, got %v", err)
+	}
+	if time.Since(start) > 50*time.Millisecond {
+		t.Errorf("expected immediate fast fallback without waiting queue timeout, took %v", time.Since(start))
+	}
+}

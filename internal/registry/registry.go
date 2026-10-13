@@ -36,14 +36,21 @@ func (s *Snapshot) UserRateLimit(userID, modelID string) *proxydb.UserRateLimit 
 	if s == nil || s.UserRateLimits == nil || userID == "" {
 		return nil
 	}
-	userMap, ok := s.UserRateLimits[userID]
-	if !ok {
-		return nil
+	if userMap, ok := s.UserRateLimits[userID]; ok {
+		if limit, ok := userMap[modelID]; ok {
+			return limit
+		}
+		if limit, ok := userMap["*"]; ok {
+			return limit
+		}
 	}
-	if limit, ok := userMap[modelID]; ok {
-		return limit
+	if starMap, ok := s.UserRateLimits["*"]; ok {
+		if limit, ok := starMap[modelID]; ok {
+			return limit
+		}
+		return starMap["*"]
 	}
-	return userMap["*"]
+	return nil
 }
 
 // VendorKey returns the calling client's decrypted credential for a vendor.

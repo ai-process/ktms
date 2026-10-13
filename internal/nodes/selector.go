@@ -39,7 +39,8 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 		return nil, err
 	}
 
-	var healthyWarm, healthyCold, suspectWarm, suspectCold []*Candidate
+	var healthyWarm, healthyCold, suspectWarm, suspectCold, probeCandidates []*Candidate
+	var matchingHealthyOrSuspect int
 
 	// Reference pool averages for F_perf calculation
 	var totalTPS, totalTTFT float64
@@ -71,8 +72,6 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 		avgTTFT = totalTTFT / float64(ttftCount)
 	}
 
-	var matchingNodes int
-
 	for _, n := range nodes {
 		if n.State == pb.NodeState_NODE_STATE_OFFLINE ||
 			n.State == pb.NodeState_NODE_STATE_DRAINING {
@@ -90,19 +89,14 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 		if spec == nil {
 			continue
 		}
-		matchingNodes++
 
-		// Check capacity before attempting probes or weights
-		if n.Inflight >= n.Meta.MaxConcurrent {
-			continue
+		if n.State == pb.NodeState_NODE_STATE_HEALTHY || n.State == pb.NodeState_NODE_STATE_SUSPECT {
+			matchingHealthyOrSuspect++
 		}
 
-		if n.State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
-			// Check if half-open probe can be acquired
-			probeAcquired, _ := s.mgr.Circuit().TryAcquireProbe(ctx, n.Meta.NodeID)
-			if !probeAcquired {
-				continue
-			}
+		// Check capacity
+		if n.Inflight >= n.Meta.MaxConcurrent {
+			continue
 		}
 
 		// Check warm status
@@ -161,12 +155,19 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 			} else {
 				suspectCold = append(suspectCold, cand)
 			}
+		} else if n.State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
+			// Probe only if no healthy/suspect candidates exist or to test recovery
+			probeAcquired, _ := s.mgr.Circuit().TryAcquireProbe(ctx, n.Meta.NodeID)
+			if probeAcquired {
+				probeCandidates = append(probeCandidates, cand)
+			}
 		}
 	}
 
 	// Two-stage filtering:
 	// Stage 1: HEALTHY over SUSPECT
 	// Stage 2: Warm over Cold
+	// Stage 3: Circuit broken probe (if no healthy/suspect nodes)
 	var eligible []*Candidate
 	switch {
 	case len(healthyWarm) > 0:
@@ -177,8 +178,10 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 		eligible = suspectWarm
 	case len(suspectCold) > 0:
 		eligible = suspectCold
+	case len(probeCandidates) > 0:
+		eligible = probeCandidates
 	default:
-		if matchingNodes > 0 {
+		if matchingHealthyOrSuspect > 0 {
 			return nil, ErrNodePoolFull
 		}
 		return nil, ErrNoAvailableNodes

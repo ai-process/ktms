@@ -110,6 +110,8 @@ func (t *Redis) currentTime() time.Time {
 func (t *Redis) SetGraceMargin(margin float64) {
 	if margin >= 0 {
 		t.graceMargin = margin
+	} else {
+		t.graceMargin = 0
 	}
 }
 
