@@ -91,8 +91,12 @@ func ValidateModel(m *proxydb.Model) error {
 	}
 	if m.RPM < 0 || m.PriceInPerMtok < 0 || m.PriceOutPerMtok < 0 ||
 		m.PriceInPeakPerMtok < 0 || m.PriceOutPeakPerMtok < 0 ||
-		m.DailyTokensPerKey < 0 || m.DailyTokensPerUser < 0 {
-		return fmt.Errorf("model %s: negative limits or prices", m.ID)
+		m.DailyTokensPerKey < 0 || m.DailyTokensPerUser < 0 ||
+		m.QueueTimeoutMs < 0 {
+		return fmt.Errorf("model %s: negative limits, prices, or queue timeout", m.ID)
+	}
+	if m.BudgetGraceMargin < -1.0 || m.BudgetGraceMargin > 1.0 {
+		return fmt.Errorf("model %s: budget grace margin must be between -1.0 and 1.0", m.ID)
 	}
 	return nil
 }

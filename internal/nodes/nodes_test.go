@@ -280,7 +280,7 @@ func TestPoolAdapter_SlotWaitAndAdmission(t *testing.T) {
 		QueueTimeoutMs: 150,
 	}
 	pa := NewPoolAdapter(selector, nil, pm, 60*time.Second, nil)
-	_ = mgr.Telemetry().RecordMetrics(ctx, nodeID, modelID, 100.0, 50.0) // 50ms TTFT
+	_ = mgr.Telemetry().RecordMetrics(ctx, nodeID, modelID, 1000.0, 50.0)
 
 	// Fill the 1 available slot
 	firstReqID := "req-1"
@@ -337,5 +337,24 @@ func TestPoolAdapter_SlotWaitAndAdmission(t *testing.T) {
 	// Must return almost immediately (< 20ms), not waiting the full 60ms timeout!
 	if time.Since(start) > 40*time.Millisecond {
 		t.Errorf("predictive drop took too long: %v", time.Since(start))
+	}
+}
+
+func TestPoolAdapter_NoNodesFastFallback(t *testing.T) {
+	ctx := context.Background()
+	mgr, _ := setupTestManager(t)
+	selector := NewSelector(mgr)
+	pm := &proxydb.Model{
+		ID:             "non-existent-model",
+		QueueTimeoutMs: 5000,
+	}
+	pa := NewPoolAdapter(selector, nil, pm, 60*time.Second, nil)
+	start := time.Now()
+	_, _, err := pa.acquireSlotWithWait(ctx, llm.NewChatContext())
+	if !errors.Is(err, ErrNoAvailableNodes) {
+		t.Fatalf("expected ErrNoAvailableNodes, got %v", err)
+	}
+	if time.Since(start) > 50*time.Millisecond {
+		t.Errorf("fast fallback should not wait, took %v", time.Since(start))
 	}
 }

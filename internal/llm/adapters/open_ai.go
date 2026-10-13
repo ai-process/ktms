@@ -322,7 +322,11 @@ func (a *OpenAIAdapter) toResponse(resp *openai.ChatCompletion, carried llm.Toke
 func (a *OpenAIAdapter) completeOnce(chat *llm.ChatContext, messages []openai.ChatCompletionMessageParamUnion, ceiling int) (*openai.ChatCompletion, error) {
 	params := a.buildCompletionParams(chat, messages, ceiling)
 	a.throttle.WaitForSlot()
-	return a.openAI.Chat.Completions.New(context.Background(), params)
+	ctx := context.Background()
+	if chat != nil && chat.Context() != nil {
+		ctx = chat.Context()
+	}
+	return a.openAI.Chat.Completions.New(ctx, params)
 }
 
 // buildCompletionParams assembles the per-attempt request. Split out from

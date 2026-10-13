@@ -23,47 +23,65 @@ const (
 )
 
 var gcraScript = redis.NewScript(`
-local key = KEYS[1]
 local now = tonumber(ARGV[1])
-local rate = tonumber(ARGV[2])
-local burst = tonumber(ARGV[3])
-
-if rate <= 0 then
-    return 1
+if not now or now <= 0 then
+    local time_res = redis.call('TIME')
+    now = tonumber(time_res[1]) * 1000 + math.floor(tonumber(time_res[2]) / 1000)
 end
 
-local emission_interval = math.floor(60000 / rate)
-if emission_interval < 1 then
-    emission_interval = 1
-end
-
-if burst < 0 then
-    burst = 0
-end
-local burst_tolerance = burst * emission_interval
-
-local tat = redis.call('GET', key)
-if not tat then
-    tat = now
-else
-    tat = tonumber(tat)
-    if tat < now then
-        tat = now
+local function check_gcra(key, rate, burst)
+    if not key or key == '' or not rate or rate <= 0 then
+        return nil, nil, nil
     end
+    local emission_interval = math.floor(60000 / rate)
+    if emission_interval < 1 then
+        emission_interval = 1
+    end
+    if burst < 0 then
+        burst = 0
+    end
+    local burst_tolerance = burst * emission_interval
+    local tat = redis.call('GET', key)
+    if not tat then
+        tat = now
+    else
+        tat = tonumber(tat)
+        if tat < now then
+            tat = now
+        end
+    end
+    if (tat - now) > burst_tolerance then
+        return false, nil, nil
+    end
+    local new_tat = tat + emission_interval
+    local ttl_ms = new_tat - now + 60000
+    local ttl_sec = math.ceil(ttl_ms / 1000)
+    if ttl_sec < 1 then
+        ttl_sec = 1
+    end
+    return true, new_tat, ttl_sec
 end
 
-if (tat - now) > burst_tolerance then
+local ok1, new_tat1, ttl_sec1 = check_gcra(KEYS[1], tonumber(ARGV[2]), tonumber(ARGV[3]))
+if ok1 == false then
     return 0
 end
 
-local new_tat = tat + emission_interval
-local ttl_ms = new_tat - now + 60000
-local ttl_sec = math.ceil(ttl_ms / 1000)
-if ttl_sec < 1 then
-    ttl_sec = 1
+local ok2, new_tat2, ttl_sec2
+if #KEYS >= 2 then
+    ok2, new_tat2, ttl_sec2 = check_gcra(KEYS[2], tonumber(ARGV[4]), tonumber(ARGV[5]))
+    if ok2 == false then
+        return 0
+    end
 end
 
-redis.call('SET', key, new_tat, 'EX', ttl_sec)
+if ok1 == true then
+    redis.call('SET', KEYS[1], new_tat1, 'EX', ttl_sec1)
+end
+if ok2 == true then
+    redis.call('SET', KEYS[2], new_tat2, 'EX', ttl_sec2)
+end
+
 return 1
 `)
 
@@ -79,7 +97,14 @@ type Redis struct {
 }
 
 func New(client *redis.Client, keyPrefix string) *Redis {
-	return &Redis{client: client, keys: rediskeys.New(keyPrefix), graceMargin: 0.05, now: time.Now}
+	return &Redis{client: client, keys: rediskeys.New(keyPrefix), graceMargin: 0.05}
+}
+
+func (t *Redis) currentTime() time.Time {
+	if t.now != nil {
+		return t.now()
+	}
+	return time.Now()
 }
 
 func (t *Redis) SetGraceMargin(margin float64) {
@@ -92,47 +117,64 @@ func (t *Redis) SetUserRateLimitResolver(resolver UserRateLimitResolver) {
 	t.userLimitResolver = resolver
 }
 
-func (t *Redis) allowGCRA(ctx context.Context, key string, rate int32, burst int32) bool {
-	if t.client == nil || rate <= 0 {
-		return true
-	}
-	nowMs := t.now().UTC().UnixNano() / int64(time.Millisecond)
-	res, err := gcraScript.Run(ctx, t.client, []string{key}, nowMs, rate, burst).Int()
-	if err != nil {
-		log.Warn().Err(err).Str("key", key).Msg("throttle: gcra check failed, allowing (fail-open)")
-		return true
-	}
-	return res == 1
-}
-
-// AllowRPM evaluates this attempt against the key's and user's rate limits using GCRA.
+// AllowRPM evaluates this attempt against the key's and user's rate limits using GCRA atomically.
 func (t *Redis) AllowRPM(ctx context.Context, keyName, userID string, m *proxydb.Model) bool {
 	if t.client == nil {
 		return true
 	}
 
-	// 1. Check Model RPM & Burst on client API key
+	var (
+		key1, key2     string
+		rate1, rate2   int32
+		burst1, burst2 int32
+	)
+
 	if m.RPM > 0 {
-		burst := m.EffectiveBurst()
-		key := t.keys.GCRAKey(keyName, m.ID)
-		if !t.allowGCRA(ctx, key, m.RPM, burst) {
-			return false
-		}
+		key1 = t.keys.GCRAKey(keyName, m.ID)
+		rate1 = m.RPM
+		burst1 = m.EffectiveBurst()
 	}
 
-	// 2. Check User-specific RPM & Burst override (if configured)
 	if t.userLimitResolver != nil && userID != "" {
 		uLimit := t.userLimitResolver(userID, m.ID)
 		if uLimit != nil && uLimit.RPM > 0 {
-			burst := uLimit.EffectiveBurst()
-			key := t.keys.GCRAUser(userID, m.ID)
-			if !t.allowGCRA(ctx, key, uLimit.RPM, burst) {
-				return false
-			}
+			key2 = t.keys.GCRAUser(userID, m.ID)
+			rate2 = uLimit.RPM
+			burst2 = uLimit.EffectiveBurst()
 		}
 	}
 
-	return true
+	if rate1 <= 0 && rate2 <= 0 {
+		return true
+	}
+
+	var (
+		keys []string
+		args []any
+	)
+
+	var nowMs int64
+	if t.now != nil {
+		nowMs = t.now().UTC().UnixNano() / int64(time.Millisecond)
+	}
+
+	if rate1 > 0 && rate2 > 0 {
+		keys = []string{key1, key2}
+		args = []any{nowMs, rate1, burst1, rate2, burst2}
+	} else if rate1 > 0 {
+		keys = []string{key1}
+		args = []any{nowMs, rate1, burst1, 0, 0}
+	} else {
+		keys = []string{key2}
+		args = []any{nowMs, rate2, burst2, 0, 0}
+	}
+
+	res, err := gcraScript.Run(ctx, t.client, keys, args...).Int()
+	if err != nil {
+		log.Warn().Err(err).Strs("keys", keys).Msg("throttle: gcra check failed, allowing (fail-open)")
+		return true
+	}
+	return res == 1
 }
 
 // Reserve books the estimate against every applicable daily budget.
@@ -141,7 +183,7 @@ func (t *Redis) Reserve(ctx context.Context, m *proxydb.Model, keyName, userID s
 	if t.client == nil {
 		return nil, ""
 	}
-	day := t.now().UTC().Format("20060102")
+	day := t.currentTime().UTC().Format("20060102")
 
 	type budget struct {
 		key   string
@@ -169,11 +211,11 @@ func (t *Redis) Reserve(ctx context.Context, m *proxydb.Model, keyName, userID s
 
 	res := &router.Reservation{Estimate: estimate}
 	margin := m.BudgetGraceMargin
-	if margin <= 0 {
+	if margin == 0 {
 		margin = t.graceMargin
 	}
-	if margin <= 0 {
-		margin = 0.05
+	if margin < 0 {
+		margin = 0
 	}
 	for _, b := range budgets {
 		maxAllowed := int64(float64(b.limit) * (1.0 + margin))
@@ -183,12 +225,16 @@ func (t *Redis) Reserve(ctx context.Context, m *proxydb.Model, keyName, userID s
 			log.Warn().Err(err).Msg("throttle: budget reserve failed, allowing (fail-open)")
 			continue // this budget is not reserved and not enforced
 		}
-		t.client.Expire(ctx, b.key, budgetTTL)
+		if expErr := t.client.Expire(ctx, b.key, budgetTTL).Err(); expErr != nil {
+			log.Warn().Err(expErr).Str("key", b.key).Msg("throttle: expire budget key failed")
+		}
 
 		prevVal := newVal - estimate
 		if prevVal >= b.limit || newVal > maxAllowed {
 			// Undo this and every prior reservation of this call.
-			t.client.DecrBy(ctx, b.key, estimate)
+			if decrErr := t.client.DecrBy(ctx, b.key, estimate).Err(); decrErr != nil {
+				log.Warn().Err(decrErr).Str("key", b.key).Msg("throttle: undo reservation failed")
+			}
 			t.rollback(ctx, res)
 			return nil, b.kind
 		}
@@ -232,7 +278,7 @@ func (t *Redis) CheckDailyBudget(ctx context.Context, m *proxydb.Model, keyName,
 	if t.client == nil {
 		return ""
 	}
-	day := t.now().UTC().Format("20060102")
+	day := t.currentTime().UTC().Format("20060102")
 
 	if m.DailyTokensPerKey > 0 {
 		key := t.keys.BudgetKey(keyName, m.ID, day)
@@ -263,7 +309,7 @@ func (t *Redis) ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName
 	if t.client == nil || tokens <= 0 {
 		return
 	}
-	day := t.now().UTC().Format("20060102")
+	day := t.currentTime().UTC().Format("20060102")
 	var keys []string
 	if m.DailyTokensPerKey > 0 {
 		keys = append(keys, t.keys.BudgetKey(keyName, m.ID, day))

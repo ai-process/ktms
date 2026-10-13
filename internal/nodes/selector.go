@@ -71,17 +71,12 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 		avgTTFT = totalTTFT / float64(ttftCount)
 	}
 
+	var matchingNodes int
+
 	for _, n := range nodes {
 		if n.State == pb.NodeState_NODE_STATE_OFFLINE ||
 			n.State == pb.NodeState_NODE_STATE_DRAINING {
 			continue
-		}
-		if n.State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
-			// Check if half-open probe can be acquired
-			probeAcquired, _ := s.mgr.Circuit().TryAcquireProbe(ctx, n.Meta.NodeID)
-			if !probeAcquired {
-				continue
-			}
 		}
 
 		// Find model spec
@@ -95,10 +90,19 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 		if spec == nil {
 			continue
 		}
+		matchingNodes++
 
-		// Check capacity
+		// Check capacity before attempting probes or weights
 		if n.Inflight >= n.Meta.MaxConcurrent {
 			continue
+		}
+
+		if n.State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
+			// Check if half-open probe can be acquired
+			probeAcquired, _ := s.mgr.Circuit().TryAcquireProbe(ctx, n.Meta.NodeID)
+			if !probeAcquired {
+				continue
+			}
 		}
 
 		// Check warm status
@@ -174,6 +178,9 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 	case len(suspectCold) > 0:
 		eligible = suspectCold
 	default:
+		if matchingNodes > 0 {
+			return nil, ErrNodePoolFull
+		}
 		return nil, ErrNoAvailableNodes
 	}
 
@@ -199,47 +206,5 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 		s.curWeight[best.Snapshot.Meta.NodeID] -= totalWeight
 	}
 	return best, nil
-}
-
-// PoolCapacity aggregates total active slots and average duration EMA for a model.
-func (s *Selector) PoolCapacity(ctx context.Context, modelID string) (totalSlots int32, avgDurationMs float64) {
-	nodes, err := s.mgr.ListNodes(ctx)
-	if err != nil || len(nodes) == 0 {
-		return 1, 2000
-	}
-	var slots int32
-	var totalDuration float64
-	var count int
-	for _, n := range nodes {
-		if n.State == pb.NodeState_NODE_STATE_OFFLINE || n.State == pb.NodeState_NODE_STATE_DRAINING || n.State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
-			continue
-		}
-		for _, m := range n.Meta.Models {
-			if m.ModelId == modelID {
-				slots += n.Meta.MaxConcurrent
-				if perf, ok := n.Perf[modelID]; ok && perf.TPSEMA > 0 {
-					dur := (100.0 / perf.TPSEMA) * 1000.0
-					if dur < 500 {
-						dur = 500
-					}
-					if dur > 10000 {
-						dur = 10000
-					}
-					totalDuration += dur
-					count++
-				}
-				break
-			}
-		}
-	}
-	if slots <= 0 {
-		slots = 1
-	}
-	if count > 0 {
-		avgDurationMs = totalDuration / float64(count)
-	} else {
-		avgDurationMs = 2000
-	}
-	return slots, avgDurationMs
 }
 
