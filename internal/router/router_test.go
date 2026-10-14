@@ -93,6 +93,28 @@ func TestFilterChain(t *testing.T) {
 	}
 }
 
+func TestFilterChainMultimodalCapabilities(t *testing.T) {
+	snap := snapshot()
+	snap.Models["big"].Capabilities = []string{registry.CapabilityVision, registry.CapabilityAudioInput}
+
+	// Requesting vision capability: only "big" has vision, "deep" does not.
+	models, err := FilterChain(snap, []string{"deep", "big"}, "key1", registry.EffortHigh, false, registry.CapabilityVision)
+	if err != nil || len(models) != 1 || models[0].ID != "big" {
+		t.Fatalf("expected only big to survive vision filter, got models=%v err=%v", models, err)
+	}
+
+	// Requesting vision and audio_input: "big" has both.
+	models, err = FilterChain(snap, []string{"deep", "big"}, "key1", registry.EffortHigh, false, registry.CapabilityVision, registry.CapabilityAudioInput)
+	if err != nil || len(models) != 1 || models[0].ID != "big" {
+		t.Fatalf("expected big to survive vision+audio filter, got models=%v err=%v", models, err)
+	}
+
+	// Requesting pdf_input: neither has it, so ErrNoCapableModel is returned.
+	if _, err = FilterChain(snap, []string{"deep", "big"}, "key1", registry.EffortHigh, false, registry.CapabilityPDFInput); !errors.Is(err, ErrNoCapableModel) {
+		t.Fatalf("expected ErrNoCapableModel for missing pdf capability, got %v", err)
+	}
+}
+
 // fakeAdapter scripts per-call outcomes.
 type fakeAdapter struct {
 	calls     int
@@ -621,4 +643,3 @@ func TestExecuteStream_SkipToNextModel_Fallback(t *testing.T) {
 		t.Errorf("unexpected chunks: %v", chunks)
 	}
 }
-

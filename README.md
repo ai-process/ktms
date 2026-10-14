@@ -246,6 +246,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `DATABASE_URL` | – | **Required.** Postgres connection string. |
 | `LLMPROXY_ENCRYPTION_KEYS` | – | **Required.** Versioned keyring `1:<base64 32 bytes>[,2:…]`. The highest version encrypts new writes; all listed versions can decrypt. |
 | `GRPC_ADDR` | `:9090` | gRPC listen address (data and admin planes). |
+| `GRPC_MAX_RECV_MSG_SIZE` | `16777216` | Maximum gRPC message receive size in bytes (16MB). |
 | `HTTP_ADDR` | `:8080` | HTTP listen address (health probes and the OpenAI-compatible API). |
 | `HTTP_API_ENABLED` | `true` | Serve the `/v1` API on `HTTP_ADDR`; `false` leaves only the health probes. |
 | `HTTP_API_TIMEOUT` | `5m` | Read/write timeout for one HTTP API call (it waits on an upstream model). |
@@ -340,8 +341,10 @@ Capabilities a model may declare:
 | --- | --- |
 | `batch` | Can serve asynchronous batch text generation requests (`SubmitBatch`). |
 | `google_search` | Can serve requests with `enable_google_search`. |
-| `no_structured_output` | The vendor API can't take a JSON schema (e.g. DeepSeek). The shape is requested in the prompt and verified by the proxy instead. |
 | `no_thinking` | The model reasons by default and bills the reasoning as output (DeepSeek V4, Gemma 4 on Ollama). The proxy turns it off: `thinking: {"type": "disabled"}` for DeepSeek, `reasoning_effort: "none"` for Ollama, and for `local` models when the serving node runs Ollama (other engines get no switch). OpenAI-compatible vendors only. |
+| `vision` | Can process image parts in multimodal messages (`ImagePart`). |
+| `audio_input` | Can process audio parts in multimodal messages (`AudioPart`). |
+| `pdf_input` | Can process PDF document parts in multimodal messages (`DocumentPart`). |
 | `tts` | Can serve `SynthesizeSpeech`. |
 | `image` | Can serve `GenerateImage`. |
 | `judge` | Can serve `Judge` (TypeSafe `jev-latest`, OpenAI `gpt-6-luna`). |
@@ -504,7 +507,7 @@ Python, TypeScript… clients from [`proto/llmproxy/v1`](proto/llmproxy/v1) with
 | `base_system_instruction`, `request_instruction` | System content never travels as a message. |
 | `response_schema` | Unset = free text. Set = JSON output validated against the schema; a vendor that can't enforce it is verified by the proxy. |
 | `tools`, `tool_choice` | Function/tool declarations with JSON Schema parameters. `tool_choice` specifies auto, required, none, or a specific named function. |
-| `messages` | Chat history. Supports `MESSAGE_ROLE_USER`, `MESSAGE_ROLE_ASSISTANT`, and `MESSAGE_ROLE_TOOL` (with `tool_call_id`). Assistant messages can carry `tool_calls`. |
+| `messages` | Chat history. Supports `MESSAGE_ROLE_USER`, `MESSAGE_ROLE_ASSISTANT`, and `MESSAGE_ROLE_TOOL` (with `tool_call_id`). User messages support multimodal `parts` (`ContentPart`: `text`, `image`, `audio`, `document`). Assistant messages can carry `tool_calls`. |
 | `max_output_tokens` | Ceiling, `0` = none. Output tokens are the expensive ones; set it. |
 | `enable_google_search` | Only Google models declaring `google_search` can serve it. |
 | `action_id` | Free-form label for usage attribution. |
@@ -657,7 +660,7 @@ curl -s localhost:8080/v1/chat/completions \
 
 | Endpoint | Maps to | Notes |
 | --- | --- | --- |
-| `POST /v1/chat/completions` | `GenerateText` | Text and structured output. |
+| `POST /v1/chat/completions` | `GenerateText` / `GenerateTextStream` | Text, multimodal parts (`image_url`, `input_audio`, `file`/`document`), structured output, `tools`, and SSE streaming. |
 | `POST /v1/audio/speech` | `SynthesizeSpeech` | Returns OGG/Opus audio. |
 | `POST /v1/images/generations` | `GenerateImage` | Returns `b64_json`. |
 | `POST /v1/decisions` | `Judge` | OpenAI Decisions API format (`predicate`, `choice`, `score`). |

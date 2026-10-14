@@ -96,7 +96,8 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		ruleName = rule.Name
 	}
 
-	models, err := router.FilterChain(snap, chain, id.KeyID, effort, req.GetEnableGoogleSearch(), "")
+	reqCaps := requiredCapabilities(req)
+	models, err := router.FilterChain(snap, chain, id.KeyID, effort, req.GetEnableGoogleSearch(), reqCaps...)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
@@ -195,7 +196,8 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		ruleName = rule.Name
 	}
 
-	models, err := router.FilterChain(snap, chain, id.KeyID, effort, inner.GetEnableGoogleSearch(), "")
+	reqCaps := requiredCapabilities(inner)
+	models, err := router.FilterChain(snap, chain, id.KeyID, effort, inner.GetEnableGoogleSearch(), reqCaps...)
 	if err != nil {
 		return router.ToStatus(err)
 	}
@@ -275,7 +277,43 @@ func buildChat(req *pb.GenerateTextRequest, id *apikeys.Identity, ruleName, effo
 		case pb.MessageRole_MESSAGE_ROLE_TOOL:
 			chat.AddToolMessage(m.GetToolCallId(), m.GetText())
 		default:
-			chat.AddUserMessage(m.GetText())
+			if len(m.GetParts()) > 0 {
+				var parts []*llm.ContentPart
+				for _, p := range m.GetParts() {
+					switch part := p.GetPart().(type) {
+					case *pb.ContentPart_Text:
+						parts = append(parts, &llm.ContentPart{
+							Type: llm.ContentPartTypeText,
+							Text: part.Text.GetText(),
+						})
+					case *pb.ContentPart_Image:
+						parts = append(parts, &llm.ContentPart{
+							Type:     llm.ContentPartTypeImage,
+							MimeType: part.Image.GetMimeType(),
+							Data:     part.Image.GetData(),
+							URL:      part.Image.GetUrl(),
+							Detail:   llm.ImageDetail(part.Image.GetDetail()),
+						})
+					case *pb.ContentPart_Audio:
+						parts = append(parts, &llm.ContentPart{
+							Type:     llm.ContentPartTypeAudio,
+							MimeType: part.Audio.GetMimeType(),
+							Data:     part.Audio.GetData(),
+							Format:   part.Audio.GetFormat(),
+						})
+					case *pb.ContentPart_Document:
+						parts = append(parts, &llm.ContentPart{
+							Type:     llm.ContentPartTypeDocument,
+							MimeType: part.Document.GetMimeType(),
+							Data:     part.Document.GetData(),
+							FileName: part.Document.GetFileName(),
+						})
+					}
+				}
+				chat.AddUserMessageWithParts(m.GetText(), parts)
+			} else {
+				chat.AddUserMessage(m.GetText())
+			}
 		}
 	}
 	if schema := schemaFromProto(req.GetResponseSchema()); schema != nil {
@@ -345,15 +383,64 @@ func buildChat(req *pb.GenerateTextRequest, id *apikeys.Identity, ruleName, effo
 	return chat
 }
 
-// estimateTokens is the budget reservation guess: total runes / 4. Settled
-// against vendor-reported actuals after the call, so precision is not needed.
+// estimateTokens is the budget reservation guess: total runes / 4 plus heuristic
+// allowances for media parts. Settled against vendor-reported actuals after the call.
 func estimateTokens(req *pb.GenerateTextRequest) int64 {
 	runes := utf8.RuneCountInString(req.GetBaseSystemInstruction()) +
 		utf8.RuneCountInString(req.GetRequestInstruction())
+	var extraTokens int64
 	for _, m := range req.GetMessages() {
 		runes += utf8.RuneCountInString(m.GetText())
+		for _, p := range m.GetParts() {
+			switch part := p.GetPart().(type) {
+			case *pb.ContentPart_Text:
+				if m.GetText() == "" {
+					runes += utf8.RuneCountInString(part.Text.GetText())
+				}
+			case *pb.ContentPart_Image:
+				if part.Image.GetDetail() == "low" {
+					extraTokens += 85
+				} else {
+					extraTokens += 1000
+				}
+			case *pb.ContentPart_Audio:
+				extraTokens += 200
+			case *pb.ContentPart_Document:
+				extraTokens += 500
+			}
+		}
 	}
-	return int64(runes)/4 + 1
+	return int64(runes)/4 + extraTokens + 1
+}
+
+// requiredCapabilities checks request parts and returns required model capabilities.
+func requiredCapabilities(req *pb.GenerateTextRequest) []string {
+	var caps []string
+	hasVision := false
+	hasAudio := false
+	hasDoc := false
+	for _, m := range req.GetMessages() {
+		for _, p := range m.GetParts() {
+			switch p.GetPart().(type) {
+			case *pb.ContentPart_Image:
+				hasVision = true
+			case *pb.ContentPart_Audio:
+				hasAudio = true
+			case *pb.ContentPart_Document:
+				hasDoc = true
+			}
+		}
+	}
+	if hasVision {
+		caps = append(caps, registry.CapabilityVision)
+	}
+	if hasAudio {
+		caps = append(caps, registry.CapabilityAudioInput)
+	}
+	if hasDoc {
+		caps = append(caps, registry.CapabilityPDFInput)
+	}
+	return caps
 }
 
 // ListModels returns only models the calling client holds a vendor key for.

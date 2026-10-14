@@ -67,11 +67,44 @@ message ToolChoice {
   string specific_function_name = 2;
 }
 
+message ImagePart {
+  string mime_type = 1;
+  bytes data = 2;
+  string url = 3;
+  string detail = 4; // "auto", "low", "high"
+}
+
+message AudioPart {
+  string mime_type = 1;
+  bytes data = 2;
+  string format = 3; // "wav", "mp3"
+}
+
+message DocumentPart {
+  string mime_type = 1;
+  bytes data = 2;
+  string file_name = 3;
+}
+
+message TextPart {
+  string text = 1;
+}
+
+message ContentPart {
+  oneof part {
+    TextPart text = 1;
+    ImagePart image = 2;
+    AudioPart audio = 3;
+    DocumentPart document = 4;
+  }
+}
+
 message ChatMessage {
   MessageRole role = 1;
   string text = 2;
   repeated ToolCall tool_calls = 3;
   string tool_call_id = 4;
+  repeated ContentPart parts = 5;
 }
 
 // SchemaProperty mirrors the vendor-neutral llm.SchemaProperty.

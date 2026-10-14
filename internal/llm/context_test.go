@@ -1,0 +1,53 @@
+package llm
+
+import (
+	"bytes"
+	"testing"
+)
+
+func TestEstimateInputTokens_Multimodal(t *testing.T) {
+	chat := NewChatContext()
+
+	// Text only: "hello world" = 11 chars -> 11/4 + 1 = 3 tokens
+	chat.AddUserMessage("hello world")
+	if tokens := chat.EstimateInputTokens(); tokens != 3 {
+		t.Fatalf("expected 3 tokens for text only, got %d", tokens)
+	}
+
+	// Add user message with 1MB image payload
+	largeData := bytes.Repeat([]byte{0x42}, 1024*1024)
+
+	chat2 := NewChatContext()
+	chat2.AddUserMessageWithParts("", []*ContentPart{
+		{
+			Type:   ContentPartTypeImage,
+			Data:   largeData,
+			Detail: ImageDetailLow,
+		},
+	})
+	// Image detail low should add 85 tokens, not 1MB/4 tokens
+	if tokens := chat2.EstimateInputTokens(); tokens != 86 { // 85 + 1
+		t.Fatalf("expected 86 tokens for low-detail image, got %d", tokens)
+	}
+
+	chat3 := NewChatContext()
+	chat3.AddUserMessageWithParts("", []*ContentPart{
+		{
+			Type:   ContentPartTypeImage,
+			Data:   largeData,
+			Detail: ImageDetailHigh,
+		},
+		{
+			Type: ContentPartTypeAudio,
+			Data: largeData,
+		},
+		{
+			Type: ContentPartTypeDocument,
+			Data: largeData,
+		},
+	})
+	// 1000 (high detail image) + 200 (audio) + 500 (doc) + 1 = 1701 tokens
+	if tokens := chat3.EstimateInputTokens(); tokens != 1701 {
+		t.Fatalf("expected 1701 tokens for multimodal parts, got %d", tokens)
+	}
+}

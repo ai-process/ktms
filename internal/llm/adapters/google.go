@@ -171,7 +171,41 @@ func (a *GoogleAdapter) contextToContents(messages []*llm.Message) []*genai.Cont
 		message := messages[i]
 		switch message.Type {
 		case llm.MessageTypeUser:
-			if message.Text != "" {
+			if len(message.Parts) > 0 {
+				var parts []*genai.Part
+				hasTextPart := false
+				for _, p := range message.Parts {
+					switch p.Type {
+					case llm.ContentPartTypeText:
+						if p.Text != "" {
+							hasTextPart = true
+							parts = append(parts, genai.NewPartFromText(p.Text))
+						}
+					case llm.ContentPartTypeImage, llm.ContentPartTypeAudio, llm.ContentPartTypeDocument:
+						if len(p.Data) > 0 {
+							mime := p.MimeType
+							if mime == "" {
+								if p.Type == llm.ContentPartTypeImage {
+									mime = "image/jpeg"
+								} else if p.Type == llm.ContentPartTypeAudio {
+									mime = "audio/wav"
+								} else if p.Type == llm.ContentPartTypeDocument {
+									mime = "application/pdf"
+								}
+							}
+							parts = append(parts, genai.NewPartFromBytes(p.Data, mime))
+						} else if p.URL != "" {
+							parts = append(parts, genai.NewPartFromURI(p.URL, p.MimeType))
+						}
+					}
+				}
+				if !hasTextPart && strings.TrimSpace(message.Text) != "" {
+					parts = append([]*genai.Part{genai.NewPartFromText(message.Text)}, parts...)
+				}
+				if len(parts) > 0 {
+					contents = append(contents, genai.NewContentFromParts(parts, genai.RoleUser))
+				}
+			} else if message.Text != "" {
 				contents = append(contents, genai.NewContentFromText(message.Text, genai.RoleUser))
 			}
 			i++
@@ -927,10 +961,10 @@ func (a *GoogleAdapter) FetchBatchResults(ctx context.Context, vendorJobID strin
 			}
 
 			var parsedLine struct {
-				Key      string                          `json:"key"`
-				CustomID string                          `json:"custom_id"`
+				Key      string                         `json:"key"`
+				CustomID string                         `json:"custom_id"`
 				Response *genai.GenerateContentResponse `json:"response"`
-				Error    *genai.JobError                 `json:"error"`
+				Error    *genai.JobError                `json:"error"`
 			}
 			if err := json.Unmarshal(line, &parsedLine); err == nil && (parsedLine.Response != nil || parsedLine.Error != nil) {
 				idx := lineIdx
