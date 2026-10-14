@@ -154,6 +154,16 @@ func Validate(models []*proxydb.Model, rules []*proxydb.Rule) error {
 		if len(r.Use) == 0 {
 			return fmt.Errorf("rule %s: empty model chain", r.Name)
 		}
+		if len(r.Weights) > 0 {
+			if len(r.Weights) != len(r.Use) {
+				return fmt.Errorf("rule %s: weights count (%d) must match use count (%d)", r.Name, len(r.Weights), len(r.Use))
+			}
+			for _, w := range r.Weights {
+				if w <= 0 {
+					return fmt.Errorf("rule %s: weight %d must be > 0", r.Name, w)
+				}
+			}
+		}
 
 		seen := map[string]bool{}
 		var enabledChain []*proxydb.Model

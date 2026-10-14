@@ -151,6 +151,7 @@ type Rule struct {
 	Attributes map[string]string
 	Enabled    bool
 	Use        []string // ordered model ids
+	Weights    []int32  // optional traffic weights per model in Use
 }
 
 type VendorKey struct {

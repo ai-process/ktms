@@ -43,6 +43,15 @@ func TestValidateAcceptsBaseConfig(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsWeightedRules(t *testing.T) {
+	models, rules := baseConfig()
+	rules[0].Use = []string{"cheap", "mid"}
+	rules[0].Weights = []int32{80, 20}
+	if err := Validate(models, rules); err != nil {
+		t.Fatalf("Validate with weights: %v", err)
+	}
+}
+
 func TestValidateRejections(t *testing.T) {
 	cases := map[string]struct {
 		mutate  func(models []*proxydb.Model, rules []*proxydb.Rule) ([]*proxydb.Model, []*proxydb.Rule)
@@ -123,6 +132,16 @@ func TestValidateRejections(t *testing.T) {
 				m[0].Enabled = false
 				return m, r
 			}, "disabled"},
+		"weights count mismatch": {
+			func(m []*proxydb.Model, r []*proxydb.Rule) ([]*proxydb.Model, []*proxydb.Rule) {
+				r[0].Weights = []int32{10, 20}
+				return m, r
+			}, "weights count"},
+		"weight non-positive": {
+			func(m []*proxydb.Model, r []*proxydb.Rule) ([]*proxydb.Model, []*proxydb.Rule) {
+				r[0].Weights = []int32{0}
+				return m, r
+			}, "must be > 0"},
 	}
 
 	for name, tc := range cases {

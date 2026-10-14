@@ -91,6 +91,7 @@ func (s *AdminServer) ReplaceRules(ctx context.Context, req *pb.ReplaceRulesRequ
 			Attributes: attrs,
 			Enabled:    r.GetEnabled(),
 			Use:        r.GetUse(),
+			Weights:    r.GetWeights(),
 		})
 	}
 	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {

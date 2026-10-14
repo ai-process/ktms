@@ -142,7 +142,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		if rule == nil {
 			return nil, router.ToStatus(router.ErrNotConfigured)
 		}
-		chain = rule.Use
+		chain = router.ResolveChain(rule)
 		ruleName = rule.Name
 	}
 
@@ -276,7 +276,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		if rule == nil {
 			return router.ToStatus(router.ErrNotConfigured)
 		}
-		chain = rule.Use
+		chain = router.ResolveChain(rule)
 		ruleName = rule.Name
 	}
 

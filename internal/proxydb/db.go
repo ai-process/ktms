@@ -125,6 +125,8 @@ func loadRules(ctx context.Context, q querier) ([]*Rule, error) {
 	rows, err := q.Query(ctx,
 		`SELECT r.id, r.name, r.priority, r.effort, r.attributes, r.enabled,
 		        COALESCE(array_agg(rm.model_id ORDER BY rm.position)
+		                 FILTER (WHERE rm.model_id IS NOT NULL), '{}'),
+		        COALESCE(array_agg(rm.weight ORDER BY rm.position)
 		                 FILTER (WHERE rm.model_id IS NOT NULL), '{}')
 		 FROM rule r
 		 LEFT JOIN rule_model rm ON rm.rule_id = r.id
@@ -137,11 +139,22 @@ func loadRules(ctx context.Context, q querier) ([]*Rule, error) {
 	for rows.Next() {
 		var r Rule
 		var attrs []byte
-		if err := rows.Scan(&r.ID, &r.Name, &r.Priority, &r.Effort, &attrs, &r.Enabled, &r.Use); err != nil {
+		var weights []int32
+		if err := rows.Scan(&r.ID, &r.Name, &r.Priority, &r.Effort, &attrs, &r.Enabled, &r.Use, &weights); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(attrs, &r.Attributes); err != nil {
 			return nil, fmt.Errorf("rule %s attributes: %w", r.Name, err)
+		}
+		var hasNonZero bool
+		for _, w := range weights {
+			if w > 0 {
+				hasNonZero = true
+				break
+			}
+		}
+		if hasNonZero {
+			r.Weights = weights
 		}
 		out = append(out, &r)
 	}
@@ -314,9 +327,13 @@ func ReplaceRules(ctx context.Context, tx pgx.Tx, rules []*Rule) error {
 			return err
 		}
 		for pos, modelID := range r.Use {
+			var weight int32
+			if pos < len(r.Weights) {
+				weight = r.Weights[pos]
+			}
 			if _, err := tx.Exec(ctx,
-				`INSERT INTO rule_model (rule_id, position, model_id) VALUES ($1, $2, $3)`,
-				r.ID, pos, modelID); err != nil {
+				`INSERT INTO rule_model (rule_id, position, model_id, weight) VALUES ($1, $2, $3, $4)`,
+				r.ID, pos, modelID, weight); err != nil {
 				return fmt.Errorf("rule %s model %s: %w", r.Name, modelID, err)
 			}
 		}

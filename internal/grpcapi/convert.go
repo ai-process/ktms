@@ -168,5 +168,6 @@ func ruleToProto(r *proxydb.Rule) *pb.RuleSpec {
 		Attributes: r.Attributes,
 		Use:        r.Use,
 		Enabled:    r.Enabled,
+		Weights:    r.Weights,
 	}
 }
