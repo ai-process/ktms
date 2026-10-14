@@ -25,7 +25,8 @@ type AgentConfig struct {
 	NodeKey       string
 	NodeID        string
 	NodeName      string
-	Endpoint      string
+	EngineURL     string // where the agent itself polls the engine; local, never reported
+	Endpoint      string // address the proxy dials, as reported at registration
 	Engine        string
 	NodeAuthToken string
 	BaseWeight    float64
@@ -41,6 +42,26 @@ type Agent struct {
 	draining  bool
 	mu        sync.Mutex
 }
+
+// ResolveURLs returns the engine URL to poll and the endpoint to report.
+// With only endpoint set, polling uses it too, as before --engine-url existed.
+func ResolveURLs(engineURL, endpoint string) (poll, report string) {
+	poll = engineURL
+	if poll == "" {
+		poll = endpoint
+	}
+	if poll == "" {
+		poll = DefaultEngineURL
+	}
+	report = endpoint
+	if report == "" {
+		report = poll
+	}
+	return poll, report
+}
+
+// DefaultEngineURL is Ollama's default listen address.
+const DefaultEngineURL = "http://127.0.0.1:11434"
 
 func NewAgent(cfg AgentConfig) *Agent {
 	return &Agent{
@@ -91,7 +112,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	}()
 
 	// 1. Initial Inspection & Registration
-	models, err := a.inspector.Inspect(authCtx, a.cfg.Endpoint, a.cfg.NodeAuthToken)
+	models, err := a.inspector.Inspect(authCtx, a.cfg.EngineURL, a.cfg.NodeAuthToken)
 	if err != nil {
 		log.Warn().Err(err).Msg("failed initial engine inspection, registering with empty models")
 	}
@@ -141,7 +162,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			return a.drainAndExit(authCtx)
 		case <-ticker.C:
 			// Inspect current models and GPU
-			currModels, _ := a.inspector.Inspect(authCtx, a.cfg.Endpoint, a.cfg.NodeAuthToken)
+			currModels, _ := a.inspector.Inspect(authCtx, a.cfg.EngineURL, a.cfg.NodeAuthToken)
 			currGPU, _ := ReadNvidiaSMI(authCtx)
 			currRes := &pb.NodeResources{
 				BaseWeight:    a.cfg.BaseWeight,
