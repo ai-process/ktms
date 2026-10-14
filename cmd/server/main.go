@@ -161,7 +161,7 @@ func main() {
 	if nodeReg != nil {
 		nodeRegServer = nodeReg
 	}
-	grpcSrv := server.NewGRPCServer(proxySrv, adminSrv, nodeRegServer, verifier, cfg.GRPCAddr)
+	grpcSrv := server.NewGRPCServer(proxySrv, adminSrv, nodeRegServer, verifier, cfg.GRPCAddr, cfg.GRPCMaxRecvMsgSize)
 	var openaiAPI *server.OpenAIAPI
 	if cfg.HTTPAPIEnabled {
 		openaiAPI = server.NewOpenAIAPI(proxySrv, verifier)

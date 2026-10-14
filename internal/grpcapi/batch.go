@@ -74,6 +74,11 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 		if itemReq == nil || (len(itemReq.GetMessages()) == 0 && itemReq.GetBaseSystemInstruction() == "" && itemReq.GetRequestInstruction() == "") {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q has no messages or instructions", cid)
 		}
+		for _, msg := range itemReq.GetMessages() {
+			if len(msg.GetParts()) > 0 {
+				return nil, status.Error(codes.InvalidArgument, "bad_request: multimodal batch not supported yet")
+			}
+		}
 	}
 
 	// Idempotency: check if client_batch_id already exists for this client key

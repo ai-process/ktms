@@ -523,3 +523,39 @@ func TestSubmitBatch_ServiceCallerBudgetCheck(t *testing.T) {
 		t.Fatalf("expected ResourceExhausted when budget tripped, got %v", err)
 	}
 }
+
+func TestSubmitBatch_RejectsMultimodal(t *testing.T) {
+	server, _, _ := batchServerFixture()
+	ctx := authCtx("key-1", "test-client")
+
+	req := &pb.SubmitBatchRequest{
+		Effort: pb.Effort_EFFORT_LOW,
+		Items: []*pb.BatchItemRequest{
+			{
+				CustomId: "item-1",
+				Request: &pb.GenerateTextRequest{
+					Messages: []*pb.ChatMessage{
+						{
+							Role: pb.MessageRole_MESSAGE_ROLE_USER,
+							Parts: []*pb.ContentPart{
+								{
+									Part: &pb.ContentPart_Image{
+										Image: &pb.ImagePart{
+											MimeType: "image/png",
+											Data:     []byte("test-data"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	_, err := server.SubmitBatch(ctx, req)
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument for multimodal batch, got %v", err)
+	}
+}

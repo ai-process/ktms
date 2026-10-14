@@ -12,9 +12,10 @@ type Config struct {
 	DatabaseURL string
 	// EncryptionKeys is the versioned AES-256-GCM keyring spec
 	// ("1:<base64 32B>,2:..."); vendor keys are unreadable without it.
-	EncryptionKeys string
-	GRPCAddr       string
-	HTTPAddr       string
+	EncryptionKeys     string
+	GRPCAddr           string
+	GRPCMaxRecvMsgSize int
+	HTTPAddr           string
 	// HTTPAPIEnabled mounts the OpenAI-compatible API on HTTPAddr; off leaves health only.
 	HTTPAPIEnabled bool
 	// HTTPAPITimeout bounds one HTTP API call, which waits on an upstream model.
@@ -66,29 +67,30 @@ type Config struct {
 // Load loads configuration from environment variables
 func Load() *Config {
 	return &Config{
-		DatabaseURL:        getEnv("DATABASE_URL", ""),
-		EncryptionKeys:     getEnv("LLMPROXY_ENCRYPTION_KEYS", ""),
-		GRPCAddr:           getEnv("GRPC_ADDR", ":9090"),
-		HTTPAddr:           getEnv("HTTP_ADDR", ":8080"),
-		HTTPAPIEnabled:     getBoolEnv("HTTP_API_ENABLED", true),
-		HTTPAPITimeout:     getDurationEnv("HTTP_API_TIMEOUT", 5*time.Minute),
-		LogLevel:           getEnv("LOG_LEVEL", "info"),
-		ShutdownTimeout:    getDurationEnv("SHUTDOWN_TIMEOUT", 30*time.Second),
-		DBMaxConns:         int32(getIntEnv("DB_MAX_CONNS", 25)),
-		DBMinConns:         int32(getIntEnv("DB_MIN_CONNS", 5)),
-		RoutingReload:      time.Duration(getIntEnv("ROUTING_RELOAD_SECONDS", 60)) * time.Second,
-		AutoMigrate:        getBoolEnv("AUTO_MIGRATE", true),
-		MigrateTimeout:     getDurationEnv("MIGRATE_TIMEOUT", 3*time.Minute),
-		RedisAddr:          getEnv("REDIS_ADDR", ""),
-		RedisPassword:      getEnv("REDIS_PASSWORD", ""),
-		RedisDB:            getIntEnv("REDIS_DB", 0),
-		RedisKeyPrefix:     getEnv("REDIS_KEY_PREFIX", ""),
-		BootstrapAdminKey:  getEnv("BOOTSTRAP_ADMIN_KEY", ""),
-		UsageCollectorHost: getEnv("USAGE_COLLECTOR_HOST", ""),
-		UsageProjectID:     getEnv("USAGE_PROJECT_ID", "llm-proxy"),
-		BatchMaxItems:      getIntEnv("BATCH_MAX_ITEMS", 10000),
-		BatchPollInterval:  time.Duration(getIntEnv("BATCH_POLL_SECONDS", 60)) * time.Second,
-		ResultsRetention:   getRetentionEnv("RESULTS_RETENTION_DAYS", 7*24*time.Hour),
+		DatabaseURL:           getEnv("DATABASE_URL", ""),
+		EncryptionKeys:        getEnv("LLMPROXY_ENCRYPTION_KEYS", ""),
+		GRPCAddr:              getEnv("GRPC_ADDR", ":9090"),
+		GRPCMaxRecvMsgSize:    getIntEnv("GRPC_MAX_RECV_MSG_SIZE", 16*1024*1024),
+		HTTPAddr:              getEnv("HTTP_ADDR", ":8080"),
+		HTTPAPIEnabled:        getBoolEnv("HTTP_API_ENABLED", true),
+		HTTPAPITimeout:        getDurationEnv("HTTP_API_TIMEOUT", 5*time.Minute),
+		LogLevel:              getEnv("LOG_LEVEL", "info"),
+		ShutdownTimeout:       getDurationEnv("SHUTDOWN_TIMEOUT", 30*time.Second),
+		DBMaxConns:            int32(getIntEnv("DB_MAX_CONNS", 25)),
+		DBMinConns:            int32(getIntEnv("DB_MIN_CONNS", 5)),
+		RoutingReload:         time.Duration(getIntEnv("ROUTING_RELOAD_SECONDS", 60)) * time.Second,
+		AutoMigrate:           getBoolEnv("AUTO_MIGRATE", true),
+		MigrateTimeout:        getDurationEnv("MIGRATE_TIMEOUT", 3*time.Minute),
+		RedisAddr:             getEnv("REDIS_ADDR", ""),
+		RedisPassword:         getEnv("REDIS_PASSWORD", ""),
+		RedisDB:               getIntEnv("REDIS_DB", 0),
+		RedisKeyPrefix:        getEnv("REDIS_KEY_PREFIX", ""),
+		BootstrapAdminKey:     getEnv("BOOTSTRAP_ADMIN_KEY", ""),
+		UsageCollectorHost:    getEnv("USAGE_COLLECTOR_HOST", ""),
+		UsageProjectID:        getEnv("USAGE_PROJECT_ID", "llm-proxy"),
+		BatchMaxItems:         getIntEnv("BATCH_MAX_ITEMS", 10000),
+		BatchPollInterval:     time.Duration(getIntEnv("BATCH_POLL_SECONDS", 60)) * time.Second,
+		ResultsRetention:      getRetentionEnv("RESULTS_RETENTION_DAYS", 7*24*time.Hour),
 		NodeHeartbeatInterval: time.Duration(getIntEnv("NODE_HEARTBEAT_INTERVAL_SECONDS", 5)) * time.Second,
 		NodeHeartbeatTTL:      time.Duration(getIntEnv("NODE_HEARTBEAT_TTL_SECONDS", 15)) * time.Second,
 		NodeRetentionTTL:      getRetentionEnv("NODE_RETENTION_TTL_DAYS", 24*time.Hour),

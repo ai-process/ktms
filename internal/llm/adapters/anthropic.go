@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -272,7 +273,37 @@ func (a *AnthropicAdapter) contextToMessages(messages []*llm.Message, systemInst
 			for i < len(messages) && (messages[i].Type == llm.MessageTypeUser || messages[i].Type == llm.MessageTypeTool) {
 				m := messages[i]
 				if m.Type == llm.MessageTypeUser {
-					if strings.TrimSpace(m.Text) != "" {
+					if len(m.Parts) > 0 {
+						hasTextPart := false
+						for _, p := range m.Parts {
+							switch p.Type {
+							case llm.ContentPartTypeText:
+								if strings.TrimSpace(p.Text) != "" {
+									hasTextPart = true
+									blocks = append(blocks, anthropic.NewTextBlock(p.Text))
+								}
+							case llm.ContentPartTypeImage:
+								if len(p.Data) > 0 {
+									mime := p.MimeType
+									if mime == "" {
+										mime = "image/jpeg"
+									}
+									b64 := base64.StdEncoding.EncodeToString(p.Data)
+									blocks = append(blocks, anthropic.NewImageBlockBase64(mime, b64))
+								}
+							case llm.ContentPartTypeDocument:
+								if len(p.Data) > 0 {
+									b64 := base64.StdEncoding.EncodeToString(p.Data)
+									blocks = append(blocks, anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{
+										Data: b64,
+									}))
+								}
+							}
+						}
+						if !hasTextPart && strings.TrimSpace(m.Text) != "" {
+							blocks = append([]anthropic.ContentBlockParamUnion{anthropic.NewTextBlock(m.Text)}, blocks...)
+						}
+					} else if strings.TrimSpace(m.Text) != "" {
 						blocks = append(blocks, anthropic.NewTextBlock(m.Text))
 					}
 				} else if m.Type == llm.MessageTypeTool {

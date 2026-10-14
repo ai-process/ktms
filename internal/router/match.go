@@ -57,11 +57,12 @@ func MatchModality(snap *registry.Snapshot, effort, modalityKey, modality string
 }
 
 // FilterChain narrows a rule's chain to models that can serve this request:
-// right effort, google_search capability when asked for, and a vendor key
-// held by the calling client.
-func FilterChain(snap *registry.Snapshot, use []string, apiKeyID, effort string, needsGoogleSearch bool, requireCapability string) ([]*proxydb.Model, error) {
+// right effort, google_search capability when asked for, vendor key
+// held by the calling client, and all required capabilities.
+func FilterChain(snap *registry.Snapshot, use []string, apiKeyID, effort string, needsGoogleSearch bool, requireCapabilities ...string) ([]*proxydb.Model, error) {
 	var out []*proxydb.Model
 	sawCapable := false
+outer:
 	for _, id := range use {
 		m, ok := snap.Models[id]
 		if !ok { // disabled since the rule was written
@@ -73,9 +74,10 @@ func FilterChain(snap *registry.Snapshot, use []string, apiKeyID, effort string,
 		if needsGoogleSearch && !registry.HasCapability(m, registry.CapabilityGoogleSearch) {
 			continue
 		}
-		// Speech and image chains keep only models that declare the modality.
-		if requireCapability != "" && !registry.HasCapability(m, requireCapability) {
-			continue
+		for _, cap := range requireCapabilities {
+			if cap != "" && !registry.HasCapability(m, cap) {
+				continue outer
+			}
 		}
 		sawCapable = true
 		if _, hasKey := snap.VendorKey(apiKeyID, m.Vendor); !hasKey {
