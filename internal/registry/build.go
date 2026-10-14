@@ -88,11 +88,18 @@ func ConfigureOpenAI(a *adapters.OpenAIAdapter, m *proxydb.Model, engine string)
 func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 	noThrottle := llm.NewThrottleControl(0, 60)
 	switch m.Vendor {
-	case VendorOpenAI, VendorDeepSeek, VendorOllama:
+	case VendorOpenAI, VendorDeepSeek, VendorOllama, VendorGroq, VendorMistral:
 		opts := []option.RequestOption{option.WithAPIKey(key)}
 		endpoint := m.Endpoint
-		if endpoint == "" && m.Vendor == VendorDeepSeek {
-			endpoint = DeepSeekDefaultEndpoint
+		if endpoint == "" {
+			switch m.Vendor {
+			case VendorDeepSeek:
+				endpoint = DeepSeekDefaultEndpoint
+			case VendorGroq:
+				endpoint = GroqDefaultEndpoint
+			case VendorMistral:
+				endpoint = MistralDefaultEndpoint
+			}
 		}
 		if endpoint != "" {
 			opts = append(opts, option.WithBaseURL(endpoint))

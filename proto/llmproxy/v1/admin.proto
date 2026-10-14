@@ -11,7 +11,7 @@ option go_package = "github.com/ai-process/llm-proxy/gen/llmproxy/v1;llmproxyv1"
 // they are per-client rows managed via SetVendorKey.
 message ModelSpec {
   string id = 1; // unique registry id, referenced by rules and model_override
-  string vendor = 2; // openai | anthropic | google | deepseek | ollama | local | typesafe
+  string vendor = 2; // openai | anthropic | google | deepseek | ollama | local | typesafe | groq | mistral
   string endpoint = 3; // optional base-URL override
   repeated Effort efforts = 4; // tiers this model may serve
   repeated string capabilities = 5; // e.g. "google_search"
