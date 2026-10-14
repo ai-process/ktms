@@ -51,12 +51,16 @@ func NewAgent(cfg AgentConfig) *Agent {
 	}
 }
 
-func (a *Agent) Run(ctx context.Context) error {
-	creds := insecure.NewCredentials()
+// dialCredentials picks plaintext or system-root TLS for the proxy connection.
+func (a *Agent) dialCredentials() credentials.TransportCredentials {
 	if a.cfg.TLS {
-		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+		return credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 	}
-	conn, err := grpclib.DialContext(ctx, a.cfg.ProxyAddr, grpclib.WithTransportCredentials(creds))
+	return insecure.NewCredentials()
+}
+
+func (a *Agent) Run(ctx context.Context) error {
+	conn, err := grpclib.DialContext(ctx, a.cfg.ProxyAddr, grpclib.WithTransportCredentials(a.dialCredentials()))
 	if err != nil {
 		return fmt.Errorf("connect to proxy %s: %w", a.cfg.ProxyAddr, err)
 	}
