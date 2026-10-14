@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -20,17 +21,20 @@ import (
 )
 
 type AgentConfig struct {
-	ProxyAddr     string
-	TLS           bool // dial ProxyAddr over TLS with system roots, e.g. a load balancer on :443
-	NodeKey       string
-	NodeID        string
-	NodeName      string
-	EngineURL     string // where the agent itself polls the engine; local, never reported
-	Endpoint      string // address the proxy dials, as reported at registration
-	Engine        string
-	NodeAuthToken string
-	BaseWeight    float64
-	MaxConcurrent uint32
+	ProxyAddr      string
+	TLS            bool // dial ProxyAddr over TLS with system roots, e.g. a load balancer on :443
+	NodeKey        string
+	NodeID         string
+	NodeName       string
+	EngineURL      string // where the agent itself polls the engine; local, never reported
+	Endpoint       string // address the proxy dials, as reported at registration
+	Engine         string
+	NodeAuthToken  string // bearer the proxy presents to Endpoint; replaced by a generated key when exposing
+	EngineToken    string // bearer the engine itself requires, if any
+	Expose         string // ExposeNone or ExposeCloudflared
+	CloudflaredBin string
+	BaseWeight     float64
+	MaxConcurrent  uint32
 }
 
 type Agent struct {
@@ -40,7 +44,9 @@ type Agent struct {
 	drainChan chan struct{}
 	stopChan  chan struct{}
 	draining  bool
+	endpoint  string // currently reported address; changes when the tunnel restarts
 	mu        sync.Mutex
+	probe     func(ctx context.Context, url string) error
 }
 
 // ResolveURLs returns the engine URL to poll and the endpoint to report.
@@ -69,6 +75,8 @@ func NewAgent(cfg AgentConfig) *Agent {
 		inspector: GetInspector(cfg.Engine),
 		drainChan: make(chan struct{}, 1),
 		stopChan:  make(chan struct{}),
+		endpoint:  cfg.Endpoint,
+		probe:     httpProbe,
 	}
 }
 
@@ -78,6 +86,50 @@ func (a *Agent) dialCredentials() credentials.TransportCredentials {
 		return credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 	}
 	return insecure.NewCredentials()
+}
+
+// snapshot reads what the proxy tracks per node: engine models and GPU state.
+func (a *Agent) snapshot(ctx context.Context) ([]*pb.NodeModelSpec, *pb.NodeResources) {
+	models, err := a.inspector.Inspect(ctx, a.cfg.EngineURL, a.cfg.EngineToken)
+	if err != nil {
+		log.Warn().Err(err).Msg("engine inspection failed, reporting no models")
+	}
+	res := &pb.NodeResources{BaseWeight: a.cfg.BaseWeight, MaxConcurrent: a.cfg.MaxConcurrent}
+	if gpu, _ := ReadNvidiaSMI(ctx); gpu != nil {
+		res.VramTotalMb = gpu.TotalVRAMMB
+		res.VramFreeMb = gpu.FreeVRAMMB
+		res.GpuUtilPercent = gpu.UtilPercent
+		res.GpuTempC = gpu.TempC
+		res.GpuModel = gpu.ModelName
+	}
+	return models, res
+}
+
+func (a *Agent) register(ctx context.Context, models []*pb.NodeModelSpec, res *pb.NodeResources) (*pb.RegisterNodeResponse, error) {
+	a.mu.Lock()
+	endpoint, token := a.endpoint, a.cfg.NodeAuthToken
+	a.mu.Unlock()
+	return a.client.RegisterNode(ctx, &pb.RegisterNodeRequest{
+		NodeId:        a.cfg.NodeID,
+		Name:          a.cfg.NodeName,
+		Endpoint:      endpoint,
+		Engine:        a.cfg.Engine,
+		NodeAuthToken: token,
+		Resources:     res,
+		Models:        models,
+	})
+}
+
+func (a *Agent) currentEndpoint() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.endpoint
+}
+
+func (a *Agent) setEndpoint(u string) {
+	a.mu.Lock()
+	a.endpoint = u
+	a.mu.Unlock()
 }
 
 func (a *Agent) Run(ctx context.Context) error {
@@ -111,34 +163,28 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 	}()
 
-	// 1. Initial Inspection & Registration
-	models, err := a.inspector.Inspect(authCtx, a.cfg.EngineURL, a.cfg.NodeAuthToken)
+	// The gateway and tunnel must outlive drainAndExit: the proxy still sends requests while draining.
+	expCtx, stopExposure := context.WithCancel(ctx)
+	defer stopExposure()
+	urls, err := a.startExposure(expCtx)
 	if err != nil {
-		log.Warn().Err(err).Msg("failed initial engine inspection, registering with empty models")
+		return err
+	}
+	if urls != nil {
+		log.Info().Msg("waiting for the public tunnel address")
+		select {
+		case u := <-urls:
+			a.setEndpoint(u)
+		case <-time.After(2 * time.Minute):
+			return errors.New("cloudflared produced no public address within 2 minutes; check that this machine can reach Cloudflare (outbound port 7844) or use --expose=none")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 
-	gpu, _ := ReadNvidiaSMI(authCtx)
-	res := &pb.NodeResources{
-		BaseWeight:    a.cfg.BaseWeight,
-		MaxConcurrent: a.cfg.MaxConcurrent,
-	}
-	if gpu != nil {
-		res.VramTotalMb = gpu.TotalVRAMMB
-		res.VramFreeMb = gpu.FreeVRAMMB
-		res.GpuUtilPercent = gpu.UtilPercent
-		res.GpuTempC = gpu.TempC
-		res.GpuModel = gpu.ModelName
-	}
-
-	regResp, err := a.client.RegisterNode(authCtx, &pb.RegisterNodeRequest{
-		NodeId:        a.cfg.NodeID,
-		Name:          a.cfg.NodeName,
-		Endpoint:      a.cfg.Endpoint,
-		Engine:        a.cfg.Engine,
-		NodeAuthToken: a.cfg.NodeAuthToken,
-		Resources:     res,
-		Models:        models,
-	})
+	// 1. Initial Inspection & Registration
+	models, res := a.snapshot(authCtx)
+	regResp, err := a.register(authCtx, models, res)
 	if err != nil {
 		return fmt.Errorf("register node: %w", err)
 	}
@@ -148,11 +194,23 @@ func (a *Agent) Run(ctx context.Context) error {
 		interval = time.Duration(regResp.HeartbeatIntervalSeconds) * time.Second
 	}
 
-	log.Info().Str("node_id", a.cfg.NodeID).Dur("interval", interval).Msg("node registered successfully")
+	log.Info().Str("node_id", a.cfg.NodeID).Str("endpoint", a.currentEndpoint()).Dur("interval", interval).Msg("node registered successfully")
 
 	// 2. Heartbeat loop
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+
+	needRegister := false
+	reregister := func() {
+		models, res := a.snapshot(authCtx)
+		if _, err := a.register(authCtx, models, res); err != nil {
+			needRegister = true
+			log.Warn().Err(err).Msg("re-registration failed, will retry on the next heartbeat")
+			return
+		}
+		needRegister = false
+		log.Info().Str("endpoint", a.currentEndpoint()).Msg("node re-registered")
+	}
 
 	for {
 		select {
@@ -160,21 +218,12 @@ func (a *Agent) Run(ctx context.Context) error {
 			return a.unregister(authCtx)
 		case <-a.drainChan:
 			return a.drainAndExit(authCtx)
+		case u := <-urls: // nil when nothing is exposed
+			log.Info().Str("endpoint", u).Msg("tunnel address changed")
+			a.setEndpoint(u)
+			reregister()
 		case <-ticker.C:
-			// Inspect current models and GPU
-			currModels, _ := a.inspector.Inspect(authCtx, a.cfg.EngineURL, a.cfg.NodeAuthToken)
-			currGPU, _ := ReadNvidiaSMI(authCtx)
-			currRes := &pb.NodeResources{
-				BaseWeight:    a.cfg.BaseWeight,
-				MaxConcurrent: a.cfg.MaxConcurrent,
-			}
-			if currGPU != nil {
-				currRes.VramTotalMb = currGPU.TotalVRAMMB
-				currRes.VramFreeMb = currGPU.FreeVRAMMB
-				currRes.GpuUtilPercent = currGPU.UtilPercent
-				currRes.GpuTempC = currGPU.TempC
-				currRes.GpuModel = currGPU.ModelName
-			}
+			currModels, currRes := a.snapshot(authCtx)
 
 			a.mu.Lock()
 			draining := a.draining
@@ -193,15 +242,10 @@ func (a *Agent) Run(ctx context.Context) error {
 
 			if hbResp.ReRegisterRequired {
 				log.Info().Msg("proxy requested re-registration")
-				_, _ = a.client.RegisterNode(authCtx, &pb.RegisterNodeRequest{
-					NodeId:        a.cfg.NodeID,
-					Name:          a.cfg.NodeName,
-					Endpoint:      a.cfg.Endpoint,
-					Engine:        a.cfg.Engine,
-					NodeAuthToken: a.cfg.NodeAuthToken,
-					Resources:     currRes,
-					Models:        currModels,
-				})
+				needRegister = true
+			}
+			if needRegister {
+				reregister()
 			}
 
 			if hbResp.DrainRequested && !draining {

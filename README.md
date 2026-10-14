@@ -178,21 +178,31 @@ Or build the image yourself: `docker build -t llm-proxy .`
 
 `bin/llm-proxy-node` runs next to a local inference engine (`ollama`, `vllm`, `tgi`, `llamacpp`),
 registers it with the proxy and sends heartbeats with the loaded models and GPU metrics. It
-authenticates with a node key minted with the `MintNodeKey` admin RPC.
+authenticates with a node key minted with the `MintNodeKey` admin RPC. The proxy dials the node,
+so the node must be reachable; the agent can do that itself:
 
 ```bash
 export NODE_KEY=...                       # or --node-key-file
 ./bin/llm-proxy-node --proxy-addr proxy.example.com:443 --tls \
-  --engine ollama --endpoint http://127.0.0.1:11434
+  --engine ollama --expose=cloudflared    # needs the cloudflared binary
 ```
+
+With `--expose=cloudflared` the agent starts a localhost gateway in front of the engine and a
+Cloudflare quick tunnel in front of the gateway, registers the tunnel address, and registers
+again whenever the tunnel restarts and its address changes. The gateway checks a per-process
+access key (sent to the proxy as the node auth token, never printed) and forwards only
+`POST /v1/chat/completions` and `GET /v1/models`; pulling or deleting models is not reachable.
+Slow responses are kept alive with padding so the tunnel's 100 s idle cutoff does not drop them.
+Quick tunnels have no SLA; for a stable address use `--expose=none` and your own `--endpoint`.
 
 Flags: `--proxy-addr` (default `127.0.0.1:50051`), `--tls` (dial over TLS with the system CA
 roots, for a proxy behind a TLS load balancer; off by default), `--node-id` (defaults to the
 hostname), `--node-name`, `--engine`, `--base-weight`, `--max-concurrent`.
 `--engine-url` is where the agent itself polls the engine (default `http://127.0.0.1:11434`);
 `--endpoint` is the address reported to the proxy, which dials it (default: `--engine-url`).
-Set both when the proxy reaches the engine through a tunnel or gateway.
-`NODE_AUTH_TOKEN` is passed on to the engine when it requires one.
+`--expose` is `none` (default; you supply `--endpoint`) or `cloudflared`, with
+`--cloudflared-path` to pick the binary. `NODE_AUTH_TOKEN` is the bearer the engine itself
+requires, if any.
 
 ### Production checklist
 
