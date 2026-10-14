@@ -33,6 +33,7 @@ vendor is down, enforces rate and spend limits, and records usage.
   - [Production checklist](#production-checklist)
 - [Configuration reference](#configuration-reference)
 - [Setting it up: keys, models, rules](#setting-it-up-keys-models-rules)
+- [Run a node](#run-a-node)
 - [Web console](#web-console)
 - [Calling the proxy](#calling-the-proxy)
 - [OpenAI-compatible HTTP API](#openai-compatible-http-api)
@@ -376,6 +377,69 @@ Without such a rule the call fails with `FAILED_PRECONDITION no_capable_model`.
 
 Add a higher version to the keyring (`1:…,2:…`), redeploy, call `RotateEncryption` to
 re-encrypt every stored vendor key, then drop the old version.
+
+## Run a node
+
+Lend a machine's GPU to the proxy: an Apple Silicon Mac, or Linux with an NVIDIA card (or just a
+CPU, slowly). Three steps; no tunnels or service files to write by hand, and no admin rights on macOS.
+
+**1. Get a key.** Whoever runs the proxy mints one key per machine, bound to a node id, and gives
+you the key (`llm_node_...`), the node id and the proxy address. They also need a `local` model
+whose `id` is exactly the Ollama tag the node serves (`G` and `ADMIN` as in the quick start;
+drop `-plaintext` for a proxy behind TLS):
+
+```bash
+# admin, once per machine
+$G "$ADMIN" -d '{"name":"anna-mac","node_id":"anna-mac"}' \
+  proxy.example.com:443 llmproxy.v1.LLMProxyAdminService/MintNodeKey      # plain_key shown once
+
+# admin, once per model; no_thinking turns Gemma's reasoning off
+$G "$ADMIN" -d '{"model":{"id":"gemma4:26b-a4b-it-qat","vendor":"local",
+  "efforts":["EFFORT_LOW","EFFORT_MEDIUM"],"capabilities":["no_thinking"],
+  "queue_timeout_ms":2000,"enabled":true}}' \
+  proxy.example.com:443 llmproxy.v1.LLMProxyAdminService/UpsertModel
+```
+
+**2. Run one command** on the machine (replace the three values), and paste the key when asked.
+The input is hidden and the key is stored in a file only you can read:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ai-process/llm-proxy/vX.Y.Z/scripts/install-node.sh | sh -s -- \
+  --proxy proxy.example.com --node-id anna-mac --model gemma4:26b-a4b-it-qat
+```
+
+It downloads Ollama, the model and the node agent, starts them as background services and keeps
+the machine awake, and waits until the node has registered. Linux services start at boot. On a
+Mac they are login items: after a reboot the node comes back when its user logs in, so turn on
+automatic login for an unattended Mac. The model is large, so the first run takes a while. Add
+`--max-concurrency N` for a machine that can serve more than one request at a time (default 1).
+
+**3. Check.** The last lines say `Node anna-mac is running and registered`. The proxy admin
+confirms with `ListNodes` that the node is `HEALTHY` and has the model.
+
+Run the same command again to update; a re-run only restarts what changed, and a new agent that
+fails to start is rolled back. Remove everything with the same command plus `--uninstall`
+(downloaded models stay in `~/.ollama`).
+
+### If the node does not show up
+
+Run the same command with `--doctor`. It says in plain words what is wrong: Ollama not answering,
+the model missing or not loaded, Ollama on the CPU (an Intel build running through Rosetta), the
+proxy unreachable or `--tls` wrong, a key that is wrong or belongs to another node id, or a tunnel
+that cannot come up (outbound port 7844 blocked). Logs are in `~/.llm-proxy-node/logs/`.
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `Killed: 9`, or "Apple could not verify..." | The agent came through a browser download, which macOS quarantines. Use the `curl` command above; `curl` and `brew` files are not quarantined. |
+| Very slow, GPU idle | Intel Ollama through Rosetta, or no NVIDIA driver. The installer uses its own native Ollama and says when it ignores an Intel one. |
+| `key belongs to node "x"` | The key is bound to one machine. Use the node id it was minted for, or ask for a new key. |
+| Needs a new key | Re-run with `--new-key`. |
+| Address changed after a restart | Expected: quick tunnel addresses change, and the node re-registers by itself. |
+| Node is offline after a Mac reboot | macOS starts the services at login, not at boot. Log in, or enable automatic login (System Settings > Users & Groups). |
+| The machine sleeps | The services keep it awake while they run, on a Mac only while plugged in. Closing a laptop lid still sleeps it. |
+
+Installs on Linux need `zstd` (Ubuntu: `sudo apt install zstd`) and a normal login session
+(systemd user services). The installer script's other options are in `install-node.sh --help`.
 
 ## Web console
 
