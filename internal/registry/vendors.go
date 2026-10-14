@@ -1,6 +1,10 @@
 package registry
 
-import "github.com/ai-process/llm-proxy/internal/proxydb"
+import (
+	"strings"
+
+	"github.com/ai-process/llm-proxy/internal/proxydb"
+)
 
 // Vendors the engine can construct adapters for. DeepSeek and Ollama ride
 // the OpenAI adapter with a different base URL; Ollama is any self-hosted
@@ -49,9 +53,16 @@ const CapabilityNoStructuredOutput = "no_structured_output"
 // the way the vendor understands.
 const CapabilityNoThinking = "no_thinking"
 
-// thinkingOff are the request fields that turn a vendor's default reasoning
-// off: Ollama takes reasoning_effort, DeepSeek a thinking switch.
-func thinkingOff(vendor string) map[string]any {
+// ThinkingOff returns the request fields that turn a vendor's default
+// reasoning off: Ollama takes reasoning_effort, DeepSeek a thinking switch.
+// A local node is judged by its engine; engines without a known switch get none.
+func ThinkingOff(vendor, engine string) map[string]any {
+	if vendor == VendorLocal {
+		if strings.EqualFold(engine, VendorOllama) {
+			return map[string]any{"reasoning_effort": "none"}
+		}
+		return nil
+	}
 	if vendor == VendorOllama {
 		return map[string]any{"reasoning_effort": "none"}
 	}

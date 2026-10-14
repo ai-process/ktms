@@ -67,6 +67,22 @@ const (
 	openAITTSVoice = "marin"
 )
 
+// ConfigureOpenAI applies the model's capabilities to an OpenAI-compatible
+// adapter. Pool adapters pass the node's engine; direct vendors pass "".
+func ConfigureOpenAI(a *adapters.OpenAIAdapter, m *proxydb.Model, engine string) {
+	a.SetSoftSchema(SoftSchema(m))
+	if HasCapability(m, CapabilityNoThinking) {
+		a.SetThinkingOff(ThinkingOff(m.Vendor, engine))
+	}
+	// The registry id is the model to call, whichever modality it serves.
+	if HasCapability(m, CapabilityTTS) {
+		a.SetTTS(m.ID, openAITTSVoice)
+	}
+	if HasCapability(m, CapabilityImage) {
+		a.SetImageModel(m.ID)
+	}
+}
+
 // buildAdapter constructs the raw vendor adapter. In-process throttles are
 // no-ops: RPM and budgets are enforced in Redis, shared across replicas.
 func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
@@ -90,17 +106,7 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 			}
 			adapter.SetDecisionsConfig(decEndpoint, key)
 		}
-		adapter.SetSoftSchema(SoftSchema(m))
-		if HasCapability(m, CapabilityNoThinking) {
-			adapter.SetThinkingOff(thinkingOff(m.Vendor))
-		}
-		// The registry id is the model to call, whichever modality it serves.
-		if HasCapability(m, CapabilityTTS) {
-			adapter.SetTTS(m.ID, openAITTSVoice)
-		}
-		if HasCapability(m, CapabilityImage) {
-			adapter.SetImageModel(m.ID)
-		}
+		ConfigureOpenAI(adapter, m, "")
 		return adapter, nil
 	case VendorGoogle:
 		config := &genai.ClientConfig{APIKey: key, Backend: genai.BackendGeminiAPI}
