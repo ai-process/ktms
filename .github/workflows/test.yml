@@ -23,6 +23,9 @@ jobs:
       - name: Run tests
         run: go test -race ./...
 
+      - name: Installer script tests
+        run: sh scripts/install-node_test.sh
+
   docker:
     runs-on: ubuntu-latest
     steps:
