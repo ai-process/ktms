@@ -149,7 +149,8 @@ make_agent() { # version mode os arch
 	mkdir -p "$d" "$W/pack"
 	case $2 in
 	broken_start) body='[ "$1" = --version ] && exit 1; exit 0' ;;
-	never_registers) body="[ \"\$1\" = --version ] && { echo $1; exit 0; } # BROKEN
+	never_registers) body="[ \"\$1\" = doctor ] && echo DOCTOR-RAN:\$*
+[ \"\$1\" = --version ] && { echo $1; exit 0; } # BROKEN
 exit 0" ;;
 	*) body="[ \"\$1\" = --version ] && { echo $1; exit 0; }; exit 0" ;;
 	esac
@@ -312,6 +313,9 @@ OUT=$(run_install $ARGS --max-concurrency 2 --context 4096 --version v0.13.0)
 RC=$?
 if [ "$RC" != 0 ]; then ok "linux: agent that never registers fails"; else bad "linux: agent that never registers fails"; fi
 has "linux: rollback announced" "restoring the previous one" "$OUT"
+has "linux: failed start runs the doctor" "DOCTOR-RAN:doctor --proxy-addr llm-nodes.example.com:443" "$OUT"
+has "linux: doctor gets the model and the key file, never the key" "--model tiny:1b" "$OUT"
+hasnt "linux: doctor output never shows the key" "llm_node_test_key" "$OUT"
 eq "linux: rolled back to the working version" "0.11.0" "$("$BASE/bin/llm-proxy-node" --version)"
 
 make_agent 0.14.0 good linux amd64
