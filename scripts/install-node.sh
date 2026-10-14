@@ -503,6 +503,7 @@ do_uninstall() {
 	step "Removing the node"
 	for id in node ollama; do
 		svc_stop "$id"
+		[ "$OS" = linux ] && systemctl --user disable "$(svc_label "$id").service" >/dev/null 2>&1 || true
 		rm -f "$(svc_file "$id")"
 	done
 	[ "$OS" = linux ] && systemctl --user daemon-reload 2>/dev/null || true
@@ -525,6 +526,9 @@ Node $NODE_ID is running and registered.
   Update:  run the same command again
   Remove:  re-run with --uninstall
 EOF
+	if [ "$OS" = darwin ]; then
+		say "  Note:    on a Mac the node starts when you log in. For an unattended Mac turn on automatic login (System Settings > Users & Groups)."
+	fi
 }
 
 main() {
