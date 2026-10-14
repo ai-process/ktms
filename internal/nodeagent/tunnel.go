@@ -22,6 +22,7 @@ var quickTunnelURL = regexp.MustCompile(`https://[a-z0-9-]+\.trycloudflare\.com`
 type tunnelRunner struct {
 	binary string
 	probe  func(ctx context.Context, url string) error // proves the URL reaches the gateway
+	giveUp time.Duration                               // how long announce probes before sending anyway; 0 = 90s
 }
 
 func (t *tunnelRunner) run(ctx context.Context, localAddr string, out chan<- string) {
@@ -57,6 +58,11 @@ func (t *tunnelRunner) once(ctx context.Context, localAddr string, out chan<- st
 		return "", fmt.Errorf("start %s: %w", t.binary, err)
 	}
 
+	// Each run announces only while it is alive: a slow probe of a dead run's URL
+	// must not be sent after the next run's URL.
+	runCtx, endRun := context.WithCancel(ctx)
+	defer endRun()
+
 	var tail []string
 	announced := false
 	scanDone := make(chan struct{})
@@ -71,7 +77,7 @@ func (t *tunnelRunner) once(ctx context.Context, localAddr string, out chan<- st
 			}
 			if u := quickTunnelURL.FindString(line); u != "" && !announced {
 				announced = true
-				go t.announce(ctx, u, out)
+				go t.announce(runCtx, u, out)
 			}
 		}
 	}()
@@ -85,7 +91,11 @@ func (t *tunnelRunner) once(ctx context.Context, localAddr string, out chan<- st
 // announce waits until the tunnel answers end to end, so the proxy never gets
 // an address whose DNS has not propagated yet. On timeout it sends it anyway.
 func (t *tunnelRunner) announce(ctx context.Context, url string, out chan<- string) {
-	deadline := time.Now().Add(90 * time.Second)
+	giveUp := t.giveUp
+	if giveUp == 0 {
+		giveUp = 90 * time.Second
+	}
+	deadline := time.Now().Add(giveUp)
 	for t.probe != nil {
 		err := t.probe(ctx, url)
 		if err == nil {
@@ -100,6 +110,9 @@ func (t *tunnelRunner) announce(ctx context.Context, url string, out chan<- stri
 			return
 		case <-time.After(time.Second):
 		}
+	}
+	if ctx.Err() != nil {
+		return
 	}
 	select {
 	case out <- url:
