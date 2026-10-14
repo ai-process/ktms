@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+	"github.com/ai-process/llm-proxy/internal/guardrails"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/registry"
@@ -23,6 +24,31 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 	judgeReq, err := judgeRequestFromProto(req)
 	if err != nil {
 		return nil, err
+	}
+	var vault *guardrails.TokenVault
+	if s.guardrails != nil && s.guardrails.Enabled {
+		if s.guardrails.PIIAction == guardrails.ActionRedact {
+			vault = guardrails.NewTokenVault()
+		}
+		sanitizedState, _, err := s.guardrails.InspectText(judgeReq.StateJSON, vault)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+		}
+		judgeReq.StateJSON = sanitizedState
+		for _, q := range judgeReq.Questions {
+			sanitizedInst, _, err := s.guardrails.InspectText(q.Instructions, vault)
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+			}
+			q.Instructions = sanitizedInst
+			for i, opt := range q.Options {
+				sanitizedOpt, _, err := s.guardrails.InspectText(opt, vault)
+				if err != nil {
+					return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+				}
+				q.Options[i] = sanitizedOpt
+			}
+		}
 	}
 	plan, err := s.planMedia(ctx, req.GetAttributes(), req.GetModelOverride(), modalityJudge, registry.CapabilityJudge)
 	if err != nil {
@@ -63,6 +89,14 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 		MatchedRule:    plan.ruleName,
 	}
 	for id, ans := range out.Answers {
+		legend := ans.Legend
+		if vault != nil && len(legend) > 0 {
+			desan := make(map[string]string, len(legend))
+			for k, v := range legend {
+				desan[k] = vault.Desanitize(v)
+			}
+			legend = desan
+		}
 		resp.Answers[id] = &pb.JudgeAnswer{
 			Type:          judgeTypeToProto(ans.Type),
 			Choice:        ans.Choice,
@@ -70,7 +104,7 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 			Score:         ans.Score,
 			Probabilities: ans.Probabilities,
 			Confidence:    ans.Confidence,
-			Legend:        ans.Legend,
+			Legend:        legend,
 		}
 	}
 	return resp, nil

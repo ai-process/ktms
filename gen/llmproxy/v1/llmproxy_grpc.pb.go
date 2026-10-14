@@ -40,6 +40,7 @@ const (
 // "throttled:budget_user") — back off, do not hot-retry.
 // FAILED_PRECONDITION: "output_truncated" (raise max_output_tokens, do not
 // retry as-is), "no_capable_model", "no_vendor_key", "not_configured".
+// INVALID_ARGUMENT: "guardrail_violation" (PII or prompt injection detected).
 // INTERNAL "vendor_error" = terminal vendor failure.
 type LLMProxyServiceClient interface {
 	GenerateText(ctx context.Context, in *GenerateTextRequest, opts ...grpc.CallOption) (*GenerateTextResponse, error)
@@ -191,6 +192,7 @@ func (c *lLMProxyServiceClient) CancelBatch(ctx context.Context, in *CancelBatch
 // "throttled:budget_user") — back off, do not hot-retry.
 // FAILED_PRECONDITION: "output_truncated" (raise max_output_tokens, do not
 // retry as-is), "no_capable_model", "no_vendor_key", "not_configured".
+// INVALID_ARGUMENT: "guardrail_violation" (PII or prompt injection detected).
 // INTERNAL "vendor_error" = terminal vendor failure.
 type LLMProxyServiceServer interface {
 	GenerateText(context.Context, *GenerateTextRequest) (*GenerateTextResponse, error)

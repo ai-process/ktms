@@ -2,7 +2,11 @@ package llm
 
 import (
 	"bytes"
+	"strings"
 	"testing"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 func TestEstimateInputTokens_Multimodal(t *testing.T) {
@@ -51,3 +55,21 @@ func TestEstimateInputTokens_Multimodal(t *testing.T) {
 		t.Fatalf("expected 1701 tokens for multimodal parts, got %d", tokens)
 	}
 }
+
+func TestNoPIIInLogs(t *testing.T) {
+	var buf bytes.Buffer
+	origLogger := log.Logger
+	log.Logger = zerolog.New(&buf)
+	defer func() { log.Logger = origLogger }()
+
+	chat := NewChatContext()
+	sensitiveText := "confidential user payload credit-card-12345 user@example.com"
+	chat.AddUserMessage(sensitiveText)
+	chat.AddAssistantMessage(sensitiveText)
+	chat.AddToolMessage("call-1", sensitiveText)
+
+	if strings.Contains(buf.String(), sensitiveText) {
+		t.Fatalf("detected sensitive payload in logger output: %s", buf.String())
+	}
+}
+

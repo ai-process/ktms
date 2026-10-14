@@ -19,6 +19,7 @@ import (
 	"github.com/ai-process/llm-proxy/internal/config"
 	"github.com/ai-process/llm-proxy/internal/crypto"
 	"github.com/ai-process/llm-proxy/internal/grpcapi"
+	"github.com/ai-process/llm-proxy/internal/guardrails"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/logger"
 	"github.com/ai-process/llm-proxy/internal/nodes"
@@ -184,6 +185,11 @@ func main() {
 		c := cache.New(redisClient, keyring, cfg.CacheTTL, cfg.CacheMaxBytes, cfg.RedisKeyPrefix)
 		proxySrv.WithCache(c)
 		log.Info().Dur("ttl", cfg.CacheTTL).Int("max_bytes", cfg.CacheMaxBytes).Msg("response caching enabled")
+	}
+	if cfg.GuardrailsEnabled {
+		g := guardrails.New(cfg.GuardrailsEnabled, cfg.GuardrailsPIIAction, cfg.GuardrailsPromptInjectionAction)
+		proxySrv.WithGuardrails(g)
+		log.Info().Str("pii_action", cfg.GuardrailsPIIAction).Str("prompt_injection_action", cfg.GuardrailsPromptInjectionAction).Msg("guardrails enabled")
 	}
 
 	batchPoller := batch.NewPoller(db, loader, limiter, tracker, cfg.BatchPollInterval, cfg.ResultsRetention)

@@ -279,6 +279,10 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `CACHE_ENABLED` | `false` | Enable prompt and completion exact-match cache in Redis. |
 | `CACHE_TTL` | `1h` | Expiration time for cached responses. |
 | `CACHE_MAX_BYTES` | `1048576` | Maximum size in bytes of a single cached response (1MB). Responses exceeding this are not cached. |
+| `GUARDRAILS_ENABLED` | `false` | Enable input/output security guardrails (PII masking and prompt injection detection). |
+| `GUARDRAILS_PII_ACTION` | `block` | Action on detected PII: `block` (reject with `guardrail_violation`) or `redact` (mask with placeholders and desanitize in output). |
+| `GUARDRAILS_PROMPT_INJECTION_ACTION` | `block` | Action on detected prompt injection: `block` or `log`. |
+
 
 ## Setting it up: keys, models, rules
 
