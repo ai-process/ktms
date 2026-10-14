@@ -204,6 +204,12 @@ hostname), `--node-name`, `--engine`, `--base-weight`, `--max-concurrent`.
 `--cloudflared-path` to pick the binary. `NODE_AUTH_TOKEN` is the bearer the engine itself
 requires, if any.
 
+If a node does not show up or serves badly, `llm-proxy-node doctor` takes the same flags (plus
+`--model`) and says in plain words what is wrong: engine not answering, model missing or not
+loaded, Ollama on the CPU (an Intel build under Rosetta on Apple Silicon), proxy unreachable or
+needing/not needing `--tls`, a node key that is wrong or bound to another node id, or a tunnel
+that cannot come up. It changes nothing on the proxy and exits 1 if it finds a problem.
+
 ### Production checklist
 
 - **TLS.** The server speaks plaintext gRPC. Terminate TLS in front of it (Envoy, nginx

@@ -460,6 +460,20 @@ write_service() { # id program args... (stdin: nothing)
 	SVC_TMP=$out
 }
 
+# run_doctor explains a failed start in plain language. Best effort: an older agent may not have it.
+run_doctor() {
+	step "Diagnosing"
+	set -- doctor --proxy-addr "$PROXY" --node-id "$NODE_ID" --node-key-file "$BASE/key" \
+		--engine ollama --engine-url "http://$OLLAMA_ADDR" --model "$MODEL"
+	[ "$PLAINTEXT" = 1 ] || set -- "$@" --tls
+	if [ -n "$ENDPOINT" ]; then
+		set -- "$@" --endpoint "$ENDPOINT" --expose none
+	else
+		set -- "$@" --expose cloudflared --cloudflared-path "$BASE/bin/cloudflared"
+	fi
+	"$BASE/bin/llm-proxy-node" "$@" || true
+}
+
 registered_in_log() { # start-line
 	tail -n +"$(($1 + 1))" "$BASE/logs/node.log" 2>/dev/null | grep -q 'node registered successfully'
 }
@@ -574,6 +588,7 @@ main() {
 	install_service node "$SVC_TMP" && node_changed=1
 	if [ "$node_changed" = 1 ] || ! svc_running node; then
 		if ! start_node_and_wait; then
+			run_doctor
 			if [ "$AGENT_STAGED" = 1 ] && [ -x "$BASE/bin/llm-proxy-node.prev" ]; then
 				warn "The new node agent did not come up; restoring the previous one."
 				svc_stop node
@@ -581,7 +596,7 @@ main() {
 				svc_start node || true
 			fi
 			tail -n 15 "$BASE/logs/node.log" 2>/dev/null >&2 || true
-			die "the node did not register. Check the key and node id, and that $PROXY is reachable. Log: $BASE/logs/node.log"
+			die "the node did not register; the diagnosis above says why. Run it again any time: $BASE/bin/llm-proxy-node doctor --help. Log: $BASE/logs/node.log"
 		fi
 	fi
 	print_status
