@@ -11,6 +11,7 @@ import (
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 	"github.com/ai-process/llm-proxy/internal/apikeys"
+	"github.com/ai-process/llm-proxy/internal/guardrails"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/registry"
@@ -38,6 +39,7 @@ type ProxyServer struct {
 	snapshots     SnapshotProvider
 	throttle      router.Throttle
 	cache         TextCache
+	guardrails    *guardrails.Guardrails
 	batchStore    BatchStore
 	batchMaxItems int
 }
@@ -51,6 +53,17 @@ func (s *ProxyServer) WithCache(c TextCache) *ProxyServer {
 // Cache returns the configured response cache.
 func (s *ProxyServer) Cache() TextCache {
 	return s.cache
+}
+
+// WithGuardrails configures guardrails on the server.
+func (s *ProxyServer) WithGuardrails(g *guardrails.Guardrails) *ProxyServer {
+	s.guardrails = g
+	return s
+}
+
+// Guardrails returns the configured guardrails.
+func (s *ProxyServer) Guardrails() *guardrails.Guardrails {
+	return s.guardrails
 }
 
 // Reserved attribute names. Callers may set usage_project when one api key
@@ -153,6 +166,15 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 	}
 
 	chat := buildChat(req, id, ruleName, effort)
+	var vault *guardrails.TokenVault
+	if s.guardrails != nil && s.guardrails.Enabled {
+		if s.guardrails.PIIAction == guardrails.ActionRedact {
+			vault = guardrails.NewTokenVault()
+		}
+		if _, err := s.guardrails.InspectChatContext(ctx, chat, vault); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+		}
+	}
 	resp, model, err := router.Execute(ctx, s.throttle, router.Request{
 		Chain:      models,
 		KeyName:    id.Name,
@@ -176,15 +198,23 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		MatchedRule:    ruleName,
 	}
 	for i, choice := range resp.Choices {
-		out.Choices = append(out.Choices, choice.Text)
+		choiceText := choice.Text
+		if vault != nil {
+			choiceText = vault.Desanitize(choiceText)
+		}
+		out.Choices = append(out.Choices, choiceText)
 		var tcs []*pb.ToolCall
 		for _, tc := range choice.ToolCalls {
+			args := tc.Function.Arguments
+			if vault != nil && args != "" {
+				args = vault.DesanitizeJSON(args)
+			}
 			tcs = append(tcs, &pb.ToolCall{
 				Id:   tc.ID,
 				Type: tc.Type,
 				Function: &pb.FunctionCall{
 					Name:      tc.Function.Name,
-					Arguments: tc.Function.Arguments,
+					Arguments: args,
 				},
 			})
 		}
@@ -194,7 +224,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		}
 		out.Details = append(out.Details, &pb.Choice{
 			Index:        int32(i),
-			Text:         choice.Text,
+			Text:         choiceText,
 			ToolCalls:    tcs,
 			FinishReason: finish,
 		})
@@ -288,6 +318,19 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 
 	chat := buildChat(inner, id, ruleName, effort)
 	var (
+		vault    *guardrails.TokenVault
+		streamer *guardrails.StreamDesanitizer
+	)
+	if s.guardrails != nil && s.guardrails.Enabled {
+		if s.guardrails.PIIAction == guardrails.ActionRedact {
+			vault = guardrails.NewTokenVault()
+			streamer = guardrails.NewStreamDesanitizer(vault)
+		}
+		if _, err := s.guardrails.InspectChatContext(stream.Context(), chat, vault); err != nil {
+			return status.Errorf(codes.InvalidArgument, "%s", err.Error())
+		}
+	}
+	var (
 		sentFirst       bool
 		streamText      strings.Builder
 		streamToolCalls = make(map[int32]*pb.ToolCall)
@@ -307,14 +350,21 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 	}, func(m *proxydb.Model, chunk llm.StreamChunk) error {
 		streamModel = m.ID
 		streamVendor = m.Vendor
-		if chunk.Delta != "" {
-			streamText.WriteString(chunk.Delta)
+		delta := chunk.Delta
+		if streamer != nil && delta != "" {
+			delta = streamer.ProcessChunk(delta)
+		}
+		if streamer != nil && chunk.FinishReason != "" {
+			delta += streamer.Flush()
+		}
+		if delta != "" {
+			streamText.WriteString(delta)
 		}
 		if chunk.FinishReason != "" {
 			streamFinish = chunk.FinishReason
 		}
 		outChunk := &pb.GenerateTextChunk{
-			Delta:        chunk.Delta,
+			Delta:        delta,
 			FinishReason: chunk.FinishReason,
 		}
 		if !sentFirst {
@@ -331,12 +381,16 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 			streamUsage = outChunk.Usage
 		}
 		for _, tc := range chunk.ToolCallChunks {
+			argDelta := tc.ArgumentsDelta
+			if vault != nil && argDelta != "" {
+				argDelta = vault.Desanitize(argDelta)
+			}
 			outChunk.ToolCallChunks = append(outChunk.ToolCallChunks, &pb.ToolCallChunk{
 				Index:          tc.Index,
 				Id:             tc.ID,
 				Type:           tc.Type,
 				Name:           tc.Name,
-				ArgumentsDelta: tc.ArgumentsDelta,
+				ArgumentsDelta: argDelta,
 			})
 			t, ok := streamToolCalls[tc.Index]
 			if !ok {
@@ -359,7 +413,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 					t.Function.Name += tc.Name
 				}
 			}
-			t.Function.Arguments += tc.ArgumentsDelta
+			t.Function.Arguments += argDelta
 		}
 		return stream.Send(outChunk)
 	})

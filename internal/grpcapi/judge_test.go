@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+	"github.com/ai-process/llm-proxy/internal/guardrails"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/registry"
@@ -507,3 +508,65 @@ func TestJudgeFallsBackFromUnsupportedJudgeModel(t *testing.T) {
 		t.Errorf("errOnly = %v, want FailedPrecondition no_capable_model", errOnly)
 	}
 }
+
+func TestJudgeGuardrailsBlock(t *testing.T) {
+	fake := &fakeJudge{}
+	srv := httptest.NewServer(http.HandlerFunc(fake.handler))
+	defer srv.Close()
+
+	model := judgeModel("typesafe-1", srv.URL)
+	rule := judgeRule("typesafe-1")
+	s := newJudgeServer(t, []*proxydb.Model{model}, []*proxydb.Rule{rule}, nil)
+	s.WithGuardrails(guardrails.New(true, "block", "block"))
+
+	_, err := s.Judge(testIdentity(), &pb.JudgeRequest{
+		StateJson: `{"user_email":"leak@domain.com"}`,
+		Questions: map[string]*pb.JudgeQuestion{
+			"is_answer": {Type: pb.JudgeType_JUDGE_TYPE_NOUL, Instructions: "is user valid?"},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected guardrail error, got nil")
+	}
+	if status.Code(err) != codes.InvalidArgument || !strings.Contains(err.Error(), "guardrail_violation") {
+		t.Errorf("expected InvalidArgument with guardrail_violation, got %v", err)
+	}
+	if fake.count() != 0 {
+		t.Errorf("vendor should not be called, got %d calls", fake.count())
+	}
+}
+
+func TestJudgeGuardrailsRedact(t *testing.T) {
+	fake := &fakeJudge{}
+	srv := httptest.NewServer(http.HandlerFunc(fake.handler))
+	defer srv.Close()
+
+	model := judgeModel("typesafe-1", srv.URL)
+	rule := judgeRule("typesafe-1")
+	s := newJudgeServer(t, []*proxydb.Model{model}, []*proxydb.Rule{rule}, nil)
+	s.WithGuardrails(guardrails.New(true, "redact", "block"))
+
+	resp, err := s.Judge(testIdentity(), &pb.JudgeRequest{
+		StateJson: `{"user_email":"leak@domain.com"}`,
+		Questions: map[string]*pb.JudgeQuestion{
+			"is_answer": {Type: pb.JudgeType_JUDGE_TYPE_NOUL, Instructions: "is user valid?"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+	if fake.count() != 1 {
+		t.Fatalf("vendor calls = %d, want 1", fake.count())
+	}
+	body := fake.bodies[0]
+	if strings.Contains(body, "leak@domain.com") {
+		t.Errorf("vendor received unredacted PII in state: %s", body)
+	}
+	if !strings.Contains(body, "[EMAIL_1]") {
+		t.Errorf("vendor expected [EMAIL_1] in state: %s", body)
+	}
+}
+

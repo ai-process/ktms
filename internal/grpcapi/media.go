@@ -8,6 +8,7 @@ import (
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 	"github.com/ai-process/llm-proxy/internal/apikeys"
+	"github.com/ai-process/llm-proxy/internal/guardrails"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/registry"
@@ -33,6 +34,18 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 	if req.GetText() == "" {
 		return nil, status.Error(codes.InvalidArgument, "bad_request: text is empty")
 	}
+	speechText := req.GetText()
+	if s.guardrails != nil && s.guardrails.Enabled {
+		var vault *guardrails.TokenVault
+		if s.guardrails.PIIAction == guardrails.ActionRedact {
+			vault = guardrails.NewTokenVault()
+		}
+		redacted, _, err := s.guardrails.InspectText(speechText, vault)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+		}
+		speechText = redacted
+	}
 	plan, err := s.planMedia(ctx, req.GetAttributes(), req.GetModelOverride(), modalityTTS, registry.CapabilityTTS)
 	if err != nil {
 		return nil, err
@@ -45,7 +58,7 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 		UserID:  router.UserID(plan.attrs, plan.identity.Name),
 		// Input-side estimate only; Settle replaces it with what the vendor
 		// billed, which for speech is audio tokens and far larger.
-		Estimate: int64(len([]rune(req.GetText()))/4 + 1),
+		Estimate: int64(len([]rune(speechText))/4 + 1),
 		Adapter:  plan.adapter,
 		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			synth, ok := adapter.(llm.SpeechSynthesizer)
@@ -55,7 +68,7 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 				return llm.TokensUsage{}, status.Errorf(codes.FailedPrecondition,
 					"no_capable_model: %s cannot synthesize speech", m.ID)
 			}
-			res, err := synth.SynthesizeSpeech(ctx, req.GetText(), req.GetLanguage(), router.UserID(plan.attrs, plan.identity.Name), plan.meta)
+			res, err := synth.SynthesizeSpeech(ctx, speechText, req.GetLanguage(), router.UserID(plan.attrs, plan.identity.Name), plan.meta)
 			if err != nil {
 				return llm.TokensUsage{}, err
 			}
@@ -82,6 +95,18 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 	if req.GetPrompt() == "" {
 		return nil, status.Error(codes.InvalidArgument, "bad_request: prompt is empty")
 	}
+	prompt := req.GetPrompt()
+	if s.guardrails != nil && s.guardrails.Enabled {
+		var vault *guardrails.TokenVault
+		if s.guardrails.PIIAction == guardrails.ActionRedact {
+			vault = guardrails.NewTokenVault()
+		}
+		redacted, _, err := s.guardrails.InspectText(prompt, vault)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+		}
+		prompt = redacted
+	}
 	plan, err := s.planMedia(ctx, req.GetAttributes(), req.GetModelOverride(), modalityImage, registry.CapabilityImage)
 	if err != nil {
 		return nil, err
@@ -94,7 +119,7 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 		UserID:  router.UserID(plan.attrs, plan.identity.Name),
 		// Input-side estimate only; image output tokens dwarf it, so Settle is
 		// what makes the budget accounting true.
-		Estimate: int64(len([]rune(req.GetPrompt()))/4 + 1),
+		Estimate: int64(len([]rune(prompt))/4 + 1),
 		Adapter:  plan.adapter,
 		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			gen, ok := adapter.(llm.ImageGenerator)
@@ -102,7 +127,7 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 				return llm.TokensUsage{}, status.Errorf(codes.FailedPrecondition,
 					"no_capable_model: %s cannot generate images", m.ID)
 			}
-			res, err := gen.GenerateImage(ctx, req.GetPrompt(), router.UserID(plan.attrs, plan.identity.Name), plan.meta)
+			res, err := gen.GenerateImage(ctx, prompt, router.UserID(plan.attrs, plan.identity.Name), plan.meta)
 			if err != nil {
 				return llm.TokensUsage{}, err
 			}
