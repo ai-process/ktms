@@ -775,3 +775,44 @@ func TestGenerateTextStream_Cache(t *testing.T) {
 		t.Errorf("vendor calls after unary hit = %d, want 1", vendor.count())
 	}
 }
+
+func TestGenerateTextWeightedRouting(t *testing.T) {
+	v1 := &fakeVendor{reply: "from-m1"}
+	s1 := httptest.NewServer(http.HandlerFunc(v1.handler))
+	defer s1.Close()
+
+	v2 := &fakeVendor{reply: "from-m2"}
+	s2 := httptest.NewServer(http.HandlerFunc(v2.handler))
+	defer s2.Close()
+
+	models := []*proxydb.Model{
+		testModel("m1", registry.VendorOpenAI, s1.URL, registry.EffortLow),
+		testModel("m2", registry.VendorOpenAI, s2.URL, registry.EffortLow),
+	}
+	rules := []*proxydb.Rule{{
+		Name:       "weighted-canary",
+		Priority:   0,
+		Effort:     "",
+		Attributes: map[string]string{},
+		Enabled:    true,
+		Use:        []string{"m1", "m2"},
+		Weights:    []int32{50, 50},
+	}}
+
+	s := newTestServer(t, models, rules, nil)
+
+	for i := 0; i < 50; i++ {
+		_, err := s.GenerateText(testIdentity(), &pb.GenerateTextRequest{
+			Effort:   pb.Effort_EFFORT_LOW,
+			Messages: []*pb.ChatMessage{{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: "hello"}},
+		})
+		if err != nil {
+			t.Fatalf("call %d failed: %v", i, err)
+		}
+	}
+
+	if v1.count() == 0 || v2.count() == 0 {
+		t.Errorf("expected both vendors to be called under 50/50 weights, got v1=%d v2=%d", v1.count(), v2.count())
+	}
+}
+

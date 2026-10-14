@@ -214,6 +214,7 @@ type RuleSpec struct {
 	Attributes    map[string]string      `protobuf:"bytes,4,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // equality predicates over request attributes
 	Use           []string               `protobuf:"bytes,5,rep,name=use,proto3" json:"use,omitempty"`                                                                                         // ordered fallback chain of model ids, cheaper-first
 	Enabled       bool                   `protobuf:"varint,6,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Weights       []int32                `protobuf:"varint,7,rep,packed,name=weights,proto3" json:"weights,omitempty"` // traffic weights per model in use; empty means deterministic (100% on use[0])
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -288,6 +289,13 @@ func (x *RuleSpec) GetEnabled() bool {
 		return x.Enabled
 	}
 	return false
+}
+
+func (x *RuleSpec) GetWeights() []int32 {
+	if x != nil {
+		return x.Weights
+	}
+	return nil
 }
 
 type UpsertModelRequest struct {
@@ -2408,7 +2416,7 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"\aenabled\x18\v \x01(\bR\aenabled\x12\x1b\n" +
 	"\trpm_burst\x18\x10 \x01(\x05R\brpmBurst\x12(\n" +
 	"\x10queue_timeout_ms\x18\x11 \x01(\x05R\x0equeueTimeoutMs\x12.\n" +
-	"\x13budget_grace_margin\x18\x12 \x01(\x01R\x11budgetGraceMargin\"\x99\x02\n" +
+	"\x13budget_grace_margin\x18\x12 \x01(\x01R\x11budgetGraceMargin\"\xb3\x02\n" +
 	"\bRuleSpec\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
 	"\bpriority\x18\x02 \x01(\x05R\bpriority\x12+\n" +
@@ -2417,7 +2425,8 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"attributes\x18\x04 \x03(\v2%.llmproxy.v1.RuleSpec.AttributesEntryR\n" +
 	"attributes\x12\x10\n" +
 	"\x03use\x18\x05 \x03(\tR\x03use\x12\x18\n" +
-	"\aenabled\x18\x06 \x01(\bR\aenabled\x1a=\n" +
+	"\aenabled\x18\x06 \x01(\bR\aenabled\x12\x18\n" +
+	"\aweights\x18\a \x03(\x05R\aweights\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"B\n" +

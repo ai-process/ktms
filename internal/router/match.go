@@ -2,9 +2,60 @@
 package router
 
 import (
+	"crypto/rand"
+	"math/big"
+
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/registry"
 )
+
+// ResolveChain returns the model chain for a rule, selecting the primary
+// candidate via weights when defined while retaining remaining fallbacks in order.
+func ResolveChain(rule *proxydb.Rule) []string {
+	if rule == nil {
+		return nil
+	}
+	if len(rule.Use) <= 1 || len(rule.Weights) != len(rule.Use) {
+		return rule.Use
+	}
+
+	var totalWeight int64
+	for _, w := range rule.Weights {
+		if w > 0 {
+			totalWeight += int64(w)
+		}
+	}
+	if totalWeight <= 0 {
+		return rule.Use
+	}
+
+	n, err := rand.Int(rand.Reader, big.NewInt(totalWeight))
+	if err != nil {
+		return rule.Use
+	}
+
+	val := n.Int64()
+	var cumulative int64
+	selectedIdx := 0
+	for i, w := range rule.Weights {
+		if w > 0 {
+			cumulative += int64(w)
+			if val < cumulative {
+				selectedIdx = i
+				break
+			}
+		}
+	}
+
+	chain := make([]string, 0, len(rule.Use))
+	chain = append(chain, rule.Use[selectedIdx])
+	for i, m := range rule.Use {
+		if i != selectedIdx {
+			chain = append(chain, m)
+		}
+	}
+	return chain
+}
 
 // Match returns the first rule (priority desc) whose predicates all hold:
 // effort equal (or rule matches any) and every rule attribute pair equal to

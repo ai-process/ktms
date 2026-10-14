@@ -168,7 +168,7 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 			return nil, status.Errorf(codes.FailedPrecondition,
 				"no_capable_model: no %s rule configured", modality)
 		}
-		chain = rule.Use
+		chain = router.ResolveChain(rule)
 		ruleName = rule.Name
 	}
 
