@@ -725,13 +725,26 @@ Pull requests are welcome; read [`CONTRIBUTING.md`](CONTRIBUTING.md) first.
 
 ### Releasing
 
-Pushing a git tag builds and publishes a multi-arch image to Docker Hub as
-`coyl/llm-proxy:<tag>` (and `latest` for semver tags). The repository needs the secrets
-`DOCKER_USERNAME` and `DOCKER_PASSWORD` (a Docker Hub access token).
+Push a `vX.Y.Z` tag (the `v` matters: it makes the tag a valid Go module version, so
+`go install github.com/ai-process/llm-proxy/cmd/node-agent@vX.Y.Z` works):
 
 ```bash
-git tag 0.1.0 && git push origin 0.1.0
+git tag v0.10.0 && git push origin v0.10.0
 ```
+
+- **GitHub Release** (GoReleaser, `.github/workflows/release.yml`): `llm-proxy-node` and
+  `llm-proxy-server` archives for darwin and linux, amd64 and arm64, plus `checksums.txt`.
+- **Docker Hub** (`.github/workflows/docker-publish.yml`): multi-arch `coyl/llm-proxy:<tag>`
+  (server) and `coyl/llm-proxy-node:<tag>` (node agent), and `latest` for semver tags. The
+  repository needs the secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD` (an access token).
+- **Optional, off until their secrets exist:** macOS signing and notarization
+  (`MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_ISSUER_ID`, `MACOS_NOTARY_KEY_ID`,
+  `MACOS_NOTARY_KEY`) and a Homebrew formula pushed to `ai-process/homebrew-tap`
+  (`HOMEBREW_TAP_TOKEN`; the tap repository must exist). Without them the release is unsigned.
+  Binaries fetched with `curl` or installed by `brew` carry no quarantine flag and run;
+  only browser downloads trigger Gatekeeper.
+
+Dry run: `go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean --skip=publish`.
 
 ## License
 

@@ -1,6 +1,7 @@
 name: Publish Docker image
 
-# Every pushed tag becomes an image on Docker Hub: coyl/llm-proxy:<tag>.
+# Every pushed tag becomes images on Docker Hub: coyl/llm-proxy:<tag> (server)
+# and coyl/llm-proxy-node:<tag> (node agent).
 # Needs the repository secrets DOCKER_USERNAME and DOCKER_PASSWORD (an access token).
 on:
   push:
@@ -10,6 +11,13 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - image: coyl/llm-proxy
+            dockerfile: Dockerfile
+          - image: coyl/llm-proxy-node
+            dockerfile: Dockerfile.node-agent
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +34,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: coyl/llm-proxy
+          images: ${{ matrix.image }}
           tags: |
             type=ref,event=tag
             type=semver,pattern={{version}}
@@ -37,11 +45,12 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
           provenance: false
           sbom: false
