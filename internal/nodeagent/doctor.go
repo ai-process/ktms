@@ -154,6 +154,7 @@ func (d *Doctor) checkEngine(ctx context.Context) (models []*pb.NodeModelSpec, f
 	}
 
 	models, err = GetInspector(d.Cfg.Engine).Inspect(ctx, d.Cfg.EngineURL, d.Cfg.EngineToken)
+	models = FilterModels(models, d.Cfg.OnlyModels)
 	if err != nil {
 		return nil, []Finding{{"Engine", LevelProblem, "The engine answers but its model list cannot be read: " + shortErr(err), "Check that --engine matches what is running at " + d.Cfg.EngineURL + "."}}, false
 	}

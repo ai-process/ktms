@@ -29,9 +29,10 @@ type AgentConfig struct {
 	EngineURL      string // where the agent itself polls the engine; local, never reported
 	Endpoint       string // address the proxy dials, as reported at registration
 	Engine         string
-	NodeAuthToken  string // bearer the proxy presents to Endpoint; replaced by a generated key when exposing
-	EngineToken    string // bearer the engine itself requires, if any
-	Expose         string // ExposeNone or ExposeCloudflared
+	NodeAuthToken  string   // bearer the proxy presents to Endpoint; replaced by a generated key when exposing
+	EngineToken    string   // bearer the engine itself requires, if any
+	OnlyModels     []string // when set, report only these engine models
+	Expose         string   // ExposeNone or ExposeCloudflared
 	CloudflaredBin string
 	BaseWeight     float64
 	MaxConcurrent  uint32
@@ -94,6 +95,7 @@ func (a *Agent) snapshot(ctx context.Context) ([]*pb.NodeModelSpec, *pb.NodeReso
 	if err != nil {
 		log.Warn().Err(err).Msg("engine inspection failed, reporting no models")
 	}
+	models = FilterModels(models, a.cfg.OnlyModels)
 	res := &pb.NodeResources{BaseWeight: a.cfg.BaseWeight, MaxConcurrent: a.cfg.MaxConcurrent}
 	if gpu, _ := ReadNvidiaSMI(ctx); gpu != nil {
 		res.VramTotalMb = gpu.TotalVRAMMB
@@ -103,6 +105,24 @@ func (a *Agent) snapshot(ctx context.Context) ([]*pb.NodeModelSpec, *pb.NodeReso
 		res.GpuModel = gpu.ModelName
 	}
 	return models, res
+}
+
+// FilterModels keeps only the allowed models; an empty allow list keeps all.
+// An engine shared with other tools would otherwise advertise models this node must not serve.
+func FilterModels(models []*pb.NodeModelSpec, allow []string) []*pb.NodeModelSpec {
+	if len(allow) == 0 {
+		return models
+	}
+	var kept []*pb.NodeModelSpec
+	for _, m := range models {
+		for _, name := range allow {
+			if sameModel(m.GetModelId(), name) || sameModel(m.GetRemoteModelName(), name) {
+				kept = append(kept, m)
+				break
+			}
+		}
+	}
+	return kept
 }
 
 func (a *Agent) register(ctx context.Context, models []*pb.NodeModelSpec, res *pb.NodeResources) (*pb.RegisterNodeResponse, error) {

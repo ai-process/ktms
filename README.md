@@ -199,6 +199,8 @@ Quick tunnels have no SLA; for a stable address use `--expose=none` and your own
 Flags: `--proxy-addr` (default `127.0.0.1:50051`), `--tls` (dial over TLS with the system CA
 roots, for a proxy behind a TLS load balancer; off by default), `--node-id` (defaults to the
 hostname), `--node-name`, `--engine`, `--base-weight`, `--max-concurrent`.
+`--only-model` (repeatable) reports only the named models to the proxy, for an engine that
+shares its model directory with other tools; by default every model the engine has is reported.
 `--engine-url` is where the agent itself polls the engine (default `http://127.0.0.1:11434`);
 `--endpoint` is the address reported to the proxy, which dials it (default: `--engine-url`).
 `--expose` is `none` (default; you supply `--endpoint`) or `cloudflared`, with
