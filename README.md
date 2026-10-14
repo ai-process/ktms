@@ -276,6 +276,9 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `SENTRY_ENABLE_TRACING` | `false` | Sentry performance tracing. |
 | `OTEL_SERVICE_NAME` | `llm-proxy` | Service name reported in OpenTelemetry traces. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | OTLP gRPC endpoint (`host:port`) for distributed tracing; empty disables remote export. |
+| `CACHE_ENABLED` | `false` | Enable prompt and completion exact-match cache in Redis. |
+| `CACHE_TTL` | `1h` | Expiration time for cached responses. |
+| `CACHE_MAX_BYTES` | `1048576` | Maximum size in bytes of a single cached response (1MB). Responses exceeding this are not cached. |
 
 ## Setting it up: keys, models, rules
 

@@ -31,6 +31,14 @@ func (s *Snapshot) SetNodePool(np NodePoolResolver) {
 	s.nodePool = np
 }
 
+// Tracker returns the usage tracker configured on the snapshot.
+func (s *Snapshot) Tracker() llm.UsageTracker {
+	if s == nil {
+		return nil
+	}
+	return s.tracker
+}
+
 // UserRateLimit returns the rate limit override for a user and model, or for the user wildcard "*".
 func (s *Snapshot) UserRateLimit(userID, modelID string) *proxydb.UserRateLimit {
 	if s == nil || s.UserRateLimits == nil || userID == "" {

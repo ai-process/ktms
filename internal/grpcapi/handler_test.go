@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 
+	"time"
+
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
@@ -19,6 +21,8 @@ import (
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 	"github.com/ai-process/llm-proxy/internal/apikeys"
+	"github.com/ai-process/llm-proxy/internal/cache"
+	"github.com/ai-process/llm-proxy/internal/crypto"
 	usagev1 "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1"
 
 	"github.com/ai-process/llm-proxy/internal/proxydb"
@@ -603,5 +607,171 @@ func TestGenerateText_ServiceCallerBudgetCheck(t *testing.T) {
 	_, err := s.GenerateText(testIdentity(), req)
 	if status.Code(err) != codes.ResourceExhausted || status.Convert(err).Message() != "throttled:budget_user" {
 		t.Fatalf("err = %v, want ResourceExhausted throttled:budget_user", err)
+	}
+}
+
+func testCacheKeyring(t *testing.T) *crypto.Keyring {
+	t.Helper()
+	kr, err := crypto.ParseKeyring("1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+	if err != nil {
+		t.Fatalf("ParseKeyring: %v", err)
+	}
+	return kr
+}
+
+func TestGenerateText_Cache(t *testing.T) {
+	vendor := &fakeVendor{reply: "cached response"}
+	srv := httptest.NewServer(http.HandlerFunc(vendor.handler))
+	defer srv.Close()
+
+	mr := miniredis.RunT(t)
+	rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rClient.Close() })
+
+	c := cache.New(rClient, testCacheKeyring(t), time.Hour, 1024*1024, "test")
+	tracker := &fakeTracker{}
+	models := []*proxydb.Model{testModel("m1", registry.VendorOpenAI, srv.URL, registry.EffortLow, registry.EffortMedium)}
+	keys := map[string]map[string]string{"key1": {registry.VendorOpenAI: "sk-test"}}
+	snap := registry.NewSnapshotForTest(models, catchAllRules("m1"), keys, tracker)
+	s := NewProxyServer(fixedSnapshot{snap}, throttle.New(rClient, "t")).WithCache(c)
+
+	req := &pb.GenerateTextRequest{
+		Effort:      pb.Effort_EFFORT_LOW,
+		Messages:    []*pb.ChatMessage{{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: "hello world"}},
+		EnableCache: true,
+	}
+
+	// First call: Cache miss, hits vendor
+	resp1, err := s.GenerateText(testIdentity(), req)
+	if err != nil {
+		t.Fatalf("first call failed: %v", err)
+	}
+	if resp1.Cached {
+		t.Errorf("first call should not be marked cached")
+	}
+	if resp1.Choices[0] != "cached response" {
+		t.Errorf("got %q, want %q", resp1.Choices[0], "cached response")
+	}
+	if vendor.count() != 1 {
+		t.Errorf("vendor calls = %d, want 1", vendor.count())
+	}
+	if len(tracker.list()) != 1 {
+		t.Fatalf("tracker events = %d, want 1", len(tracker.list()))
+	}
+
+	// Second call: Cache hit, vendor count unchanged
+	resp2, err := s.GenerateText(testIdentity(), req)
+	if err != nil {
+		t.Fatalf("second call failed: %v", err)
+	}
+	if !resp2.Cached {
+		t.Errorf("second call should be marked cached")
+	}
+	if resp2.Choices[0] != "cached response" {
+		t.Errorf("got %q, want %q", resp2.Choices[0], "cached response")
+	}
+	if vendor.count() != 1 {
+		t.Errorf("vendor calls after cache hit = %d, want 1", vendor.count())
+	}
+	events := tracker.list()
+	if len(events) != 2 {
+		t.Fatalf("tracker events = %d, want 2", len(events))
+	}
+	if events[1].meta["cache"] != "hit" {
+		t.Errorf("second event meta[cache] = %q, want hit", events[1].meta["cache"])
+	}
+
+	// Third call: Cache disabled, hits vendor again
+	reqNoCache := &pb.GenerateTextRequest{
+		Effort:      pb.Effort_EFFORT_LOW,
+		Messages:    []*pb.ChatMessage{{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: "hello world"}},
+		EnableCache: false,
+	}
+	resp3, err := s.GenerateText(testIdentity(), reqNoCache)
+	if err != nil {
+		t.Fatalf("third call failed: %v", err)
+	}
+	if resp3.Cached {
+		t.Errorf("third call should not be marked cached")
+	}
+	if vendor.count() != 2 {
+		t.Errorf("vendor calls with cache disabled = %d, want 2", vendor.count())
+	}
+}
+
+func TestGenerateTextStream_Cache(t *testing.T) {
+	vendor := &fakeVendor{reply: "streaming cached response"}
+	srv := httptest.NewServer(http.HandlerFunc(vendor.handler))
+	defer srv.Close()
+
+	mr := miniredis.RunT(t)
+	rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rClient.Close() })
+
+	c := cache.New(rClient, testCacheKeyring(t), time.Hour, 1024*1024, "test")
+	tracker := &fakeTracker{}
+	models := []*proxydb.Model{testModel("m1", registry.VendorOpenAI, srv.URL, registry.EffortLow, registry.EffortMedium)}
+	keys := map[string]map[string]string{"key1": {registry.VendorOpenAI: "sk-test"}}
+	snap := registry.NewSnapshotForTest(models, catchAllRules("m1"), keys, tracker)
+	s := NewProxyServer(fixedSnapshot{snap}, throttle.New(rClient, "t")).WithCache(c)
+
+	req := &pb.GenerateTextStreamRequest{
+		Request: &pb.GenerateTextRequest{
+			Effort:      pb.Effort_EFFORT_LOW,
+			Messages:    []*pb.ChatMessage{{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: "stream please"}},
+			EnableCache: true,
+		},
+	}
+
+	// First streaming call: cache miss, runs live stream and caches response
+	stream1 := &mockStreamServer{ctx: testIdentity()}
+	if err := s.GenerateTextStream(req, stream1); err != nil {
+		t.Fatalf("first stream call failed: %v", err)
+	}
+	if vendor.count() != 1 {
+		t.Errorf("vendor calls = %d, want 1", vendor.count())
+	}
+	if len(stream1.chunks) == 0 {
+		t.Fatalf("expected stream chunks on first call")
+	}
+	if stream1.chunks[0].Cached {
+		t.Errorf("first stream chunks should not be marked cached")
+	}
+
+	// Second streaming call: cache hit, replays cached response
+	stream2 := &mockStreamServer{ctx: testIdentity()}
+	if err := s.GenerateTextStream(req, stream2); err != nil {
+		t.Fatalf("second stream call failed: %v", err)
+	}
+	if vendor.count() != 1 {
+		t.Errorf("vendor calls on cache hit = %d, want 1", vendor.count())
+	}
+	if len(stream2.chunks) == 0 {
+		t.Fatalf("expected stream chunks on cached replay")
+	}
+	var replayedText string
+	for _, chunk := range stream2.chunks {
+		if !chunk.Cached {
+			t.Errorf("replayed chunk missing cached: true")
+		}
+		replayedText += chunk.Delta
+	}
+	if replayedText != "streaming cached response" {
+		t.Errorf("replayed text = %q, want %q", replayedText, "streaming cached response")
+	}
+
+	// Third call: unary GenerateText with same request benefits from stream cache!
+	respUnary, err := s.GenerateText(testIdentity(), req.Request)
+	if err != nil {
+		t.Fatalf("unary call failed: %v", err)
+	}
+	if !respUnary.Cached {
+		t.Errorf("unary response should be cached from previous stream")
+	}
+	if respUnary.Choices[0] != "streaming cached response" {
+		t.Errorf("unary response = %q, want %q", respUnary.Choices[0], "streaming cached response")
+	}
+	if vendor.count() != 1 {
+		t.Errorf("vendor calls after unary hit = %d, want 1", vendor.count())
 	}
 }

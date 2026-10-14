@@ -23,6 +23,7 @@ type fakeProxy struct {
 	text         *pb.GenerateTextRequest
 	textErr      error
 	respDetails  []*pb.Choice
+	respCached   bool
 	streamChunks []*pb.GenerateTextChunk
 	emptyStream  bool
 	media        map[string]string
@@ -37,6 +38,7 @@ func (f *fakeProxy) GenerateText(_ context.Context, r *pb.GenerateTextRequest) (
 	resp := &pb.GenerateTextResponse{
 		Choices: []string{"hello"}, Usage: &pb.TokensUsage{Input: 3, Output: 2},
 		ResolvedModel: "m1", ResolvedVendor: "openai", MatchedRule: "default",
+		Cached: f.respCached,
 	}
 	if len(f.respDetails) > 0 {
 		resp.Details = f.respDetails
@@ -65,6 +67,7 @@ func (f *fakeProxy) GenerateTextStream(r *pb.GenerateTextStreamRequest, s pb.LLM
 		ResolvedModel:  "m1",
 		ResolvedVendor: "openai",
 		MatchedRule:    "default",
+		Cached:         f.respCached,
 	}); err != nil {
 		return err
 	}
@@ -72,6 +75,7 @@ func (f *fakeProxy) GenerateTextStream(r *pb.GenerateTextStreamRequest, s pb.LLM
 		FinishReason:  "stop",
 		Usage:         &pb.TokensUsage{Input: 3, Output: 2},
 		ResolvedModel: "m1",
+		Cached:        f.respCached,
 	})
 }
 
@@ -773,5 +777,70 @@ func TestChatCompletions_MultimodalNonUserRejected(t *testing.T) {
 	rec := do(h, "POST", "/v1/chat/completions", key, body)
 	if rec.Code != 400 {
 		t.Errorf("expected 400 for multimodal assistant message, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestChatCompletions_Caching(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+
+	// 1. JSON enable_cache = true, MISS
+	fp.respCached = false
+	body1 := `{"model":"auto:low","messages":[{"role":"user","content":"hi"}],"enable_cache":true}`
+	rec1 := do(h, "POST", "/v1/chat/completions", key, body1)
+	if rec1.Code != 200 {
+		t.Fatalf("code = %d", rec1.Code)
+	}
+	if !fp.text.EnableCache {
+		t.Errorf("expected EnableCache to be true in proto request")
+	}
+	if got := rec1.Header().Get("X-LLM-Proxy-Cache"); got != "MISS" {
+		t.Errorf("got cache header %q, want MISS", got)
+	}
+
+	// 2. JSON enable_cache = true, HIT
+	fp.respCached = true
+	rec2 := do(h, "POST", "/v1/chat/completions", key, body1)
+	if rec2.Code != 200 {
+		t.Fatalf("code = %d", rec2.Code)
+	}
+	if got := rec2.Header().Get("X-LLM-Proxy-Cache"); got != "HIT" {
+		t.Errorf("got cache header %q, want HIT", got)
+	}
+
+	// 3. Header X-LLM-Proxy-Cache: true, HIT
+	body3 := `{"model":"auto:low","messages":[{"role":"user","content":"hi"}]}`
+	req3 := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body3))
+	req3.Header.Set("Authorization", "Bearer "+key)
+	req3.Header.Set("X-LLM-Proxy-Cache", "true")
+	rec3 := httptest.NewRecorder()
+	h.ServeHTTP(rec3, req3)
+	if rec3.Code != 200 {
+		t.Fatalf("code = %d", rec3.Code)
+	}
+	if !fp.text.EnableCache {
+		t.Errorf("expected EnableCache to be true via header")
+	}
+	if got := rec3.Header().Get("X-LLM-Proxy-Cache"); got != "HIT" {
+		t.Errorf("got cache header %q, want HIT", got)
+	}
+
+	// 4. Streaming with enable_cache = true, HIT
+	body4 := `{"model":"auto:low","messages":[{"role":"user","content":"hi"}],"stream":true,"enable_cache":true}`
+	rec4 := do(h, "POST", "/v1/chat/completions", key, body4)
+	if rec4.Code != 200 {
+		t.Fatalf("code = %d", rec4.Code)
+	}
+	if got := rec4.Header().Get("X-LLM-Proxy-Cache"); got != "HIT" {
+		t.Errorf("got streaming cache header %q, want HIT", got)
+	}
+
+	// 5. Streaming with enable_cache = true, MISS
+	fp.respCached = false
+	rec5 := do(h, "POST", "/v1/chat/completions", key, body4)
+	if rec5.Code != 200 {
+		t.Fatalf("code = %d", rec5.Code)
+	}
+	if got := rec5.Header().Get("X-LLM-Proxy-Cache"); got != "MISS" {
+		t.Errorf("got streaming cache header %q, want MISS", got)
 	}
 }
