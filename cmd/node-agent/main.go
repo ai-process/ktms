@@ -19,6 +19,7 @@ func main() {
 
 	var (
 		proxyAddr     = flag.String("proxy-addr", "127.0.0.1:50051", "LLM-proxy gRPC address (host:port)")
+		useTLS        = flag.Bool("tls", false, "Connect to the proxy over TLS (system CA roots)")
 		nodeID        = flag.String("node-id", "", "Unique Node ID (defaults to hostname)")
 		nodeName      = flag.String("node-name", "", "Human-readable node name")
 		endpoint      = flag.String("endpoint", "http://127.0.0.1:11434", "Inference engine HTTP endpoint")
@@ -57,6 +58,7 @@ func main() {
 
 	cfg := nodeagent.AgentConfig{
 		ProxyAddr:     *proxyAddr,
+		TLS:           *useTLS,
 		NodeKey:       nodeKey,
 		NodeID:        id,
 		NodeName:      name,
