@@ -54,6 +54,16 @@ has "unit exec quoting" 'ExecStart="systemd-inhibit" "--why=Serving LLM requests
 has "unit env" 'Environment="A=1"' "$UNIT"
 has "unit restart" "Restart=always" "$UNIT"
 
+# print_status shows the newest address: re-registration follows a tunnel restart
+psdir="${TMPDIR:-/tmp}/it.$$.status"
+mkdir -p "$psdir/logs"
+printf 'INF node registered successfully endpoint=https://old.trycloudflare.com interval=5s\nINF tunnel address changed endpoint=https://new.trycloudflare.com\nINF node re-registered endpoint=https://new.trycloudflare.com\n' >"$psdir/logs/node.log"
+status() { ( INSTALL_NODE_SOURCED=1; . "$SCRIPT"; BASE=$psdir OS=linux ARCH=amd64 NODE_ID=n PROXY=p OLLAMA_ADDR=a MODEL=m; print_status ); }
+has "status uses the re-registered address" "Address: https://new.trycloudflare.com" "$(status)"
+printf 'INF node re-registered endpoint=https://new.trycloudflare.com\nINF node registered successfully endpoint=https://first.trycloudflare.com interval=5s\n' >"$psdir/logs/node.log"
+has "status uses the latest line of either kind" "Address: https://first.trycloudflare.com" "$(status)"
+rm -rf "$psdir"
+
 sumfile="${TMPDIR:-/tmp}/it.$$.bin"
 printf 'x' >"$sumfile"
 good=$(sha "$sumfile")
@@ -280,6 +290,7 @@ has "linux: node uses built-in tunnel" '"--expose" "cloudflared"' "$NODE_UNIT"
 has "linux: node reads key from file" "--node-key-file" "$NODE_UNIT"
 hasnt "linux: key never in the unit" "llm_node_test_key" "$NODE_UNIT"
 has "linux: tls on by default" '"--tls"' "$NODE_UNIT"
+has "linux: node reports only the chosen model" '"--only-model" "tiny:1b"' "$NODE_UNIT"
 has "linux: ollama keeps model loaded" 'OLLAMA_KEEP_ALIVE=-1' "$OLL_UNIT"
 has "linux: ollama parallel follows concurrency" 'OLLAMA_NUM_PARALLEL=2' "$OLL_UNIT"
 has "linux: ollama context" 'OLLAMA_CONTEXT_LENGTH=4096' "$OLL_UNIT"
@@ -324,6 +335,7 @@ if [ "$RC" != 0 ]; then ok "linux: agent that never registers fails"; else bad "
 has "linux: rollback announced" "restoring the previous one" "$OUT"
 has "linux: failed start runs the doctor" "DOCTOR-RAN:doctor --proxy-addr llm-nodes.example.com:443" "$OUT"
 has "linux: doctor gets the model and the key file, never the key" "--model tiny:1b" "$OUT"
+has "linux: doctor reports only the chosen model" "--only-model tiny:1b" "$OUT"
 hasnt "linux: doctor output never shows the key" "llm_node_test_key" "$OUT"
 eq "linux: rolled back to the working version" "0.11.0" "$("$BASE/bin/llm-proxy-node" --version)"
 

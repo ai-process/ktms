@@ -466,7 +466,7 @@ write_service() { # id program args... (stdin: nothing)
 run_doctor() {
 	step "Diagnosing"
 	set -- doctor --proxy-addr "$PROXY" --node-id "$NODE_ID" --node-key-file "$BASE/key" \
-		--engine ollama --engine-url "http://$OLLAMA_ADDR" --model "$MODEL"
+		--engine ollama --engine-url "http://$OLLAMA_ADDR" --only-model "$MODEL" --model "$MODEL"
 	[ "$PLAINTEXT" = 1 ] || set -- "$@" --tls
 	if [ -n "$ENDPOINT" ]; then
 		set -- "$@" --endpoint "$ENDPOINT" --expose none
@@ -515,7 +515,8 @@ do_uninstall() {
 }
 
 print_status() {
-	ep=$(sed -n 's/.*node registered successfully.*endpoint=\([^ ]*\).*/\1/p' "$BASE/logs/node.log" 2>/dev/null | tail -1 | sed "s/$(printf '\033')\[[0-9;]*m//g")
+	# Re-registration after a tunnel restart logs the newer address, so take the latest of both.
+	ep=$(sed -n -e 's/.*node registered successfully.*endpoint=\([^ ]*\).*/\1/p' -e 's/.*node re-registered.*endpoint=\([^ ]*\).*/\1/p' "$BASE/logs/node.log" 2>/dev/null | tail -1 | sed "s/$(printf '\033')\[[0-9;]*m//g")
 	engine="Ollama"
 	[ "$OS" = darwin ] && [ "$ARCH" = arm64 ] && engine="Ollama (Apple GPU)"
 	cat <<EOF
@@ -571,7 +572,7 @@ main() {
 
 	step "Starting the node"
 	set -- "$BASE/bin/llm-proxy-node" --proxy-addr "$PROXY" --node-id "$NODE_ID" --node-name "$NAME" \
-		--engine ollama --engine-url "http://$OLLAMA_ADDR" --max-concurrent "$MAXC" --node-key-file "$BASE/key"
+		--engine ollama --engine-url "http://$OLLAMA_ADDR" --only-model "$MODEL" --max-concurrent "$MAXC" --node-key-file "$BASE/key"
 	[ "$PLAINTEXT" = 1 ] || set -- "$@" --tls
 	if [ -n "$ENDPOINT" ]; then
 		set -- "$@" --endpoint "$ENDPOINT" --expose none

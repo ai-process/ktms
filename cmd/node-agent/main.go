@@ -42,11 +42,18 @@ type settings struct {
 	keyFile       *string
 	baseWeight    *float64
 	maxConcurrent *uint
+	onlyModels    stringList
 }
+
+// stringList is a repeatable string flag.
+type stringList []string
+
+func (l *stringList) String() string     { return strings.Join(*l, ",") }
+func (l *stringList) Set(v string) error { *l = append(*l, v); return nil }
 
 func newSettings(name string) *settings {
 	fs := flag.NewFlagSet(name, flag.ExitOnError)
-	return &settings{
+	s := &settings{
 		fs:            fs,
 		showVersion:   fs.Bool("version", false, "Print the version and exit"),
 		proxyAddr:     fs.String("proxy-addr", "127.0.0.1:50051", "LLM-proxy gRPC address (host:port)"),
@@ -62,6 +69,8 @@ func newSettings(name string) *settings {
 		baseWeight:    fs.Float64("base-weight", 100.0, "Base routing weight"),
 		maxConcurrent: fs.Uint("max-concurrent", 16, "Maximum concurrent requests"),
 	}
+	fs.Var(&s.onlyModels, "only-model", "Report only this engine model to the proxy; repeatable (default: every model the engine has)")
+	return s
 }
 
 // config resolves the flags and environment into an agent configuration.
@@ -103,6 +112,7 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 		Engine:         *s.engine,
 		NodeAuthToken:  os.Getenv("NODE_AUTH_TOKEN"),
 		EngineToken:    os.Getenv("NODE_AUTH_TOKEN"),
+		OnlyModels:     s.onlyModels,
 		Expose:         *s.expose,
 		CloudflaredBin: *s.cloudflared,
 		BaseWeight:     *s.baseWeight,
