@@ -25,12 +25,41 @@ const (
 	ChatContextVersion2      = 2
 )
 
+type ContentPartType string
+
+const (
+	ContentPartTypeText     ContentPartType = "text"
+	ContentPartTypeImage    ContentPartType = "image"
+	ContentPartTypeAudio    ContentPartType = "audio"
+	ContentPartTypeDocument ContentPartType = "document"
+)
+
+type ImageDetail string
+
+const (
+	ImageDetailAuto ImageDetail = "auto"
+	ImageDetailLow  ImageDetail = "low"
+	ImageDetailHigh ImageDetail = "high"
+)
+
+type ContentPart struct {
+	Type     ContentPartType
+	Text     string
+	MimeType string
+	Data     []byte
+	URL      string
+	Detail   ImageDetail
+	Format   string
+	FileName string
+}
+
 type Message struct {
 	Text         string
 	Type         MessageType
 	ToolCalls    []*ToolCall
 	ToolCallID   string
 	FinishReason string
+	Parts        []*ContentPart
 }
 
 type ChatContext struct {
@@ -171,6 +200,27 @@ func (c *ChatContext) AddUserMessage(message string) {
 	userMessage := Message{
 		Text: message,
 		Type: MessageTypeUser,
+	}
+	c.addMessage(&userMessage, false)
+}
+
+func (c *ChatContext) AddUserMessageWithParts(text string, parts []*ContentPart) {
+	if text == "" {
+		var sb strings.Builder
+		for _, p := range parts {
+			if p.Type == ContentPartTypeText && p.Text != "" {
+				if sb.Len() > 0 {
+					sb.WriteString("\n")
+				}
+				sb.WriteString(p.Text)
+			}
+		}
+		text = sb.String()
+	}
+	userMessage := Message{
+		Text:  text,
+		Type:  MessageTypeUser,
+		Parts: parts,
 	}
 	c.addMessage(&userMessage, false)
 }
@@ -472,20 +522,40 @@ func (c *ChatContext) GobDecode(data []byte) error {
 	return c.UnmarshalBinary(data)
 }
 
-// EstimateInputTokens estimates input tokens based on runes in instructions and messages.
+// EstimateInputTokens estimates input tokens based on runes in instructions and messages,
+// plus heuristic token allowances for media parts.
 func (c *ChatContext) EstimateInputTokens() int {
 	if c == nil {
 		return 1
 	}
 	runes := utf8.RuneCountInString(c.BaseSystemInstruction) +
 		utf8.RuneCountInString(c.perRequestSystemInstruction)
+	extraTokens := 0
 	for _, m := range c.GetMessages() {
 		runes += utf8.RuneCountInString(m.Text)
 		for _, tc := range m.ToolCalls {
 			runes += utf8.RuneCountInString(tc.Function.Name) + utf8.RuneCountInString(tc.Function.Arguments)
 		}
+		for _, p := range m.Parts {
+			switch p.Type {
+			case ContentPartTypeImage:
+				if p.Detail == ImageDetailLow {
+					extraTokens += 85
+				} else {
+					extraTokens += 1000
+				}
+			case ContentPartTypeAudio:
+				extraTokens += 200
+			case ContentPartTypeDocument:
+				extraTokens += 500
+			case ContentPartTypeText:
+				if m.Text == "" {
+					runes += utf8.RuneCountInString(p.Text)
+				}
+			}
+		}
 	}
-	return runes/4 + 1
+	return runes/4 + extraTokens + 1
 }
 
 // EstimateOutputTokens estimates output tokens from character or rune count.

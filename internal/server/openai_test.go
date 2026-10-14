@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -661,5 +662,116 @@ func TestAdminKeyCannotGenerate(t *testing.T) {
 	NewOpenAIAPI(&fakeProxy{}, apikeys.NewVerifier(store, "")).Register(mux)
 	if rec := do(mux, "GET", "/v1/models", key, ""); rec.Code != 401 && rec.Code != 403 {
 		t.Errorf("scopeless key got %d", rec.Code)
+	}
+}
+
+func TestChatCompletions_MultipartContent(t *testing.T) {
+	proxy, h, key := newTestAPI(t)
+
+	imgData := base64.StdEncoding.EncodeToString([]byte("fake-png-data"))
+	audioData := base64.StdEncoding.EncodeToString([]byte("fake-audio-data"))
+	fileData := base64.StdEncoding.EncodeToString([]byte("fake-pdf-data"))
+
+	body := fmt.Sprintf(`{
+		"model": "gpt-4o",
+		"messages": [
+			{
+				"role": "user",
+				"content": [
+					{"type": "text", "text": "Inspect these files:"},
+					{"type": "image_url", "image_url": {"url": "data:image/png;base64,%s", "detail": "high"}},
+					{"type": "input_audio", "input_audio": {"data": "%s", "format": "wav"}},
+					{"type": "file", "file": {"file_data": "%s", "mime_type": "application/pdf", "filename": "doc.pdf"}}
+				]
+			}
+		]
+	}`, imgData, audioData, fileData)
+
+	rec := do(h, "POST", "/v1/chat/completions", key, body)
+	if rec.Code != 200 {
+		t.Fatalf("chat completions status = %d: %s", rec.Code, rec.Body)
+	}
+
+	if proxy.text == nil {
+		t.Fatal("proxy received no request")
+	}
+	msgs := proxy.text.GetMessages()
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	m := msgs[0]
+	if m.GetRole() != pb.MessageRole_MESSAGE_ROLE_USER {
+		t.Errorf("role = %v, want USER", m.GetRole())
+	}
+	if len(m.GetParts()) != 4 {
+		t.Fatalf("expected 4 parts, got %d", len(m.GetParts()))
+	}
+
+	// 1. Text part
+	txtPart := m.GetParts()[0].GetText()
+	if txtPart == nil || txtPart.GetText() != "Inspect these files:" {
+		t.Errorf("text part = %+v", txtPart)
+	}
+
+	// 2. Image part
+	imgPart := m.GetParts()[1].GetImage()
+	if imgPart == nil || imgPart.GetMimeType() != "image/png" || imgPart.GetDetail() != "high" || string(imgPart.GetData()) != "fake-png-data" {
+		t.Errorf("image part = %+v", imgPart)
+	}
+
+	// 3. Audio part
+	audioPart := m.GetParts()[2].GetAudio()
+	if audioPart == nil || audioPart.GetFormat() != "wav" || string(audioPart.GetData()) != "fake-audio-data" {
+		t.Errorf("audio part = %+v", audioPart)
+	}
+
+	// 4. Document part
+	docPart := m.GetParts()[3].GetDocument()
+	if docPart == nil || docPart.GetMimeType() != "application/pdf" || docPart.GetFileName() != "doc.pdf" || string(docPart.GetData()) != "fake-pdf-data" {
+		t.Errorf("doc part = %+v", docPart)
+	}
+}
+
+func TestChatCompletions_SSRFRejection(t *testing.T) {
+	_, h, key := newTestAPI(t)
+
+	// Disallowed scheme http://
+	bodyHttp := `{
+		"model": "gpt-4o",
+		"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "http://example.com/test.png"}}]}]
+	}`
+	recHttp := do(h, "POST", "/v1/chat/completions", key, bodyHttp)
+	if recHttp.Code != 400 {
+		t.Errorf("expected 400 for http scheme, got %d: %s", recHttp.Code, recHttp.Body)
+	}
+
+	// Private loopback IP in https://
+	bodyLoopback := `{
+		"model": "gpt-4o",
+		"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "https://127.0.0.1/test.png"}}]}]
+	}`
+	recLoopback := do(h, "POST", "/v1/chat/completions", key, bodyLoopback)
+	if recLoopback.Code != 400 {
+		t.Errorf("expected 400 for loopback IP, got %d: %s", recLoopback.Code, recLoopback.Body)
+	}
+}
+
+func TestChatCompletions_MultimodalNonUserRejected(t *testing.T) {
+	_, h, key := newTestAPI(t)
+
+	body := `{
+		"model": "gpt-4o",
+		"messages": [
+			{
+				"role": "assistant",
+				"content": [
+					{"type": "image_url", "image_url": {"url": "data:image/png;base64,YWJj"}}
+				]
+			}
+		]
+	}`
+	rec := do(h, "POST", "/v1/chat/completions", key, body)
+	if rec.Code != 400 {
+		t.Errorf("expected 400 for multimodal assistant message, got %d: %s", rec.Code, rec.Body)
 	}
 }

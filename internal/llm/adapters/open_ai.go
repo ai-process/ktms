@@ -5,10 +5,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"github.com/ai-process/llm-proxy/internal/llm"
+	"io"
 	"math"
+	"net/http"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -150,7 +150,7 @@ type OpenAIAdapter struct {
 	// softSchema marks a vendor whose API rejects response_format json_schema
 	// (DeepSeek). The shape is asked for in the prompt instead, and the router
 	// verifies the reply against the schema afterwards.
-	softSchema bool
+	softSchema  bool
 	thinkingOff map[string]any
 }
 
@@ -449,6 +449,66 @@ func (a *OpenAIAdapter) convertMessageToOpenAi(message *llm.Message) openai.Chat
 	case llm.MessageTypeSystem:
 		return openai.SystemMessage(message.Text)
 	case llm.MessageTypeUser:
+		if len(message.Parts) > 0 {
+			var parts []openai.ChatCompletionContentPartUnionParam
+			hasTextPart := false
+			for _, p := range message.Parts {
+				switch p.Type {
+				case llm.ContentPartTypeText:
+					if p.Text != "" {
+						hasTextPart = true
+						parts = append(parts, openai.TextContentPart(p.Text))
+					}
+				case llm.ContentPartTypeImage:
+					imageURL := p.URL
+					if imageURL == "" && len(p.Data) > 0 {
+						mime := p.MimeType
+						if mime == "" {
+							mime = "image/jpeg"
+						}
+						imageURL = fmt.Sprintf("data:%s;base64,%s", mime, base64.StdEncoding.EncodeToString(p.Data))
+					}
+					param := openai.ChatCompletionContentPartImageImageURLParam{
+						URL: imageURL,
+					}
+					if p.Detail != "" {
+						param.Detail = string(p.Detail)
+					}
+					parts = append(parts, openai.ImageContentPart(param))
+				case llm.ContentPartTypeAudio:
+					format := p.Format
+					if format == "" {
+						if strings.Contains(p.MimeType, "wav") {
+							format = "wav"
+						} else {
+							format = "mp3"
+						}
+					}
+					parts = append(parts, openai.InputAudioContentPart(openai.ChatCompletionContentPartInputAudioInputAudioParam{
+						Data:   base64.StdEncoding.EncodeToString(p.Data),
+						Format: format,
+					}))
+				case llm.ContentPartTypeDocument:
+					fileParam := openai.ChatCompletionContentPartFileFileParam{
+						FileData: openai.String(base64.StdEncoding.EncodeToString(p.Data)),
+					}
+					if p.FileName != "" {
+						fileParam.Filename = openai.String(p.FileName)
+					}
+					parts = append(parts, openai.FileContentPart(fileParam))
+				}
+			}
+			if !hasTextPart && strings.TrimSpace(message.Text) != "" {
+				parts = append([]openai.ChatCompletionContentPartUnionParam{openai.TextContentPart(message.Text)}, parts...)
+			}
+			return openai.ChatCompletionMessageParamUnion{
+				OfUser: &openai.ChatCompletionUserMessageParam{
+					Content: openai.ChatCompletionUserMessageParamContentUnion{
+						OfArrayOfContentParts: parts,
+					},
+				},
+			}
+		}
 		return openai.UserMessage(message.Text)
 	case llm.MessageTypeTool:
 		return openai.ToolMessage(message.Text, message.ToolCallID)
