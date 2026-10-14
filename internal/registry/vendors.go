@@ -85,6 +85,14 @@ const CapabilityJudge = "judge"
 // CapabilityBatch marks models that support batch processing.
 const CapabilityBatch = "batch"
 
+// Multimodal input capabilities mark chat models capable of handling specific media.
+// Opt-in: request parts require the matching capability on the candidate model.
+const (
+	CapabilityVision     = "vision"
+	CapabilityAudioInput = "audio_input"
+	CapabilityPDFInput   = "pdf_input"
+)
+
 func ValidVendor(v string) bool {
 	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorAnthropic || v == VendorLocal
 }

@@ -27,11 +27,15 @@ type GRPCServer struct {
 // NewGRPCServer wires interceptors (logging first, auth second) and registers
 // the services.
 func NewGRPCServer(proxy pb.LLMProxyServiceServer, admin pb.LLMProxyAdminServiceServer,
-	nodeReg pb.NodeRegistryServiceServer, verifier *apikeys.Verifier, addr string) *GRPCServer {
-	srv := grpclib.NewServer(
+	nodeReg pb.NodeRegistryServiceServer, verifier *apikeys.Verifier, addr string, maxRecvMsgSize int) *GRPCServer {
+	opts := []grpclib.ServerOption{
 		grpclib.ChainUnaryInterceptor(unaryLoggingInterceptor, authUnaryInterceptor(verifier)),
 		grpclib.ChainStreamInterceptor(streamLoggingInterceptor, authStreamInterceptor(verifier)),
-	)
+	}
+	if maxRecvMsgSize > 0 {
+		opts = append(opts, grpclib.MaxRecvMsgSize(maxRecvMsgSize))
+	}
+	srv := grpclib.NewServer(opts...)
 
 	pb.RegisterLLMProxyServiceServer(srv, proxy)
 	pb.RegisterLLMProxyAdminServiceServer(srv, admin)

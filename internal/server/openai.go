@@ -26,6 +26,7 @@ import (
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 	"github.com/ai-process/llm-proxy/internal/apikeys"
 	"github.com/ai-process/llm-proxy/internal/panicsafe"
+	"github.com/ai-process/llm-proxy/internal/safefetch"
 )
 
 const maxRequestBytes = 16 << 20
@@ -173,30 +174,190 @@ func decodeBody(r *http.Request, dst any) error {
 	return nil
 }
 
-// text flattens string or [{"type":"text","text":...}] content.
-func (m chatMessage) text() (string, error) {
+type rawPart struct {
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	ImageURL *struct {
+		URL    string `json:"url"`
+		Detail string `json:"detail,omitempty"`
+	} `json:"image_url,omitempty"`
+	InputAudio *struct {
+		Data   string `json:"data"`
+		Format string `json:"format"`
+	} `json:"input_audio,omitempty"`
+	File *struct {
+		FileData string `json:"file_data,omitempty"`
+		Filename string `json:"filename,omitempty"`
+		MimeType string `json:"mime_type,omitempty"`
+	} `json:"file,omitempty"`
+	Document *struct {
+		Data     string `json:"data,omitempty"`
+		MimeType string `json:"mime_type,omitempty"`
+		FileName string `json:"file_name,omitempty"`
+	} `json:"document,omitempty"`
+}
+
+// parseContent extracts text and multimodal parts from OpenAI content field.
+func (m chatMessage) parseContent(ctx context.Context) (string, []*pb.ContentPart, error) {
 	if len(m.Content) == 0 || string(m.Content) == "null" {
-		return "", nil
+		return "", nil, nil
 	}
 	var s string
 	if json.Unmarshal(m.Content, &s) == nil {
-		return s, nil
+		return s, nil, nil
 	}
-	var parts []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
+	var rawParts []rawPart
+	if err := json.Unmarshal(m.Content, &rawParts); err != nil {
+		return "", nil, invalid("message content must be a string or a list of parts")
 	}
-	if err := json.Unmarshal(m.Content, &parts); err != nil {
-		return "", invalid("message content must be a string or a list of text parts")
-	}
+
 	var b strings.Builder
-	for _, p := range parts {
-		if p.Type != "text" {
-			return "", invalid("content part type %q is not supported (text only)", p.Type)
+	var parts []*pb.ContentPart
+	for _, p := range rawParts {
+		switch p.Type {
+		case "text":
+			b.WriteString(p.Text)
+			parts = append(parts, &pb.ContentPart{
+				Part: &pb.ContentPart_Text{
+					Text: &pb.TextPart{Text: p.Text},
+				},
+			})
+		case "image_url":
+			if p.ImageURL == nil || p.ImageURL.URL == "" {
+				return "", nil, invalid("image_url part must contain a non-empty url")
+			}
+			rawURL := p.ImageURL.URL
+			detail := p.ImageURL.Detail
+			if detail == "" {
+				detail = "auto"
+			}
+			var imgData []byte
+			var mimeType string
+			if strings.HasPrefix(rawURL, "data:") {
+				var err error
+				mimeType, imgData, err = safefetch.ParseDataURI(rawURL)
+				if err != nil {
+					return "", nil, invalid("invalid data URI: %v", err)
+				}
+				if err := safefetch.ValidateMediaMimeType(mimeType); err != nil {
+					return "", nil, invalid("%v", err)
+				}
+			} else if strings.HasPrefix(rawURL, "https://") {
+				var err error
+				imgData, mimeType, err = safefetch.FetchURL(ctx, rawURL, maxRequestBytes)
+				if err != nil {
+					return "", nil, invalid("failed to fetch image: %v", err)
+				}
+			} else {
+				return "", nil, invalid("invalid image URL %q: only https and data URI schemes are allowed", rawURL)
+			}
+			parts = append(parts, &pb.ContentPart{
+				Part: &pb.ContentPart_Image{
+					Image: &pb.ImagePart{
+						MimeType: mimeType,
+						Data:     imgData,
+						Url:      rawURL,
+						Detail:   detail,
+					},
+				},
+			})
+		case "input_audio":
+			if p.InputAudio == nil || p.InputAudio.Data == "" {
+				return "", nil, invalid("input_audio part must contain base64 data")
+			}
+			data, err := base64.StdEncoding.DecodeString(p.InputAudio.Data)
+			if err != nil {
+				return "", nil, invalid("invalid base64 in input_audio: %v", err)
+			}
+			format := p.InputAudio.Format
+			if format == "" {
+				format = "wav"
+			}
+			mimeType := "audio/" + format
+			if err := safefetch.ValidateMediaMimeType(mimeType); err != nil {
+				return "", nil, invalid("%v", err)
+			}
+			parts = append(parts, &pb.ContentPart{
+				Part: &pb.ContentPart_Audio{
+					Audio: &pb.AudioPart{
+						MimeType: mimeType,
+						Data:     data,
+						Format:   format,
+					},
+				},
+			})
+		case "file":
+			if p.File == nil || p.File.FileData == "" {
+				return "", nil, invalid("file part must contain file_data")
+			}
+			data, err := base64.StdEncoding.DecodeString(p.File.FileData)
+			if err != nil {
+				return "", nil, invalid("invalid base64 in file data: %v", err)
+			}
+			mimeType := p.File.MimeType
+			if mimeType == "" {
+				mimeType = "application/pdf"
+			}
+			if err := safefetch.ValidateMediaMimeType(mimeType); err != nil {
+				return "", nil, invalid("%v", err)
+			}
+			parts = append(parts, &pb.ContentPart{
+				Part: &pb.ContentPart_Document{
+					Document: &pb.DocumentPart{
+						MimeType: mimeType,
+						Data:     data,
+						FileName: p.File.Filename,
+					},
+				},
+			})
+		case "document":
+			if p.Document == nil || p.Document.Data == "" {
+				return "", nil, invalid("document part must contain data")
+			}
+			data, err := base64.StdEncoding.DecodeString(p.Document.Data)
+			if err != nil {
+				return "", nil, invalid("invalid base64 in document data: %v", err)
+			}
+			mimeType := p.Document.MimeType
+			if mimeType == "" {
+				mimeType = "application/pdf"
+			}
+			if err := safefetch.ValidateMediaMimeType(mimeType); err != nil {
+				return "", nil, invalid("%v", err)
+			}
+			parts = append(parts, &pb.ContentPart{
+				Part: &pb.ContentPart_Document{
+					Document: &pb.DocumentPart{
+						MimeType: mimeType,
+						Data:     data,
+						FileName: p.Document.FileName,
+					},
+				},
+			})
+		default:
+			return "", nil, invalid("content part type %q is not supported", p.Type)
 		}
-		b.WriteString(p.Text)
 	}
-	return b.String(), nil
+	return b.String(), parts, nil
+}
+
+func hasMediaParts(parts []*pb.ContentPart) bool {
+	for _, p := range parts {
+		if p == nil {
+			continue
+		}
+		switch p.Part.(type) {
+		case *pb.ContentPart_Image, *pb.ContentPart_Audio, *pb.ContentPart_Document:
+			return true
+		}
+	}
+	return false
+}
+
+// text flattens string or [{"type":"text","text":...}] content for backward compatibility.
+func (m chatMessage) text() (string, error) {
+	text, _, err := m.parseContent(context.Background())
+	return text, err
 }
 
 // route resolves the OpenAI "model" field. "auto" (or empty) leaves the choice
@@ -248,7 +409,7 @@ func attributes(metadata map[string]string, user string) (attrs map[string]strin
 	return attrs, actionID
 }
 
-func (req *chatRequest) toProto() (*pb.GenerateTextRequest, error) {
+func (req *chatRequest) toProto(ctx context.Context) (*pb.GenerateTextRequest, error) {
 	if len(req.Functions) > 0 && string(req.Functions) != "null" {
 		return nil, invalid("functions is deprecated and not supported; use tools instead")
 	}
@@ -340,15 +501,22 @@ func (req *chatRequest) toProto() (*pb.GenerateTextRequest, error) {
 
 	var system []string
 	for i, m := range req.Messages {
-		text, err := m.text()
+		text, parts, err := m.parseContent(ctx)
 		if err != nil {
 			return nil, err
+		}
+		if hasMediaParts(parts) && m.Role != "user" {
+			return nil, invalid("messages[%d]: multimodal content is only supported for user messages", i)
 		}
 		switch m.Role {
 		case "system", "developer":
 			system = append(system, text)
 		case "user":
-			out.Messages = append(out.Messages, &pb.ChatMessage{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: text})
+			out.Messages = append(out.Messages, &pb.ChatMessage{
+				Role:  pb.MessageRole_MESSAGE_ROLE_USER,
+				Text:  text,
+				Parts: parts,
+			})
 		case "assistant":
 			var tcs []*pb.ToolCall
 			for _, tc := range m.ToolCalls {
@@ -402,7 +570,7 @@ func (a *OpenAIAPI) chatCompletions(ctx context.Context, w http.ResponseWriter, 
 	if err := decodeBody(r, &req); err != nil {
 		return err
 	}
-	preq, err := req.toProto()
+	preq, err := req.toProto(ctx)
 	if err != nil {
 		return err
 	}
