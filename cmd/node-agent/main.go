@@ -20,6 +20,8 @@ func main() {
 	var (
 		proxyAddr     = flag.String("proxy-addr", "127.0.0.1:50051", "LLM-proxy gRPC address (host:port)")
 		useTLS        = flag.Bool("tls", false, "Connect to the proxy over TLS (system CA roots)")
+		expose        = flag.String("expose", nodeagent.ExposeNone, "How the proxy reaches this node: "+nodeagent.ExposeCloudflared+" (built-in gateway + quick tunnel) or "+nodeagent.ExposeNone+" (you supply --endpoint)")
+		cloudflared   = flag.String("cloudflared-path", "", "cloudflared binary for --expose=cloudflared (default: from PATH)")
 		nodeID        = flag.String("node-id", "", "Unique Node ID (defaults to hostname)")
 		nodeName      = flag.String("node-name", "", "Human-readable node name")
 		engineURL     = flag.String("engine-url", "", "Local engine URL the agent polls (default "+nodeagent.DefaultEngineURL+", or --endpoint if only that is set)")
@@ -60,17 +62,20 @@ func main() {
 	pollURL, reportURL := nodeagent.ResolveURLs(*engineURL, *endpoint)
 
 	cfg := nodeagent.AgentConfig{
-		ProxyAddr:     *proxyAddr,
-		TLS:           *useTLS,
-		NodeKey:       nodeKey,
-		NodeID:        id,
-		NodeName:      name,
-		EngineURL:     pollURL,
-		Endpoint:      reportURL,
-		Engine:        *engine,
-		NodeAuthToken: os.Getenv("NODE_AUTH_TOKEN"),
-		BaseWeight:    *baseWeight,
-		MaxConcurrent: uint32(*maxConcurrent),
+		ProxyAddr:      *proxyAddr,
+		TLS:            *useTLS,
+		NodeKey:        nodeKey,
+		NodeID:         id,
+		NodeName:       name,
+		EngineURL:      pollURL,
+		Endpoint:       reportURL,
+		Engine:         *engine,
+		NodeAuthToken:  os.Getenv("NODE_AUTH_TOKEN"),
+		EngineToken:    os.Getenv("NODE_AUTH_TOKEN"),
+		Expose:         *expose,
+		CloudflaredBin: *cloudflared,
+		BaseWeight:     *baseWeight,
+		MaxConcurrent:  uint32(*maxConcurrent),
 	}
 
 	agent := nodeagent.NewAgent(cfg)
