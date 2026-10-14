@@ -48,9 +48,7 @@ func (a *GoogleAdapter) SetSoftSchema(s bool) {
 	a.softSchema = s
 }
 
-func (a *GoogleAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error) {
-	ctx := context.Background()
-
+func (a *GoogleAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
 	// Built once, not per attempt: buildSystemInstruction consumes the chat's
 	// per-request instruction, so rebuilding would silently drop it on the retry.
 	config := a.buildGenerateConfig(chat)
@@ -580,7 +578,7 @@ func (a *GoogleAdapter) SetImageModel(model string) {
 
 // GenerateImage renders one image from a text prompt via Gemini's native image
 // modality. Like TTS, the image model is its own setting, not a chat tier.
-func (a *GoogleAdapter) GenerateImage(prompt, userID string, meta map[string]string) (*llm.ImageResult, error) {
+func (a *GoogleAdapter) GenerateImage(ctx context.Context, prompt, userID string, meta map[string]string) (*llm.ImageResult, error) {
 	failed := func(err error) (*llm.ImageResult, error) {
 		return &llm.ImageResult{Model: a.imageModel}, err
 	}
@@ -593,7 +591,7 @@ func (a *GoogleAdapter) GenerateImage(prompt, userID string, meta map[string]str
 	contents := []*genai.Content{genai.NewContentFromText(prompt, genai.RoleUser)}
 
 	a.throttle.WaitForSlot()
-	resp, err := a.geminiClient.Models.GenerateContent(context.Background(), a.imageModel, contents, cfg)
+	resp, err := a.geminiClient.Models.GenerateContent(ctx, a.imageModel, contents, cfg)
 	if err != nil {
 		return failed(fmt.Errorf("gemini image: %w", err))
 	}
@@ -638,7 +636,7 @@ func (a *GoogleAdapter) SetTTS(model, voice string) {
 
 // SynthesizeSpeech generates OGG/Opus audio for a short phrase. Gemini returns
 // raw PCM, which is transcoded to OGG/Opus via ffmpeg (must be on PATH).
-func (a *GoogleAdapter) SynthesizeSpeech(text, language, userID string, meta map[string]string) (*llm.SpeechResult, error) {
+func (a *GoogleAdapter) SynthesizeSpeech(ctx context.Context, text, language, userID string, meta map[string]string) (*llm.SpeechResult, error) {
 	// failed carries the actual TTS model alongside an error so usage tracking
 	// records the real model (not the wrapping candidate's chat-model label).
 	failed := func(err error) (*llm.SpeechResult, error) {
@@ -659,7 +657,6 @@ func (a *GoogleAdapter) SynthesizeSpeech(text, language, userID string, meta map
 	}
 	contents := []*genai.Content{genai.NewContentFromText(speakInstruction(language)+text, genai.RoleUser)}
 
-	ctx := context.Background()
 	var lastErr error
 	// One local retry for a transient API error. A reply carrying no audio is
 	// NOT retried here — it is retryable at the resilience layer, which also

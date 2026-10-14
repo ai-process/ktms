@@ -4,12 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ai-process/llm-proxy/internal/llm"
-	usagev1 "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1"
 	"strconv"
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/ai-process/llm-proxy/internal/llm"
+	"github.com/ai-process/llm-proxy/internal/observability"
+	usagev1 "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1"
 )
 
 // TrackingAdapter wraps a ClientAdapter and automatically tracks usage
@@ -31,27 +36,66 @@ func NewTrackingAdapter(adapter llm.ClientAdapter, tracker llm.UsageTracker, ven
 }
 
 // GenerateText generates text and tracks usage
-func (t *TrackingAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error) {
+func (t *TrackingAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
 	startTime := time.Now()
-
-	// Extract userID from context
+	effort := "default"
 	var userID string
+	actionID := "llm.generate_text"
+	var meta map[string]string
+
 	if chat != nil {
 		userID = chat.GetInternalUserID()
-	}
-
-	// Extract actionID from context if available
-	actionID := "llm.generate_text" // Default action ID
-	var meta map[string]string
-	if chat != nil {
 		if actionIDFromContext := chat.GetActionID(); actionIDFromContext != "" {
 			actionID = actionIDFromContext
 		}
 		meta = chat.GetMeta()
+		if e := meta["effort"]; e != "" {
+			effort = e
+		}
 	}
 
-	resp, err := t.adapter.GenerateText(chat)
-	durationMs := time.Since(startTime).Milliseconds()
+	attrs := []attribute.KeyValue{
+		observability.AttrGenAIProviderName.String(t.vendor),
+		observability.AttrGenAIRequestModel.String(t.model),
+		observability.AttrLLMProxyEffort.String(effort),
+	}
+	if meta != nil {
+		if r := meta["rule"]; r != "" {
+			attrs = append(attrs, observability.AttrLLMProxyRule.String(r))
+		}
+		if k := meta["api_key"]; k != "" {
+			attrs = append(attrs, observability.AttrLLMProxyClientKey.String(k))
+		}
+	}
+
+	ctx, span := observability.Tracer().Start(ctx, "chat "+t.model, trace.WithAttributes(attrs...))
+	defer span.End()
+
+	observability.ActiveRequests.WithLabelValues(t.vendor, t.model).Inc()
+	defer observability.ActiveRequests.WithLabelValues(t.vendor, t.model).Dec()
+
+	resp, err := t.adapter.GenerateText(ctx, chat)
+	duration := time.Since(startTime)
+	durationMs := duration.Milliseconds()
+
+	statusLabel := "success"
+	if err != nil {
+		statusLabel = "error"
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	observability.RequestsTotal.WithLabelValues(t.vendor, t.model, effort, statusLabel).Inc()
+	observability.RequestDuration.WithLabelValues(t.vendor, t.model, effort).Observe(duration.Seconds())
+
+	if resp != nil {
+		observability.TokensTotal.WithLabelValues(t.vendor, t.model, "input").Add(float64(resp.Usage.Input))
+		observability.TokensTotal.WithLabelValues(t.vendor, t.model, "output").Add(float64(resp.Usage.Output))
+		span.SetAttributes(
+			observability.AttrGenAIResponseModel.String(t.model),
+			observability.AttrGenAIUsageInput.Int(resp.Usage.Input),
+			observability.AttrGenAIUsageOutput.Int(resp.Usage.Output),
+		)
+	}
 
 	// Always proceed with the request, but track usage if tracker is available
 	if t.tracker != nil {
@@ -62,7 +106,6 @@ func (t *TrackingAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, er
 			status = usagev1.Status_STATUS_SUCCESS
 		}
 
-		// Track usage if we have a response (even on error, we might have partial usage data)
 		if resp != nil {
 			if trackErr := t.tracker.RecordUsage(
 				userID,
@@ -85,7 +128,6 @@ func (t *TrackingAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, er
 					Msg("Failed to record usage")
 			}
 		} else if err != nil {
-			// Track error even without response
 			if trackErr := t.tracker.RecordUsage(
 				userID,
 				actionID,
@@ -132,19 +174,40 @@ func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.Chat
 	}
 
 	startTime := time.Now()
+	effort := "default"
 	var userID string
-	if chat != nil {
-		userID = chat.GetInternalUserID()
-	}
-
 	actionID := "llm.generate_text"
 	var meta map[string]string
 	if chat != nil {
+		userID = chat.GetInternalUserID()
 		if actionIDFromContext := chat.GetActionID(); actionIDFromContext != "" {
 			actionID = actionIDFromContext
 		}
 		meta = chat.GetMeta()
+		if e := meta["effort"]; e != "" {
+			effort = e
+		}
 	}
+
+	attrs := []attribute.KeyValue{
+		observability.AttrGenAIProviderName.String(t.vendor),
+		observability.AttrGenAIRequestModel.String(t.model),
+		observability.AttrLLMProxyEffort.String(effort),
+	}
+	if meta != nil {
+		if r := meta["rule"]; r != "" {
+			attrs = append(attrs, observability.AttrLLMProxyRule.String(r))
+		}
+		if k := meta["api_key"]; k != "" {
+			attrs = append(attrs, observability.AttrLLMProxyClientKey.String(k))
+		}
+	}
+
+	ctx, span := observability.Tracer().Start(ctx, "chat_stream "+t.model, trace.WithAttributes(attrs...))
+	defer span.End()
+
+	observability.ActiveRequests.WithLabelValues(t.vendor, t.model).Inc()
+	defer observability.ActiveRequests.WithLabelValues(t.vendor, t.model).Dec()
 
 	var (
 		lastUsage        llm.TokensUsage
@@ -164,7 +227,8 @@ func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.Chat
 	}
 
 	err := streamer.GenerateTextStream(ctx, chat, wrappedChunk)
-	durationMs := time.Since(startTime).Milliseconds()
+	duration := time.Since(startTime)
+	durationMs := duration.Milliseconds()
 
 	// If the stream ended without vendor token accounting (cut short, mid-stream disconnect,
 	// or aborted before first chunk while thinking), fall back to estimating consumed tokens.
@@ -176,6 +240,25 @@ func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.Chat
 	}
 	if lastUsage.Output == 0 && chunksEmitted > 0 {
 		lastUsage.Output = llm.EstimateOutputTokens(outputCharsCount)
+	}
+
+	statusLabel := "success"
+	if err != nil {
+		statusLabel = "error"
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	observability.RequestsTotal.WithLabelValues(t.vendor, t.model, effort, statusLabel).Inc()
+	observability.RequestDuration.WithLabelValues(t.vendor, t.model, effort).Observe(duration.Seconds())
+
+	if lastUsage.Input > 0 || lastUsage.Output > 0 {
+		observability.TokensTotal.WithLabelValues(t.vendor, t.model, "input").Add(float64(lastUsage.Input))
+		observability.TokensTotal.WithLabelValues(t.vendor, t.model, "output").Add(float64(lastUsage.Output))
+		span.SetAttributes(
+			observability.AttrGenAIResponseModel.String(t.model),
+			observability.AttrGenAIUsageInput.Int(lastUsage.Input),
+			observability.AttrGenAIUsageOutput.Int(lastUsage.Output),
+		)
 	}
 
 	if t.tracker != nil {
@@ -211,15 +294,49 @@ func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.Chat
 }
 
 // SynthesizeSpeech synthesizes speech and tracks usage
-func (t *TrackingAdapter) SynthesizeSpeech(text, language, userID string, meta map[string]string) (*llm.SpeechResult, error) {
-	startTime := time.Now()
-
+func (t *TrackingAdapter) SynthesizeSpeech(ctx context.Context, text, language, userID string, meta map[string]string) (*llm.SpeechResult, error) {
 	synth, ok := t.adapter.(llm.SpeechSynthesizer)
 	if !ok {
 		return nil, fmt.Errorf("%s does not synthesize speech", t.model)
 	}
-	result, err := synth.SynthesizeSpeech(text, language, userID, meta)
-	durationMs := time.Since(startTime).Milliseconds()
+
+	startTime := time.Now()
+	effort := "default"
+	if meta != nil && meta["effort"] != "" {
+		effort = meta["effort"]
+	}
+
+	attrs := []attribute.KeyValue{
+		observability.AttrGenAIProviderName.String(t.vendor),
+		observability.AttrGenAIRequestModel.String(t.model),
+	}
+	if meta != nil {
+		if r := meta["rule"]; r != "" {
+			attrs = append(attrs, observability.AttrLLMProxyRule.String(r))
+		}
+		if k := meta["api_key"]; k != "" {
+			attrs = append(attrs, observability.AttrLLMProxyClientKey.String(k))
+		}
+	}
+
+	ctx, span := observability.Tracer().Start(ctx, "synthesize_speech "+t.model, trace.WithAttributes(attrs...))
+	defer span.End()
+
+	observability.ActiveRequests.WithLabelValues(t.vendor, t.model).Inc()
+	defer observability.ActiveRequests.WithLabelValues(t.vendor, t.model).Dec()
+
+	result, err := synth.SynthesizeSpeech(ctx, text, language, userID, meta)
+	duration := time.Since(startTime)
+	durationMs := duration.Milliseconds()
+
+	statusLabel := "success"
+	if err != nil {
+		statusLabel = "error"
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	observability.RequestsTotal.WithLabelValues(t.vendor, t.model, effort, statusLabel).Inc()
+	observability.RequestDuration.WithLabelValues(t.vendor, t.model, effort).Observe(duration.Seconds())
 
 	if t.tracker != nil {
 		var status usagev1.Status
@@ -240,6 +357,13 @@ func (t *TrackingAdapter) SynthesizeSpeech(text, language, userID string, meta m
 			}
 			inTokens = result.Usage.Input
 			outTokens = result.Usage.Output
+			observability.TokensTotal.WithLabelValues(t.vendor, model, "input").Add(float64(inTokens))
+			observability.TokensTotal.WithLabelValues(t.vendor, model, "output").Add(float64(outTokens))
+			span.SetAttributes(
+				observability.AttrGenAIResponseModel.String(model),
+				observability.AttrGenAIUsageInput.Int(inTokens),
+				observability.AttrGenAIUsageOutput.Int(outTokens),
+			)
 		}
 		trackMeta := map[string]string{}
 		for k, v := range meta {
@@ -283,15 +407,49 @@ func (t *TrackingAdapter) SynthesizeSpeech(text, language, userID string, meta m
 
 // GenerateImage forwards to the wrapped adapter's optional image capability and
 // tracks usage. Adapters without one surface ErrImageGenerationUnsupported.
-func (t *TrackingAdapter) GenerateImage(prompt, userID string, meta map[string]string) (*llm.ImageResult, error) {
+func (t *TrackingAdapter) GenerateImage(ctx context.Context, prompt, userID string, meta map[string]string) (*llm.ImageResult, error) {
 	gen, ok := t.adapter.(llm.ImageGenerator)
 	if !ok {
 		return nil, llm.ErrImageGenerationUnsupported
 	}
 
 	startTime := time.Now()
-	result, err := gen.GenerateImage(prompt, userID, meta)
-	durationMs := time.Since(startTime).Milliseconds()
+	effort := "default"
+	if meta != nil && meta["effort"] != "" {
+		effort = meta["effort"]
+	}
+
+	attrs := []attribute.KeyValue{
+		observability.AttrGenAIProviderName.String(t.vendor),
+		observability.AttrGenAIRequestModel.String(t.model),
+	}
+	if meta != nil {
+		if r := meta["rule"]; r != "" {
+			attrs = append(attrs, observability.AttrLLMProxyRule.String(r))
+		}
+		if k := meta["api_key"]; k != "" {
+			attrs = append(attrs, observability.AttrLLMProxyClientKey.String(k))
+		}
+	}
+
+	ctx, span := observability.Tracer().Start(ctx, "generate_image "+t.model, trace.WithAttributes(attrs...))
+	defer span.End()
+
+	observability.ActiveRequests.WithLabelValues(t.vendor, t.model).Inc()
+	defer observability.ActiveRequests.WithLabelValues(t.vendor, t.model).Dec()
+
+	result, err := gen.GenerateImage(ctx, prompt, userID, meta)
+	duration := time.Since(startTime)
+	durationMs := duration.Milliseconds()
+
+	statusLabel := "success"
+	if err != nil {
+		statusLabel = "error"
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	observability.RequestsTotal.WithLabelValues(t.vendor, t.model, effort, statusLabel).Inc()
+	observability.RequestDuration.WithLabelValues(t.vendor, t.model, effort).Observe(duration.Seconds())
 
 	if t.tracker != nil {
 		var status usagev1.Status
@@ -310,6 +468,13 @@ func (t *TrackingAdapter) GenerateImage(prompt, userID string, meta map[string]s
 			}
 			inTokens = result.Usage.Input
 			outTokens = result.Usage.Output
+			observability.TokensTotal.WithLabelValues(t.vendor, model, "input").Add(float64(inTokens))
+			observability.TokensTotal.WithLabelValues(t.vendor, model, "output").Add(float64(outTokens))
+			span.SetAttributes(
+				observability.AttrGenAIResponseModel.String(model),
+				observability.AttrGenAIUsageInput.Int(inTokens),
+				observability.AttrGenAIUsageOutput.Int(outTokens),
+			)
 		}
 		trackMeta := map[string]string{}
 		for k, v := range meta {
@@ -357,8 +522,42 @@ func (t *TrackingAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, user
 	}
 
 	startTime := time.Now()
+	effort := "default"
+	if meta != nil && meta["effort"] != "" {
+		effort = meta["effort"]
+	}
+
+	attrs := []attribute.KeyValue{
+		observability.AttrGenAIProviderName.String(t.vendor),
+		observability.AttrGenAIRequestModel.String(t.model),
+	}
+	if meta != nil {
+		if r := meta["rule"]; r != "" {
+			attrs = append(attrs, observability.AttrLLMProxyRule.String(r))
+		}
+		if k := meta["api_key"]; k != "" {
+			attrs = append(attrs, observability.AttrLLMProxyClientKey.String(k))
+		}
+	}
+
+	ctx, span := observability.Tracer().Start(ctx, "judge "+t.model, trace.WithAttributes(attrs...))
+	defer span.End()
+
+	observability.ActiveRequests.WithLabelValues(t.vendor, t.model).Inc()
+	defer observability.ActiveRequests.WithLabelValues(t.vendor, t.model).Dec()
+
 	result, err := judge.Judge(ctx, req, userID, meta)
-	durationMs := time.Since(startTime).Milliseconds()
+	duration := time.Since(startTime)
+	durationMs := duration.Milliseconds()
+
+	statusLabel := "success"
+	if err != nil {
+		statusLabel = "error"
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	observability.RequestsTotal.WithLabelValues(t.vendor, t.model, effort, statusLabel).Inc()
+	observability.RequestDuration.WithLabelValues(t.vendor, t.model, effort).Observe(duration.Seconds())
 
 	if t.tracker != nil {
 		status := usagev1.Status_STATUS_SUCCESS
@@ -378,6 +577,13 @@ func (t *TrackingAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, user
 			}
 			inTokens = result.Usage.Input
 			outTokens = result.Usage.Output
+			observability.TokensTotal.WithLabelValues(t.vendor, model, "input").Add(float64(inTokens))
+			observability.TokensTotal.WithLabelValues(t.vendor, model, "output").Add(float64(outTokens))
+			span.SetAttributes(
+				observability.AttrGenAIResponseModel.String(model),
+				observability.AttrGenAIUsageInput.Int(inTokens),
+				observability.AttrGenAIUsageOutput.Int(outTokens),
+			)
 		}
 		trackMeta := map[string]string{}
 		for k, v := range meta {

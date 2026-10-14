@@ -250,6 +250,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `HTTP_ADDR` | `:8080` | HTTP listen address (health probes and the OpenAI-compatible API). |
 | `HTTP_API_ENABLED` | `true` | Serve the `/v1` API on `HTTP_ADDR`; `false` leaves only the health probes. |
 | `HTTP_API_TIMEOUT` | `5m` | Read/write timeout for one HTTP API call (it waits on an upstream model). |
+| `METRICS_ADDR` | `:9091` | Internal HTTP listen address for Prometheus `/metrics` and `/healthz`. Empty disables the metrics server. |
 | `LOG_LEVEL` | `info` | zerolog level. |
 | `SHUTDOWN_TIMEOUT` | `30s` | Graceful drain time on SIGTERM. |
 | `DB_MAX_CONNS` / `DB_MIN_CONNS` | `25` / `5` | Postgres pool bounds. |
@@ -273,6 +274,8 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `SENTRY_DSN` | empty | Error reporting; empty disables it. |
 | `SENTRY_ENVIRONMENT` / `SENTRY_RELEASE` | `development` / empty | Sentry metadata. |
 | `SENTRY_ENABLE_TRACING` | `false` | Sentry performance tracing. |
+| `OTEL_SERVICE_NAME` | `llm-proxy` | Service name reported in OpenTelemetry traces. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | OTLP gRPC endpoint (`host:port`) for distributed tracing; empty disables remote export. |
 
 ## Setting it up: keys, models, rules
 

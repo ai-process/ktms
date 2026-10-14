@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // Pinger is the readiness dependency (the pgx pool in production).
@@ -34,7 +35,7 @@ func NewHTTPServer(pinger Pinger, addr string, api *OpenAIAPI, requestTimeout ti
 
 	s.server = &http.Server{
 		Addr:         addr,
-		Handler:      mux,
+		Handler:      otelhttp.NewHandler(mux, "http.server"),
 		ReadTimeout:  requestTimeout,
 		WriteTimeout: requestTimeout,
 		IdleTimeout:  120 * time.Second,

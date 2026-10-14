@@ -75,10 +75,12 @@ func (pa *PoolAdapter) SupportsStreaming() bool {
 	return true
 }
 
-func (pa *PoolAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error) {
-	ctx := context.Background()
-	if chat != nil {
-		ctx = chat.Context()
+func (pa *PoolAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
+	if ctx == nil {
+		ctx = context.Background()
+		if chat != nil && chat.Context() != nil {
+			ctx = chat.Context()
+		}
 	}
 	cand, reqID, err := pa.acquireSlotWithWait(ctx, chat)
 	if err != nil {
@@ -97,7 +99,7 @@ func (pa *PoolAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error
 
 	adapter := pa.newNodeAdapter(client, underlyingModel, cand)
 	start := time.Now()
-	resp, err := adapter.GenerateText(chat)
+	resp, err := adapter.GenerateText(ctx, chat)
 	duration := time.Since(start)
 
 	if err != nil {

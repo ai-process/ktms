@@ -184,13 +184,13 @@ func (a *OpenAIAdapter) SetSoftSchema(soft bool) { a.softSchema = soft }
 // reasoning off.
 func (a *OpenAIAdapter) SetThinkingOff(fields map[string]any) { a.thinkingOff = fields }
 
-func (a *OpenAIAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error) {
+func (a *OpenAIAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
 	// Rendered once, not per attempt: toOpenAi consumes the chat's per-request
 	// instruction, so re-rendering would silently drop it on the retry below.
 	messages := a.toOpenAi(chat)
 	ceiling := chat.GetMaxOutputTokens()
 
-	resp, err := a.completeOnce(chat, messages, ceiling)
+	resp, err := a.completeOnce(ctx, chat, messages, ceiling)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +205,7 @@ func (a *OpenAIAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, erro
 		// The discarded attempt burned the whole ceiling and OpenAI billed it, so
 		// its tokens have to reach the collector and the token budgets too.
 		abandoned = usageOf(resp)
-		resp, err = a.completeOnce(chat, messages, 0)
+		resp, err = a.completeOnce(ctx, chat, messages, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -319,12 +319,11 @@ func (a *OpenAIAdapter) toResponse(resp *openai.ChatCompletion, carried llm.Toke
 
 // completeOnce issues a single chat completion. ceiling of 0 sends no
 // max_completion_tokens at all, letting the model's own limit apply.
-func (a *OpenAIAdapter) completeOnce(chat *llm.ChatContext, messages []openai.ChatCompletionMessageParamUnion, ceiling int) (*openai.ChatCompletion, error) {
+func (a *OpenAIAdapter) completeOnce(ctx context.Context, chat *llm.ChatContext, messages []openai.ChatCompletionMessageParamUnion, ceiling int) (*openai.ChatCompletion, error) {
 	params := a.buildCompletionParams(chat, messages, ceiling)
 	a.throttle.WaitForSlot()
-	ctx := context.Background()
-	if chat != nil && chat.Context() != nil {
-		ctx = chat.Context()
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	return a.openAI.Chat.Completions.New(ctx, params)
 }
@@ -581,13 +580,16 @@ func (a *OpenAIAdapter) SetImageModel(model string) {
 
 // GenerateImage renders one landscape image from a text prompt. The GPT image
 // models always answer base64, never a URL.
-func (a *OpenAIAdapter) GenerateImage(prompt, userID string, meta map[string]string) (*llm.ImageResult, error) {
+func (a *OpenAIAdapter) GenerateImage(ctx context.Context, prompt, userID string, meta map[string]string) (*llm.ImageResult, error) {
 	failed := func(err error) (*llm.ImageResult, error) {
 		return &llm.ImageResult{Model: a.imageModel}, err
 	}
 
 	a.throttle.WaitForSlot()
-	resp, err := a.openAI.Images.Generate(context.Background(), openai.ImageGenerateParams{
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	resp, err := a.openAI.Images.Generate(ctx, openai.ImageGenerateParams{
 		Prompt:       prompt,
 		Model:        a.imageModel,
 		N:            openai.Int(1),
@@ -627,7 +629,7 @@ func (a *OpenAIAdapter) SetTTS(model, voice string) {
 
 // SynthesizeSpeech generates OGG/Opus audio for a short phrase. OpenAI returns
 // the Opus container directly, so no ffmpeg transcode is needed.
-func (a *OpenAIAdapter) SynthesizeSpeech(text, language, userID string, meta map[string]string) (*llm.SpeechResult, error) {
+func (a *OpenAIAdapter) SynthesizeSpeech(ctx context.Context, text, language, userID string, meta map[string]string) (*llm.SpeechResult, error) {
 	// failed carries the actual TTS model alongside an error so usage tracking
 	// records the real model (not the wrapping candidate's chat-model label).
 	failed := func(err error) (*llm.SpeechResult, error) {
@@ -647,7 +649,10 @@ func (a *OpenAIAdapter) SynthesizeSpeech(text, language, userID string, meta map
 		params.Instructions = openai.String("Read the text exactly as written, in " + language + " with native pronunciation.")
 	}
 
-	resp, err := a.openAI.Audio.Speech.New(context.Background(), params)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	resp, err := a.openAI.Audio.Speech.New(ctx, params)
 	if err != nil {
 		return failed(err)
 	}

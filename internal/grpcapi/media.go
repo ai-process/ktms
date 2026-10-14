@@ -55,7 +55,7 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 				return llm.TokensUsage{}, status.Errorf(codes.FailedPrecondition,
 					"no_capable_model: %s cannot synthesize speech", m.ID)
 			}
-			res, err := synth.SynthesizeSpeech(req.GetText(), req.GetLanguage(), router.UserID(plan.attrs, plan.identity.Name), plan.meta)
+			res, err := synth.SynthesizeSpeech(ctx, req.GetText(), req.GetLanguage(), router.UserID(plan.attrs, plan.identity.Name), plan.meta)
 			if err != nil {
 				return llm.TokensUsage{}, err
 			}
@@ -102,7 +102,7 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 				return llm.TokensUsage{}, status.Errorf(codes.FailedPrecondition,
 					"no_capable_model: %s cannot generate images", m.ID)
 			}
-			res, err := gen.GenerateImage(req.GetPrompt(), router.UserID(plan.attrs, plan.identity.Name), plan.meta)
+			res, err := gen.GenerateImage(ctx, req.GetPrompt(), router.UserID(plan.attrs, plan.identity.Name), plan.meta)
 			if err != nil {
 				return llm.TokensUsage{}, err
 			}
