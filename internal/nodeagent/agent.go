@@ -165,8 +165,17 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// The gateway and tunnel must outlive drainAndExit: the proxy still sends requests while draining.
 	expCtx, stopExposure := context.WithCancel(ctx)
-	defer stopExposure()
-	urls, err := a.startExposure(expCtx)
+	urls, stopped, err := a.startExposure(expCtx)
+	defer func() { // cloudflared must be gone before the process exits, or it is orphaned
+		stopExposure()
+		if stopped != nil {
+			select {
+			case <-stopped:
+			case <-time.After(10 * time.Second):
+				log.Warn().Msg("tunnel did not stop in time")
+			}
+		}
+	}()
 	if err != nil {
 		return err
 	}
@@ -177,6 +186,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			a.setEndpoint(u)
 		case <-time.After(2 * time.Minute):
 			return errors.New("cloudflared produced no public address within 2 minutes; check that this machine can reach Cloudflare (outbound port 7844) or use --expose=none")
+		case <-a.drainChan:
+			log.Info().Msg("shutdown requested before the tunnel was ready")
+			return nil
 		case <-ctx.Done():
 			return ctx.Err()
 		}
