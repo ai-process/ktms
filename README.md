@@ -408,10 +408,11 @@ curl -fsSL https://raw.githubusercontent.com/ai-process/llm-proxy/vX.Y.Z/scripts
   --proxy proxy.example.com --node-id anna-mac --model gemma4:26b-a4b-it-qat
 ```
 
-It downloads Ollama, the model and the node agent, starts them as background services that
-survive reboots and keep the machine awake, and waits until the node has registered. The model
-is large, so the first run takes a while. Add `--max-concurrency N` for a machine that can serve
-more than one request at a time (default 1).
+It downloads Ollama, the model and the node agent, starts them as background services and keeps
+the machine awake, and waits until the node has registered. Linux services start at boot. On a
+Mac they are login items: after a reboot the node comes back when its user logs in, so turn on
+automatic login for an unattended Mac. The model is large, so the first run takes a while. Add
+`--max-concurrency N` for a machine that can serve more than one request at a time (default 1).
 
 **3. Check.** The last lines say `Node anna-mac is running and registered`. The proxy admin
 confirms with `ListNodes` that the node is `HEALTHY` and has the model.
@@ -434,6 +435,7 @@ that cannot come up (outbound port 7844 blocked). Logs are in `~/.llm-proxy-node
 | `key belongs to node "x"` | The key is bound to one machine. Use the node id it was minted for, or ask for a new key. |
 | Needs a new key | Re-run with `--new-key`. |
 | Address changed after a restart | Expected: quick tunnel addresses change, and the node re-registers by itself. |
+| Node is offline after a Mac reboot | macOS starts the services at login, not at boot. Log in, or enable automatic login (System Settings > Users & Groups). |
 | The machine sleeps | The services keep it awake while they run, on a Mac only while plugged in. Closing a laptop lid still sleeps it. |
 
 Installs on Linux need `zstd` (Ubuntu: `sudo apt install zstd`) and a normal login session
