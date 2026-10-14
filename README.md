@@ -29,6 +29,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 - [Installation](#installation)
   - [Docker image](#docker-image)
   - [Building from source](#building-from-source)
+  - [Node agent](#node-agent)
   - [Production checklist](#production-checklist)
 - [Configuration reference](#configuration-reference)
 - [Setting it up: keys, models, rules](#setting-it-up-keys-models-rules)
@@ -165,7 +166,7 @@ Postgres and Redis and pick up configuration changes within `ROUTING_RELOAD_SECO
 Requires Go 1.25+ (and `ffmpeg` on `PATH` if you use speech).
 
 ```bash
-make build                       # → bin/llm-proxy-server
+make build                       # → bin/llm-proxy-server and bin/llm-proxy-node
 export DATABASE_URL=postgres://llmproxy:llmproxy@localhost:5432/llmproxy?sslmode=disable
 export LLMPROXY_ENCRYPTION_KEYS="1:$(head -c 32 /dev/urandom | base64)"
 ./bin/llm-proxy-server
@@ -173,10 +174,28 @@ export LLMPROXY_ENCRYPTION_KEYS="1:$(head -c 32 /dev/urandom | base64)"
 
 Or build the image yourself: `docker build -t llm-proxy .`
 
+### Node agent
+
+`bin/llm-proxy-node` runs next to a local inference engine (`ollama`, `vllm`, `tgi`, `llamacpp`),
+registers it with the proxy and sends heartbeats with the loaded models and GPU metrics. It
+authenticates with a node key minted with the `MintNodeKey` admin RPC.
+
+```bash
+export NODE_KEY=...                       # or --node-key-file
+./bin/llm-proxy-node --proxy-addr proxy.example.com:443 --tls \
+  --engine ollama --endpoint http://127.0.0.1:11434
+```
+
+Flags: `--proxy-addr` (default `127.0.0.1:50051`), `--tls` (dial over TLS with the system CA
+roots, for a proxy behind a TLS load balancer; off by default), `--node-id` (defaults to the
+hostname), `--node-name`, `--engine`, `--endpoint`, `--base-weight`, `--max-concurrent`.
+`NODE_AUTH_TOKEN` is passed on to the engine when it requires one.
+
 ### Production checklist
 
 - **TLS.** The server speaks plaintext gRPC. Terminate TLS in front of it (Envoy, nginx
   with `grpc_pass`, a service mesh, a cloud load balancer) or keep it on a private network.
+  Node agents that reach the proxy through that TLS endpoint run with `--tls`.
 - **Back up the encryption keyring.** Without `LLMPROXY_ENCRYPTION_KEYS` the stored vendor
   keys are unreadable. Treat it like any other root secret.
 - **Mint real keys, then unset `BOOTSTRAP_ADMIN_KEY`.** It is accepted as an implicit admin key.

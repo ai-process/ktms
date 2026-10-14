@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	grpclib "google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
@@ -19,6 +21,7 @@ import (
 
 type AgentConfig struct {
 	ProxyAddr     string
+	TLS           bool // dial ProxyAddr over TLS with system roots, e.g. a load balancer on :443
 	NodeKey       string
 	NodeID        string
 	NodeName      string
@@ -48,10 +51,16 @@ func NewAgent(cfg AgentConfig) *Agent {
 	}
 }
 
+// dialCredentials picks plaintext or system-root TLS for the proxy connection.
+func (a *Agent) dialCredentials() credentials.TransportCredentials {
+	if a.cfg.TLS {
+		return credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+	}
+	return insecure.NewCredentials()
+}
+
 func (a *Agent) Run(ctx context.Context) error {
-	conn, err := grpclib.DialContext(ctx, a.cfg.ProxyAddr,
-		grpclib.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	conn, err := grpclib.DialContext(ctx, a.cfg.ProxyAddr, grpclib.WithTransportCredentials(a.dialCredentials()))
 	if err != nil {
 		return fmt.Errorf("connect to proxy %s: %w", a.cfg.ProxyAddr, err)
 	}
