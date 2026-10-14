@@ -18,6 +18,7 @@ func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	var (
+		showVersion   = flag.Bool("version", false, "Print the version and exit")
 		proxyAddr     = flag.String("proxy-addr", "127.0.0.1:50051", "LLM-proxy gRPC address (host:port)")
 		useTLS        = flag.Bool("tls", false, "Connect to the proxy over TLS (system CA roots)")
 		expose        = flag.String("expose", nodeagent.ExposeNone, "How the proxy reaches this node: "+nodeagent.ExposeCloudflared+" (built-in gateway + quick tunnel) or "+nodeagent.ExposeNone+" (you supply --endpoint)")
@@ -32,6 +33,10 @@ func main() {
 		maxConcurrent = flag.Uint("max-concurrent", 16, "Maximum concurrent requests")
 	)
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 
 	nodeKey := os.Getenv("NODE_KEY")
 	if nodeKey == "" && *keyFile != "" {
