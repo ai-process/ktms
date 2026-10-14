@@ -176,7 +176,15 @@ type heartbeatFn func(ctx context.Context, req *pb.HeartbeatRequest) (*pb.Heartb
 
 type fakeProxy struct {
 	pb.UnimplementedNodeRegistryServiceServer
-	hb heartbeatFn
+	hb       heartbeatFn
+	validate func(*pb.ValidateNodeRequest) (*pb.ValidateNodeResponse, error) // nil = an old proxy
+}
+
+func (f *fakeProxy) ValidateNode(_ context.Context, req *pb.ValidateNodeRequest) (*pb.ValidateNodeResponse, error) {
+	if f.validate == nil {
+		return nil, status.Error(codes.Unimplemented, "unknown method ValidateNode")
+	}
+	return f.validate(req)
 }
 
 func (f *fakeProxy) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
@@ -184,6 +192,11 @@ func (f *fakeProxy) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*p
 }
 
 func serveProxy(t *testing.T, hb heartbeatFn, creds credentials.TransportCredentials) string {
+	t.Helper()
+	return serveFakeProxy(t, &fakeProxy{hb: hb}, creds)
+}
+
+func serveFakeProxy(t *testing.T, fp *fakeProxy, creds credentials.TransportCredentials) string {
 	t.Helper()
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -194,7 +207,7 @@ func serveProxy(t *testing.T, hb heartbeatFn, creds credentials.TransportCredent
 		opts = append(opts, grpclib.Creds(creds))
 	}
 	srv := grpclib.NewServer(opts...)
-	pb.RegisterNodeRegistryServiceServer(srv, &fakeProxy{hb: hb})
+	pb.RegisterNodeRegistryServiceServer(srv, fp)
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
 	return lis.Addr().String()
@@ -426,5 +439,52 @@ func TestDoctorDoesNotDialDirectlyBehindAProxy(t *testing.T) {
 	d.UsesProxy = func(string) bool { return false }
 	if f := one(t, d.checkProxy(context.Background()), "Proxy"); f.Level != LevelProblem {
 		t.Fatalf("without a proxy the direct dial failure is real: %+v", f)
+	}
+}
+
+func TestDoctorRegistration(t *testing.T) {
+	models := []*pb.NodeModelSpec{{ModelId: "tiny:1b"}, {ModelId: "gemma4:latest"}}
+	cases := []struct {
+		name     string
+		validate func(*pb.ValidateNodeRequest) (*pb.ValidateNodeResponse, error)
+		level    Level
+		want     string
+	}{
+		{"all accepted", func(*pb.ValidateNodeRequest) (*pb.ValidateNodeResponse, error) {
+			return &pb.ValidateNodeResponse{AcceptedModels: []string{"tiny:1b", "gemma4:latest"}}, nil
+		}, LevelOK, "would accept this node with 2 model(s)"},
+		{"extra model ignored", func(*pb.ValidateNodeRequest) (*pb.ValidateNodeResponse, error) {
+			return &pb.ValidateNodeResponse{AcceptedModels: []string{"tiny:1b"}, DroppedModels: []string{"gemma4:latest"}}, nil
+		}, LevelWarn, "does not allow gemma4:latest"},
+		{"refused with the proxy's text", func(*pb.ValidateNodeRequest) (*pb.ValidateNodeResponse, error) {
+			return nil, status.Error(codes.PermissionDenied, `none of the models ["gemma4:latest"] is permitted for this node key`)
+		}, LevelProblem, "gemma4:latest"},
+		{"old proxy", nil, LevelWarn, "too old"},
+	}
+	for _, c := range cases {
+		addr := serveFakeProxy(t, &fakeProxy{validate: c.validate}, nil)
+		d := newDoctor(AgentConfig{ProxyAddr: addr, NodeKey: "k", NodeID: "node-9"})
+		f := one(t, d.checkRegistration(context.Background(), models), "Registration")
+		if f.Level != c.level || !strings.Contains(f.Message, c.want) {
+			t.Errorf("%s: got %+v, want level %d containing %q", c.name, f, c.level, c.want)
+		}
+	}
+}
+
+func TestDoctorRunReportsRefusedRegistration(t *testing.T) {
+	engine := fakeOllama(t, `{"models":[{"name":"gemma4:latest","model":"gemma4:latest"}]}`, `{"models":[]}`)
+	addr := serveFakeProxy(t, &fakeProxy{
+		hb: func(context.Context, *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
+			return &pb.HeartbeatResponse{ReRegisterRequired: true}, nil
+		},
+		validate: func(*pb.ValidateNodeRequest) (*pb.ValidateNodeResponse, error) {
+			return nil, status.Error(codes.PermissionDenied, `model "gemma4:latest" not permitted`)
+		},
+	}, nil)
+	d := newDoctor(AgentConfig{EngineURL: engine.URL, ProxyAddr: addr, NodeKey: "k", NodeID: "n"})
+	d.UsesProxy = func(string) bool { return true }
+	var buf bytes.Buffer
+	if Render(&buf, d.Run(context.Background())) == 0 {
+		t.Fatalf("the doctor said all is well though registration is refused:\n%s", buf.String())
 	}
 }

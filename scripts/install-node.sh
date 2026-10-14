@@ -138,8 +138,19 @@ gpu_budget_mb() {
 }
 
 # model_weights_gb prints the rough weight size from a tag like name:26b-..., or nothing.
+# Bytes per parameter follow the quantization named in the tag; unnamed tags assume a typical 4-bit build.
 model_weights_gb() {
-	printf '%s\n' "$1" | sed -n 's/^[^:]*:\([0-9][0-9.]*\)b.*/\1/p' | awk '$1 != "" { printf "%.1f\n", $1 * 0.6 }'
+	params=$(printf '%s\n' "$1" | sed -n 's/^[^:]*:\([0-9][0-9.]*\)b.*/\1/p')
+	[ -n "$params" ] || return 0
+	case $1 in
+	*fp16* | *f16* | *bf16*) bpp=2.05 ;;
+	*q8* | *int8* | *fp8*) bpp=1.05 ;;
+	*q6*) bpp=0.85 ;;
+	*q5*) bpp=0.7 ;;
+	*qat* | *int4* | *q4_0* | *mxfp4* | *nvfp4*) bpp=0.5 ;;
+	*) bpp=0.6 ;;
+	esac
+	awk -v p="$params" -v b="$bpp" 'BEGIN { printf "%.1f\n", p * b }'
 }
 
 free_disk_gb() {
@@ -157,7 +168,8 @@ check_resources() {
 		say "Could not read this machine's memory; skipping the memory check."
 		return 0
 	fi
-	need=$(awk -v g="$GB" 'BEGIN { printf "%d\n", g * 1.2 + 2 }')
+	# Weights plus runtime buffers (1.5 GB) plus a rough 1 GB of KV cache per 8192 context tokens.
+	need=$(awk -v g="$GB" -v c="$CTX" 'BEGIN { printf "%d\n", g + 1.5 + c / 8192 }')
 	say "Model $MODEL: about $GB GB of weights, roughly $need GB with context; this machine offers about $budget GB."
 	if [ "$need" -gt "$budget" ]; then
 		warn "Not enough memory for $MODEL: needs about $need GB, about $budget GB is usable. It may not load or may swap heavily. Pick a smaller model or continue at your own risk."
@@ -466,7 +478,7 @@ write_service() { # id program args... (stdin: nothing)
 run_doctor() {
 	step "Diagnosing"
 	set -- doctor --proxy-addr "$PROXY" --node-id "$NODE_ID" --node-key-file "$BASE/key" \
-		--engine ollama --engine-url "http://$OLLAMA_ADDR" --model "$MODEL"
+		--engine ollama --engine-url "http://$OLLAMA_ADDR" --only-model "$MODEL" --model "$MODEL"
 	[ "$PLAINTEXT" = 1 ] || set -- "$@" --tls
 	if [ -n "$ENDPOINT" ]; then
 		set -- "$@" --endpoint "$ENDPOINT" --expose none
@@ -515,7 +527,8 @@ do_uninstall() {
 }
 
 print_status() {
-	ep=$(sed -n 's/.*node registered successfully.*endpoint=\([^ ]*\).*/\1/p' "$BASE/logs/node.log" 2>/dev/null | tail -1 | sed "s/$(printf '\033')\[[0-9;]*m//g")
+	# Re-registration after a tunnel restart logs the newer address, so take the latest of both.
+	ep=$(sed -n -e 's/.*node registered successfully.*endpoint=\([^ ]*\).*/\1/p' -e 's/.*node re-registered.*endpoint=\([^ ]*\).*/\1/p' "$BASE/logs/node.log" 2>/dev/null | tail -1 | sed "s/$(printf '\033')\[[0-9;]*m//g")
 	engine="Ollama"
 	[ "$OS" = darwin ] && [ "$ARCH" = arm64 ] && engine="Ollama (Apple GPU)"
 	cat <<EOF
@@ -571,7 +584,7 @@ main() {
 
 	step "Starting the node"
 	set -- "$BASE/bin/llm-proxy-node" --proxy-addr "$PROXY" --node-id "$NODE_ID" --node-name "$NAME" \
-		--engine ollama --engine-url "http://$OLLAMA_ADDR" --max-concurrent "$MAXC" --node-key-file "$BASE/key"
+		--engine ollama --engine-url "http://$OLLAMA_ADDR" --only-model "$MODEL" --max-concurrent "$MAXC" --node-key-file "$BASE/key"
 	[ "$PLAINTEXT" = 1 ] || set -- "$@" --tls
 	if [ -n "$ENDPOINT" ]; then
 		set -- "$@" --endpoint "$ENDPOINT" --expose none

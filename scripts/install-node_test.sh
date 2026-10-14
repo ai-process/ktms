@@ -17,7 +17,9 @@ sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{pri
 # ---------------------------------------------------------------- unit tests
 unit() { ( INSTALL_NODE_SOURCED=1; . "$SCRIPT"; "$@" ); }
 
-eq "model size 26b" "15.6" "$(unit model_weights_gb gemma4:26b-a4b-it-qat)"
+eq "model size 26b qat is 4-bit" "13.0" "$(unit model_weights_gb gemma4:26b-a4b-it-qat)"
+eq "model size q8" "8.4" "$(unit model_weights_gb llama3.1:8b-instruct-q8_0)"
+eq "model size fp16" "16.4" "$(unit model_weights_gb llama3.1:8b-instruct-fp16)"
 eq "model size 8b" "4.8" "$(unit model_weights_gb llama3.1:8b)"
 eq "model size moe tag" "18.0" "$(unit model_weights_gb qwen3:30b-a3b)"
 eq "model size latest tag" "" "$(unit model_weights_gb llama3:latest)"
@@ -53,6 +55,16 @@ UNIT=$(unit render_unit "desc" /tmp/n.log "A=1" systemd-inhibit "--why=Serving L
 has "unit exec quoting" 'ExecStart="systemd-inhibit" "--why=Serving LLM requests" "/opt/my dir/node" "--x"' "$UNIT"
 has "unit env" 'Environment="A=1"' "$UNIT"
 has "unit restart" "Restart=always" "$UNIT"
+
+# print_status shows the newest address: re-registration follows a tunnel restart
+psdir="${TMPDIR:-/tmp}/it.$$.status"
+mkdir -p "$psdir/logs"
+printf 'INF node registered successfully endpoint=https://old.trycloudflare.com interval=5s\nINF tunnel address changed endpoint=https://new.trycloudflare.com\nINF node re-registered endpoint=https://new.trycloudflare.com\n' >"$psdir/logs/node.log"
+status() { ( INSTALL_NODE_SOURCED=1; . "$SCRIPT"; BASE=$psdir OS=linux ARCH=amd64 NODE_ID=n PROXY=p OLLAMA_ADDR=a MODEL=m; print_status ); }
+has "status uses the re-registered address" "Address: https://new.trycloudflare.com" "$(status)"
+printf 'INF node re-registered endpoint=https://new.trycloudflare.com\nINF node registered successfully endpoint=https://first.trycloudflare.com interval=5s\n' >"$psdir/logs/node.log"
+has "status uses the latest line of either kind" "Address: https://first.trycloudflare.com" "$(status)"
+rm -rf "$psdir"
 
 sumfile="${TMPDIR:-/tmp}/it.$$.bin"
 printf 'x' >"$sumfile"
@@ -280,6 +292,7 @@ has "linux: node uses built-in tunnel" '"--expose" "cloudflared"' "$NODE_UNIT"
 has "linux: node reads key from file" "--node-key-file" "$NODE_UNIT"
 hasnt "linux: key never in the unit" "llm_node_test_key" "$NODE_UNIT"
 has "linux: tls on by default" '"--tls"' "$NODE_UNIT"
+has "linux: node reports only the chosen model" '"--only-model" "tiny:1b"' "$NODE_UNIT"
 has "linux: ollama keeps model loaded" 'OLLAMA_KEEP_ALIVE=-1' "$OLL_UNIT"
 has "linux: ollama parallel follows concurrency" 'OLLAMA_NUM_PARALLEL=2' "$OLL_UNIT"
 has "linux: ollama context" 'OLLAMA_CONTEXT_LENGTH=4096' "$OLL_UNIT"
@@ -324,6 +337,7 @@ if [ "$RC" != 0 ]; then ok "linux: agent that never registers fails"; else bad "
 has "linux: rollback announced" "restoring the previous one" "$OUT"
 has "linux: failed start runs the doctor" "DOCTOR-RAN:doctor --proxy-addr llm-nodes.example.com:443" "$OUT"
 has "linux: doctor gets the model and the key file, never the key" "--model tiny:1b" "$OUT"
+has "linux: doctor reports only the chosen model" "--only-model tiny:1b" "$OUT"
 hasnt "linux: doctor output never shows the key" "llm_node_test_key" "$OUT"
 eq "linux: rolled back to the working version" "0.11.0" "$("$BASE/bin/llm-proxy-node" --version)"
 
@@ -363,6 +377,11 @@ OUT=$(FAKE_MEMSIZE=8589934592 run_install --proxy p --node-id n --model gemma4:2
 has "small Mac gets a memory warning" "Not enough memory" "$OUT"
 OUT=$(run_install --proxy p --node-id n --model gemma4:26b-a4b-it-qat --dry-run)
 hasnt "32 GB Mac fits the 26b model" "Not enough memory" "$OUT"
+# measured: this model loaded fully on a 24 GB Mac at a 12288 context
+OUT=$(FAKE_MEMSIZE=25769803776 run_install --proxy p --node-id n --model gemma4:26b-a4b-it-qat --context 12288 --dry-run)
+hasnt "24 GB Mac fits the 26b qat model at 12288 context" "Not enough memory" "$OUT"
+OUT=$(FAKE_MEMSIZE=17179869184 run_install --proxy p --node-id n --model gemma4:26b-a4b-it-qat --dry-run)
+has "16 GB Mac still gets the warning" "Not enough memory" "$OUT"
 
 # Intel-only Ollama on Apple Silicon is called out and not used
 printf '#!/bin/sh\nexit 0\n' >"$W/bin/ollama"

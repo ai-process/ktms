@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	NodeRegistryService_RegisterNode_FullMethodName   = "/llmproxy.v1.NodeRegistryService/RegisterNode"
+	NodeRegistryService_ValidateNode_FullMethodName   = "/llmproxy.v1.NodeRegistryService/ValidateNode"
 	NodeRegistryService_Heartbeat_FullMethodName      = "/llmproxy.v1.NodeRegistryService/Heartbeat"
 	NodeRegistryService_UnregisterNode_FullMethodName = "/llmproxy.v1.NodeRegistryService/UnregisterNode"
 )
@@ -32,6 +33,9 @@ const (
 // using a dedicated llm_node_... key (scope "node").
 type NodeRegistryServiceClient interface {
 	RegisterNode(ctx context.Context, in *RegisterNodeRequest, opts ...grpc.CallOption) (*RegisterNodeResponse, error)
+	// ValidateNode runs the key, node id, address and model checks of RegisterNode without
+	// storing anything, so an agent can learn a permanent refusal before it opens a tunnel.
+	ValidateNode(ctx context.Context, in *ValidateNodeRequest, opts ...grpc.CallOption) (*ValidateNodeResponse, error)
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 	UnregisterNode(ctx context.Context, in *UnregisterNodeRequest, opts ...grpc.CallOption) (*UnregisterNodeResponse, error)
 }
@@ -48,6 +52,16 @@ func (c *nodeRegistryServiceClient) RegisterNode(ctx context.Context, in *Regist
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RegisterNodeResponse)
 	err := c.cc.Invoke(ctx, NodeRegistryService_RegisterNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodeRegistryServiceClient) ValidateNode(ctx context.Context, in *ValidateNodeRequest, opts ...grpc.CallOption) (*ValidateNodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ValidateNodeResponse)
+	err := c.cc.Invoke(ctx, NodeRegistryService_ValidateNode_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +96,9 @@ func (c *nodeRegistryServiceClient) UnregisterNode(ctx context.Context, in *Unre
 // using a dedicated llm_node_... key (scope "node").
 type NodeRegistryServiceServer interface {
 	RegisterNode(context.Context, *RegisterNodeRequest) (*RegisterNodeResponse, error)
+	// ValidateNode runs the key, node id, address and model checks of RegisterNode without
+	// storing anything, so an agent can learn a permanent refusal before it opens a tunnel.
+	ValidateNode(context.Context, *ValidateNodeRequest) (*ValidateNodeResponse, error)
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	UnregisterNode(context.Context, *UnregisterNodeRequest) (*UnregisterNodeResponse, error)
 	mustEmbedUnimplementedNodeRegistryServiceServer()
@@ -96,6 +113,9 @@ type UnimplementedNodeRegistryServiceServer struct{}
 
 func (UnimplementedNodeRegistryServiceServer) RegisterNode(context.Context, *RegisterNodeRequest) (*RegisterNodeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RegisterNode not implemented")
+}
+func (UnimplementedNodeRegistryServiceServer) ValidateNode(context.Context, *ValidateNodeRequest) (*ValidateNodeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ValidateNode not implemented")
 }
 func (UnimplementedNodeRegistryServiceServer) Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Heartbeat not implemented")
@@ -138,6 +158,24 @@ func _NodeRegistryService_RegisterNode_Handler(srv interface{}, ctx context.Cont
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NodeRegistryServiceServer).RegisterNode(ctx, req.(*RegisterNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NodeRegistryService_ValidateNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ValidateNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeRegistryServiceServer).ValidateNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeRegistryService_ValidateNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeRegistryServiceServer).ValidateNode(ctx, req.(*ValidateNodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -188,6 +226,10 @@ var NodeRegistryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RegisterNode",
 			Handler:    _NodeRegistryService_RegisterNode_Handler,
+		},
+		{
+			MethodName: "ValidateNode",
+			Handler:    _NodeRegistryService_ValidateNode_Handler,
 		},
 		{
 			MethodName: "Heartbeat",

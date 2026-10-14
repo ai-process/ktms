@@ -3,6 +3,8 @@ package grpcapi
 import (
 	"context"
 	"errors"
+	"strings"
+	"sync"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rs/zerolog/log"
@@ -23,6 +25,7 @@ type NodeRegistryServer struct {
 	pb.UnimplementedNodeRegistryServiceServer
 	mgr     *nodes.Manager
 	keyring *crypto.Keyring
+	warned  sync.Map // node id -> dropped-model list already logged, so heartbeats do not repeat it
 }
 
 func NewNodeRegistryServer(mgr *nodes.Manager, keyring *crypto.Keyring) *NodeRegistryServer {
@@ -32,39 +35,83 @@ func NewNodeRegistryServer(mgr *nodes.Manager, keyring *crypto.Keyring) *NodeReg
 	}
 }
 
-func (s *NodeRegistryServer) RegisterNode(ctx context.Context, req *pb.RegisterNodeRequest) (*pb.RegisterNodeResponse, error) {
-	caller := apikeys.IdentityFrom(ctx)
-	if caller == nil {
-		return nil, status.Error(codes.Unauthenticated, "unauthenticated")
+// authorize applies the node key's restrictions to a registration.
+func (s *NodeRegistryServer) authorize(ctx context.Context, caller *apikeys.Identity, nodeID string, models []*pb.NodeModelSpec) (kept []*pb.NodeModelSpec, dropped []string, err error) {
+	if caller.NodeID != "" && caller.NodeID != nodeID {
+		return nil, nil, status.Errorf(codes.PermissionDenied, "key is bound to node_id %q, cannot register as %q", caller.NodeID, nodeID)
 	}
-
-	// 1. Enforce node_id constraint from NodeKey
-	if caller.NodeID != "" && caller.NodeID != req.GetNodeId() {
-		return nil, status.Errorf(codes.PermissionDenied, "key is bound to node_id %q, cannot register as %q", caller.NodeID, req.GetNodeId())
-	}
-
-	// 2. Validate CIDRs if caller is IP-restricted
 	if len(caller.AllowedCIDRs) > 0 {
 		var remoteAddr string
 		if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
 			remoteAddr = p.Addr.String()
 		}
 		if err := nodes.ValidateCIDRs(remoteAddr, caller.AllowedCIDRs); err != nil {
-			return nil, status.Errorf(codes.PermissionDenied, "remote IP not allowed: %v", err)
+			return nil, nil, status.Errorf(codes.PermissionDenied, "remote IP not allowed: %v", err)
 		}
 	}
+	return s.screenModels(caller, nodeID, models)
+}
 
-	// 3. Enforce model and weight restrictions from NodeKey
-	if len(caller.AllowedModels) > 0 {
-		allowedMap := make(map[string]bool)
-		for _, m := range caller.AllowedModels {
-			allowedMap[m] = true
+// screenModels drops models the key does not allow, with a warning; it fails only
+// when models were offered and none is left.
+func (s *NodeRegistryServer) screenModels(caller *apikeys.Identity, nodeID string, models []*pb.NodeModelSpec) (kept []*pb.NodeModelSpec, dropped []string, err error) {
+	kept, dropped = filterAllowedModels(models, caller.AllowedModels)
+	if len(dropped) > 0 {
+		if prev, _ := s.warned.Swap(nodeID, strings.Join(dropped, ",")); prev != strings.Join(dropped, ",") {
+			log.Warn().Str("node_id", nodeID).Strs("dropped_models", dropped).Msg("node offered models its key does not allow; ignoring them")
 		}
-		for _, m := range req.GetModels() {
-			if !allowedMap[m.GetModelId()] {
-				return nil, status.Errorf(codes.PermissionDenied, "model %q not permitted for this node key", m.GetModelId())
-			}
+	} else {
+		s.warned.Delete(nodeID)
+	}
+	if len(models) > 0 && len(kept) == 0 {
+		return nil, dropped, status.Errorf(codes.PermissionDenied, "none of the models %q is permitted for this node key (allowed: %q)", dropped, caller.AllowedModels)
+	}
+	return kept, dropped, nil
+}
+
+// filterAllowedModels splits models by the key's allow list; an empty list allows all.
+func filterAllowedModels(models []*pb.NodeModelSpec, allowed []string) (kept []*pb.NodeModelSpec, dropped []string) {
+	if len(allowed) == 0 {
+		return models, nil
+	}
+	ok := make(map[string]bool, len(allowed))
+	for _, m := range allowed {
+		ok[m] = true
+	}
+	for _, m := range models {
+		if ok[m.GetModelId()] {
+			kept = append(kept, m)
+		} else {
+			dropped = append(dropped, m.GetModelId())
 		}
+	}
+	return kept, dropped
+}
+
+func (s *NodeRegistryServer) ValidateNode(ctx context.Context, req *pb.ValidateNodeRequest) (*pb.ValidateNodeResponse, error) {
+	caller := apikeys.IdentityFrom(ctx)
+	if caller == nil {
+		return nil, status.Error(codes.Unauthenticated, "unauthenticated")
+	}
+	kept, dropped, err := s.authorize(ctx, caller, req.GetNodeId(), req.GetModels())
+	if err != nil {
+		return nil, err
+	}
+	resp := &pb.ValidateNodeResponse{DroppedModels: dropped}
+	for _, m := range kept {
+		resp.AcceptedModels = append(resp.AcceptedModels, m.GetModelId())
+	}
+	return resp, nil
+}
+
+func (s *NodeRegistryServer) RegisterNode(ctx context.Context, req *pb.RegisterNodeRequest) (*pb.RegisterNodeResponse, error) {
+	caller := apikeys.IdentityFrom(ctx)
+	if caller == nil {
+		return nil, status.Error(codes.Unauthenticated, "unauthenticated")
+	}
+	models, _, err := s.authorize(ctx, caller, req.GetNodeId(), req.GetModels())
+	if err != nil {
+		return nil, err
 	}
 
 	baseWeight := float64(100.0)
@@ -101,7 +148,7 @@ func (s *NodeRegistryServer) RegisterNode(ctx context.Context, req *pb.RegisterN
 		AuthToken:     tokenCiphertext,
 		BaseWeight:    baseWeight,
 		MaxConcurrent: maxConc,
-		Models:        req.GetModels(),
+		Models:        models,
 		Tags:          req.GetTags(),
 	}
 
@@ -125,9 +172,13 @@ func (s *NodeRegistryServer) Heartbeat(ctx context.Context, req *pb.HeartbeatReq
 	if caller.NodeID != "" && caller.NodeID != req.GetNodeId() {
 		return nil, status.Errorf(codes.PermissionDenied, "key is bound to node_id %q", caller.NodeID)
 	}
+	models, _, err := s.screenModels(caller, req.GetNodeId(), req.GetModels())
+	if err != nil {
+		return nil, err
+	}
 
 	var warmModels []string
-	for _, m := range req.GetModels() {
+	for _, m := range models {
 		if m.GetIsWarm() {
 			warmModels = append(warmModels, m.GetModelId())
 		}
@@ -156,7 +207,7 @@ func (s *NodeRegistryServer) Heartbeat(ctx context.Context, req *pb.HeartbeatReq
 		GPUTempC:       gpuTemp,
 		GPUModel:       gpuModel,
 		WarmModels:     warmModels,
-		ModelSpecs:     req.GetModels(),
+		ModelSpecs:     models,
 	}
 
 	drainReq, activeProxy, err := s.mgr.Heartbeat(ctx, hb)
