@@ -234,7 +234,7 @@ S
 }
 
 run_install() {
-	HOME="$W/home" LLMPROXY_HOME="$W/home/.llm-proxy-node" LLMPROXY_SERVICE_DIR="$W/svc" \
+	HOME="$W/home" LLMPROXY_HOME="${TEST_BASE:-$W/home/.llm-proxy-node}" LLMPROXY_SERVICE_DIR="$W/svc" \
 		LLMPROXY_GITHUB="http://127.0.0.1:$P1" LLMPROXY_GITHUB_API="http://127.0.0.1:$P1" \
 		LLMPROXY_OLLAMA_ADDR="127.0.0.1:$P2" LLMPROXY_REGISTER_WAIT=12 LLMPROXY_MEMINFO="$W/meminfo" \
 		FAKE_OS="$FAKE_OS" FAKE_ARCH="$FAKE_ARCH" FAKE_STATE="$STATE" PATH="$W/bin:$PATH" \
@@ -292,6 +292,15 @@ eq "linux: re-run exits 0" 0 "$RC"
 eq "linux: re-run touches no running service" "$BEFORE" "$(count_calls 'restart|stop')"
 has "linux: re-run says agent up to date" "already installed" "$OUT"
 
+CALLS=$(count_calls 'restart|stop')
+OUT=$(run_install $ARGS --max-concurrency 2 --context 4096 --doctor)
+RC=$?
+eq "linux: --doctor exits with the doctor's status" 0 "$RC"
+eq "linux: --doctor touches no service" "$CALLS" "$(count_calls 'restart|stop')"
+OUT=$(run_install --proxy llm-nodes.example.com --node-id other --model tiny:1b --doctor --key-file "$W/keyfile")
+RC=$?
+eq "linux: --doctor passes the stored settings" 0 "$RC"
+
 make_agent 0.11.0 good linux amd64
 OLL_BEFORE=$(count_calls 'restart llm-proxy-ollama')
 OUT=$(run_install $ARGS --max-concurrency 2 --context 4096 --version v0.11.0)
@@ -325,6 +334,11 @@ RC=$?
 if [ "$RC" != 0 ]; then ok "linux: tampered download fails"; else bad "linux: tampered download fails"; fi
 has "linux: tampered download named" "checksum mismatch" "$OUT"
 eq "linux: tampered download changes nothing" "0.11.0" "$("$BASE/bin/llm-proxy-node" --version)"
+
+OUT=$(TEST_BASE="$W/nothing-installed" run_install $ARGS --doctor)
+RC=$?
+if [ "$RC" != 0 ]; then ok "--doctor without an install fails"; else bad "--doctor without an install fails"; fi
+has "--doctor without an install says so" "no node is installed" "$OUT"
 
 OUT=$(run_install --uninstall)
 RC=$?
