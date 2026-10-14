@@ -14,6 +14,7 @@ import (
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 	"github.com/ai-process/llm-proxy/internal/llm"
+	"github.com/ai-process/llm-proxy/internal/observability"
 	"github.com/ai-process/llm-proxy/internal/panicsafe"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/registry"
@@ -175,10 +176,14 @@ func (p *Poller) processBatch(ctx context.Context, b *proxydb.Batch) error {
 	batchCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
+	pollStart := time.Now()
 	status, err := batchAdapter.GetBatch(batchCtx, b.VendorJobName)
+	observability.BatchPollDuration.WithLabelValues(m.Vendor).Observe(time.Since(pollStart).Seconds())
 	if err != nil {
 		return fmt.Errorf("get batch %s: %w", b.VendorJobName, err)
 	}
+
+	observability.BatchJobsTotal.WithLabelValues(m.Vendor, status.State).Inc()
 
 	switch status.State {
 	case "PENDING", "RUNNING":
@@ -323,6 +328,10 @@ func (p *Poller) completeBatch(
 	// Commit DB state before external effects so failures don't record usage twice
 	if err := p.db.CompleteBatch(ctx, b.ID, finalState, doneCount, failedCount, completedAt, itemsToUpdate); err != nil {
 		return err
+	}
+
+	for _, it := range itemsToUpdate {
+		observability.BatchItemsTotal.WithLabelValues(m.Vendor, it.Status).Inc()
 	}
 
 	for _, u := range usageQueue {

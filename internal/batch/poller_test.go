@@ -131,7 +131,7 @@ type fakeBatchAdapter struct {
 	results []*llm.BatchItemResult
 }
 
-func (a *fakeBatchAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error) {
+func (a *fakeBatchAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
 	return nil, nil
 }
 func (a *fakeBatchAdapter) SubmitBatch(ctx context.Context, batchID string, items []*llm.BatchSubmitItem) (string, error) {

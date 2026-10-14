@@ -36,7 +36,7 @@ type SpeechResult struct {
 // generation only. Files and transcription stay in the client services, whose
 // download URLs carry credentials the proxy must not see.
 type ClientAdapter interface {
-	GenerateText(chat *ChatContext) (*Response, error)
+	GenerateText(ctx context.Context, chat *ChatContext) (*Response, error)
 }
 
 // StreamChunk is one incremental delta from a streaming model call.
@@ -57,7 +57,7 @@ var ErrStreamingNotSupported = errors.New("streaming not supported")
 // SpeechSynthesizer is an optional adapter capability, discovered by type
 // assertion so the ClientAdapter contract stays untouched.
 type SpeechSynthesizer interface {
-	SynthesizeSpeech(text, language, userID string, meta map[string]string) (*SpeechResult, error)
+	SynthesizeSpeech(ctx context.Context, text, language, userID string, meta map[string]string) (*SpeechResult, error)
 }
 
 // BatchSubmitItem is one request in a batch submission.

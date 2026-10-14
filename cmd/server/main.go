@@ -21,6 +21,7 @@ import (
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/logger"
 	"github.com/ai-process/llm-proxy/internal/nodes"
+	"github.com/ai-process/llm-proxy/internal/observability"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/rediskeys"
 	"github.com/ai-process/llm-proxy/internal/registry"
@@ -36,6 +37,29 @@ func main() {
 
 	logger.Init()
 	cfg := config.Load()
+
+	shutdownTracing, err := observability.InitTracing(context.Background(), cfg.OTELServiceName, cfg.OTELExporterOTLPEndpoint)
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to initialize OpenTelemetry tracing")
+	} else {
+		defer func() {
+			shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutCancel()
+			if err := shutdownTracing(shutCtx); err != nil {
+				log.Warn().Err(err).Msg("failed to shutdown OpenTelemetry tracing")
+			}
+		}()
+	}
+
+	metricsSrv := observability.NewServer(cfg.MetricsAddr)
+	if metricsSrv != nil {
+		metricsSrv.Start()
+		defer func() {
+			shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutCancel()
+			_ = metricsSrv.Shutdown(shutCtx)
+		}()
+	}
 
 	if cfg.DatabaseURL == "" {
 		log.Fatal().Msg("DATABASE_URL is required")

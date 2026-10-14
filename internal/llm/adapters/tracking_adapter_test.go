@@ -11,7 +11,7 @@ import (
 
 type stubAdapter struct{ resp *llm.Response }
 
-func (s *stubAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error) {
+func (s *stubAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
 	return s.resp, nil
 }
 
@@ -44,7 +44,7 @@ func TestTrackingAdapterPassesCallerMeta(t *testing.T) {
 		Meta:   map[string]string{"job_id": "job-1", "gentask_id": "task-2"},
 	})
 
-	if _, err := adapter.GenerateText(chat); err != nil {
+	if _, err := adapter.GenerateText(context.Background(), chat); err != nil {
 		t.Fatalf("GenerateText: %v", err)
 	}
 	if tracker.calls != 1 {
@@ -68,7 +68,7 @@ func TestTrackingAdapterNilMeta(t *testing.T) {
 
 	chat := llm.NewChatContext()
 	chat.SetInternalUserID("someone")
-	if _, err := adapter.GenerateText(chat); err != nil {
+	if _, err := adapter.GenerateText(context.Background(), chat); err != nil {
 		t.Fatalf("GenerateText: %v", err)
 	}
 	if tracker.calls != 1 || tracker.meta != nil {

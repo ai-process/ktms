@@ -89,7 +89,7 @@ type fakeBatchAdapter struct {
 	cancelErr      error
 }
 
-func (f *fakeBatchAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error) {
+func (f *fakeBatchAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
 	return nil, errors.New("not implemented")
 }
 

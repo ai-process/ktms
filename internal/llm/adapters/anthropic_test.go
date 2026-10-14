@@ -376,7 +376,7 @@ func TestAnthropicGenerateText_HappyPath(t *testing.T) {
 	chat := llm.NewChatContext()
 	chat.AddUserMessage("hello")
 
-	resp, err := adapter.GenerateText(chat)
+	resp, err := adapter.GenerateText(context.Background(), chat)
 	if err != nil {
 		t.Fatalf("GenerateText: %v", err)
 	}
@@ -425,7 +425,7 @@ func TestAnthropicGenerateText_ToolCalls(t *testing.T) {
 	chat := llm.NewChatContext()
 	chat.AddUserMessage("weather in Paris?")
 
-	resp, err := adapter.GenerateText(chat)
+	resp, err := adapter.GenerateText(context.Background(), chat)
 	if err != nil {
 		t.Fatalf("GenerateText: %v", err)
 	}
@@ -508,7 +508,7 @@ func TestAnthropicGenerateText_CeilingRetry(t *testing.T) {
 	chat.AddUserMessage("write essay")
 	chat.SetMaxOutputTokens(5)
 
-	resp, err := adapter.GenerateText(chat)
+	resp, err := adapter.GenerateText(context.Background(), chat)
 	if err != nil {
 		t.Fatalf("GenerateText: %v", err)
 	}
@@ -552,7 +552,7 @@ func TestAnthropicGenerateText_TruncatedError(t *testing.T) {
 	chat := llm.NewChatContext()
 	chat.AddUserMessage("write long")
 
-	_, err := adapter.GenerateText(chat)
+	_, err := adapter.GenerateText(context.Background(), chat)
 	if !errors.Is(err, llm.ErrOutputTruncated) {
 		t.Fatalf("expected ErrOutputTruncated, got %v", err)
 	}
@@ -803,7 +803,7 @@ func TestAnthropicGenerateText_EmptyArgsToolCall(t *testing.T) {
 	chat := llm.NewChatContext()
 	chat.AddUserMessage("what time is it?")
 
-	resp, err := adapter.GenerateText(chat)
+	resp, err := adapter.GenerateText(context.Background(), chat)
 	if err != nil {
 		t.Fatalf("GenerateText: %v", err)
 	}
