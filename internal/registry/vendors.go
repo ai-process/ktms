@@ -18,6 +18,8 @@ const (
 	VendorTypeSafe  = "typesafe"
 	VendorAnthropic = "anthropic"
 	VendorLocal     = "local"
+	VendorGroq      = "groq"
+	VendorMistral   = "mistral"
 )
 
 // AnthropicDefaultEndpoint is used when an anthropic model has no endpoint override.
@@ -28,6 +30,12 @@ const OpenAIDefaultEndpoint = "https://api.openai.com"
 
 // DeepSeekDefaultEndpoint is used when a deepseek model has no endpoint override.
 const DeepSeekDefaultEndpoint = "https://api.deepseek.com"
+
+// GroqDefaultEndpoint is used when a groq model has no endpoint override.
+const GroqDefaultEndpoint = "https://api.groq.com/openai/v1"
+
+// MistralDefaultEndpoint is used when a mistral model has no endpoint override.
+const MistralDefaultEndpoint = "https://api.mistral.ai/v1"
 
 // TypeSafeDefaultEndpoint is used when a typesafe model has no endpoint override.
 const TypeSafeDefaultEndpoint = "https://api.typesafe.ai"
@@ -94,7 +102,7 @@ const (
 )
 
 func ValidVendor(v string) bool {
-	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorAnthropic || v == VendorLocal
+	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorAnthropic || v == VendorLocal || v == VendorGroq || v == VendorMistral
 }
 
 // SoftSchema reports whether this model needs the prompt-and-verify path.

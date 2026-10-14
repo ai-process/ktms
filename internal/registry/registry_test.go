@@ -273,6 +273,28 @@ func TestAnthropicVendorBuildsAnAdapter(t *testing.T) {
 	}
 }
 
+func TestGroqAndMistralVendorsBuildAdapters(t *testing.T) {
+	for _, vendor := range []string{VendorGroq, VendorMistral} {
+		if !ValidVendor(vendor) {
+			t.Fatalf("%s is not reported as valid vendor", vendor)
+		}
+		m := model("test-model", vendor, EffortLow)
+		if err := ValidateModel(m); err != nil {
+			t.Fatalf("ValidateModel for %s: %v", vendor, err)
+		}
+		adapter, err := buildAdapter(m, "test-secret")
+		if err != nil {
+			t.Fatalf("buildAdapter for %s: %v", vendor, err)
+		}
+		if _, ok := adapter.(llm.ClientAdapter); !ok {
+			t.Errorf("%s adapter does not implement llm.ClientAdapter", vendor)
+		}
+		if _, ok := adapter.(llm.StreamAdapter); !ok {
+			t.Errorf("%s adapter does not implement llm.StreamAdapter", vendor)
+		}
+	}
+}
+
 func TestUserRateLimitWildcards(t *testing.T) {
 	snap := &Snapshot{
 		UserRateLimits: map[string]map[string]*proxydb.UserRateLimit{
