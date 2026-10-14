@@ -93,10 +93,9 @@ type upstreamResult struct {
 	err  error
 }
 
-// forward relays one request. If the engine has not answered within
-// keepaliveAfter, the gateway commits a 200 and trickles keepalive bytes so
-// idle-timeout middleboxes keep the connection; a failure after that point is
-// reported in the body, since the status is already sent.
+// forward relays one request. After keepaliveAfter without an engine answer it
+// commits a 200 and pads the body so idle timeouts hold; a later failure goes
+// in the body, as the status is already sent.
 func (g *Gateway) forward(w http.ResponseWriter, r *http.Request, body []byte, stream bool) {
 	ctx := r.Context()
 	req, err := http.NewRequestWithContext(ctx, r.Method, g.upstream+r.URL.Path, bytes.NewReader(body))

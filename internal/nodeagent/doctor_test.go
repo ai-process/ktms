@@ -408,3 +408,23 @@ func TestDoctorSkipsModelChecksWhenEngineIsDown(t *testing.T) {
 		}
 	}
 }
+
+func TestDoctorDoesNotDialDirectlyBehindAProxy(t *testing.T) {
+	addr := serveProxy(t, func(context.Context, *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
+		return &pb.HeartbeatResponse{ReRegisterRequired: true}, nil
+	}, nil)
+	d := newDoctor(AgentConfig{ProxyAddr: addr, NodeKey: "k", NodeID: "n"})
+	d.UsesProxy = func(string) bool { return true }
+	d.DialTCP = func(context.Context, string) error {
+		return errors.New("direct dial blocked by the corporate firewall")
+	}
+	fs := d.checkProxy(context.Background())
+	if f := one(t, fs, "Proxy"); f.Level != LevelOK {
+		t.Fatalf("a blocked direct dial must not fail the check when a proxy is in use: %+v", f)
+	}
+
+	d.UsesProxy = func(string) bool { return false }
+	if f := one(t, d.checkProxy(context.Background()), "Proxy"); f.Level != LevelProblem {
+		t.Fatalf("without a proxy the direct dial failure is real: %+v", f)
+	}
+}
