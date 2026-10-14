@@ -21,6 +21,7 @@ import (
 type scriptedRegistry struct {
 	pb.UnimplementedNodeRegistryServiceServer
 	validateErrs, registerErrs []error // consumed in order; nil or empty after the list = success
+	alwaysRefuse               error   // when set, ValidateNode returns it forever
 	validates, registers       atomic.Int32
 }
 
@@ -32,6 +33,10 @@ func pop(errs []error, n int32) error {
 }
 
 func (f *scriptedRegistry) ValidateNode(context.Context, *pb.ValidateNodeRequest) (*pb.ValidateNodeResponse, error) {
+	if f.alwaysRefuse != nil {
+		f.validates.Add(1)
+		return nil, f.alwaysRefuse
+	}
 	if err := pop(f.validateErrs, f.validates.Add(1)-1); err != nil {
 		return nil, err
 	}
@@ -173,7 +178,7 @@ func TestRunStartsNoTunnelWhileRefused(t *testing.T) {
 	if err := os.WriteFile(bin, []byte("#!/bin/sh\ntouch "+marker+"\nsleep 30\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	f := &scriptedRegistry{validateErrs: []error{denied(), denied(), denied(), denied(), denied(), denied(), denied(), denied(), denied(), denied()}}
+	f := &scriptedRegistry{alwaysRefuse: denied()} // never runs out, so timing cannot let it through
 	a := fastAgent(AgentConfig{
 		ProxyAddr: serve(t, f), NodeKey: "k", NodeID: "n", Engine: "ollama", EngineURL: "http://127.0.0.1:1",
 		Expose: ExposeCloudflared, CloudflaredBin: bin,
