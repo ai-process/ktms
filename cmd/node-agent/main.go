@@ -22,7 +22,8 @@ func main() {
 		useTLS        = flag.Bool("tls", false, "Connect to the proxy over TLS (system CA roots)")
 		nodeID        = flag.String("node-id", "", "Unique Node ID (defaults to hostname)")
 		nodeName      = flag.String("node-name", "", "Human-readable node name")
-		endpoint      = flag.String("endpoint", "http://127.0.0.1:11434", "Inference engine HTTP endpoint")
+		engineURL     = flag.String("engine-url", "", "Local engine URL the agent polls (default "+nodeagent.DefaultEngineURL+", or --endpoint if only that is set)")
+		endpoint      = flag.String("endpoint", "", "Address the proxy dials to reach the engine (default: --engine-url)")
 		engine        = flag.String("engine", "ollama", "Inference engine (ollama, vllm, tgi, llamacpp)")
 		keyFile       = flag.String("node-key-file", "", "Path to file containing node authentication key")
 		baseWeight    = flag.Float64("base-weight", 100.0, "Base routing weight")
@@ -56,13 +57,16 @@ func main() {
 		name = id
 	}
 
+	pollURL, reportURL := nodeagent.ResolveURLs(*engineURL, *endpoint)
+
 	cfg := nodeagent.AgentConfig{
 		ProxyAddr:     *proxyAddr,
 		TLS:           *useTLS,
 		NodeKey:       nodeKey,
 		NodeID:        id,
 		NodeName:      name,
-		Endpoint:      *endpoint,
+		EngineURL:     pollURL,
+		Endpoint:      reportURL,
 		Engine:        *engine,
 		NodeAuthToken: os.Getenv("NODE_AUTH_TOKEN"),
 		BaseWeight:    *baseWeight,
@@ -71,7 +75,7 @@ func main() {
 
 	agent := nodeagent.NewAgent(cfg)
 	ctx := context.Background()
-	log.Info().Str("node_id", id).Str("engine", *engine).Str("endpoint", *endpoint).Msg("starting node-agent")
+	log.Info().Str("node_id", id).Str("engine", *engine).Str("engine_url", pollURL).Str("endpoint", reportURL).Msg("starting node-agent")
 
 	if err := agent.Run(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "node-agent error: %v\n", err)
