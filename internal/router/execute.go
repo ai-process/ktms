@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/ai-process/llm-proxy/internal/llm"
+	"github.com/ai-process/llm-proxy/internal/observability"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 )
 
@@ -103,14 +104,16 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 	allThrottled := true
 	throttleKind := "rpm"
 
-	for _, m := range r.Chain {
+	for i, m := range r.Chain {
 		if !th.AllowRPM(ctx, r.KeyName, r.UserID, m) {
+			observability.ThrottledTotal.WithLabelValues("rpm").Inc()
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in chain")
 			continue
 		}
 		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate)
 		if tripped != "" {
 			throttleKind = tripped
+			observability.ThrottledTotal.WithLabelValues(tripped).Inc()
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("budget", tripped).
 				Msg("budget exhausted, trying next in chain")
 			continue
@@ -130,12 +133,22 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 		}
 		lastErr = err
 		if llm.ShouldSkipToNextModel(err) {
+			var nextModel string
+			if i+1 < len(r.Chain) {
+				nextModel = r.Chain[i+1].ID
+			}
+			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, "capacity_exhausted").Inc()
 			log.Warn().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).
 				Msg("model capacity exhausted, trying next in chain")
 			continue
 		}
 		var schemaErr *SchemaFailure
 		if errors.As(err, &schemaErr) {
+			var nextModel string
+			if i+1 < len(r.Chain) {
+				nextModel = r.Chain[i+1].ID
+			}
+			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, "schema_failure").Inc()
 			// The vendor answered; it just could not hold the shape. Another
 			// model may, so this advances the chain instead of ending it.
 			continue
@@ -165,14 +178,16 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 	allThrottled := true
 	throttleKind := "rpm"
 
-	for _, m := range r.Chain {
+	for i, m := range r.Chain {
 		if !th.AllowRPM(ctx, r.KeyName, r.UserID, m) {
+			observability.ThrottledTotal.WithLabelValues("rpm").Inc()
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in stream chain")
 			continue
 		}
 		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate)
 		if tripped != "" {
 			throttleKind = tripped
+			observability.ThrottledTotal.WithLabelValues(tripped).Inc()
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("budget", tripped).
 				Msg("budget exhausted, trying next in chain")
 			continue
@@ -213,7 +228,12 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			fullText       strings.Builder
 		)
 
+		streamStart := time.Now()
 		err = streamAdapter.GenerateTextStream(ctx, r.Chat, func(chunk llm.StreamChunk) error {
+			if !firstChunkSent {
+				firstChunkSent = true
+				observability.TimeToFirstToken.WithLabelValues(m.Vendor, m.ID).Observe(time.Since(streamStart).Seconds())
+			}
 			if soft {
 				bufferedChunks = append(bufferedChunks, chunk)
 				fullText.WriteString(chunk.Delta)
@@ -223,7 +243,6 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 				}
 				return nil
 			}
-			firstChunkSent = true
 			outChars += len([]rune(chunk.Delta))
 			for _, tc := range chunk.ToolCallChunks {
 				outChars += len([]rune(tc.ArgumentsDelta)) + len([]rune(tc.Name))
@@ -237,6 +256,11 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 
 		if soft && err == nil {
 			if checkErr := llm.CheckResponseSchema(fullText.String(), schema); checkErr != nil {
+				var nextModel string
+				if i+1 < len(r.Chain) {
+					nextModel = r.Chain[i+1].ID
+				}
+				observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, "schema_failure").Inc()
 				log.Error().Err(checkErr).Str("model", m.ID).Str("vendor", m.Vendor).
 					Msg("stream reply did not match requested schema, trying next in chain")
 				if spent.Input == 0 {
@@ -305,6 +329,11 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 		}
 
 		if llm.ShouldSkipToNextModel(err) {
+			var nextModel string
+			if i+1 < len(r.Chain) {
+				nextModel = r.Chain[i+1].ID
+			}
+			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, "capacity_exhausted").Inc()
 			log.Warn().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).
 				Msg("model capacity exhausted, trying next in chain")
 			continue
@@ -374,7 +403,7 @@ func callWithRetries(ctx context.Context, adapter llm.ClientAdapter, chat *llm.C
 			case <-time.After(attemptBackoff * time.Duration(attempt)):
 			}
 		}
-		resp, err := adapter.GenerateText(chat)
+		resp, err := adapter.GenerateText(ctx, chat)
 		if err == nil {
 			return resp, nil
 		}

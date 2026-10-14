@@ -41,7 +41,7 @@ func NewTypeSafeAdapter(endpoint, apiKey, model string) *TypeSafeAdapter {
 // backstop for a registry that says otherwise.
 var ErrTextGenerationUnsupported = fmt.Errorf("text generation not supported by this vendor")
 
-func (a *TypeSafeAdapter) GenerateText(*llm.ChatContext) (*llm.Response, error) {
+func (a *TypeSafeAdapter) GenerateText(context.Context, *llm.ChatContext) (*llm.Response, error) {
 	return nil, ErrTextGenerationUnsupported
 }
 

@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -211,7 +212,7 @@ func TestTypeSafeVendorBuildsAJudgeAdapter(t *testing.T) {
 		t.Error("typesafe adapter does not implement llm.Judge")
 	}
 	// It must not pass for a chat model even if a rule names it by mistake.
-	if _, err := adapter.GenerateText(llm.NewChatContext()); err == nil {
+	if _, err := adapter.GenerateText(context.Background(), llm.NewChatContext()); err == nil {
 		t.Error("typesafe adapter accepted a text generation")
 	}
 }

@@ -58,6 +58,10 @@ type Config struct {
 
 	BudgetGraceMargin float64
 
+	MetricsAddr              string
+	OTELServiceName          string
+	OTELExporterOTLPEndpoint string
+
 	SentryDSN         string
 	SentryEnvironment string
 	SentryRelease     string
@@ -95,8 +99,11 @@ func Load() *Config {
 		NodeHeartbeatTTL:      time.Duration(getIntEnv("NODE_HEARTBEAT_TTL_SECONDS", 15)) * time.Second,
 		NodeRetentionTTL:      getRetentionEnv("NODE_RETENTION_TTL_DAYS", 24*time.Hour),
 		NodeAllowLocalhost:    getBoolEnv("NODE_ALLOW_LOCALHOST_ENDPOINTS", false),
-		BudgetGraceMargin:     getFloatEnv("BUDGET_GRACE_MARGIN", 0.05),
-		SentryDSN:             getEnv("SENTRY_DSN", ""),
+		BudgetGraceMargin:        getFloatEnv("BUDGET_GRACE_MARGIN", 0.05),
+		MetricsAddr:              getEnv("METRICS_ADDR", ":9091"),
+		OTELServiceName:          getEnv("OTEL_SERVICE_NAME", "llm-proxy"),
+		OTELExporterOTLPEndpoint: getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+		SentryDSN:                getEnv("SENTRY_DSN", ""),
 		SentryEnvironment:     getEnv("SENTRY_ENVIRONMENT", "development"),
 		SentryRelease:         getEnv("SENTRY_RELEASE", ""),
 		SentryTracing:         getEnv("SENTRY_ENABLE_TRACING", "false") == "true",

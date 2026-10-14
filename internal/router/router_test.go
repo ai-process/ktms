@@ -121,7 +121,7 @@ type fakeAdapter struct {
 	responses []func() (*llm.Response, error)
 }
 
-func (f *fakeAdapter) GenerateText(*llm.ChatContext) (*llm.Response, error) {
+func (f *fakeAdapter) GenerateText(ctx context.Context, _ *llm.ChatContext) (*llm.Response, error) {
 	i := f.calls
 	f.calls++
 	if i >= len(f.responses) {

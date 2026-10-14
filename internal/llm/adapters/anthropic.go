@@ -46,13 +46,13 @@ func NewAnthropicAdapter(client *anthropic.Client, model string, throttle *llm.T
 // SetSoftSchema switches this adapter to prompt-described schemas.
 func (a *AnthropicAdapter) SetSoftSchema(soft bool) { a.softSchema = soft }
 
-func (a *AnthropicAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error) {
+func (a *AnthropicAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
 	ceiling := chat.GetMaxOutputTokens()
 	// Built once, not per attempt: buildParams consumes the chat's per-request
 	// instruction, so rebuilding would silently drop it on retry.
 	params := a.buildParams(chat, ceiling)
 
-	resp, err := a.completeOnce(params)
+	resp, err := a.completeOnce(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (a *AnthropicAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, e
 			Msg("AnthropicAdapter: output ceiling exhausted, retrying uncapped")
 		abandoned = anthropicUsage(resp)
 		params.MaxTokens = modelMax
-		resp, err = a.completeOnce(params)
+		resp, err = a.completeOnce(ctx, params)
 		if err != nil {
 			return nil, err
 		}
@@ -246,9 +246,12 @@ func (a *AnthropicAdapter) toResponse(resp *anthropic.Message, carried llm.Token
 	return response, nil
 }
 
-func (a *AnthropicAdapter) completeOnce(params anthropic.MessageNewParams) (*anthropic.Message, error) {
+func (a *AnthropicAdapter) completeOnce(ctx context.Context, params anthropic.MessageNewParams) (*anthropic.Message, error) {
 	a.throttle.WaitForSlot()
-	return a.client.Messages.New(context.Background(), params)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return a.client.Messages.New(ctx, params)
 }
 
 type assistantToolCall struct {

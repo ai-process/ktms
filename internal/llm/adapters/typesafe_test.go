@@ -39,7 +39,7 @@ func TestTypeSafeErrorHidesUnauthorizedBody(t *testing.T) {
 
 func TestTypeSafeRefusesTextGeneration(t *testing.T) {
 	a := NewTypeSafeAdapter("https://api.typesafe.ai", "k", "jev-latest")
-	if _, err := a.GenerateText(llm.NewChatContext()); err == nil {
+	if _, err := a.GenerateText(context.Background(), llm.NewChatContext()); err == nil {
 		t.Fatal("a judgment-only vendor must refuse text generation")
 	}
 }

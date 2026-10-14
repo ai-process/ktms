@@ -16,6 +16,7 @@ import (
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 	"github.com/ai-process/llm-proxy/internal/apikeys"
 	"github.com/ai-process/llm-proxy/internal/panicsafe"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 )
 
 // GRPCServer hosts the proxy data-plane and admin services.
@@ -29,6 +30,7 @@ type GRPCServer struct {
 func NewGRPCServer(proxy pb.LLMProxyServiceServer, admin pb.LLMProxyAdminServiceServer,
 	nodeReg pb.NodeRegistryServiceServer, verifier *apikeys.Verifier, addr string, maxRecvMsgSize int) *GRPCServer {
 	opts := []grpclib.ServerOption{
+		grpclib.StatsHandler(otelgrpc.NewServerHandler()),
 		grpclib.ChainUnaryInterceptor(unaryLoggingInterceptor, authUnaryInterceptor(verifier)),
 		grpclib.ChainStreamInterceptor(streamLoggingInterceptor, authStreamInterceptor(verifier)),
 	}

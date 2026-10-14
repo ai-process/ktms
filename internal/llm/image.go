@@ -1,6 +1,9 @@
 package llm
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
 // ErrImageGenerationUnsupported marks an adapter with no native image model.
 var ErrImageGenerationUnsupported = errors.New("image generation not supported by this adapter")
@@ -17,5 +20,5 @@ type ImageResult struct {
 // assertion so the ClientAdapter contract stays untouched. meta carries usage
 // attribution (e.g. genjob ids), like SynthesizeSpeech.
 type ImageGenerator interface {
-	GenerateImage(prompt, userID string, meta map[string]string) (*ImageResult, error)
+	GenerateImage(ctx context.Context, prompt, userID string, meta map[string]string) (*ImageResult, error)
 }

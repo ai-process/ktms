@@ -44,7 +44,7 @@ func captureNodeBody(t *testing.T, engine string, capabilities []string) map[str
 	pa := NewPoolAdapter(NewSelector(mgr), nil, m, time.Minute, nil)
 	chat := llm.NewChatContext()
 	chat.AddUserMessage("go")
-	if _, err := pa.GenerateText(chat); err != nil {
+	if _, err := pa.GenerateText(ctx, chat); err != nil {
 		t.Fatalf("GenerateText: %v", err)
 	}
 	var got map[string]json.RawMessage

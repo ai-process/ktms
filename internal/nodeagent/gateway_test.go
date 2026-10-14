@@ -200,7 +200,7 @@ func TestGatewayLateEngineErrorIsStillAnError(t *testing.T) {
 	ad := adapters.NewOpenAIAdapter(&cl, "gemma", llm.NewThrottleControl(0, 60))
 	chat := llm.NewChatContext()
 	chat.AddUserMessage("go")
-	if _, err := ad.GenerateText(chat); err == nil {
+	if _, err := ad.GenerateText(context.Background(), chat); err == nil {
 		t.Fatal("non-stream: late engine failure was reported as success")
 	}
 	st := cl.Chat.Completions.NewStreaming(context.Background(), chatParams())
