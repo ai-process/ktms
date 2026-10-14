@@ -265,6 +265,7 @@ RC=$?
 eq "linux: fresh install exits 0" 0 "$RC"
 [ "$RC" = 0 ] || printf '%s\n' "$OUT" | tail -15
 has "linux: reports the node running" "Node node-9 is running and registered" "$OUT"
+hasnt "linux: no macOS login note on Linux" "automatic login" "$OUT"
 has "linux: reports the tunnel address" "https://fake-abc.trycloudflare.com" "$OUT"
 eq "linux: key stored with 0600" 600 "$(mode_of "$BASE/key")"
 eq "linux: key content" "llm_node_test_key" "$(cat "$BASE/key")"
@@ -324,6 +325,8 @@ eq "linux: tampered download changes nothing" "0.11.0" "$("$BASE/bin/llm-proxy-n
 OUT=$(run_install --uninstall)
 RC=$?
 eq "linux: uninstall exits 0" 0 "$RC"
+has "linux: uninstall disables the units" "disable llm-proxy-node.service" "$(cat "$STATE/calls")"
+has "linux: uninstall disables ollama too" "disable llm-proxy-ollama.service" "$(cat "$STATE/calls")"
 if [ ! -e "$BASE" ]; then ok "linux: uninstall removes the install dir and key"; else bad "linux: uninstall removes the install dir"; fi
 if [ ! -e "$W/svc/llm-proxy-node.service" ]; then ok "linux: uninstall removes units"; else bad "linux: uninstall removes units"; fi
 
@@ -365,6 +368,7 @@ if [ "$(uname -s)" = Darwin ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" 
 	eq "mac: fresh install exits 0" 0 "$RC"
 [ "$RC" = 0 ] || printf '%s\n' "$OUT" | tail -15
 	has "mac: reports running" "Node node-9 is running and registered" "$OUT"
+	has "mac: tells an unattended Mac to enable auto-login" "automatic login" "$OUT"
 	if [ -x "$BASE/ollama/ollama" ]; then ok "mac: Ollama downloaded and verified"; else bad "mac: Ollama downloaded"; fi
 	NP=$(cat "$W/svc/com.llm-proxy.node.plist")
 	OP=$(cat "$W/svc/com.llm-proxy.ollama.plist")
