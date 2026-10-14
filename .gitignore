@@ -4,3 +4,4 @@ coverage.out
 coverage.html
 .DS_Store
 *.test
+dist/

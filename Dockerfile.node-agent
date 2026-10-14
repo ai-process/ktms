@@ -1,0 +1,17 @@
+FROM golang:1.27-alpine AS builder
+ARG TARGETOS=linux
+ARG TARGETARCH
+ARG VERSION=dev
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY . .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -X main.version=${VERSION#v}" -o /out/llm-proxy-node ./cmd/node-agent
+
+FROM alpine:3.21
+# ca-certificates is needed for --tls. No cloudflared here: use --expose=none with your own --endpoint.
+RUN apk add --no-cache ca-certificates && adduser -D -u 10001 appuser
+COPY --from=builder /out/llm-proxy-node /llm-proxy-node
+USER appuser
+ENTRYPOINT ["/llm-proxy-node"]
