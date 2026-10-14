@@ -51,6 +51,7 @@ var methodScopes = map[string]string{
 	method(pb.LLMProxyAdminService_ListUserRateLimits_FullMethodName):  apikeys.ScopeAdmin,
 
 	method(pb.NodeRegistryService_RegisterNode_FullMethodName):   apikeys.ScopeNode,
+	method(pb.NodeRegistryService_ValidateNode_FullMethodName):   apikeys.ScopeNode,
 	method(pb.NodeRegistryService_Heartbeat_FullMethodName):      apikeys.ScopeNode,
 	method(pb.NodeRegistryService_UnregisterNode_FullMethodName): apikeys.ScopeNode,
 }

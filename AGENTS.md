@@ -28,6 +28,6 @@ Guidelines and invariants for AI agents working in this codebase, synthesized fr
 ## 6. Code & Communication Hygiene
 - **Code comments:** Keep comments to 3 lines maximum explaining *why*, never *what*.
 - **Concise messages:** Keep PR explanations and chat responses short and direct — no walls of text.
-- **No AI attribution:** Never add `Co-Authored-By` trailers or AI attribution lines to git commits or PR descriptions.
+- **No AI attribution:** Never add `Co-Authored-By` trailers or AI attribution lines to git commits or PR descriptions, and never name branches after a model or tool (no `claude/...`); use a plain `fix/...` or `feat/...` name.
 - **Account separation:** Never post PR comments using `gh` under a user's personal account credentials.
 - **Verification:** Always run `go vet ./...` and `go test ./... -race` before committing.

@@ -111,7 +111,11 @@ func (d *Doctor) Run(ctx context.Context) []Finding {
 		out = append(out, d.checkModel(models)...)
 		out = append(out, d.checkAcceleration(ctx)...)
 	}
-	out = append(out, d.checkProxy(ctx)...)
+	proxy := d.checkProxy(ctx)
+	out = append(out, proxy...)
+	if engineUp && !hasProblem(proxy) { // a dead proxy or key would only repeat itself here
+		out = append(out, d.checkRegistration(ctx, models)...)
+	}
 	if d.Cfg.Expose == ExposeCloudflared {
 		out = append(out, d.checkTunnel(ctx)...)
 	} else {
@@ -356,6 +360,45 @@ func (d *Doctor) checkProxy(ctx context.Context) []Finding {
 		return []Finding{{"Proxy", LevelProblem, "The proxy did not answer in time.", "Check the network path (a load balancer must pass /llmproxy.v1.NodeRegistryService/*)."}}
 	}
 	return []Finding{reach, {"Node key", LevelWarn, fmt.Sprintf("Unexpected answer from the proxy (%s): %s", st.Code(), st.Message()), ""}}
+}
+
+func hasProblem(fs []Finding) bool {
+	for _, f := range fs {
+		if f.Level == LevelProblem {
+			return true
+		}
+	}
+	return false
+}
+
+// checkRegistration asks the proxy to vet the exact models the agent would report, so a key
+// whose allowed_models excludes one of them is caught here rather than at registration.
+func (d *Doctor) checkRegistration(ctx context.Context, models []*pb.NodeModelSpec) []Finding {
+	conn, err := grpclib.DialContext(ctx, d.Cfg.ProxyAddr, grpclib.WithTransportCredentials(NewAgent(d.Cfg).dialCredentials()))
+	if err != nil {
+		return nil // checkProxy already reported the connection
+	}
+	defer conn.Close()
+	callCtx, cancel := context.WithTimeout(metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+d.Cfg.NodeKey), 10*time.Second)
+	defer cancel()
+	resp, err := pb.NewNodeRegistryServiceClient(conn).ValidateNode(callCtx, &pb.ValidateNodeRequest{NodeId: d.Cfg.NodeID, Models: models})
+	if err == nil {
+		if dropped := resp.GetDroppedModels(); len(dropped) > 0 {
+			return []Finding{{"Registration", LevelWarn,
+				fmt.Sprintf("The node key does not allow %s, which this agent would report; the proxy ignores them.", strings.Join(dropped, ", ")),
+				"Report only the allowed models: --only-model " + strings.Join(resp.GetAcceptedModels(), " --only-model ") + " (install-node.sh does this for its --model)."}}
+		}
+		return []Finding{{"Registration", LevelOK, fmt.Sprintf("The proxy would accept this node with %d model(s).", len(resp.GetAcceptedModels())), ""}}
+	}
+	st, _ := status.FromError(err)
+	switch st.Code() {
+	case codes.Unimplemented:
+		return []Finding{{"Registration", LevelWarn, "This proxy is too old for a registration pre-check, so the models are not verified against the key's allowed models.", "Upgrade the proxy."}}
+	case codes.PermissionDenied, codes.Unauthenticated, codes.InvalidArgument:
+		return []Finding{{"Registration", LevelProblem, "The proxy would refuse to register this node: " + st.Message(),
+			"Report only models the key allows with --only-model, use the node id the key is bound to, or ask for a key that fits."}}
+	}
+	return []Finding{{"Registration", LevelWarn, fmt.Sprintf("The registration pre-check failed (%s): %s", st.Code(), st.Message()), ""}}
 }
 
 // transportHint turns a gRPC transport failure into the likely cause.
