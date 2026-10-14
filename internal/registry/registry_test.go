@@ -296,3 +296,28 @@ func TestUserRateLimitWildcards(t *testing.T) {
 		t.Fatalf("empty userID must return nil, got %v", l5)
 	}
 }
+
+func TestThinkingOff(t *testing.T) {
+	for _, c := range []struct {
+		vendor, engine string
+		want           string
+	}{
+		{VendorOllama, "", "reasoning_effort"},
+		{VendorLocal, "Ollama", "reasoning_effort"},
+		{VendorLocal, "vllm", ""},
+		{VendorLocal, "", ""},
+		{VendorDeepSeek, "", "thinking"},
+		{VendorOpenAI, "", "thinking"},
+	} {
+		got := ThinkingOff(c.vendor, c.engine)
+		if c.want == "" {
+			if got != nil {
+				t.Errorf("%s/%s: want no switch, got %v", c.vendor, c.engine, got)
+			}
+			continue
+		}
+		if _, ok := got[c.want]; !ok || len(got) != 1 {
+			t.Errorf("%s/%s: want only %q, got %v", c.vendor, c.engine, c.want, got)
+		}
+	}
+}
