@@ -17,7 +17,9 @@ sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{pri
 # ---------------------------------------------------------------- unit tests
 unit() { ( INSTALL_NODE_SOURCED=1; . "$SCRIPT"; "$@" ); }
 
-eq "model size 26b" "15.6" "$(unit model_weights_gb gemma4:26b-a4b-it-qat)"
+eq "model size 26b qat is 4-bit" "13.0" "$(unit model_weights_gb gemma4:26b-a4b-it-qat)"
+eq "model size q8" "8.4" "$(unit model_weights_gb llama3.1:8b-instruct-q8_0)"
+eq "model size fp16" "16.4" "$(unit model_weights_gb llama3.1:8b-instruct-fp16)"
 eq "model size 8b" "4.8" "$(unit model_weights_gb llama3.1:8b)"
 eq "model size moe tag" "18.0" "$(unit model_weights_gb qwen3:30b-a3b)"
 eq "model size latest tag" "" "$(unit model_weights_gb llama3:latest)"
@@ -375,6 +377,11 @@ OUT=$(FAKE_MEMSIZE=8589934592 run_install --proxy p --node-id n --model gemma4:2
 has "small Mac gets a memory warning" "Not enough memory" "$OUT"
 OUT=$(run_install --proxy p --node-id n --model gemma4:26b-a4b-it-qat --dry-run)
 hasnt "32 GB Mac fits the 26b model" "Not enough memory" "$OUT"
+# measured: this model loaded fully on a 24 GB Mac at a 12288 context
+OUT=$(FAKE_MEMSIZE=25769803776 run_install --proxy p --node-id n --model gemma4:26b-a4b-it-qat --context 12288 --dry-run)
+hasnt "24 GB Mac fits the 26b qat model at 12288 context" "Not enough memory" "$OUT"
+OUT=$(FAKE_MEMSIZE=17179869184 run_install --proxy p --node-id n --model gemma4:26b-a4b-it-qat --dry-run)
+has "16 GB Mac still gets the warning" "Not enough memory" "$OUT"
 
 # Intel-only Ollama on Apple Silicon is called out and not used
 printf '#!/bin/sh\nexit 0\n' >"$W/bin/ollama"

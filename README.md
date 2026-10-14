@@ -199,8 +199,10 @@ Quick tunnels have no SLA; for a stable address use `--expose=none` and your own
 Flags: `--proxy-addr` (default `127.0.0.1:50051`), `--tls` (dial over TLS with the system CA
 roots, for a proxy behind a TLS load balancer; off by default), `--node-id` (defaults to the
 hostname), `--node-name`, `--engine`, `--base-weight`, `--max-concurrent`.
-`--only-model` (repeatable) reports only the named models to the proxy, for an engine that
-shares its model directory with other tools; by default every model the engine has is reported.
+`--only-model` (repeat it or comma-separate) reports only the named models to the proxy, for an
+engine that shares its model directory with other tools; by default every model the engine has is
+reported. If the node key restricts `allowed_models`, the proxy ignores (and logs) other reported
+models and registers the node with the allowed ones; it refuses only when none is allowed.
 `--engine-url` is where the agent itself polls the engine (default `http://127.0.0.1:11434`);
 `--endpoint` is the address reported to the proxy, which dials it (default: `--engine-url`).
 `--expose` is `none` (default; you supply `--endpoint`) or `cloudflared`, with
@@ -211,7 +213,13 @@ If a node does not show up or serves badly, `llm-proxy-node doctor` takes the sa
 `--model`) and says in plain words what is wrong: engine not answering, model missing or not
 loaded, Ollama on the CPU (an Intel build under Rosetta on Apple Silicon), proxy unreachable or
 needing/not needing `--tls`, a node key that is wrong or bound to another node id, or a tunnel
-that cannot come up. It changes nothing on the proxy and exits 1 if it finds a problem.
+that cannot come up. It also asks the proxy to vet the exact models the agent would report
+against the key's `allowed_models` (nothing is stored). It exits 1 if it finds a problem.
+
+While the proxy refuses the node (wrong key, other node id, no allowed model) the agent does not
+exit and does not open a tunnel: it checks with the proxy first, then retries with a pause that
+grows to five minutes and says why in the log, so a supervisor never restarts it into a fresh
+Cloudflare tunnel per attempt.
 
 ### Production checklist
 
@@ -435,6 +443,7 @@ that cannot come up (outbound port 7844 blocked). Logs are in `~/.llm-proxy-node
 | `Killed: 9`, or "Apple could not verify..." | The agent came through a browser download, which macOS quarantines. Use the `curl` command above; `curl` and `brew` files are not quarantined. |
 | Very slow, GPU idle | Intel Ollama through Rosetta, or no NVIDIA driver. The installer uses its own native Ollama and says when it ignores an Intel one. |
 | `key belongs to node "x"` | The key is bound to one machine. Use the node id it was minted for, or ask for a new key. |
+| `model "x" not permitted for this node key` | The key's `allowed_models` excludes a model on the machine. The installer reports only `--model`; for a hand-run agent pass `--only-model`. |
 | Needs a new key | Re-run with `--new-key`. |
 | Address changed after a restart | Expected: quick tunnel addresses change, and the node re-registers by itself. |
 | Node is offline after a Mac reboot | macOS starts the services at login, not at boot. Log in, or enable automatic login (System Settings > Users & Groups). |

@@ -45,11 +45,18 @@ type settings struct {
 	onlyModels    stringList
 }
 
-// stringList is a repeatable string flag.
+// stringList is a repeatable flag whose values may also be comma separated.
 type stringList []string
 
-func (l *stringList) String() string     { return strings.Join(*l, ",") }
-func (l *stringList) Set(v string) error { *l = append(*l, v); return nil }
+func (l *stringList) String() string { return strings.Join(*l, ",") }
+func (l *stringList) Set(v string) error {
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			*l = append(*l, p)
+		}
+	}
+	return nil
+}
 
 func newSettings(name string) *settings {
 	fs := flag.NewFlagSet(name, flag.ExitOnError)
@@ -69,7 +76,7 @@ func newSettings(name string) *settings {
 		baseWeight:    fs.Float64("base-weight", 100.0, "Base routing weight"),
 		maxConcurrent: fs.Uint("max-concurrent", 16, "Maximum concurrent requests"),
 	}
-	fs.Var(&s.onlyModels, "only-model", "Report only this engine model to the proxy; repeatable (default: every model the engine has)")
+	fs.Var(&s.onlyModels, "only-model", "Report only these engine models to the proxy; repeat the flag or comma-separate (default: every model the engine has)")
 	return s
 }
 
