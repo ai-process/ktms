@@ -15,6 +15,7 @@ import (
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 	"github.com/ai-process/llm-proxy/internal/apikeys"
 	"github.com/ai-process/llm-proxy/internal/batch"
+	"github.com/ai-process/llm-proxy/internal/cache"
 	"github.com/ai-process/llm-proxy/internal/config"
 	"github.com/ai-process/llm-proxy/internal/crypto"
 	"github.com/ai-process/llm-proxy/internal/grpcapi"
@@ -122,9 +123,12 @@ func main() {
 		nodeReg *grpcapi.NodeRegistryServer
 	)
 
-	var limiter router.Throttle
+	var (
+		limiter     router.Throttle
+		redisClient *redis.Client
+	)
 	if cfg.RedisConfigured() {
-		redisClient := redis.NewClient(&redis.Options{
+		redisClient = redis.NewClient(&redis.Options{
 			Addr:     cfg.RedisAddr,
 			Password: cfg.RedisPassword,
 			DB:       cfg.RedisDB,
@@ -176,6 +180,11 @@ func main() {
 		adminSrv.SetNodeManager(nodeMgr)
 	}
 	proxySrv := grpcapi.NewProxyServer(loader, limiter).WithBatch(db, cfg.BatchMaxItems)
+	if cfg.CacheEnabled && redisClient != nil {
+		c := cache.New(redisClient, keyring, cfg.CacheTTL, cfg.CacheMaxBytes, cfg.RedisKeyPrefix)
+		proxySrv.WithCache(c)
+		log.Info().Dur("ttl", cfg.CacheTTL).Int("max_bytes", cfg.CacheMaxBytes).Msg("response caching enabled")
+	}
 
 	batchPoller := batch.NewPoller(db, loader, limiter, tracker, cfg.BatchPollInterval, cfg.ResultsRetention)
 	batchPoller.Start(rootCtx)

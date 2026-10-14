@@ -114,6 +114,8 @@ type chatRequest struct {
 	Functions           json.RawMessage   `json:"functions"`
 	// Proxy extension: lets a caller turn on grounded Google answers.
 	EnableGoogleSearch bool `json:"enable_google_search"`
+	// Proxy extension: enables exact-match prompt/response caching.
+	EnableCache *bool `json:"enable_cache,omitempty"`
 }
 
 type streamOptions struct {
@@ -574,6 +576,13 @@ func (a *OpenAIAPI) chatCompletions(ctx context.Context, w http.ResponseWriter, 
 	if err != nil {
 		return err
 	}
+	var enableCache bool
+	if req.EnableCache != nil {
+		enableCache = *req.EnableCache
+	} else if h := r.Header.Get("X-LLM-Proxy-Cache"); h != "" {
+		enableCache = h == "true" || h == "1"
+	}
+	preq.EnableCache = enableCache
 
 	id, created := "chatcmpl-"+randomID(), time.Now().Unix()
 	if req.Stream {
@@ -586,6 +595,13 @@ func (a *OpenAIAPI) chatCompletions(ctx context.Context, w http.ResponseWriter, 
 		return err
 	}
 	setResolvedHeaders(w, resp.ResolvedVendor, resp.MatchedRule)
+	if preq.EnableCache {
+		if resp.Cached {
+			w.Header().Set("X-LLM-Proxy-Cache", "HIT")
+		} else {
+			w.Header().Set("X-LLM-Proxy-Cache", "MISS")
+		}
+	}
 
 	usage := usageJSON(resp.GetUsage())
 	choices := make([]map[string]any, 0, len(resp.Choices))
@@ -651,6 +667,7 @@ func (a *OpenAIAPI) streamChat(ctx context.Context, w http.ResponseWriter, preq 
 		id:           id,
 		created:      created,
 		includeUsage: includeUsage,
+		enableCache:  preq.EnableCache,
 	}
 
 	err := a.proxy.GenerateTextStream(&pb.GenerateTextStreamRequest{Request: preq}, s)
@@ -702,6 +719,8 @@ type httpStreamAdapter struct {
 	includeUsage  bool
 	lastUsage     *pb.TokensUsage
 	headersSent   bool
+	enableCache   bool
+	cacheHit      bool
 }
 
 func (s *httpStreamAdapter) Context() context.Context {
@@ -713,6 +732,13 @@ func (s *httpStreamAdapter) ensureHeaders(vendor, rule string) {
 		return
 	}
 	setResolvedHeaders(s.w, vendor, rule)
+	if s.enableCache {
+		if s.cacheHit {
+			s.w.Header().Set("X-LLM-Proxy-Cache", "HIT")
+		} else {
+			s.w.Header().Set("X-LLM-Proxy-Cache", "MISS")
+		}
+	}
 	s.w.Header().Set("Content-Type", "text/event-stream")
 	s.w.Header().Set("Cache-Control", "no-cache")
 	s.w.Header().Set("Connection", "keep-alive")
@@ -723,6 +749,9 @@ func (s *httpStreamAdapter) ensureHeaders(vendor, rule string) {
 }
 
 func (s *httpStreamAdapter) Send(chunk *pb.GenerateTextChunk) error {
+	if chunk.Cached {
+		s.cacheHit = true
+	}
 	s.ensureHeaders(chunk.ResolvedVendor, chunk.MatchedRule)
 
 	if chunk.ResolvedModel != "" {
