@@ -105,7 +105,7 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 	}
 
 	userID := router.UserID(req.GetAttributes(), id.Name)
-	model, err := router.ResolveBatchModel(ctx, snap, s.throttle, rule.Use, id.KeyID, id.Name, userID)
+	model, err := router.ResolveBatchModel(ctx, snap, s.throttle, router.ResolveChain(rule), id.KeyID, id.Name, userID)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}

@@ -373,6 +373,7 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"rules":[
   every attribute in the rule equals the request's attribute.
 - `use` is the ordered **fallback chain**, cheaper-first by convention. If the first model
   is throttled or its vendor is unavailable, the next is tried.
+- `weights` (optional) enables **weighted traffic routing** (e.g. Canary or A/B testing). If specified, `weights` must contain exactly one positive integer per model in `use` (e.g. `[90, 10]`). The proxy selects the primary candidate using weighted random selection, while preserving remaining models in their original order as fallbacks. When omitted, routing is strictly deterministic (100% traffic on `use[0]`).
 - Validation requires a **catch-all** (no attribute predicates) for every effort, so no
   request can ever fall through. `anything-else` above covers all three at once.
 - `ReplaceRules` swaps the whole set atomically; there is no per-rule CRUD.

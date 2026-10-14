@@ -39,6 +39,7 @@ message RuleSpec {
   map<string, string> attributes = 4; // equality predicates over request attributes
   repeated string use = 5; // ordered fallback chain of model ids, cheaper-first
   bool enabled = 6;
+  repeated int32 weights = 7; // traffic weights per model in use; empty means deterministic (100% on use[0])
 }
 
 message UpsertModelRequest {

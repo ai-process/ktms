@@ -643,3 +643,61 @@ func TestExecuteStream_SkipToNextModel_Fallback(t *testing.T) {
 		t.Errorf("unexpected chunks: %v", chunks)
 	}
 }
+
+func TestResolveChain_WeightedRouting(t *testing.T) {
+	// 1. Nil rule, single model, or empty weights: return Use unchanged
+	if got := ResolveChain(nil); got != nil {
+		t.Errorf("expected nil for nil rule, got %v", got)
+	}
+	rSingle := &proxydb.Rule{Use: []string{"m1"}, Weights: []int32{100}}
+	if got := ResolveChain(rSingle); len(got) != 1 || got[0] != "m1" {
+		t.Errorf("expected [m1], got %v", got)
+	}
+	rNoWeights := &proxydb.Rule{Use: []string{"m1", "m2"}}
+	if got := ResolveChain(rNoWeights); len(got) != 2 || got[0] != "m1" || got[1] != "m2" {
+		t.Errorf("expected [m1, m2], got %v", got)
+	}
+
+	// 2. Mismatched weights length: fallback to Use unchanged
+	rMismatch := &proxydb.Rule{Use: []string{"m1", "m2"}, Weights: []int32{50}}
+	if got := ResolveChain(rMismatch); len(got) != 2 || got[0] != "m1" {
+		t.Errorf("expected [m1, m2], got %v", got)
+	}
+
+	// 3. Fallback preservation test:
+	// With weights [0, 100, 0], m2 MUST always be chosen as primary, and m1, m3 must follow in order
+	rForcedM2 := &proxydb.Rule{Use: []string{"m1", "m2", "m3"}, Weights: []int32{0, 100, 0}}
+	gotForced := ResolveChain(rForcedM2)
+	if len(gotForced) != 3 || gotForced[0] != "m2" || gotForced[1] != "m1" || gotForced[2] != "m3" {
+		t.Errorf("expected [m2, m1, m3], got %v", gotForced)
+	}
+
+	// 4. Monte-Carlo statistical test with weights [80, 20]
+	rWeighted := &proxydb.Rule{Use: []string{"m1", "m2"}, Weights: []int32{80, 20}}
+	const iterations = 10000
+	m1Count := 0
+	for i := 0; i < iterations; i++ {
+		chain := ResolveChain(rWeighted)
+		if len(chain) != 2 {
+			t.Fatalf("unexpected chain length: %d", len(chain))
+		}
+		if chain[0] == "m1" {
+			m1Count++
+			if chain[1] != "m2" {
+				t.Fatalf("expected fallback m2, got %s", chain[1])
+			}
+		} else if chain[0] == "m2" {
+			if chain[1] != "m1" {
+				t.Fatalf("expected fallback m1, got %s", chain[1])
+			}
+		} else {
+			t.Fatalf("unexpected primary model: %s", chain[0])
+		}
+	}
+
+	ratio := float64(m1Count) / float64(iterations)
+	// Expected ~0.80, allow deviation up to 1.5% (i.e. [0.785, 0.815])
+	if ratio < 0.785 || ratio > 0.815 {
+		t.Errorf("expected ratio ~0.80 with +/- 1.5%% deviation, got %.4f (count=%d)", ratio, m1Count)
+	}
+}
