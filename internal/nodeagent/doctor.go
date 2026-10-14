@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"regexp"
 	"runtime"
@@ -50,6 +51,7 @@ type Doctor struct {
 	// Seams for tests; zero values use the real thing.
 	HTTP       *http.Client
 	DialTCP    func(ctx context.Context, addr string) error
+	UsesProxy  func(addr string) bool // true when HTTPS_PROXY or similar routes addr; gRPC honors it, a raw dial does not
 	LookPath   func(name string) (string, error)
 	RunCmd     func(ctx context.Context, name string, args ...string) error
 	MachOArchs func(path string) ([]string, error)
@@ -70,6 +72,12 @@ func (d *Doctor) defaults() {
 				return err
 			}
 			return c.Close()
+		}
+	}
+	if d.UsesProxy == nil {
+		d.UsesProxy = func(addr string) bool {
+			u, err := http.ProxyFromEnvironment(&http.Request{URL: &url.URL{Scheme: "https", Host: addr}})
+			return err == nil && u != nil
 		}
 	}
 	if d.LookPath == nil {
@@ -305,8 +313,11 @@ func (d *Doctor) checkProxy(ctx context.Context) []Finding {
 			return []Finding{{"Proxy", LevelProblem, fmt.Sprintf("The name %s cannot be resolved.", host), "Check --proxy-addr for typos, and this machine's DNS and network. (" + shortErr(err) + ")"}}
 		}
 	}
-	if err := d.DialTCP(ctx, d.Cfg.ProxyAddr); err != nil {
-		return []Finding{{"Proxy", LevelProblem, fmt.Sprintf("Cannot connect to the proxy at %s.", d.Cfg.ProxyAddr), "Check the address and port, a VPN or firewall, and that the proxy is up. (" + shortErr(err) + ")"}}
+	// Behind a CONNECT proxy a direct dial fails though the agent works; the gRPC call below tests the real path.
+	if !d.UsesProxy(d.Cfg.ProxyAddr) {
+		if err := d.DialTCP(ctx, d.Cfg.ProxyAddr); err != nil {
+			return []Finding{{"Proxy", LevelProblem, fmt.Sprintf("Cannot connect to the proxy at %s.", d.Cfg.ProxyAddr), "Check the address and port, a VPN or firewall, and that the proxy is up. (" + shortErr(err) + ")"}}
+		}
 	}
 
 	conn, err := grpclib.DialContext(ctx, d.Cfg.ProxyAddr, grpclib.WithTransportCredentials(NewAgent(d.Cfg).dialCredentials()))
