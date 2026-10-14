@@ -40,6 +40,7 @@ Options:
   --endpoint URL         you expose the node yourself: skip the built-in tunnel
   --upgrade-deps         also update Ollama and cloudflared (a re-run keeps them)
   --dry-run              check this machine and print the plan, change nothing
+  --doctor               explain in plain words why the installed node is not working
   --uninstall            stop and remove the node, its services and its key
 EOF
 }
@@ -48,7 +49,7 @@ EOF
 
 parse_args() {
 	PROXY="" NODE_ID="" MODEL="" NAME="" MAXC=1 CTX=8192 VERSION="latest"
-	KEY_SRC="" NEW_KEY=0 PLAINTEXT=0 ENDPOINT="" UPGRADE=0 DRY_RUN=0 UNINSTALL=0
+	KEY_SRC="" NEW_KEY=0 PLAINTEXT=0 ENDPOINT="" UPGRADE=0 DRY_RUN=0 UNINSTALL=0 DOCTOR=0
 	while [ $# -gt 0 ]; do
 		opt=$1 val="" shift_n=1
 		case $1 in --*=*) opt=${1%%=*} val=${1#*=} ;; esac
@@ -69,6 +70,7 @@ parse_args() {
 		--upgrade-deps) UPGRADE=1 ;;
 		--dry-run) DRY_RUN=1 ;;
 		--uninstall) UNINSTALL=1 ;;
+		--doctor) DOCTOR=1 ;;
 		-h | --help) usage; exit 0 ;;
 		*) die "unknown option: $1 (see --help)" ;;
 		esac
@@ -460,7 +462,7 @@ write_service() { # id program args... (stdin: nothing)
 	SVC_TMP=$out
 }
 
-# run_doctor explains a failed start in plain language. Best effort: an older agent may not have it.
+# run_doctor explains why the node is not working, in plain language. Returns the agent's status.
 run_doctor() {
 	step "Diagnosing"
 	set -- doctor --proxy-addr "$PROXY" --node-id "$NODE_ID" --node-key-file "$BASE/key" \
@@ -471,7 +473,7 @@ run_doctor() {
 	else
 		set -- "$@" --expose cloudflared --cloudflared-path "$BASE/bin/cloudflared"
 	fi
-	"$BASE/bin/llm-proxy-node" "$@" || true
+	"$BASE/bin/llm-proxy-node" "$@"
 }
 
 registered_in_log() { # start-line
@@ -531,6 +533,11 @@ main() {
 	parse_args "$@"
 	[ "$UNINSTALL" = 1 ] && { do_uninstall; return 0; }
 	detect_platform
+	if [ "$DOCTOR" = 1 ]; then
+		[ -x "$BASE/bin/llm-proxy-node" ] || die "no node is installed in $BASE; run the installer without --doctor first"
+		run_doctor
+		return $?
+	fi
 	step "Checking this machine ($OS/$ARCH)"
 	note_foreign_ollama
 	check_resources
@@ -584,7 +591,7 @@ main() {
 	install_service node "$SVC_TMP" && node_changed=1
 	if [ "$node_changed" = 1 ] || ! svc_running node; then
 		if ! start_node_and_wait; then
-			run_doctor
+			run_doctor || true # best effort: an older agent may not have it
 			if [ "$AGENT_STAGED" = 1 ] && [ -x "$BASE/bin/llm-proxy-node.prev" ]; then
 				warn "The new node agent did not come up; restoring the previous one."
 				svc_stop node
