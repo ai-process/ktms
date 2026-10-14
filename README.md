@@ -188,7 +188,10 @@ export NODE_KEY=...                       # or --node-key-file
 
 Flags: `--proxy-addr` (default `127.0.0.1:50051`), `--tls` (dial over TLS with the system CA
 roots, for a proxy behind a TLS load balancer; off by default), `--node-id` (defaults to the
-hostname), `--node-name`, `--engine`, `--endpoint`, `--base-weight`, `--max-concurrent`.
+hostname), `--node-name`, `--engine`, `--base-weight`, `--max-concurrent`.
+`--engine-url` is where the agent itself polls the engine (default `http://127.0.0.1:11434`);
+`--endpoint` is the address reported to the proxy, which dials it (default: `--engine-url`).
+Set both when the proxy reaches the engine through a tunnel or gateway.
 `NODE_AUTH_TOKEN` is passed on to the engine when it requires one.
 
 ### Production checklist
