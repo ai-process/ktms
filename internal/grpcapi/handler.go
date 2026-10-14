@@ -2,8 +2,10 @@ package grpcapi
 
 import (
 	"context"
+	"strings"
 	"unicode/utf8"
 
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/registry"
 	"github.com/ai-process/llm-proxy/internal/router"
+	usagev1 "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1"
 )
 
 const defaultActionID = "llmproxy.generate_text"
@@ -23,13 +26,31 @@ type SnapshotProvider interface {
 	Snapshot() *registry.Snapshot
 }
 
+// TextCache stores and retrieves cached LLM responses.
+type TextCache interface {
+	Get(ctx context.Context, apiKeyID string, configVersion int64, req *pb.GenerateTextRequest) (*pb.GenerateTextResponse, bool, error)
+	Set(ctx context.Context, apiKeyID string, configVersion int64, req *pb.GenerateTextRequest, resp *pb.GenerateTextResponse) error
+}
+
 // ProxyServer implements the data-plane LLMProxyService.
 type ProxyServer struct {
 	pb.UnimplementedLLMProxyServiceServer
 	snapshots     SnapshotProvider
 	throttle      router.Throttle
+	cache         TextCache
 	batchStore    BatchStore
 	batchMaxItems int
+}
+
+// WithCache configures response caching on the server.
+func (s *ProxyServer) WithCache(c TextCache) *ProxyServer {
+	s.cache = c
+	return s
+}
+
+// Cache returns the configured response cache.
+func (s *ProxyServer) Cache() TextCache {
+	return s.cache
 }
 
 // Reserved attribute names. Callers may set usage_project when one api key
@@ -68,6 +89,35 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 	snap := s.snapshots.Snapshot()
 	if !snap.Configured() {
 		return nil, router.ToStatus(router.ErrNotConfigured)
+	}
+
+	if req.GetEnableCache() && s.cache != nil {
+		cached, hit, err := s.cache.Get(ctx, id.KeyID, snap.Version, req)
+		if err != nil {
+			log.Warn().Err(err).Str("api_key_id", id.KeyID).Msg("cache lookup failed")
+		} else if hit && cached != nil {
+			userID := router.UserID(req.GetAttributes(), id.Name)
+			if m, ok := snap.Models[cached.ResolvedModel]; ok && m != nil {
+				if !s.throttle.AllowRPM(ctx, id.Name, userID, m) {
+					return nil, status.Error(codes.ResourceExhausted, "resource_exhausted: rpm limit exceeded")
+				}
+			}
+			if tracker := snap.Tracker(); tracker != nil {
+				meta := make(map[string]string, len(req.GetAttributes())+3)
+				for k, v := range req.GetAttributes() {
+					meta[k] = v
+				}
+				if cached.MatchedRule != "" {
+					meta["rule"] = cached.MatchedRule
+				}
+				meta["api_key"] = id.Name
+				meta["cache"] = "hit"
+				if err := tracker.RecordUsage(userID, defaultActionID, cached.ResolvedVendor, cached.ResolvedModel, 0, 0, 0, usagev1.Status_STATUS_SUCCESS, meta); err != nil {
+					log.Warn().Err(err).Str("user_id", userID).Str("model", cached.ResolvedModel).Msg("failed to record cache hit usage")
+				}
+			}
+			return cached, nil
+		}
 	}
 
 	effort := effortToString(req.GetEffort())
@@ -149,6 +199,11 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 			FinishReason: finish,
 		})
 	}
+	if req.GetEnableCache() && s.cache != nil {
+		if err := s.cache.Set(ctx, id.KeyID, snap.Version, req, out); err != nil {
+			log.Warn().Err(err).Str("api_key_id", id.KeyID).Msg("failed to cache response")
+		}
+	}
 	return out, nil
 }
 
@@ -169,6 +224,35 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 	snap := s.snapshots.Snapshot()
 	if !snap.Configured() {
 		return router.ToStatus(router.ErrNotConfigured)
+	}
+
+	if inner.GetEnableCache() && s.cache != nil {
+		cached, hit, err := s.cache.Get(stream.Context(), id.KeyID, snap.Version, inner)
+		if err != nil {
+			log.Warn().Err(err).Str("api_key_id", id.KeyID).Msg("cache lookup failed in stream")
+		} else if hit && cached != nil {
+			userID := router.UserID(inner.GetAttributes(), id.Name)
+			if m, ok := snap.Models[cached.ResolvedModel]; ok && m != nil {
+				if !s.throttle.AllowRPM(stream.Context(), id.Name, userID, m) {
+					return status.Error(codes.ResourceExhausted, "resource_exhausted: rpm limit exceeded")
+				}
+			}
+			if tracker := snap.Tracker(); tracker != nil {
+				meta := make(map[string]string, len(inner.GetAttributes())+3)
+				for k, v := range inner.GetAttributes() {
+					meta[k] = v
+				}
+				if cached.MatchedRule != "" {
+					meta["rule"] = cached.MatchedRule
+				}
+				meta["api_key"] = id.Name
+				meta["cache"] = "hit"
+				if err := tracker.RecordUsage(userID, defaultActionID, cached.ResolvedVendor, cached.ResolvedModel, 0, 0, 0, usagev1.Status_STATUS_SUCCESS, meta); err != nil {
+					log.Warn().Err(err).Str("user_id", userID).Str("model", cached.ResolvedModel).Msg("failed to record cache hit usage in stream")
+				}
+			}
+			return sendCachedStream(stream, cached)
+		}
 	}
 
 	effort := effortToString(inner.GetEffort())
@@ -203,7 +287,15 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 	}
 
 	chat := buildChat(inner, id, ruleName, effort)
-	var sentFirst bool
+	var (
+		sentFirst       bool
+		streamText      strings.Builder
+		streamToolCalls = make(map[int32]*pb.ToolCall)
+		streamFinish    string
+		streamUsage     *pb.TokensUsage
+		streamModel     string
+		streamVendor    string
+	)
 	_, err = router.ExecuteStream(stream.Context(), s.throttle, router.Request{
 		Chain:      models,
 		KeyName:    id.Name,
@@ -213,6 +305,14 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		Adapter:    func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
 		SoftSchema: registry.SoftSchema,
 	}, func(m *proxydb.Model, chunk llm.StreamChunk) error {
+		streamModel = m.ID
+		streamVendor = m.Vendor
+		if chunk.Delta != "" {
+			streamText.WriteString(chunk.Delta)
+		}
+		if chunk.FinishReason != "" {
+			streamFinish = chunk.FinishReason
+		}
 		outChunk := &pb.GenerateTextChunk{
 			Delta:        chunk.Delta,
 			FinishReason: chunk.FinishReason,
@@ -228,6 +328,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 				Input:  int64(chunk.Usage.Input),
 				Output: int64(chunk.Usage.Output),
 			}
+			streamUsage = outChunk.Usage
 		}
 		for _, tc := range chunk.ToolCallChunks {
 			outChunk.ToolCallChunks = append(outChunk.ToolCallChunks, &pb.ToolCallChunk{
@@ -237,11 +338,153 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 				Name:           tc.Name,
 				ArgumentsDelta: tc.ArgumentsDelta,
 			})
+			t, ok := streamToolCalls[tc.Index]
+			if !ok {
+				t = &pb.ToolCall{
+					Id:   tc.ID,
+					Type: tc.Type,
+					Function: &pb.FunctionCall{
+						Name: tc.Name,
+					},
+				}
+				streamToolCalls[tc.Index] = t
+			} else {
+				if tc.ID != "" {
+					t.Id = tc.ID
+				}
+				if tc.Type != "" {
+					t.Type = tc.Type
+				}
+				if tc.Name != "" {
+					t.Function.Name += tc.Name
+				}
+			}
+			t.Function.Arguments += tc.ArgumentsDelta
 		}
 		return stream.Send(outChunk)
 	})
 	if err != nil {
 		return router.ToStatus(err)
+	}
+
+	if inner.GetEnableCache() && s.cache != nil {
+		if streamFinish == "" {
+			streamFinish = "stop"
+		}
+		if streamUsage == nil {
+			streamUsage = &pb.TokensUsage{}
+		}
+		var tcs []*pb.ToolCall
+		if len(streamToolCalls) > 0 {
+			for i := int32(0); i < int32(len(streamToolCalls)); i++ {
+				if tc, ok := streamToolCalls[i]; ok {
+					tcs = append(tcs, tc)
+				}
+			}
+		}
+		cachedResp := &pb.GenerateTextResponse{
+			Choices: []string{streamText.String()},
+			Details: []*pb.Choice{
+				{
+					Index:        0,
+					Text:         streamText.String(),
+					ToolCalls:    tcs,
+					FinishReason: streamFinish,
+				},
+			},
+			Usage:          streamUsage,
+			ResolvedModel:  streamModel,
+			ResolvedVendor: streamVendor,
+			MatchedRule:    ruleName,
+		}
+		if err := s.cache.Set(stream.Context(), id.KeyID, snap.Version, inner, cachedResp); err != nil {
+			log.Warn().Err(err).Str("api_key_id", id.KeyID).Msg("failed to cache stream response")
+		}
+	}
+	return nil
+}
+
+func sendCachedStream(stream pb.LLMProxyService_GenerateTextStreamServer, cached *pb.GenerateTextResponse) error {
+	var sentFirst bool
+	for _, choice := range cached.Details {
+		if choice.Text != "" {
+			chunk := &pb.GenerateTextChunk{
+				Delta:          choice.Text,
+				ResolvedModel:  cached.ResolvedModel,
+				ResolvedVendor: cached.ResolvedVendor,
+				MatchedRule:    cached.MatchedRule,
+				Cached:         true,
+			}
+			sentFirst = true
+			if err := stream.Send(chunk); err != nil {
+				return err
+			}
+		}
+		if len(choice.ToolCalls) > 0 {
+			var tcChunks []*pb.ToolCallChunk
+			for i, tc := range choice.ToolCalls {
+				tcChunks = append(tcChunks, &pb.ToolCallChunk{
+					Index:          int32(i),
+					Id:             tc.Id,
+					Type:           tc.Type,
+					Name:           tc.Function.GetName(),
+					ArgumentsDelta: tc.Function.GetArguments(),
+				})
+			}
+			chunk := &pb.GenerateTextChunk{
+				ToolCallChunks: tcChunks,
+				Cached:         true,
+			}
+			if !sentFirst {
+				sentFirst = true
+				chunk.ResolvedModel = cached.ResolvedModel
+				chunk.ResolvedVendor = cached.ResolvedVendor
+				chunk.MatchedRule = cached.MatchedRule
+			}
+			if err := stream.Send(chunk); err != nil {
+				return err
+			}
+		}
+		finish := choice.FinishReason
+		if finish == "" {
+			finish = "stop"
+		}
+		finalChunk := &pb.GenerateTextChunk{
+			FinishReason: finish,
+			Usage:        cached.Usage,
+			Cached:       true,
+		}
+		if !sentFirst {
+			sentFirst = true
+			finalChunk.ResolvedModel = cached.ResolvedModel
+			finalChunk.ResolvedVendor = cached.ResolvedVendor
+			finalChunk.MatchedRule = cached.MatchedRule
+		}
+		if err := stream.Send(finalChunk); err != nil {
+			return err
+		}
+	}
+	if len(cached.Details) == 0 && len(cached.Choices) > 0 {
+		for _, text := range cached.Choices {
+			chunk := &pb.GenerateTextChunk{
+				Delta:          text,
+				ResolvedModel:  cached.ResolvedModel,
+				ResolvedVendor: cached.ResolvedVendor,
+				MatchedRule:    cached.MatchedRule,
+				Cached:         true,
+			}
+			if err := stream.Send(chunk); err != nil {
+				return err
+			}
+		}
+		finalChunk := &pb.GenerateTextChunk{
+			FinishReason: "stop",
+			Usage:        cached.Usage,
+			Cached:       true,
+		}
+		if err := stream.Send(finalChunk); err != nil {
+			return err
+		}
 	}
 	return nil
 }

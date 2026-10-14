@@ -62,6 +62,10 @@ type Config struct {
 	OTELServiceName          string
 	OTELExporterOTLPEndpoint string
 
+	CacheEnabled  bool
+	CacheTTL      time.Duration
+	CacheMaxBytes int
+
 	SentryDSN         string
 	SentryEnvironment string
 	SentryRelease     string
@@ -103,6 +107,9 @@ func Load() *Config {
 		MetricsAddr:              getEnv("METRICS_ADDR", ":9091"),
 		OTELServiceName:          getEnv("OTEL_SERVICE_NAME", "llm-proxy"),
 		OTELExporterOTLPEndpoint: getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+		CacheEnabled:             getBoolEnv("CACHE_ENABLED", false),
+		CacheTTL:                 getDurationEnv("CACHE_TTL", 1*time.Hour),
+		CacheMaxBytes:            getIntEnv("CACHE_MAX_BYTES", 1048576),
 		SentryDSN:                getEnv("SENTRY_DSN", ""),
 		SentryEnvironment:     getEnv("SENTRY_ENVIRONMENT", "development"),
 		SentryRelease:         getEnv("SENTRY_RELEASE", ""),

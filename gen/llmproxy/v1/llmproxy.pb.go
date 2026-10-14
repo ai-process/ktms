@@ -1257,6 +1257,7 @@ type GenerateTextRequest struct {
 	ModelOverride         string            `protobuf:"bytes,10,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`                          // exact registry model id; bypasses rules, not throttles
 	Tools                 []*Tool           `protobuf:"bytes,11,rep,name=tools,proto3" json:"tools,omitempty"`
 	ToolChoice            *ToolChoice       `protobuf:"bytes,12,opt,name=tool_choice,json=toolChoice,proto3" json:"tool_choice,omitempty"`
+	EnableCache           bool              `protobuf:"varint,13,opt,name=enable_cache,json=enableCache,proto3" json:"enable_cache,omitempty"` // opt-in prompt/response exact match cache
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -1373,6 +1374,13 @@ func (x *GenerateTextRequest) GetToolChoice() *ToolChoice {
 		return x.ToolChoice
 	}
 	return nil
+}
+
+func (x *GenerateTextRequest) GetEnableCache() bool {
+	if x != nil {
+		return x.EnableCache
+	}
+	return false
 }
 
 type TokensUsage struct {
@@ -1503,6 +1511,7 @@ type GenerateTextResponse struct {
 	ResolvedVendor string                 `protobuf:"bytes,4,opt,name=resolved_vendor,json=resolvedVendor,proto3" json:"resolved_vendor,omitempty"` // "openai" | "anthropic" | "google" | "deepseek"
 	MatchedRule    string                 `protobuf:"bytes,5,opt,name=matched_rule,json=matchedRule,proto3" json:"matched_rule,omitempty"`          // rule name, "" on model_override
 	Details        []*Choice              `protobuf:"bytes,6,rep,name=details,proto3" json:"details,omitempty"`
+	Cached         bool                   `protobuf:"varint,7,opt,name=cached,proto3" json:"cached,omitempty"` // true when served from cache
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1579,6 +1588,13 @@ func (x *GenerateTextResponse) GetDetails() []*Choice {
 	return nil
 }
 
+func (x *GenerateTextResponse) GetCached() bool {
+	if x != nil {
+		return x.Cached
+	}
+	return false
+}
+
 type GenerateTextChunk struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Delta          string                 `protobuf:"bytes,1,opt,name=delta,proto3" json:"delta,omitempty"`
@@ -1588,6 +1604,7 @@ type GenerateTextChunk struct {
 	ResolvedVendor string                 `protobuf:"bytes,5,opt,name=resolved_vendor,json=resolvedVendor,proto3" json:"resolved_vendor,omitempty"`
 	MatchedRule    string                 `protobuf:"bytes,6,opt,name=matched_rule,json=matchedRule,proto3" json:"matched_rule,omitempty"`
 	ToolCallChunks []*ToolCallChunk       `protobuf:"bytes,7,rep,name=tool_call_chunks,json=toolCallChunks,proto3" json:"tool_call_chunks,omitempty"`
+	Cached         bool                   `protobuf:"varint,8,opt,name=cached,proto3" json:"cached,omitempty"` // true when served from cache
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1669,6 +1686,13 @@ func (x *GenerateTextChunk) GetToolCallChunks() []*ToolCallChunk {
 		return x.ToolCallChunks
 	}
 	return nil
+}
+
+func (x *GenerateTextChunk) GetCached() bool {
+	if x != nil {
+		return x.Cached
+	}
+	return false
 }
 
 type ListModelsRequest struct {
@@ -3345,7 +3369,7 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\brequired\x18\x04 \x03(\tR\brequired\x1aZ\n" +
 	"\x0fPropertiesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x121\n" +
-	"\x05value\x18\x02 \x01(\v2\x1b.llmproxy.v1.SchemaPropertyR\x05value:\x028\x01\"\xbd\x05\n" +
+	"\x05value\x18\x02 \x01(\v2\x1b.llmproxy.v1.SchemaPropertyR\x05value:\x028\x01\"\xe0\x05\n" +
 	"\x13GenerateTextRequest\x12+\n" +
 	"\x06effort\x18\x01 \x01(\x0e2\x13.llmproxy.v1.EffortR\x06effort\x12P\n" +
 	"\n" +
@@ -3362,7 +3386,8 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	" \x01(\tR\rmodelOverride\x12'\n" +
 	"\x05tools\x18\v \x03(\v2\x11.llmproxy.v1.ToolR\x05tools\x128\n" +
 	"\vtool_choice\x18\f \x01(\v2\x17.llmproxy.v1.ToolChoiceR\n" +
-	"toolChoice\x1a=\n" +
+	"toolChoice\x12!\n" +
+	"\fenable_cache\x18\r \x01(\bR\venableCache\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\";\n" +
@@ -3374,14 +3399,15 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x124\n" +
 	"\n" +
 	"tool_calls\x18\x03 \x03(\v2\x15.llmproxy.v1.ToolCallR\ttoolCalls\x12#\n" +
-	"\rfinish_reason\x18\x04 \x01(\tR\ffinishReason\"\x82\x02\n" +
+	"\rfinish_reason\x18\x04 \x01(\tR\ffinishReason\"\x9a\x02\n" +
 	"\x14GenerateTextResponse\x12\x18\n" +
 	"\achoices\x18\x01 \x03(\tR\achoices\x12.\n" +
 	"\x05usage\x18\x02 \x01(\v2\x18.llmproxy.v1.TokensUsageR\x05usage\x12%\n" +
 	"\x0eresolved_model\x18\x03 \x01(\tR\rresolvedModel\x12'\n" +
 	"\x0fresolved_vendor\x18\x04 \x01(\tR\x0eresolvedVendor\x12!\n" +
 	"\fmatched_rule\x18\x05 \x01(\tR\vmatchedRule\x12-\n" +
-	"\adetails\x18\x06 \x03(\v2\x13.llmproxy.v1.ChoiceR\adetails\"\xb7\x02\n" +
+	"\adetails\x18\x06 \x03(\v2\x13.llmproxy.v1.ChoiceR\adetails\x12\x16\n" +
+	"\x06cached\x18\a \x01(\bR\x06cached\"\xcf\x02\n" +
 	"\x11GenerateTextChunk\x12\x14\n" +
 	"\x05delta\x18\x01 \x01(\tR\x05delta\x12#\n" +
 	"\rfinish_reason\x18\x02 \x01(\tR\ffinishReason\x12.\n" +
@@ -3389,7 +3415,8 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\x0eresolved_model\x18\x04 \x01(\tR\rresolvedModel\x12'\n" +
 	"\x0fresolved_vendor\x18\x05 \x01(\tR\x0eresolvedVendor\x12!\n" +
 	"\fmatched_rule\x18\x06 \x01(\tR\vmatchedRule\x12D\n" +
-	"\x10tool_call_chunks\x18\a \x03(\v2\x1a.llmproxy.v1.ToolCallChunkR\x0etoolCallChunks\"\x13\n" +
+	"\x10tool_call_chunks\x18\a \x03(\v2\x1a.llmproxy.v1.ToolCallChunkR\x0etoolCallChunks\x12\x16\n" +
+	"\x06cached\x18\b \x01(\bR\x06cached\"\x13\n" +
 	"\x11ListModelsRequest\"\xde\x02\n" +
 	"\tModelInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +

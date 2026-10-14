@@ -145,6 +145,7 @@ message GenerateTextRequest {
   string model_override = 10; // exact registry model id; bypasses rules, not throttles
   repeated Tool tools = 11;
   ToolChoice tool_choice = 12;
+  bool enable_cache = 13; // opt-in prompt/response exact match cache
 }
 
 message TokensUsage {
@@ -166,6 +167,7 @@ message GenerateTextResponse {
   string resolved_vendor = 4; // "openai" | "anthropic" | "google" | "deepseek"
   string matched_rule = 5; // rule name, "" on model_override
   repeated Choice details = 6;
+  bool cached = 7; // true when served from cache
 }
 
 message GenerateTextChunk {
@@ -176,6 +178,7 @@ message GenerateTextChunk {
   string resolved_vendor = 5;
   string matched_rule = 6;
   repeated ToolCallChunk tool_call_chunks = 7;
+  bool cached = 8; // true when served from cache
 }
 
 message ListModelsRequest {}
