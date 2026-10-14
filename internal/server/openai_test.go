@@ -377,6 +377,7 @@ func TestErrorMapping(t *testing.T) {
 		{status.Error(codes.ResourceExhausted, "throttled:rpm"), 429, "throttled:rpm"},
 		{status.Error(codes.Unavailable, "vendors_unavailable"), 503, "vendors_unavailable"},
 		{status.Error(codes.FailedPrecondition, "output_truncated"), 400, "output_truncated"},
+		{status.Error(codes.InvalidArgument, "guardrail_violation: PII detected (email)"), 400, "guardrail_violation"},
 		{status.Error(codes.Internal, "vendor_error"), 502, "vendor_error"},
 		{status.Error(codes.Internal, "pq: password for user x"), 500, ""},
 	}

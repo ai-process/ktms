@@ -7,8 +7,6 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf8"
-
-	"github.com/rs/zerolog/log"
 )
 
 type MessageType string
@@ -107,13 +105,21 @@ func NewChatContext() *ChatContext {
 	}
 }
 func (c *ChatContext) addMessage(message *Message, isProtected bool) {
-	log.Info().Str("type", string(message.Type)).Str("text", message.Text).Msg("Message added")
 	c.messages = append(c.messages, message)
 	if isProtected {
 		c.protectedIndices = append(c.protectedIndices, len(c.messages)-1)
 	}
 	if c.MessagesLimit > 0 {
 		c.CutMessages(c.MessagesLimit)
+	}
+}
+
+// RewriteMessages applies an in-place transform to each message in the context.
+func (c *ChatContext) RewriteMessages(fn func(m *Message)) {
+	for _, m := range c.messages {
+		if m != nil {
+			fn(m)
+		}
 	}
 }
 
@@ -186,6 +192,11 @@ func (c *ChatContext) GetRequestInstruction() string {
 // GetBaseSystemInstruction returns the persistent base system instruction
 func (c *ChatContext) GetBaseSystemInstruction() string {
 	return c.BaseSystemInstruction
+}
+
+// SetBaseSystemInstruction updates the persistent base system instruction
+func (c *ChatContext) SetBaseSystemInstruction(instruction string) {
+	c.BaseSystemInstruction = instruction
 }
 
 func (c *ChatContext) AddAssistantMessage(message string) {

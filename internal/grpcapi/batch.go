@@ -16,6 +16,7 @@ import (
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 	"github.com/ai-process/llm-proxy/internal/apikeys"
+	"github.com/ai-process/llm-proxy/internal/guardrails"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/router"
@@ -77,6 +78,29 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 		for _, msg := range itemReq.GetMessages() {
 			if len(msg.GetParts()) > 0 {
 				return nil, status.Error(codes.InvalidArgument, "bad_request: multimodal batch not supported yet")
+			}
+		}
+	}
+
+	if s.guardrails != nil && s.guardrails.Enabled {
+		if s.guardrails.PIIAction == guardrails.ActionRedact {
+			return nil, status.Error(codes.InvalidArgument, "bad_request: pii redaction is not supported for batch jobs")
+		}
+		for _, it := range items {
+			itemReq := it.GetRequest()
+			if itemReq == nil {
+				continue
+			}
+			if _, _, err := s.guardrails.InspectText(itemReq.GetBaseSystemInstruction(), nil); err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q: %v", it.GetCustomId(), err)
+			}
+			if _, _, err := s.guardrails.InspectText(itemReq.GetRequestInstruction(), nil); err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q: %v", it.GetCustomId(), err)
+			}
+			for _, msg := range itemReq.GetMessages() {
+				if _, _, err := s.guardrails.InspectText(msg.GetText(), nil); err != nil {
+					return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q: %v", it.GetCustomId(), err)
+				}
 			}
 		}
 	}

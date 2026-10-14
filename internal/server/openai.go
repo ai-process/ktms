@@ -1246,6 +1246,8 @@ func writeAPIError(w http.ResponseWriter, err error) {
 	var errCode any
 	if reasonRe.MatchString(msg) {
 		errCode = msg
+	} else if strings.HasPrefix(msg, "guardrail_violation") {
+		errCode = "guardrail_violation"
 	}
 	if st.Code() == codes.Internal && errCode == nil {
 		msg = "internal error"
