@@ -53,6 +53,17 @@ message RegisterNodeResponse {
   int32 heartbeat_ttl_seconds = 3;
 }
 
+// ValidateNodeRequest asks whether a registration would be accepted; nothing is stored.
+message ValidateNodeRequest {
+  string node_id = 1;
+  repeated NodeModelSpec models = 2;
+}
+
+message ValidateNodeResponse {
+  repeated string accepted_models = 1;
+  repeated string dropped_models = 2; // models the key does not allow; registration ignores them
+}
+
 message HeartbeatRequest {
   string node_id = 1;
   bool draining = 2;
@@ -82,6 +93,9 @@ message UnregisterNodeResponse {
 // using a dedicated llm_node_... key (scope "node").
 service NodeRegistryService {
   rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
+  // ValidateNode runs the key, node id, address and model checks of RegisterNode without
+  // storing anything, so an agent can learn a permanent refusal before it opens a tunnel.
+  rpc ValidateNode(ValidateNodeRequest) returns (ValidateNodeResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
   rpc UnregisterNode(UnregisterNodeRequest) returns (UnregisterNodeResponse);
 }

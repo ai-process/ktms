@@ -29,9 +29,10 @@ type AgentConfig struct {
 	EngineURL      string // where the agent itself polls the engine; local, never reported
 	Endpoint       string // address the proxy dials, as reported at registration
 	Engine         string
-	NodeAuthToken  string // bearer the proxy presents to Endpoint; replaced by a generated key when exposing
-	EngineToken    string // bearer the engine itself requires, if any
-	Expose         string // ExposeNone or ExposeCloudflared
+	NodeAuthToken  string   // bearer the proxy presents to Endpoint; replaced by a generated key when exposing
+	EngineToken    string   // bearer the engine itself requires, if any
+	OnlyModels     []string // when set, report only these engine models
+	Expose         string   // ExposeNone or ExposeCloudflared
 	CloudflaredBin string
 	BaseWeight     float64
 	MaxConcurrent  uint32
@@ -47,6 +48,8 @@ type Agent struct {
 	endpoint  string // currently reported address; changes when the tunnel restarts
 	mu        sync.Mutex
 	probe     func(ctx context.Context, url string) error
+
+	retryInitial, retryMax time.Duration // pause between refused registrations
 }
 
 // ResolveURLs returns the engine URL to poll and the endpoint to report.
@@ -77,6 +80,9 @@ func NewAgent(cfg AgentConfig) *Agent {
 		stopChan:  make(chan struct{}),
 		endpoint:  cfg.Endpoint,
 		probe:     httpProbe,
+
+		retryInitial: retryInitial,
+		retryMax:     retryMax,
 	}
 }
 
@@ -94,6 +100,7 @@ func (a *Agent) snapshot(ctx context.Context) ([]*pb.NodeModelSpec, *pb.NodeReso
 	if err != nil {
 		log.Warn().Err(err).Msg("engine inspection failed, reporting no models")
 	}
+	models = FilterModels(models, a.cfg.OnlyModels)
 	res := &pb.NodeResources{BaseWeight: a.cfg.BaseWeight, MaxConcurrent: a.cfg.MaxConcurrent}
 	if gpu, _ := ReadNvidiaSMI(ctx); gpu != nil {
 		res.VramTotalMb = gpu.TotalVRAMMB
@@ -103,6 +110,24 @@ func (a *Agent) snapshot(ctx context.Context) ([]*pb.NodeModelSpec, *pb.NodeReso
 		res.GpuModel = gpu.ModelName
 	}
 	return models, res
+}
+
+// FilterModels keeps only the allowed models; an empty allow list keeps all.
+// An engine shared with other tools would otherwise advertise models this node must not serve.
+func FilterModels(models []*pb.NodeModelSpec, allow []string) []*pb.NodeModelSpec {
+	if len(allow) == 0 {
+		return models
+	}
+	var kept []*pb.NodeModelSpec
+	for _, m := range models {
+		for _, name := range allow {
+			if sameModel(m.GetModelId(), name) || sameModel(m.GetRemoteModelName(), name) {
+				kept = append(kept, m)
+				break
+			}
+		}
+	}
+	return kept
 }
 
 func (a *Agent) register(ctx context.Context, models []*pb.NodeModelSpec, res *pb.NodeResources) (*pb.RegisterNodeResponse, error) {
@@ -163,6 +188,11 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 	}()
 
+	// Learn about a permanent refusal before any tunnel is started.
+	if err := a.preflight(authCtx); err != nil {
+		return a.stopOrFail(ctx, err)
+	}
+
 	// The gateway and tunnel must outlive drainAndExit: the proxy still sends requests while draining.
 	expCtx, stopExposure := context.WithCancel(ctx)
 	urls, stopped, err := a.startExposure(expCtx)
@@ -195,10 +225,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	// 1. Initial Inspection & Registration
-	models, res := a.snapshot(authCtx)
-	regResp, err := a.register(authCtx, models, res)
+	regResp, err := a.registerUntilAccepted(authCtx, urls)
 	if err != nil {
-		return fmt.Errorf("register node: %w", err)
+		return a.stopOrFail(ctx, err)
 	}
 
 	interval := 5 * time.Second
@@ -213,14 +242,19 @@ func (a *Agent) Run(ctx context.Context) error {
 	defer ticker.Stop()
 
 	needRegister := false
+	var retryAt time.Time
+	bo := a.newBackoff()
 	reregister := func() {
 		models, res := a.snapshot(authCtx)
 		if _, err := a.register(authCtx, models, res); err != nil {
 			needRegister = true
-			log.Warn().Err(err).Msg("re-registration failed, will retry on the next heartbeat")
+			delay := bo.next()
+			retryAt = time.Now().Add(delay)
+			log.Warn().Err(err).Dur("retry_in", delay).Msg("re-registration failed: " + explainRegistrationError(err))
 			return
 		}
 		needRegister = false
+		bo.reset()
 		log.Info().Str("endpoint", a.currentEndpoint()).Msg("node re-registered")
 	}
 
@@ -256,7 +290,7 @@ func (a *Agent) Run(ctx context.Context) error {
 				log.Info().Msg("proxy requested re-registration")
 				needRegister = true
 			}
-			if needRegister {
+			if needRegister && !time.Now().Before(retryAt) {
 				reregister()
 			}
 
@@ -272,6 +306,18 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+// stopOrFail ends Run after a wait was cut short: a shutdown request is a clean exit.
+func (a *Agent) stopOrFail(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if errors.Is(err, errStopped) {
+		log.Info().Msg("shutdown requested before the node was registered")
+		return nil
+	}
+	return err
 }
 
 func (a *Agent) drainAndExit(ctx context.Context) error {
