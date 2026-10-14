@@ -19,6 +19,7 @@ import (
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/llm/adapters"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
+	"github.com/ai-process/llm-proxy/internal/registry"
 )
 
 type UserRateLimitResolver func(userID, modelID string) *proxydb.UserRateLimit
@@ -94,7 +95,7 @@ func (pa *PoolAdapter) GenerateText(chat *llm.ChatContext) (*llm.Response, error
 		return nil, err
 	}
 
-	adapter := adapters.NewOpenAIAdapter(client, underlyingModel, llm.NewThrottleControl(0, 60))
+	adapter := pa.newNodeAdapter(client, underlyingModel, cand)
 	start := time.Now()
 	resp, err := adapter.GenerateText(chat)
 	duration := time.Since(start)
@@ -170,7 +171,7 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 		return err
 	}
 
-	adapter := adapters.NewOpenAIAdapter(client, underlyingModel, llm.NewThrottleControl(0, 60))
+	adapter := pa.newNodeAdapter(client, underlyingModel, cand)
 	start := time.Now()
 	var firstTokenTime time.Time
 	var totalOutputTokens int
@@ -225,6 +226,13 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 	}
 
 	return nil
+}
+
+// newNodeAdapter applies the same model config as registry.buildAdapter, keyed by the node's engine.
+func (pa *PoolAdapter) newNodeAdapter(client *openai.Client, model string, cand *Candidate) *adapters.OpenAIAdapter {
+	a := adapters.NewOpenAIAdapter(client, model, llm.NewThrottleControl(0, 60))
+	registry.ConfigureOpenAI(a, pa.model, cand.Snapshot.Meta.Engine)
+	return a
 }
 
 func (pa *PoolAdapter) buildNodeClient(cand *Candidate) (*openai.Client, string, error) {
