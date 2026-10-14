@@ -15,7 +15,9 @@ import (
 
 func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	// Service managers redirect stderr to a file; colors there are just escape noise.
+	fi, _ := os.Stderr.Stat()
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, NoColor: fi == nil || fi.Mode()&os.ModeCharDevice == 0})
 
 	var (
 		showVersion   = flag.Bool("version", false, "Print the version and exit")
