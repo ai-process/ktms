@@ -373,6 +373,7 @@ Capabilities a model may declare:
 | `tts` | Can serve `SynthesizeSpeech`. |
 | `image` | Can serve `GenerateImage`. |
 | `judge` | Can serve `Judge` (TypeSafe `jev-latest`, OpenAI `gpt-6-luna`). |
+| `embedding_input` | A judge model that scores raw latent vectors in `JudgeRequest.state_media` (`EmbeddingPart`). |
 
 ### 4. Rules
 
@@ -720,6 +721,12 @@ are answered against the same state in parallel.
 }
 ```
 
+Multimodal state goes in `state_media` (`text`, `image`, `audio`, `embedding` parts), alongside
+or instead of `state_json`. Each media kind narrows the chain to judge models that also declare
+`vision`, `audio_input` or `embedding_input`; TypeSafe takes JSON state only. Image URLs must be
+`https` and are forwarded, not fetched. Guardrails inspect text parts only. Limits: 32 parts,
+16 MiB of media, 16384 embedding dimensions.
+
 Supported decision vendors are [TypeSafe](https://typesafe.ai) (`jev-latest`, billing input only) and [OpenAI](https://openai.com) (`gpt-6-luna`, billing input and output tokens); both write no text and declare the `judge` capability.
 
 ### Embeddings
@@ -771,7 +778,7 @@ curl -s localhost:8080/v1/chat/completions \
 | `POST /v1/embeddings` | `GetEmbeddings` | Vector embeddings with `float` or `base64` encoding format and optional dimensionality. |
 | `POST /v1/audio/speech` | `SynthesizeSpeech` | Returns OGG/Opus audio. |
 | `POST /v1/images/generations` | `GenerateImage` | Returns `b64_json`. |
-| `POST /v1/decisions` | `Judge` | OpenAI Decisions API format (`predicate`, `choice`, `score`). |
+| `POST /v1/decisions` | `Judge` | OpenAI Decisions API format (`predicate`, `choice`, `score`). `input` is JSON state, or an array of `input_text`/`text`, `input_image`/`image_url`, `input_audio` and `input_embedding` parts for multimodal state. |
 | `POST /v1/judge` | `Judge` | Protobuf JSON of `JudgeRequest` / `JudgeResponse`. |
 | `GET /v1/models`, `GET /v1/models/{id}` | `ListModels` | Only models the key holds a vendor credential for. |
 

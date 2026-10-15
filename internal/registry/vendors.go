@@ -112,6 +112,10 @@ const (
 	CapabilityPDFInput   = "pdf_input"
 )
 
+// CapabilityEmbeddingInput marks judge models that score raw latent vectors.
+// No text model reads one, so it is opt-in even among judges.
+const CapabilityEmbeddingInput = "embedding_input"
+
 func ValidVendor(v string) bool {
 	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorAnthropic || v == VendorLocal || v == VendorGroq || v == VendorMistral || v == VendorAzure || v == VendorBedrock
 }

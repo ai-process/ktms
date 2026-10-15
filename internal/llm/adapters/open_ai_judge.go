@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -45,6 +46,23 @@ type openAIDecisionQuestion struct {
 	Instructions string                 `json:"instructions"`
 	Choices      []openAIDecisionChoice `json:"choices,omitempty"`
 	Levels       []openAIDecisionLevel  `json:"levels,omitempty"`
+}
+
+// openAIDecisionInputPart follows the Responses API input content shape;
+// input_embedding is the one extension, for vectors no text schema covers.
+type openAIDecisionInputPart struct {
+	Type       string                    `json:"type"`
+	Text       string                    `json:"text,omitempty"`
+	ImageURL   string                    `json:"image_url,omitempty"`
+	Detail     string                    `json:"detail,omitempty"`
+	InputAudio *openAIDecisionInputAudio `json:"input_audio,omitempty"`
+	Embedding  []float32                 `json:"embedding,omitempty"`
+	Model      string                    `json:"model,omitempty"`
+}
+
+type openAIDecisionInputAudio struct {
+	Data   string `json:"data"`
+	Format string `json:"format"`
 }
 
 type openAIDecisionRequest struct {
@@ -91,9 +109,9 @@ func (a *OpenAIAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ stri
 		return failed(err)
 	}
 
-	inputRaw := json.RawMessage(req.StateJSON)
-	if len(req.StateJSON) == 0 {
-		inputRaw = json.RawMessage("{}")
+	inputRaw, err := openAIDecisionInput(req)
+	if err != nil {
+		return failed(err)
 	}
 
 	body, err := json.Marshal(openAIDecisionRequest{
@@ -173,6 +191,48 @@ func (a *OpenAIAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ stri
 	}
 
 	return result, nil
+}
+
+// openAIDecisionInput keeps a JSON-only state verbatim, as before. With media
+// it becomes a parts array, the state JSON leading as text so the vendor reads
+// the structured state before the media it describes.
+func openAIDecisionInput(req *llm.JudgeRequest) (json.RawMessage, error) {
+	if len(req.StateMedia) == 0 {
+		if req.StateJSON == "" {
+			return json.RawMessage("{}"), nil
+		}
+		return json.RawMessage(req.StateJSON), nil
+	}
+	parts := make([]openAIDecisionInputPart, 0, len(req.StateMedia)+1)
+	if req.StateJSON != "" {
+		parts = append(parts, openAIDecisionInputPart{Type: "input_text", Text: req.StateJSON})
+	}
+	for i, p := range req.StateMedia {
+		switch p.Type {
+		case llm.JudgeMediaText:
+			parts = append(parts, openAIDecisionInputPart{Type: "input_text", Text: p.Text})
+		case llm.JudgeMediaImage:
+			url := p.URL
+			if len(p.Data) > 0 {
+				url = "data:" + p.MimeType + ";base64," + base64.StdEncoding.EncodeToString(p.Data)
+			}
+			parts = append(parts, openAIDecisionInputPart{Type: "input_image", ImageURL: url, Detail: p.Detail})
+		case llm.JudgeMediaAudio:
+			parts = append(parts, openAIDecisionInputPart{
+				Type:       "input_audio",
+				InputAudio: &openAIDecisionInputAudio{Data: base64.StdEncoding.EncodeToString(p.Data), Format: p.Format},
+			})
+		case llm.JudgeMediaEmbedding:
+			parts = append(parts, openAIDecisionInputPart{Type: "input_embedding", Embedding: p.Embedding, Model: p.EmbeddingModel})
+		default:
+			return nil, fmt.Errorf("openai decisions: unsupported state media type %q at %d", p.Type, i)
+		}
+	}
+	raw, err := json.Marshal(parts)
+	if err != nil {
+		return nil, fmt.Errorf("openai decisions: encode input: %w", err)
+	}
+	return raw, nil
 }
 
 // toOpenAIDecisionQuestions transforms vendor-neutral questions to OpenAI's Decisions API schema.

@@ -305,3 +305,41 @@ func TestOpenAIJudgeCustomEndpointWithV1(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenAIDecisionInput(t *testing.T) {
+	got, err := openAIDecisionInput(&llm.JudgeRequest{StateJSON: `{"a":1}`})
+	if err != nil || string(got) != `{"a":1}` {
+		t.Errorf("JSON-only state = %s, %v; want verbatim", got, err)
+	}
+	got, err = openAIDecisionInput(&llm.JudgeRequest{})
+	if err != nil || string(got) != `{}` {
+		t.Errorf("empty state = %s, %v; want {}", got, err)
+	}
+
+	got, err = openAIDecisionInput(&llm.JudgeRequest{
+		StateJSON: `{"a":1}`,
+		StateMedia: []*llm.JudgeMediaPart{
+			{Type: llm.JudgeMediaText, Text: "note"},
+			{Type: llm.JudgeMediaImage, MimeType: "image/png", Data: []byte("png"), Detail: "low"},
+			{Type: llm.JudgeMediaImage, URL: "https://x/a.jpg"},
+			{Type: llm.JudgeMediaAudio, Data: []byte("wav"), Format: "wav"},
+			{Type: llm.JudgeMediaEmbedding, Embedding: []float32{0.5, -1}, EmbeddingModel: "v-jepa-2"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("openAIDecisionInput: %v", err)
+	}
+	want := `[{"type":"input_text","text":"{\"a\":1}"},` +
+		`{"type":"input_text","text":"note"},` +
+		`{"type":"input_image","image_url":"data:image/png;base64,cG5n","detail":"low"},` +
+		`{"type":"input_image","image_url":"https://x/a.jpg"},` +
+		`{"type":"input_audio","input_audio":{"data":"d2F2","format":"wav"}},` +
+		`{"type":"input_embedding","embedding":[0.5,-1],"model":"v-jepa-2"}]`
+	if string(got) != want {
+		t.Errorf("input =\n%s\nwant\n%s", got, want)
+	}
+
+	if _, err := openAIDecisionInput(&llm.JudgeRequest{StateMedia: []*llm.JudgeMediaPart{{Type: "video"}}}); err == nil {
+		t.Error("unknown media type: want error")
+	}
+}

@@ -27,13 +27,40 @@ type JudgeQuestion struct {
 	FalseCriteria string
 }
 
+// Judge state media kinds.
+const (
+	JudgeMediaText      = "text"
+	JudgeMediaImage     = "image"
+	JudgeMediaAudio     = "audio"
+	JudgeMediaEmbedding = "embedding"
+)
+
+// JudgeMediaPart is one piece of multimodal judge state. Which fields carry
+// meaning depends on Type, as with JudgeQuestion.
+type JudgeMediaPart struct {
+	Type     string
+	Text     string
+	MimeType string
+	Data     []byte
+	URL      string // https only; forwarded to the vendor, never fetched
+	Detail   string // image: "auto", "low", "high"
+	Format   string // audio: "wav", "mp3"
+	// Embedding is a latent vector; EmbeddingModel names the encoder so a
+	// vendor can reject a space it was not trained on.
+	Embedding      []float32
+	EmbeddingModel string
+}
+
 // JudgeRequest is one call's worth of judgment. Every question is answered
 // against the same state, in parallel and for one state's worth of tokens.
 type JudgeRequest struct {
 	// StateJSON is the caller's state, already encoded. Vendors take it
 	// verbatim, so the proxy never reshapes it.
 	StateJSON string
-	Questions map[string]*JudgeQuestion
+	// StateMedia is multimodal state judged alongside StateJSON. Adapters that
+	// cannot forward a part must refuse the call rather than judge without it.
+	StateMedia []*JudgeMediaPart
+	Questions  map[string]*JudgeQuestion
 	// ActionID attributes the call in usage, as ChatContext does for text.
 	ActionID string
 }
