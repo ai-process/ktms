@@ -104,6 +104,11 @@ func (a *TypeSafeAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ st
 	if req == nil || len(req.Questions) == 0 {
 		return failed(fmt.Errorf("typesafe: no questions"))
 	}
+	// System One takes JSON state only. Judging without the media would answer
+	// about a different state, so yield to the next model in the chain instead.
+	if len(req.StateMedia) > 0 {
+		return failed(llm.ErrJudgmentUnsupported)
+	}
 
 	body, err := json.Marshal(typeSafeRequest{
 		State:     json.RawMessage(req.StateJSON),

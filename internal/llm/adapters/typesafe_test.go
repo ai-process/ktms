@@ -2,9 +2,11 @@ package adapters
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -141,5 +143,25 @@ func TestTypeSafeJudgeHonoursTheCallerDeadline(t *testing.T) {
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Errorf("returned after %v, want the caller's 50ms deadline, not the 8s ceiling", elapsed)
+	}
+}
+
+// System One reads JSON state only; judging without the media would answer
+// about a different state, so the chain must move on without a vendor call.
+func TestTypeSafeJudgeRefusesStateMedia(t *testing.T) {
+	var called atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called.Store(true) }))
+	defer srv.Close()
+
+	a := NewTypeSafeAdapter(srv.URL, "k", "jev-latest")
+	_, err := a.Judge(context.Background(), &llm.JudgeRequest{
+		StateMedia: []*llm.JudgeMediaPart{{Type: llm.JudgeMediaImage, URL: "https://x/a.png"}},
+		Questions:  map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "does it hold?"}},
+	}, "u", nil)
+	if !errors.Is(err, llm.ErrJudgmentUnsupported) {
+		t.Errorf("err = %v, want ErrJudgmentUnsupported", err)
+	}
+	if called.Load() {
+		t.Error("vendor was called")
 	}
 }
