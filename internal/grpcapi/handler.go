@@ -133,39 +133,12 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		}
 	}
 
-	effort := effortToString(req.GetEffort())
-	var (
-		chain    []string
-		ruleName string
-	)
-	switch {
-	case req.GetModelOverride() != "":
-		if _, ok := snap.Models[req.GetModelOverride()]; !ok {
-			return nil, status.Errorf(codes.InvalidArgument, "bad_request: unknown model %q", req.GetModelOverride())
-		}
-		chain = []string{req.GetModelOverride()}
-		if effort == "" {
-			// Override may skip effort; filter by what the model serves.
-			effort = snap.Models[req.GetModelOverride()].Efforts[0]
-		}
-	case effort == "":
-		return nil, status.Error(codes.InvalidArgument, "bad_request: effort is required")
-	default:
-		rule := router.Match(snap, effort, req.GetAttributes())
-		if rule == nil {
-			return nil, router.ToStatus(router.ErrNotConfigured)
-		}
-		chain = router.ResolveChain(rule)
-		ruleName = rule.Name
-	}
-
-	reqCaps := requiredCapabilities(req)
-	models, err := router.FilterChain(snap, chain, id.KeyID, effort, req.GetEnableGoogleSearch(), reqCaps...)
+	plan, err := s.planRoute(ctx, snap, id, req)
 	if err != nil {
-		return nil, router.ToStatus(err)
+		return nil, err
 	}
 
-	chat := buildChat(req, id, ruleName, effort)
+	chat := buildChat(req, id, plan.ruleName, plan.effort)
 	var vault *guardrails.TokenVault
 	if s.guardrails != nil && s.guardrails.Enabled {
 		if s.guardrails.PIIAction == guardrails.ActionRedact {
@@ -176,7 +149,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		}
 	}
 	resp, model, err := router.Execute(ctx, s.throttle, router.Request{
-		Chain:      models,
+		Chain:      plan.models,
 		KeyName:    id.Name,
 		UserID:     router.UserID(req.GetAttributes(), id.Name),
 		Estimate:   estimateTokens(req),
@@ -195,7 +168,11 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		},
 		ResolvedModel:  model.ID,
 		ResolvedVendor: model.Vendor,
-		MatchedRule:    ruleName,
+		MatchedRule:    plan.ruleName,
+		RouteMode:      plan.routeMode,
+		Placement:      plan.placement,
+		JudgeScore:     plan.judgeScore,
+		JudgeModel:     plan.judgeModel,
 	}
 	for i, choice := range resp.Choices {
 		choiceText := choice.Text
@@ -285,38 +262,12 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		}
 	}
 
-	effort := effortToString(inner.GetEffort())
-	var (
-		chain    []string
-		ruleName string
-	)
-	switch {
-	case inner.GetModelOverride() != "":
-		if _, ok := snap.Models[inner.GetModelOverride()]; !ok {
-			return status.Errorf(codes.InvalidArgument, "bad_request: unknown model %q", inner.GetModelOverride())
-		}
-		chain = []string{inner.GetModelOverride()}
-		if effort == "" {
-			effort = snap.Models[inner.GetModelOverride()].Efforts[0]
-		}
-	case effort == "":
-		return status.Error(codes.InvalidArgument, "bad_request: effort is required")
-	default:
-		rule := router.Match(snap, effort, inner.GetAttributes())
-		if rule == nil {
-			return router.ToStatus(router.ErrNotConfigured)
-		}
-		chain = router.ResolveChain(rule)
-		ruleName = rule.Name
-	}
-
-	reqCaps := requiredCapabilities(inner)
-	models, err := router.FilterChain(snap, chain, id.KeyID, effort, inner.GetEnableGoogleSearch(), reqCaps...)
+	plan, err := s.planRoute(stream.Context(), snap, id, inner)
 	if err != nil {
-		return router.ToStatus(err)
+		return err
 	}
 
-	chat := buildChat(inner, id, ruleName, effort)
+	chat := buildChat(inner, id, plan.ruleName, plan.effort)
 	var (
 		vault    *guardrails.TokenVault
 		streamer *guardrails.StreamDesanitizer
@@ -340,7 +291,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		streamVendor    string
 	)
 	_, err = router.ExecuteStream(stream.Context(), s.throttle, router.Request{
-		Chain:      models,
+		Chain:      plan.models,
 		KeyName:    id.Name,
 		UserID:     router.UserID(inner.GetAttributes(), id.Name),
 		Estimate:   estimateTokens(inner),
@@ -371,7 +322,11 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 			sentFirst = true
 			outChunk.ResolvedModel = m.ID
 			outChunk.ResolvedVendor = m.Vendor
-			outChunk.MatchedRule = ruleName
+			outChunk.MatchedRule = plan.ruleName
+			outChunk.RouteMode = plan.routeMode
+			outChunk.Placement = plan.placement
+			outChunk.JudgeScore = plan.judgeScore
+			outChunk.JudgeModel = plan.judgeModel
 		}
 		if chunk.Usage != nil {
 			outChunk.Usage = &pb.TokensUsage{
@@ -449,7 +404,11 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 			Usage:          streamUsage,
 			ResolvedModel:  streamModel,
 			ResolvedVendor: streamVendor,
-			MatchedRule:    ruleName,
+			MatchedRule:    plan.ruleName,
+			RouteMode:      plan.routeMode,
+			Placement:      plan.placement,
+			JudgeScore:     plan.judgeScore,
+			JudgeModel:     plan.judgeModel,
 		}
 		if err := s.cache.Set(stream.Context(), id.KeyID, snap.Version, inner, cachedResp); err != nil {
 			log.Warn().Err(err).Str("api_key_id", id.KeyID).Msg("failed to cache stream response")

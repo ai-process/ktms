@@ -1257,7 +1257,10 @@ type GenerateTextRequest struct {
 	ModelOverride         string            `protobuf:"bytes,10,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`                          // exact registry model id; bypasses rules, not throttles
 	Tools                 []*Tool           `protobuf:"bytes,11,rep,name=tools,proto3" json:"tools,omitempty"`
 	ToolChoice            *ToolChoice       `protobuf:"bytes,12,opt,name=tool_choice,json=toolChoice,proto3" json:"tool_choice,omitempty"`
-	EnableCache           bool              `protobuf:"varint,13,opt,name=enable_cache,json=enableCache,proto3" json:"enable_cache,omitempty"` // opt-in prompt/response exact match cache
+	EnableCache           bool              `protobuf:"varint,13,opt,name=enable_cache,json=enableCache,proto3" json:"enable_cache,omitempty"`             // opt-in prompt/response exact match cache
+	Placement             string            `protobuf:"bytes,14,opt,name=placement,proto3" json:"placement,omitempty"`                                     // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
+	AutoRoute             bool              `protobuf:"varint,15,opt,name=auto_route,json=autoRoute,proto3" json:"auto_route,omitempty"`                   // true when smart model routing is enabled
+	EffortSpecified       bool              `protobuf:"varint,16,opt,name=effort_specified,json=effortSpecified,proto3" json:"effort_specified,omitempty"` // true when effort was explicitly pinned by caller
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -1379,6 +1382,27 @@ func (x *GenerateTextRequest) GetToolChoice() *ToolChoice {
 func (x *GenerateTextRequest) GetEnableCache() bool {
 	if x != nil {
 		return x.EnableCache
+	}
+	return false
+}
+
+func (x *GenerateTextRequest) GetPlacement() string {
+	if x != nil {
+		return x.Placement
+	}
+	return ""
+}
+
+func (x *GenerateTextRequest) GetAutoRoute() bool {
+	if x != nil {
+		return x.AutoRoute
+	}
+	return false
+}
+
+func (x *GenerateTextRequest) GetEffortSpecified() bool {
+	if x != nil {
+		return x.EffortSpecified
 	}
 	return false
 }
@@ -1511,7 +1535,11 @@ type GenerateTextResponse struct {
 	ResolvedVendor string                 `protobuf:"bytes,4,opt,name=resolved_vendor,json=resolvedVendor,proto3" json:"resolved_vendor,omitempty"` // "openai" | "anthropic" | "google" | "deepseek"
 	MatchedRule    string                 `protobuf:"bytes,5,opt,name=matched_rule,json=matchedRule,proto3" json:"matched_rule,omitempty"`          // rule name, "" on model_override
 	Details        []*Choice              `protobuf:"bytes,6,rep,name=details,proto3" json:"details,omitempty"`
-	Cached         bool                   `protobuf:"varint,7,opt,name=cached,proto3" json:"cached,omitempty"` // true when served from cache
+	Cached         bool                   `protobuf:"varint,7,opt,name=cached,proto3" json:"cached,omitempty"`                             // true when served from cache
+	RouteMode      string                 `protobuf:"bytes,8,opt,name=route_mode,json=routeMode,proto3" json:"route_mode,omitempty"`       // "direct" | "override" | "auto-judge" | "auto-default" | "auto-effort"
+	Placement      string                 `protobuf:"bytes,9,opt,name=placement,proto3" json:"placement,omitempty"`                        // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
+	JudgeScore     float64                `protobuf:"fixed64,10,opt,name=judge_score,json=judgeScore,proto3" json:"judge_score,omitempty"` // score or confidence from judge evaluation
+	JudgeModel     string                 `protobuf:"bytes,11,opt,name=judge_model,json=judgeModel,proto3" json:"judge_model,omitempty"`   // judge model id if judge was invoked
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1595,6 +1623,34 @@ func (x *GenerateTextResponse) GetCached() bool {
 	return false
 }
 
+func (x *GenerateTextResponse) GetRouteMode() string {
+	if x != nil {
+		return x.RouteMode
+	}
+	return ""
+}
+
+func (x *GenerateTextResponse) GetPlacement() string {
+	if x != nil {
+		return x.Placement
+	}
+	return ""
+}
+
+func (x *GenerateTextResponse) GetJudgeScore() float64 {
+	if x != nil {
+		return x.JudgeScore
+	}
+	return 0
+}
+
+func (x *GenerateTextResponse) GetJudgeModel() string {
+	if x != nil {
+		return x.JudgeModel
+	}
+	return ""
+}
+
 type GenerateTextChunk struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Delta          string                 `protobuf:"bytes,1,opt,name=delta,proto3" json:"delta,omitempty"`
@@ -1604,7 +1660,11 @@ type GenerateTextChunk struct {
 	ResolvedVendor string                 `protobuf:"bytes,5,opt,name=resolved_vendor,json=resolvedVendor,proto3" json:"resolved_vendor,omitempty"`
 	MatchedRule    string                 `protobuf:"bytes,6,opt,name=matched_rule,json=matchedRule,proto3" json:"matched_rule,omitempty"`
 	ToolCallChunks []*ToolCallChunk       `protobuf:"bytes,7,rep,name=tool_call_chunks,json=toolCallChunks,proto3" json:"tool_call_chunks,omitempty"`
-	Cached         bool                   `protobuf:"varint,8,opt,name=cached,proto3" json:"cached,omitempty"` // true when served from cache
+	Cached         bool                   `protobuf:"varint,8,opt,name=cached,proto3" json:"cached,omitempty"`                             // true when served from cache
+	RouteMode      string                 `protobuf:"bytes,9,opt,name=route_mode,json=routeMode,proto3" json:"route_mode,omitempty"`       // "direct" | "override" | "auto-judge" | "auto-default" | "auto-effort"
+	Placement      string                 `protobuf:"bytes,10,opt,name=placement,proto3" json:"placement,omitempty"`                       // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
+	JudgeScore     float64                `protobuf:"fixed64,11,opt,name=judge_score,json=judgeScore,proto3" json:"judge_score,omitempty"` // score or confidence from judge evaluation
+	JudgeModel     string                 `protobuf:"bytes,12,opt,name=judge_model,json=judgeModel,proto3" json:"judge_model,omitempty"`   // judge model id if judge was invoked
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1693,6 +1753,34 @@ func (x *GenerateTextChunk) GetCached() bool {
 		return x.Cached
 	}
 	return false
+}
+
+func (x *GenerateTextChunk) GetRouteMode() string {
+	if x != nil {
+		return x.RouteMode
+	}
+	return ""
+}
+
+func (x *GenerateTextChunk) GetPlacement() string {
+	if x != nil {
+		return x.Placement
+	}
+	return ""
+}
+
+func (x *GenerateTextChunk) GetJudgeScore() float64 {
+	if x != nil {
+		return x.JudgeScore
+	}
+	return 0
+}
+
+func (x *GenerateTextChunk) GetJudgeModel() string {
+	if x != nil {
+		return x.JudgeModel
+	}
+	return ""
 }
 
 type ListModelsRequest struct {
@@ -3369,7 +3457,7 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\brequired\x18\x04 \x03(\tR\brequired\x1aZ\n" +
 	"\x0fPropertiesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x121\n" +
-	"\x05value\x18\x02 \x01(\v2\x1b.llmproxy.v1.SchemaPropertyR\x05value:\x028\x01\"\xe0\x05\n" +
+	"\x05value\x18\x02 \x01(\v2\x1b.llmproxy.v1.SchemaPropertyR\x05value:\x028\x01\"\xc8\x06\n" +
 	"\x13GenerateTextRequest\x12+\n" +
 	"\x06effort\x18\x01 \x01(\x0e2\x13.llmproxy.v1.EffortR\x06effort\x12P\n" +
 	"\n" +
@@ -3387,7 +3475,11 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\x05tools\x18\v \x03(\v2\x11.llmproxy.v1.ToolR\x05tools\x128\n" +
 	"\vtool_choice\x18\f \x01(\v2\x17.llmproxy.v1.ToolChoiceR\n" +
 	"toolChoice\x12!\n" +
-	"\fenable_cache\x18\r \x01(\bR\venableCache\x1a=\n" +
+	"\fenable_cache\x18\r \x01(\bR\venableCache\x12\x1c\n" +
+	"\tplacement\x18\x0e \x01(\tR\tplacement\x12\x1d\n" +
+	"\n" +
+	"auto_route\x18\x0f \x01(\bR\tautoRoute\x12)\n" +
+	"\x10effort_specified\x18\x10 \x01(\bR\x0feffortSpecified\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\";\n" +
@@ -3399,7 +3491,7 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x124\n" +
 	"\n" +
 	"tool_calls\x18\x03 \x03(\v2\x15.llmproxy.v1.ToolCallR\ttoolCalls\x12#\n" +
-	"\rfinish_reason\x18\x04 \x01(\tR\ffinishReason\"\x9a\x02\n" +
+	"\rfinish_reason\x18\x04 \x01(\tR\ffinishReason\"\x99\x03\n" +
 	"\x14GenerateTextResponse\x12\x18\n" +
 	"\achoices\x18\x01 \x03(\tR\achoices\x12.\n" +
 	"\x05usage\x18\x02 \x01(\v2\x18.llmproxy.v1.TokensUsageR\x05usage\x12%\n" +
@@ -3407,7 +3499,15 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\x0fresolved_vendor\x18\x04 \x01(\tR\x0eresolvedVendor\x12!\n" +
 	"\fmatched_rule\x18\x05 \x01(\tR\vmatchedRule\x12-\n" +
 	"\adetails\x18\x06 \x03(\v2\x13.llmproxy.v1.ChoiceR\adetails\x12\x16\n" +
-	"\x06cached\x18\a \x01(\bR\x06cached\"\xcf\x02\n" +
+	"\x06cached\x18\a \x01(\bR\x06cached\x12\x1d\n" +
+	"\n" +
+	"route_mode\x18\b \x01(\tR\trouteMode\x12\x1c\n" +
+	"\tplacement\x18\t \x01(\tR\tplacement\x12\x1f\n" +
+	"\vjudge_score\x18\n" +
+	" \x01(\x01R\n" +
+	"judgeScore\x12\x1f\n" +
+	"\vjudge_model\x18\v \x01(\tR\n" +
+	"judgeModel\"\xce\x03\n" +
 	"\x11GenerateTextChunk\x12\x14\n" +
 	"\x05delta\x18\x01 \x01(\tR\x05delta\x12#\n" +
 	"\rfinish_reason\x18\x02 \x01(\tR\ffinishReason\x12.\n" +
@@ -3416,7 +3516,15 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\x0fresolved_vendor\x18\x05 \x01(\tR\x0eresolvedVendor\x12!\n" +
 	"\fmatched_rule\x18\x06 \x01(\tR\vmatchedRule\x12D\n" +
 	"\x10tool_call_chunks\x18\a \x03(\v2\x1a.llmproxy.v1.ToolCallChunkR\x0etoolCallChunks\x12\x16\n" +
-	"\x06cached\x18\b \x01(\bR\x06cached\"\x13\n" +
+	"\x06cached\x18\b \x01(\bR\x06cached\x12\x1d\n" +
+	"\n" +
+	"route_mode\x18\t \x01(\tR\trouteMode\x12\x1c\n" +
+	"\tplacement\x18\n" +
+	" \x01(\tR\tplacement\x12\x1f\n" +
+	"\vjudge_score\x18\v \x01(\x01R\n" +
+	"judgeScore\x12\x1f\n" +
+	"\vjudge_model\x18\f \x01(\tR\n" +
+	"judgeModel\"\x13\n" +
 	"\x11ListModelsRequest\"\xde\x02\n" +
 	"\tModelInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
