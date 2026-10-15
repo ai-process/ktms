@@ -499,10 +499,34 @@ docker run -d -p 8081:8080 \
 
 ## Calling the proxy
 
-Authenticate every call with `authorization: Bearer llm_…` gRPC metadata. Generate Go,
-Python, TypeScript… clients from [`proto/llmproxy/v1`](proto/llmproxy/v1) with `buf` or
-`protoc`, or use the committed Go stubs in [`gen/llmproxy/v1`](gen/llmproxy/v1)
-(`github.com/ai-process/llm-proxy/gen/llmproxy/v1`).
+Authenticate every call with `authorization: Bearer llm_…` gRPC metadata.
+
+### Consuming via Buf Schema Registry (BSR)
+
+The gRPC API is published to the [Buf Schema Registry](https://buf.build/ai-process/llm-proxy) (`buf.build/ai-process/llm-proxy`). You can install pre-generated SDKs directly in your language:
+
+- **Go:**
+  ```bash
+  go get buf.build/gen/go/ai-process/llm-proxy/protocolbuffers/go
+  go get buf.build/gen/go/ai-process/llm-proxy/grpc/go
+  ```
+- **TypeScript / Node / Web (Connect / gRPC-Web):**
+  ```bash
+  npm install @buf/ai-process_llm-proxy.bufbuild_es @buf/ai-process_llm-proxy.connectrpc_es
+  ```
+- **Python:**
+  ```bash
+  pip install ai-process-llm-proxy-protocolbuffers-py ai-process-llm-proxy-grpc-py
+  ```
+
+### Local Client Generation
+
+Or generate client stubs locally with `buf` without installing local compiler plugins:
+```bash
+make proto     # Go stubs in gen/
+make proto-py  # Python stubs in gen/python/
+make proto-ts  # TypeScript stubs in gen/ts/
+```
 
 ### GenerateText
 
@@ -847,6 +871,8 @@ Items returned in `ListBatchResults` that failed have an `error` containing a gR
 make test       # go test -race ./...
 make build      # binary in bin/
 make proto      # regenerate gen/ after editing proto/ (needs buf)
+make proto-py   # generate Python client stubs in gen/python/
+make proto-ts   # generate TypeScript client stubs in gen/ts/
 make clients    # regenerate the usage-sink stubs from usage-proto/
 docker compose up --build   # local stack with Postgres + Redis
 ```

@@ -1,0 +1,31 @@
+name: Buf
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  buf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint and Breaking Change Check
+        uses: bufbuild/buf-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          lint: true
+          breaking: true
+          breaking_against: "https://github.com/ai-process/llm-proxy.git#branch=main"
+
+      - name: Push to Buf Schema Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.BUF_TOKEN != ''
+        uses: bufbuild/buf-action@v1
+        with:
+          token: ${{ secrets.BUF_TOKEN }}
+          push: true
