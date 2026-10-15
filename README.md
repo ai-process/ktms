@@ -270,6 +270,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `NODE_ALLOW_LOCALHOST_ENDPOINTS` | `false` | Allow loopback/link-local endpoints for local inference nodes (useful in tests/dev). |
 | `BOOTSTRAP_ADMIN_KEY` | empty | Implicit admin key for creating the first real key. Unset afterwards. |
 | `USAGE_COLLECTOR_HOST` | empty | `host:port` of a gRPC usage sink. Empty disables reporting. |
+| `USAGE_COLLECTOR_TLS` | `false` | Reach the sink over TLS, e.g. light-tokenmeter on Cloud Run (`host:443`). |
 | `USAGE_PROJECT_ID` | `llm-proxy` | Default project name on usage events. |
 | `SENTRY_DSN` | empty | Error reporting; empty disables it. |
 | `SENTRY_ENVIRONMENT` / `SENTRY_RELEASE` | `development` / empty | Sentry metadata. |

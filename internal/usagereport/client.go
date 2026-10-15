@@ -2,6 +2,7 @@ package usagereport
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -39,13 +41,17 @@ func (c *UsageCollectorClient) SetProjectResolver(fn func(meta map[string]string
 // NewUsageCollectorClient creates a new usage collector client
 // If host is empty, returns nil (usage collection disabled)
 // projectID is the default project events are attributed to
-func NewUsageCollectorClient(host, projectID string) (*UsageCollectorClient, error) {
+func NewUsageCollectorClient(host, projectID string, useTLS bool) (*UsageCollectorClient, error) {
 	if host == "" {
 		return nil, nil
 	}
 
-	// Create insecure connection for internal service communication
-	conn, err := grpc.NewClient(host, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// Plaintext on a private network; TLS for a sink behind a managed front.
+	creds := insecure.NewCredentials()
+	if useTLS {
+		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+	}
+	conn, err := grpc.NewClient(host, grpc.WithTransportCredentials(creds))
 	if err != nil {
 		return nil, err
 	}
@@ -177,5 +183,5 @@ func NewUsageCollectorClientFromEnv(projectID string) (*UsageCollectorClient, er
 	if host == "" {
 		return nil, nil
 	}
-	return NewUsageCollectorClient(host, projectID)
+	return NewUsageCollectorClient(host, projectID, os.Getenv("USAGE_COLLECTOR_TLS") == "true")
 }

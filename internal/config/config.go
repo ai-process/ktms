@@ -44,6 +44,9 @@ type Config struct {
 	BootstrapAdminKey string
 
 	UsageCollectorHost string
+	// UsageCollectorTLS reaches the usage sink over TLS, as a managed
+	// platform (Cloud Run) serves it; plaintext otherwise.
+	UsageCollectorTLS  bool
 	UsageProjectID     string
 
 	BatchMaxItems     int
@@ -99,6 +102,7 @@ func Load() *Config {
 		RedisKeyPrefix:        getEnv("REDIS_KEY_PREFIX", ""),
 		BootstrapAdminKey:     getEnv("BOOTSTRAP_ADMIN_KEY", ""),
 		UsageCollectorHost:    getEnv("USAGE_COLLECTOR_HOST", ""),
+		UsageCollectorTLS:     getBoolEnv("USAGE_COLLECTOR_TLS", false),
 		UsageProjectID:        getEnv("USAGE_PROJECT_ID", "llm-proxy"),
 		BatchMaxItems:         getIntEnv("BATCH_MAX_ITEMS", 10000),
 		BatchPollInterval:     time.Duration(getIntEnv("BATCH_POLL_SECONDS", 60)) * time.Second,
