@@ -26,6 +26,7 @@ import (
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 	"github.com/ai-process/llm-proxy/internal/apikeys"
 	"github.com/ai-process/llm-proxy/internal/panicsafe"
+	"github.com/ai-process/llm-proxy/internal/router"
 	"github.com/ai-process/llm-proxy/internal/safefetch"
 )
 
@@ -116,6 +117,8 @@ type chatRequest struct {
 	EnableGoogleSearch bool `json:"enable_google_search"`
 	// Proxy extension: enables exact-match prompt/response caching.
 	EnableCache *bool `json:"enable_cache,omitempty"`
+	// Proxy extension: infrastructure locality preference (nodes_first, nodes_only, cloud_first, cloud_only).
+	Placement string `json:"placement,omitempty"`
 }
 
 type streamOptions struct {
@@ -362,26 +365,63 @@ func (m chatMessage) text() (string, error) {
 	return text, err
 }
 
-// route resolves the OpenAI "model" field. "auto" (or empty) leaves the choice
-// to the rules, "auto:low|medium|high" also picks the effort, anything else is
-// an exact registry model id.
-func route(model, reasoningEffort string) (effort pb.Effort, override string, err error) {
+// route resolves the OpenAI "model" field.
+// Supports "auto", "auto:nodes-first", "auto:nodes-only", "auto:cloud-only", "auto:low", etc.
+func route(model, reasoningEffort, explicitPlacement string) (effort pb.Effort, override string, isAuto, effortSpecified bool, placement string, err error) {
 	effort = pb.Effort_EFFORT_MEDIUM
-	if reasoningEffort != "" {
-		if effort, err = parseEffort(reasoningEffort); err != nil {
-			return 0, "", err
-		}
-	}
+	placement = router.NormalizePlacement(explicitPlacement)
+
 	switch {
 	case model == "" || model == "auto":
+		isAuto = true
+		if placement == "" {
+			placement = router.PlacementNodesFirst
+		}
+		if reasoningEffort != "" {
+			if effort, err = parseEffort(reasoningEffort); err != nil {
+				return 0, "", false, false, "", err
+			}
+			effortSpecified = true
+		}
 	case strings.HasPrefix(model, "auto:"):
-		if effort, err = parseEffort(strings.TrimPrefix(model, "auto:")); err != nil {
-			return 0, "", err
+		isAuto = true
+		suffix := strings.TrimPrefix(model, "auto:")
+		parts := strings.Split(suffix, ":")
+		for _, part := range parts {
+			if part == "" {
+				continue
+			}
+			if eff, effErr := parseEffort(part); effErr == nil {
+				effort = eff
+				effortSpecified = true
+				continue
+			}
+			if p := router.NormalizePlacement(part); p != "" {
+				if placement == "" {
+					placement = p
+				}
+				continue
+			}
+			return 0, "", false, false, "", invalid("unknown auto route specifier %q in model", part)
+		}
+		if placement == "" {
+			placement = router.PlacementNodesFirst
+		}
+		if reasoningEffort != "" {
+			if effort, err = parseEffort(reasoningEffort); err != nil {
+				return 0, "", false, false, "", err
+			}
+			effortSpecified = true
 		}
 	default:
 		override = model
+		if reasoningEffort != "" {
+			if effort, err = parseEffort(reasoningEffort); err != nil {
+				return 0, "", false, false, "", err
+			}
+		}
 	}
-	return effort, override, nil
+	return effort, override, isAuto, effortSpecified, placement, nil
 }
 
 func parseEffort(s string) (pb.Effort, error) {
@@ -411,7 +451,7 @@ func attributes(metadata map[string]string, user string) (attrs map[string]strin
 	return attrs, actionID
 }
 
-func (req *chatRequest) toProto(ctx context.Context) (*pb.GenerateTextRequest, error) {
+func (req *chatRequest) toProto(ctx context.Context, headerPlacement ...string) (*pb.GenerateTextRequest, error) {
 	if len(req.Functions) > 0 && string(req.Functions) != "null" {
 		return nil, invalid("functions is deprecated and not supported; use tools instead")
 	}
@@ -421,9 +461,18 @@ func (req *chatRequest) toProto(ctx context.Context) (*pb.GenerateTextRequest, e
 	if len(req.Messages) == 0 {
 		return nil, invalid("messages is required")
 	}
-	effort, override, err := route(req.Model, req.ReasoningEffort)
+	var hp string
+	if len(headerPlacement) > 0 {
+		hp = headerPlacement[0]
+	}
+	effort, override, isAuto, effortSpecified, placement, err := route(req.Model, req.ReasoningEffort, req.Placement)
 	if err != nil {
 		return nil, err
+	}
+	if hp != "" {
+		if norm := router.NormalizePlacement(hp); norm != "" {
+			placement = norm
+		}
 	}
 
 	var tools []*pb.Tool
@@ -500,6 +549,15 @@ func (req *chatRequest) toProto(ctx context.Context) (*pb.GenerateTextRequest, e
 		return nil, invalid("max_tokens must not be negative")
 	}
 	out.Attributes, out.ActionId = attributes(req.Metadata, req.User)
+	if placement != "" {
+		out.Attributes[router.PlacementAttribute] = placement
+	}
+	if isAuto {
+		out.Attributes[router.AutoRouteAttribute] = "true"
+	}
+	if effortSpecified {
+		out.Attributes[router.EffortSpecifiedAttribute] = "true"
+	}
 
 	var system []string
 	for i, m := range req.Messages {
@@ -572,7 +630,7 @@ func (a *OpenAIAPI) chatCompletions(ctx context.Context, w http.ResponseWriter, 
 	if err := decodeBody(r, &req); err != nil {
 		return err
 	}
-	preq, err := req.toProto(ctx)
+	preq, err := req.toProto(ctx, r.Header.Get("X-LLM-Proxy-Placement"))
 	if err != nil {
 		return err
 	}
@@ -595,6 +653,18 @@ func (a *OpenAIAPI) chatCompletions(ctx context.Context, w http.ResponseWriter, 
 		return err
 	}
 	setResolvedHeaders(w, resp.ResolvedVendor, resp.MatchedRule)
+	if resp.Placement != "" {
+		w.Header().Set("X-LLM-Proxy-Placement", resp.Placement)
+	}
+	if resp.RouteMode != "" {
+		w.Header().Set("X-LLM-Proxy-Route-Mode", resp.RouteMode)
+	}
+	if resp.JudgeScore > 0 {
+		w.Header().Set("X-LLM-Proxy-Judge-Score", fmt.Sprintf("%.2f", resp.JudgeScore))
+	}
+	if resp.JudgeModel != "" {
+		w.Header().Set("X-LLM-Proxy-Judge-Model", resp.JudgeModel)
+	}
 	if preq.EnableCache {
 		if resp.Cached {
 			w.Header().Set("X-LLM-Proxy-Cache", "HIT")
@@ -685,7 +755,7 @@ func (a *OpenAIAPI) streamChat(ctx context.Context, w http.ResponseWriter, preq 
 	}
 
 	if err == nil && !s.headersSent {
-		s.ensureHeaders("", "")
+		s.ensureHeaders(nil)
 	}
 
 	if s.headersSent {
@@ -727,11 +797,25 @@ func (s *httpStreamAdapter) Context() context.Context {
 	return s.ctx
 }
 
-func (s *httpStreamAdapter) ensureHeaders(vendor, rule string) {
+func (s *httpStreamAdapter) ensureHeaders(chunk *pb.GenerateTextChunk) {
 	if s.headersSent {
 		return
 	}
-	setResolvedHeaders(s.w, vendor, rule)
+	if chunk != nil {
+		setResolvedHeaders(s.w, chunk.ResolvedVendor, chunk.MatchedRule)
+		if chunk.Placement != "" {
+			s.w.Header().Set("X-LLM-Proxy-Placement", chunk.Placement)
+		}
+		if chunk.RouteMode != "" {
+			s.w.Header().Set("X-LLM-Proxy-Route-Mode", chunk.RouteMode)
+		}
+		if chunk.JudgeScore > 0 {
+			s.w.Header().Set("X-LLM-Proxy-Judge-Score", fmt.Sprintf("%.2f", chunk.JudgeScore))
+		}
+		if chunk.JudgeModel != "" {
+			s.w.Header().Set("X-LLM-Proxy-Judge-Model", chunk.JudgeModel)
+		}
+	}
 	if s.enableCache {
 		if s.cacheHit {
 			s.w.Header().Set("X-LLM-Proxy-Cache", "HIT")
@@ -752,7 +836,7 @@ func (s *httpStreamAdapter) Send(chunk *pb.GenerateTextChunk) error {
 	if chunk.Cached {
 		s.cacheHit = true
 	}
-	s.ensureHeaders(chunk.ResolvedVendor, chunk.MatchedRule)
+	s.ensureHeaders(chunk)
 
 	if chunk.ResolvedModel != "" {
 		s.resolvedModel = chunk.ResolvedModel
@@ -851,7 +935,7 @@ func (a *OpenAIAPI) audioSpeech(ctx context.Context, w http.ResponseWriter, r *h
 	if req.Input == "" {
 		return invalid("input is required")
 	}
-	_, override, err := route(req.Model, "")
+	_, override, _, _, _, err := route(req.Model, "", "")
 	if err != nil {
 		return err
 	}
@@ -899,7 +983,7 @@ func (a *OpenAIAPI) imageGenerations(ctx context.Context, w http.ResponseWriter,
 	if req.ResponseFormat == "url" {
 		return invalid("response_format url is not supported; images are returned as b64_json")
 	}
-	_, override, err := route(req.Model, "")
+	_, override, _, _, _, err := route(req.Model, "", "")
 	if err != nil {
 		return err
 	}
@@ -1091,7 +1175,7 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 		pbQuestions[q.Name] = jq
 	}
 
-	_, override, err := route(decReq.Model, "")
+	_, override, _, _, _, err := route(decReq.Model, "", "")
 	if err != nil {
 		return err
 	}

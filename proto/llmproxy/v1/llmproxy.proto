@@ -168,6 +168,10 @@ message GenerateTextResponse {
   string matched_rule = 5; // rule name, "" on model_override
   repeated Choice details = 6;
   bool cached = 7; // true when served from cache
+  string route_mode = 8; // "direct" | "override" | "auto-judge" | "auto-default" | "auto-effort"
+  string placement = 9; // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
+  double judge_score = 10; // score or confidence from judge evaluation
+  string judge_model = 11; // judge model id if judge was invoked
 }
 
 message GenerateTextChunk {
@@ -179,6 +183,10 @@ message GenerateTextChunk {
   string matched_rule = 6;
   repeated ToolCallChunk tool_call_chunks = 7;
   bool cached = 8; // true when served from cache
+  string route_mode = 9;
+  string placement = 10;
+  double judge_score = 11;
+  string judge_model = 12;
 }
 
 message ListModelsRequest {}

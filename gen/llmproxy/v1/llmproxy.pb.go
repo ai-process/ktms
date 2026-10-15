@@ -1511,7 +1511,11 @@ type GenerateTextResponse struct {
 	ResolvedVendor string                 `protobuf:"bytes,4,opt,name=resolved_vendor,json=resolvedVendor,proto3" json:"resolved_vendor,omitempty"` // "openai" | "anthropic" | "google" | "deepseek"
 	MatchedRule    string                 `protobuf:"bytes,5,opt,name=matched_rule,json=matchedRule,proto3" json:"matched_rule,omitempty"`          // rule name, "" on model_override
 	Details        []*Choice              `protobuf:"bytes,6,rep,name=details,proto3" json:"details,omitempty"`
-	Cached         bool                   `protobuf:"varint,7,opt,name=cached,proto3" json:"cached,omitempty"` // true when served from cache
+	Cached         bool                   `protobuf:"varint,7,opt,name=cached,proto3" json:"cached,omitempty"`                             // true when served from cache
+	RouteMode      string                 `protobuf:"bytes,8,opt,name=route_mode,json=routeMode,proto3" json:"route_mode,omitempty"`       // "direct" | "override" | "auto-judge" | "auto-default" | "auto-effort"
+	Placement      string                 `protobuf:"bytes,9,opt,name=placement,proto3" json:"placement,omitempty"`                        // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
+	JudgeScore     float64                `protobuf:"fixed64,10,opt,name=judge_score,json=judgeScore,proto3" json:"judge_score,omitempty"` // score or confidence from judge evaluation
+	JudgeModel     string                 `protobuf:"bytes,11,opt,name=judge_model,json=judgeModel,proto3" json:"judge_model,omitempty"`   // judge model id if judge was invoked
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1595,6 +1599,34 @@ func (x *GenerateTextResponse) GetCached() bool {
 	return false
 }
 
+func (x *GenerateTextResponse) GetRouteMode() string {
+	if x != nil {
+		return x.RouteMode
+	}
+	return ""
+}
+
+func (x *GenerateTextResponse) GetPlacement() string {
+	if x != nil {
+		return x.Placement
+	}
+	return ""
+}
+
+func (x *GenerateTextResponse) GetJudgeScore() float64 {
+	if x != nil {
+		return x.JudgeScore
+	}
+	return 0
+}
+
+func (x *GenerateTextResponse) GetJudgeModel() string {
+	if x != nil {
+		return x.JudgeModel
+	}
+	return ""
+}
+
 type GenerateTextChunk struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Delta          string                 `protobuf:"bytes,1,opt,name=delta,proto3" json:"delta,omitempty"`
@@ -1605,6 +1637,10 @@ type GenerateTextChunk struct {
 	MatchedRule    string                 `protobuf:"bytes,6,opt,name=matched_rule,json=matchedRule,proto3" json:"matched_rule,omitempty"`
 	ToolCallChunks []*ToolCallChunk       `protobuf:"bytes,7,rep,name=tool_call_chunks,json=toolCallChunks,proto3" json:"tool_call_chunks,omitempty"`
 	Cached         bool                   `protobuf:"varint,8,opt,name=cached,proto3" json:"cached,omitempty"` // true when served from cache
+	RouteMode      string                 `protobuf:"bytes,9,opt,name=route_mode,json=routeMode,proto3" json:"route_mode,omitempty"`
+	Placement      string                 `protobuf:"bytes,10,opt,name=placement,proto3" json:"placement,omitempty"`
+	JudgeScore     float64                `protobuf:"fixed64,11,opt,name=judge_score,json=judgeScore,proto3" json:"judge_score,omitempty"`
+	JudgeModel     string                 `protobuf:"bytes,12,opt,name=judge_model,json=judgeModel,proto3" json:"judge_model,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1693,6 +1729,34 @@ func (x *GenerateTextChunk) GetCached() bool {
 		return x.Cached
 	}
 	return false
+}
+
+func (x *GenerateTextChunk) GetRouteMode() string {
+	if x != nil {
+		return x.RouteMode
+	}
+	return ""
+}
+
+func (x *GenerateTextChunk) GetPlacement() string {
+	if x != nil {
+		return x.Placement
+	}
+	return ""
+}
+
+func (x *GenerateTextChunk) GetJudgeScore() float64 {
+	if x != nil {
+		return x.JudgeScore
+	}
+	return 0
+}
+
+func (x *GenerateTextChunk) GetJudgeModel() string {
+	if x != nil {
+		return x.JudgeModel
+	}
+	return ""
 }
 
 type ListModelsRequest struct {
@@ -3399,7 +3463,7 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x124\n" +
 	"\n" +
 	"tool_calls\x18\x03 \x03(\v2\x15.llmproxy.v1.ToolCallR\ttoolCalls\x12#\n" +
-	"\rfinish_reason\x18\x04 \x01(\tR\ffinishReason\"\x9a\x02\n" +
+	"\rfinish_reason\x18\x04 \x01(\tR\ffinishReason\"\x99\x03\n" +
 	"\x14GenerateTextResponse\x12\x18\n" +
 	"\achoices\x18\x01 \x03(\tR\achoices\x12.\n" +
 	"\x05usage\x18\x02 \x01(\v2\x18.llmproxy.v1.TokensUsageR\x05usage\x12%\n" +
@@ -3407,7 +3471,15 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\x0fresolved_vendor\x18\x04 \x01(\tR\x0eresolvedVendor\x12!\n" +
 	"\fmatched_rule\x18\x05 \x01(\tR\vmatchedRule\x12-\n" +
 	"\adetails\x18\x06 \x03(\v2\x13.llmproxy.v1.ChoiceR\adetails\x12\x16\n" +
-	"\x06cached\x18\a \x01(\bR\x06cached\"\xcf\x02\n" +
+	"\x06cached\x18\a \x01(\bR\x06cached\x12\x1d\n" +
+	"\n" +
+	"route_mode\x18\b \x01(\tR\trouteMode\x12\x1c\n" +
+	"\tplacement\x18\t \x01(\tR\tplacement\x12\x1f\n" +
+	"\vjudge_score\x18\n" +
+	" \x01(\x01R\n" +
+	"judgeScore\x12\x1f\n" +
+	"\vjudge_model\x18\v \x01(\tR\n" +
+	"judgeModel\"\xce\x03\n" +
 	"\x11GenerateTextChunk\x12\x14\n" +
 	"\x05delta\x18\x01 \x01(\tR\x05delta\x12#\n" +
 	"\rfinish_reason\x18\x02 \x01(\tR\ffinishReason\x12.\n" +
@@ -3416,7 +3488,15 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\x0fresolved_vendor\x18\x05 \x01(\tR\x0eresolvedVendor\x12!\n" +
 	"\fmatched_rule\x18\x06 \x01(\tR\vmatchedRule\x12D\n" +
 	"\x10tool_call_chunks\x18\a \x03(\v2\x1a.llmproxy.v1.ToolCallChunkR\x0etoolCallChunks\x12\x16\n" +
-	"\x06cached\x18\b \x01(\bR\x06cached\"\x13\n" +
+	"\x06cached\x18\b \x01(\bR\x06cached\x12\x1d\n" +
+	"\n" +
+	"route_mode\x18\t \x01(\tR\trouteMode\x12\x1c\n" +
+	"\tplacement\x18\n" +
+	" \x01(\tR\tplacement\x12\x1f\n" +
+	"\vjudge_score\x18\v \x01(\x01R\n" +
+	"judgeScore\x12\x1f\n" +
+	"\vjudge_model\x18\f \x01(\tR\n" +
+	"judgeModel\"\x13\n" +
 	"\x11ListModelsRequest\"\xde\x02\n" +
 	"\tModelInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +

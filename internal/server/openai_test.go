@@ -16,18 +16,23 @@ import (
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 	"github.com/ai-process/llm-proxy/internal/apikeys"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
+	"github.com/ai-process/llm-proxy/internal/router"
 )
 
 type fakeProxy struct {
 	pb.UnimplementedLLMProxyServiceServer
-	text         *pb.GenerateTextRequest
-	textErr      error
-	respDetails  []*pb.Choice
-	respCached   bool
-	streamChunks []*pb.GenerateTextChunk
-	emptyStream  bool
-	media        map[string]string
-	judgeReq     *pb.JudgeRequest
+	text           *pb.GenerateTextRequest
+	textErr        error
+	respDetails    []*pb.Choice
+	respCached     bool
+	respPlacement  string
+	respRouteMode  string
+	respJudgeScore float64
+	respJudgeModel string
+	streamChunks   []*pb.GenerateTextChunk
+	emptyStream    bool
+	media          map[string]string
+	judgeReq       *pb.JudgeRequest
 }
 
 func (f *fakeProxy) GenerateText(_ context.Context, r *pb.GenerateTextRequest) (*pb.GenerateTextResponse, error) {
@@ -38,7 +43,11 @@ func (f *fakeProxy) GenerateText(_ context.Context, r *pb.GenerateTextRequest) (
 	resp := &pb.GenerateTextResponse{
 		Choices: []string{"hello"}, Usage: &pb.TokensUsage{Input: 3, Output: 2},
 		ResolvedModel: "m1", ResolvedVendor: "openai", MatchedRule: "default",
-		Cached: f.respCached,
+		Cached:     f.respCached,
+		Placement:  f.respPlacement,
+		RouteMode:  f.respRouteMode,
+		JudgeScore: f.respJudgeScore,
+		JudgeModel: f.respJudgeModel,
 	}
 	if len(f.respDetails) > 0 {
 		resp.Details = f.respDetails
@@ -68,6 +77,10 @@ func (f *fakeProxy) GenerateTextStream(r *pb.GenerateTextStreamRequest, s pb.LLM
 		ResolvedVendor: "openai",
 		MatchedRule:    "default",
 		Cached:         f.respCached,
+		Placement:      f.respPlacement,
+		RouteMode:      f.respRouteMode,
+		JudgeScore:     f.respJudgeScore,
+		JudgeModel:     f.respJudgeModel,
 	}); err != nil {
 		return err
 	}
@@ -845,3 +858,110 @@ func TestChatCompletions_Caching(t *testing.T) {
 		t.Errorf("got streaming cache header %q, want MISS", got)
 	}
 }
+
+func TestChatCompletions_AutoRoutingAndPlacement(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	fp.respPlacement = router.PlacementNodesFirst
+	fp.respRouteMode = "auto-judge"
+	fp.respJudgeScore = 0.88
+	fp.respJudgeModel = "jev-latest"
+
+	// 1. model: "auto" defaults to nodes_first placement
+	body1 := `{"model":"auto","messages":[{"role":"user","content":"explain quantum computing"}]}`
+	rec1 := do(h, "POST", "/v1/chat/completions", key, body1)
+	if rec1.Code != 200 {
+		t.Fatalf("code = %d: %s", rec1.Code, rec1.Body)
+	}
+	if fp.text.Attributes[router.AutoRouteAttribute] != "true" {
+		t.Errorf("expected auto_route=true in attributes, got %v", fp.text.Attributes)
+	}
+	if fp.text.Attributes[router.PlacementAttribute] != router.PlacementNodesFirst {
+		t.Errorf("expected placement=nodes_first, got %s", fp.text.Attributes[router.PlacementAttribute])
+	}
+	if got := rec1.Header().Get("X-LLM-Proxy-Placement"); got != router.PlacementNodesFirst {
+		t.Errorf("expected X-LLM-Proxy-Placement %q, got %q", router.PlacementNodesFirst, got)
+	}
+	if got := rec1.Header().Get("X-LLM-Proxy-Route-Mode"); got != "auto-judge" {
+		t.Errorf("expected X-LLM-Proxy-Route-Mode auto-judge, got %q", got)
+	}
+	if got := rec1.Header().Get("X-LLM-Proxy-Judge-Score"); got != "0.88" {
+		t.Errorf("expected X-LLM-Proxy-Judge-Score 0.88, got %q", got)
+	}
+	if got := rec1.Header().Get("X-LLM-Proxy-Judge-Model"); got != "jev-latest" {
+		t.Errorf("expected X-LLM-Proxy-Judge-Model jev-latest, got %q", got)
+	}
+
+	// 2. model: "auto:nodes-only" parses placement
+	body2 := `{"model":"auto:nodes-only","messages":[{"role":"user","content":"hi"}]}`
+	rec2 := do(h, "POST", "/v1/chat/completions", key, body2)
+	if rec2.Code != 200 {
+		t.Fatalf("code = %d: %s", rec2.Code, rec2.Body)
+	}
+	if fp.text.Attributes[router.PlacementAttribute] != router.PlacementNodesOnly {
+		t.Errorf("expected placement=nodes_only, got %s", fp.text.Attributes[router.PlacementAttribute])
+	}
+
+	// 3. model: "auto:cloud-first" parses placement
+	body3 := `{"model":"auto:cloud-first","messages":[{"role":"user","content":"hi"}]}`
+	rec3 := do(h, "POST", "/v1/chat/completions", key, body3)
+	if rec3.Code != 200 {
+		t.Fatalf("code = %d: %s", rec3.Code, rec3.Body)
+	}
+	if fp.text.Attributes[router.PlacementAttribute] != router.PlacementCloudFirst {
+		t.Errorf("expected placement=cloud_first, got %s", fp.text.Attributes[router.PlacementAttribute])
+	}
+
+	// 4. model: "auto:nodes-first:high" parses effort and placement
+	body4 := `{"model":"auto:nodes-first:high","messages":[{"role":"user","content":"hi"}]}`
+	rec4 := do(h, "POST", "/v1/chat/completions", key, body4)
+	if rec4.Code != 200 {
+		t.Fatalf("code = %d: %s", rec4.Code, rec4.Body)
+	}
+	if fp.text.Effort != pb.Effort_EFFORT_HIGH {
+		t.Errorf("expected effort high, got %v", fp.text.Effort)
+	}
+	if fp.text.Attributes[router.EffortSpecifiedAttribute] != "true" {
+		t.Errorf("expected effort_specified=true, got %v", fp.text.Attributes)
+	}
+	if fp.text.Attributes[router.PlacementAttribute] != router.PlacementNodesFirst {
+		t.Errorf("expected placement=nodes_first, got %s", fp.text.Attributes[router.PlacementAttribute])
+	}
+
+	// 5. JSON body placement field
+	body5 := `{"model":"auto","placement":"nodes_only","messages":[{"role":"user","content":"hi"}]}`
+	rec5 := do(h, "POST", "/v1/chat/completions", key, body5)
+	if rec5.Code != 200 {
+		t.Fatalf("code = %d: %s", rec5.Code, rec5.Body)
+	}
+	if fp.text.Attributes[router.PlacementAttribute] != router.PlacementNodesOnly {
+		t.Errorf("expected placement=nodes_only from body, got %s", fp.text.Attributes[router.PlacementAttribute])
+	}
+
+	// 6. X-LLM-Proxy-Placement header overrides
+	body6 := `{"model":"auto:nodes-first","messages":[{"role":"user","content":"hi"}]}`
+	req6 := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body6))
+	req6.Header.Set("Authorization", "Bearer "+key)
+	req6.Header.Set("X-LLM-Proxy-Placement", "cloud_only")
+	rec6 := httptest.NewRecorder()
+	h.ServeHTTP(rec6, req6)
+	if rec6.Code != 200 {
+		t.Fatalf("code = %d: %s", rec6.Code, rec6.Body)
+	}
+	if fp.text.Attributes[router.PlacementAttribute] != router.PlacementCloudOnly {
+		t.Errorf("expected placement=cloud_only from header, got %s", fp.text.Attributes[router.PlacementAttribute])
+	}
+
+	// 7. Streaming response headers
+	body7 := `{"model":"auto","messages":[{"role":"user","content":"hi"}],"stream":true}`
+	rec7 := do(h, "POST", "/v1/chat/completions", key, body7)
+	if rec7.Code != 200 {
+		t.Fatalf("code = %d: %s", rec7.Code, rec7.Body)
+	}
+	if got := rec7.Header().Get("X-LLM-Proxy-Placement"); got != router.PlacementNodesFirst {
+		t.Errorf("expected stream X-LLM-Proxy-Placement %q, got %q", router.PlacementNodesFirst, got)
+	}
+	if got := rec7.Header().Get("X-LLM-Proxy-Route-Mode"); got != "auto-judge" {
+		t.Errorf("expected stream X-LLM-Proxy-Route-Mode auto-judge, got %q", got)
+	}
+}
+

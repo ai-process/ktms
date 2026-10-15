@@ -687,26 +687,41 @@ curl -s localhost:8080/v1/chat/completions \
 | `POST /v1/judge` | `Judge` | Protobuf JSON of `JudgeRequest` / `JudgeResponse`. |
 | `GET /v1/models`, `GET /v1/models/{id}` | `ListModels` | Only models the key holds a vendor credential for. |
 
-Authentication is `Authorization: Bearer llm_…`. The response headers `X-LLM-Proxy-Vendor`
-and `X-LLM-Proxy-Rule` (and `X-LLM-Proxy-Model` for speech and images) tell you which
-vendor and rule served the call; for chat the answering model is the `model` field.
+Authentication is `Authorization: Bearer llm_…`. Response headers provide full observability:
+- `X-LLM-Proxy-Vendor` and `X-LLM-Proxy-Rule`: vendor and matching rule that served the request.
+- `X-LLM-Proxy-Placement`: infrastructure placement (`nodes_first`, `nodes_only`, `cloud_first`, `cloud_only`).
+- `X-LLM-Proxy-Route-Mode`: routing mechanism (`direct`, `override`, `auto-judge`, `auto-default`, `auto-effort`).
+- `X-LLM-Proxy-Judge-Score` and `X-LLM-Proxy-Judge-Model`: evaluation confidence and judge model ID when judge evaluates task complexity.
 
-### Choosing a model
+### Choosing a model and placement
 
-The `model` field decides routing:
+The `model` parameter supports smart auto-routing and infrastructure placement:
 
 | `model` | Behaviour |
 | --- | --- |
-| `auto` (or empty) | Rules decide. Effort comes from `reasoning_effort` (`low` / `medium` / `high`), default `medium`. |
-| `auto:low`, `auto:medium`, `auto:high` | Rules decide, at that effort. |
-| anything else | An exact registry model id (`model_override`): bypasses rules but not throttles. |
+| `auto` (or empty) | Smart auto-selection with default `nodes_first` placement. Evaluates prompt complexity via Judge (or uses `reasoning_effort` if provided). |
+| `auto:low`, `auto:medium`, `auto:high` | Pinned effort level with `nodes_first` placement. |
+| `auto:nodes-first`, `auto:nodes-only`, `auto:cloud-first`, `auto:cloud-only` | Auto-routing with explicit compute locality policy. |
+| `auto:<placement>:<effort>` (e.g. `auto:nodes-only:high`) | Combined placement policy and pinned effort level. |
+| anything else | Exact registry model ID (`model_override`): bypasses rules but not throttles. |
+
+#### Infrastructure Placement Policies
+- `nodes_first` (default): Prefers registered self-hosted compute nodes (`VendorLocal`, `VendorOllama`), falling back to cloud providers if unavailable or busy.
+- `nodes_only` (aliases: `nodes`, `private`, `self_hosted`): Restricts routing strictly to self-hosted nodes. Fails if no capable node is available.
+- `cloud_first`: Prefers managed cloud providers, falling back to registered nodes.
+- `cloud_only`: Excludes self-hosted nodes completely.
+
+Placement can also be specified in the JSON body (`"placement": "nodes_only"`) or via the `X-LLM-Proxy-Placement` HTTP header.
+
+#### Fast Judge Auto-Selection
+When `model: "auto"` is requested without an explicit effort level, the proxy evaluates the prompt complexity using the configured Judge model (such as `jev-latest` or OpenAI Decisions) with a 250ms deadline. If the judge is not configured or times out, it safely falls back to standard medium effort without dropping the request.
 
 Routing attributes (what rules match on, and what usage events carry) come from OpenAI's own
 fields: `metadata` is passed through as attributes, `user` becomes `attributes["user_id"]`
 (unless `metadata.user_id` is set), and `metadata.action_id` is used as the usage action label.
 
 ```json
-{"model": "auto:low", "user": "u-42", "metadata": {"subject": "french", "action_id": "app.quiz"},
+{"model": "auto:nodes-first", "user": "u-42", "metadata": {"subject": "french", "action_id": "app.quiz"},
  "messages": [{"role": "user", "content": "Translate: good morning"}]}
 ```
 
