@@ -164,7 +164,7 @@ Postgres and Redis and pick up configuration changes within `ROUTING_RELOAD_SECO
 
 ### Building from source
 
-Requires Go 1.25+ (and `ffmpeg` on `PATH` if you use speech).
+Requires Go 1.26+ (and `ffmpeg` on `PATH` if you use speech).
 
 ```bash
 make build                       # → bin/llm-proxy-server and bin/llm-proxy-node
@@ -263,7 +263,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `BUDGET_GRACE_MARGIN` | `0.05` | Fraction of daily token budget allowed as grace overdraft (0.05 = 5%, 0.0 or negative disables grace overdraft). |
 | `BATCH_POLL_SECONDS` | `60` | Background polling interval in seconds for checking unfinished batch jobs. |
 | `BATCH_MAX_ITEMS` | `10000` | Maximum number of items allowed in a single batch submission. |
-| `RESULTS_RETENTION_DAYS` | `7` | Retention period in days for completed batch results before cleanup. |
+| `RESULTS_RETENTION_DAYS` | `7` | Retention period for completed batch results before cleanup (accepts integer days, e.g. `7`, or Go duration string, e.g. `168h`). |
 | `NODE_HEARTBEAT_INTERVAL_SECONDS` | `5` | Node agent heartbeat reporting interval in seconds. |
 | `NODE_HEARTBEAT_TTL_SECONDS` | `15` | Heartbeat TTL in seconds before an idle node transitions to `OFFLINE`. |
 | `NODE_RETENTION_TTL_DAYS` | `1` | Retention period in days for inactive/offline nodes before garbage collection. |
@@ -548,7 +548,7 @@ For offline or bulk workflows (such as page generation, backfills, or data pipel
 
 - **Route resolution:** Resolved once upon submission. The proxy selects the first model in the rule's chain that has the `batch` capability, a valid vendor key for the client, and available daily budget. Once submitted, there is no vendor fallback; per-item outcomes are returned to the client.
 - **Privacy:** Prompts are streamed/submitted to the vendor and never persisted in the proxy database.
-- **Throttling & Accounting:** RPM limits do not apply to batches. Daily token budgets are checked at submission (rejecting if already exhausted) and tokens are deducted when final item results arrive. Results are retained for `RESULTS_RETENTION_DAYS` (default 7 days).
+- **Throttling & Accounting:** RPM limits do not apply to batches. Daily token budgets are checked at submission (rejecting if already exhausted) and tokens are deducted when final item results arrive. Results are retained for `RESULTS_RETENTION_DAYS` (default 7 days; accepts integer days or Go duration strings).
 
 #### SubmitBatch
 
