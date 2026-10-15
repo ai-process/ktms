@@ -251,4 +251,3 @@ service LLMProxyAdminService {
   rpc DeleteUserRateLimit(DeleteUserRateLimitRequest) returns (DeleteUserRateLimitResponse);
   rpc ListUserRateLimits(ListUserRateLimitsRequest) returns (ListUserRateLimitsResponse);
 }
-

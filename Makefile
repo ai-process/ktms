@@ -1,4 +1,4 @@
-.PHONY: build test proto proto-lint migrate-up clients fmt
+.PHONY: build test proto proto-lint proto-py proto-ts migrate-up clients fmt
 
 GO=go
 GOFLAGS=-trimpath -ldflags="-s -w"
@@ -12,6 +12,12 @@ test:
 
 proto:
 	buf generate
+
+proto-py:
+	buf generate --template buf.gen.python.yaml
+
+proto-ts:
+	buf generate --template buf.gen.ts.yaml
 
 proto-lint:
 	buf lint

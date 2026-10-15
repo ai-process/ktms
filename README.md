@@ -499,10 +499,44 @@ docker run -d -p 8081:8080 \
 
 ## Calling the proxy
 
-Authenticate every call with `authorization: Bearer llm_…` gRPC metadata. Generate Go,
-Python, TypeScript… clients from [`proto/llmproxy/v1`](proto/llmproxy/v1) with `buf` or
-`protoc`, or use the committed Go stubs in [`gen/llmproxy/v1`](gen/llmproxy/v1)
-(`github.com/ai-process/llm-proxy/gen/llmproxy/v1`).
+Authenticate every call with `authorization: Bearer llm_…` gRPC metadata.
+
+You can import the committed Go stubs directly from this repository:
+```bash
+go get github.com/ai-process/llm-proxy/gen/llmproxy/v1
+```
+
+### Consuming via Buf Schema Registry (BSR)
+
+The gRPC API is published to the [Buf Schema Registry](https://buf.build/ai-process/llm-proxy) (`buf.build/ai-process/llm-proxy`). Pre-generated client SDKs are available across languages:
+
+- **Go (BSR):**
+  ```bash
+  go get buf.build/gen/go/ai-process/llm-proxy/protocolbuffers/go
+  go get buf.build/gen/go/ai-process/llm-proxy/grpc/go
+  ```
+- **TypeScript / Node / Web (Connect / gRPC-Web):**
+  Configure npm for the `@buf` registry, then install the packages:
+  ```bash
+  npm config set @buf:registry https://buf.build/gen/npm/v1/
+  npm install @buf/ai-process_llm-proxy.bufbuild_es @connectrpc/connect
+  ```
+- **Python:**
+  Install from the Buf Python registry:
+  ```bash
+  pip install --extra-index-url https://buf.build/gen/python \
+    ai-process-llm-proxy-protocolbuffers-python \
+    ai-process-llm-proxy-grpc-python
+  ```
+
+### Local Client Generation
+
+Or generate client stubs locally with `buf` without installing local compiler plugins:
+```bash
+make proto     # Go stubs in gen/
+make proto-py  # Python stubs in gen/python/
+make proto-ts  # TypeScript stubs in gen/ts/
+```
 
 ### GenerateText
 
@@ -847,6 +881,8 @@ Items returned in `ListBatchResults` that failed have an `error` containing a gR
 make test       # go test -race ./...
 make build      # binary in bin/
 make proto      # regenerate gen/ after editing proto/ (needs buf)
+make proto-py   # generate Python client stubs in gen/python/
+make proto-ts   # generate TypeScript client stubs in gen/ts/
 make clients    # regenerate the usage-sink stubs from usage-proto/
 docker compose up --build   # local stack with Postgres + Redis
 ```
