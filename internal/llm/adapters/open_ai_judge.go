@@ -193,6 +193,168 @@ func (a *OpenAIAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ stri
 	return result, nil
 }
 
+// EvaluateRollouts scores multiple rollout candidate actions against state and criteria.
+// Calls the /v1/decisions/rollouts endpoint, yielding ErrJudgmentUnsupported if not supported.
+func (a *OpenAIAdapter) EvaluateRollouts(ctx context.Context, req *llm.EvaluateRolloutsRequest, _ string, _ map[string]string) (*llm.EvaluateRolloutsResult, error) {
+	failed := func(err error) (*llm.EvaluateRolloutsResult, error) {
+		return &llm.EvaluateRolloutsResult{Model: a.model}, err
+	}
+	if a.apiKey == "" {
+		return failed(llm.ErrJudgmentUnsupported)
+	}
+	if req == nil || len(req.Candidates) == 0 {
+		return failed(fmt.Errorf("openai decisions: no candidates"))
+	}
+
+	questions, err := toOpenAIDecisionQuestions(req.Criteria)
+	if err != nil {
+		return failed(err)
+	}
+
+	stateInput, err := openAIDecisionInput(&llm.JudgeRequest{
+		StateJSON:  req.StateJSON,
+		StateMedia: req.StateMedia,
+	})
+	if err != nil {
+		return failed(err)
+	}
+
+	cands := make([]openAIDecisionCandidateReq, 0, len(req.Candidates))
+	for _, c := range req.Candidates {
+		cr := openAIDecisionCandidateReq{
+			ID:         c.ID,
+			ActionText: c.ActionText,
+		}
+		if c.ActionJSON != "" {
+			cr.Action = json.RawMessage(c.ActionJSON)
+		}
+		if len(c.ActionMedia) > 0 {
+			parts, err := toOpenAIDecisionParts(c.ActionMedia)
+			if err != nil {
+				return failed(err)
+			}
+			cr.Media = parts
+		}
+		cands = append(cands, cr)
+	}
+
+	body, err := json.Marshal(openAIDecisionsRolloutRequest{
+		Model:      a.model,
+		State:      stateInput,
+		Candidates: cands,
+		Criteria:   questions,
+	})
+	if err != nil {
+		return failed(fmt.Errorf("openai decisions: encode rollout request: %w", err))
+	}
+
+	endpoint := a.endpoint
+	if endpoint == "" {
+		endpoint = "https://api.openai.com"
+	}
+
+	raw, statusCode, err := executeJudgeRequest(ctx, a.http, endpoint+"/v1/decisions/rollouts", a.apiKey, body)
+	if err != nil {
+		if statusCode == http.StatusNotFound {
+			return failed(fmt.Errorf("%w: endpoint not found", llm.ErrJudgmentUnsupported))
+		}
+		if statusCode > 0 {
+			return failed(&OpenAIDecisionError{Status: statusCode, Body: err.Error()})
+		}
+		return failed(fmt.Errorf("openai decisions rollout: %w", err))
+	}
+
+	var parsed openAIDecisionsRolloutResponse
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return failed(fmt.Errorf("openai decisions rollout: decode response: %w", err))
+	}
+
+	res := &llm.EvaluateRolloutsResult{
+		Model:           a.model,
+		BestCandidateID: parsed.BestCandidateID,
+		Usage:           llm.TokensUsage{Input: parsed.Usage.InputTokens, Output: parsed.Usage.OutputTokens},
+		Evaluations:     make([]*llm.CandidateEvaluation, 0, len(parsed.Evaluations)),
+	}
+	if parsed.Model != "" {
+		res.Model = parsed.Model
+	}
+	for _, e := range parsed.Evaluations {
+		ce := &llm.CandidateEvaluation{
+			ID:             e.ID,
+			CompositeScore: e.CompositeScore,
+			Rank:           e.Rank,
+			Answers:        make(map[string]*llm.JudgeAnswer, len(e.Answers)),
+		}
+		for _, ans := range e.Answers {
+			ja := &llm.JudgeAnswer{
+				Probabilities: ans.Probabilities,
+			}
+			if ans.Confidence != nil {
+				ja.Confidence = *ans.Confidence
+			}
+			switch ans.Type {
+			case "predicate", "noul":
+				ja.Type = llm.JudgeNoul
+				if ans.Probability != nil {
+					ja.Noul = *ans.Probability
+				}
+			case "choice":
+				ja.Type = llm.JudgeChoice
+				ja.Choice = ans.Choice
+			case "score":
+				ja.Type = llm.JudgeScore
+				if ans.Score != nil {
+					ja.Score = *ans.Score
+				}
+				if q, ok := req.Criteria[ans.Name]; ok {
+					ja.Legend = make(map[string]string, len(q.Levels))
+					for i, lvl := range q.Levels {
+						ja.Legend[strconv.Itoa(i)] = lvl
+					}
+				}
+			default:
+				ja.Type = ans.Type
+			}
+			ce.Answers[ans.Name] = ja
+		}
+		res.Evaluations = append(res.Evaluations, ce)
+	}
+
+	return res, nil
+}
+
+type openAIDecisionCandidateReq struct {
+	ID         string                    `json:"id"`
+	Action     json.RawMessage           `json:"action,omitempty"`
+	Media      []openAIDecisionInputPart `json:"media,omitempty"`
+	ActionText string                    `json:"action_text,omitempty"`
+}
+
+type openAIDecisionsRolloutRequest struct {
+	Model      string                       `json:"model"`
+	State      json.RawMessage              `json:"state,omitempty"`
+	Candidates []openAIDecisionCandidateReq `json:"candidates"`
+	Criteria   []openAIDecisionQuestion     `json:"criteria"`
+}
+
+type openAICandidateEvaluationOut struct {
+	ID             string                 `json:"id"`
+	Answers        []openAIDecisionAnswer `json:"answers"`
+	CompositeScore float64                `json:"composite_score"`
+	Rank           int                    `json:"rank"`
+}
+
+type openAIDecisionsRolloutResponse struct {
+	Model           string                         `json:"model"`
+	BestCandidateID string                         `json:"best_candidate_id"`
+	Evaluations     []openAICandidateEvaluationOut `json:"evaluations"`
+	Usage           struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+		TotalTokens  int `json:"total_tokens"`
+	} `json:"usage"`
+}
+
 // openAIDecisionInput keeps a JSON-only state verbatim, as before. With media
 // it becomes a parts array, the state JSON leading as text so the vendor reads
 // the structured state before the media it describes.
@@ -207,7 +369,21 @@ func openAIDecisionInput(req *llm.JudgeRequest) (json.RawMessage, error) {
 	if req.StateJSON != "" {
 		parts = append(parts, openAIDecisionInputPart{Type: "input_text", Text: req.StateJSON})
 	}
-	for i, p := range req.StateMedia {
+	mediaParts, err := toOpenAIDecisionParts(req.StateMedia)
+	if err != nil {
+		return nil, err
+	}
+	parts = append(parts, mediaParts...)
+	raw, err := json.Marshal(parts)
+	if err != nil {
+		return nil, fmt.Errorf("openai decisions: encode input: %w", err)
+	}
+	return raw, nil
+}
+
+func toOpenAIDecisionParts(media []*llm.JudgeMediaPart) ([]openAIDecisionInputPart, error) {
+	parts := make([]openAIDecisionInputPart, 0, len(media))
+	for i, p := range media {
 		switch p.Type {
 		case llm.JudgeMediaText:
 			parts = append(parts, openAIDecisionInputPart{Type: "input_text", Text: p.Text})
@@ -228,11 +404,7 @@ func openAIDecisionInput(req *llm.JudgeRequest) (json.RawMessage, error) {
 			return nil, fmt.Errorf("openai decisions: unsupported state media type %q at %d", p.Type, i)
 		}
 	}
-	raw, err := json.Marshal(parts)
-	if err != nil {
-		return nil, fmt.Errorf("openai decisions: encode input: %w", err)
-	}
-	return raw, nil
+	return parts, nil
 }
 
 // toOpenAIDecisionQuestions transforms vendor-neutral questions to OpenAI's Decisions API schema.

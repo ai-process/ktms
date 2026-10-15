@@ -377,3 +377,126 @@ func TestSelector_CapabilityFiltering(t *testing.T) {
 		t.Errorf("got node %q, want node-chat-only", candChat.Snapshot.Meta.NodeID)
 	}
 }
+
+func TestPoolAdapter_EvaluateRollouts_Success(t *testing.T) {
+	ctx := context.Background()
+	mgr, _ := setupTestManager(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/decisions/rollouts" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"model":             "jepa-node-v1",
+			"best_candidate_id": "c1",
+			"evaluations": []map[string]any{
+				{
+					"id":              "c1",
+					"rank":            1,
+					"composite_score": 0.95,
+					"answers": []map[string]any{
+						{"name": "q1", "type": "score", "score": 0.95},
+					},
+				},
+			},
+			"usage": map[string]any{"input_tokens": 120, "output_tokens": 0},
+		})
+	}))
+	defer srv.Close()
+
+	if err := mgr.Register(ctx, &NodeMeta{
+		NodeID:        "node-rollout-1",
+		Endpoint:      srv.URL,
+		BaseWeight:    100,
+		MaxConcurrent: 2,
+		Models: []*pb.NodeModelSpec{
+			{ModelId: "jepa-model", Capabilities: []string{registry.CapabilityJudge}, IsWarm: true},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := mgr.Heartbeat(ctx, &NodeHeartbeatData{NodeID: "node-rollout-1", WarmModels: []string{"jepa-model"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	sel := NewSelector(mgr)
+	modelSpec := &proxydb.Model{
+		ID:           "jepa-model",
+		Capabilities: []string{registry.CapabilityJudge},
+	}
+	adapter := NewPoolAdapter(sel, nil, modelSpec, 5*time.Second, nil)
+
+	req := &llm.EvaluateRolloutsRequest{
+		StateJSON: `{"s":1}`,
+		Candidates: []*llm.RolloutCandidate{
+			{ID: "c1", ActionJSON: `{"a":1}`},
+		},
+		Criteria: map[string]*llm.JudgeQuestion{
+			"q1": {Type: llm.JudgeScore, Instructions: "Rate", Levels: []string{"bad", "good"}},
+		},
+	}
+
+	res, err := adapter.EvaluateRollouts(ctx, req, "user-123", nil)
+	if err != nil {
+		t.Fatalf("EvaluateRollouts: %v", err)
+	}
+	if res.BestCandidateID != "c1" || len(res.Evaluations) != 1 {
+		t.Fatalf("unexpected evaluations: %+v", res)
+	}
+}
+
+func TestPoolAdapter_EvaluateRollouts_404_YieldsUnsupported(t *testing.T) {
+	ctx := context.Background()
+	mgr, _ := setupTestManager(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	if err := mgr.Register(ctx, &NodeMeta{
+		NodeID:        "node-rollout-2",
+		Endpoint:      srv.URL,
+		BaseWeight:    100,
+		MaxConcurrent: 2,
+		Models: []*pb.NodeModelSpec{
+			{ModelId: "jepa-model", Capabilities: []string{registry.CapabilityJudge}, IsWarm: true},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := mgr.Heartbeat(ctx, &NodeHeartbeatData{NodeID: "node-rollout-2", WarmModels: []string{"jepa-model"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	sel := NewSelector(mgr)
+	modelSpec := &proxydb.Model{
+		ID:           "jepa-model",
+		Capabilities: []string{registry.CapabilityJudge},
+	}
+	adapter := NewPoolAdapter(sel, nil, modelSpec, 5*time.Second, nil)
+
+	req := &llm.EvaluateRolloutsRequest{
+		StateJSON: `{"s":1}`,
+		Candidates: []*llm.RolloutCandidate{
+			{ID: "c1", ActionJSON: `{"a":1}`},
+		},
+		Criteria: map[string]*llm.JudgeQuestion{
+			"q1": {Type: llm.JudgeScore, Instructions: "Rate", Levels: []string{"bad", "good"}},
+		},
+	}
+
+	_, err := adapter.EvaluateRollouts(ctx, req, "user-123", nil)
+	if !errors.Is(err, llm.ErrJudgmentUnsupported) {
+		t.Fatalf("err = %v, want ErrJudgmentUnsupported", err)
+	}
+	nodes, err := mgr.ListNodes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) == 0 || nodes[0].State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
+		t.Errorf("404 unexpectedly tripped node circuit breaker")
+	}
+}

@@ -56,7 +56,7 @@ Two gRPC services share port `9090`:
 
 | Service | Purpose | Needed scope |
 | --- | --- | --- |
-| `llmproxy.v1.LLMProxyService` | `GenerateText`, `GenerateTextStream`, `SubmitBatch`, `GetBatch`, `ListBatchResults`, `CancelBatch`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `GetEmbeddings`, `ListModels` | `generate` |
+| `llmproxy.v1.LLMProxyService` | `GenerateText`, `GenerateTextStream`, `SubmitBatch`, `GetBatch`, `ListBatchResults`, `CancelBatch`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `JudgeStream`, `EvaluateRollouts`, `GetEmbeddings`, `ListModels` | `generate` |
 | `llmproxy.v1.LLMProxyAdminService` | models, rules, vendor keys, API keys, key rotation | `admin` |
 
 Port `8080` serves the health probes (`/healthz`, `/readyz`) and the
@@ -779,6 +779,7 @@ curl -s localhost:8080/v1/chat/completions \
 | `POST /v1/audio/speech` | `SynthesizeSpeech` | Returns OGG/Opus audio. |
 | `POST /v1/images/generations` | `GenerateImage` | Returns `b64_json`. |
 | `POST /v1/decisions` | `Judge` | OpenAI Decisions API format (`predicate`, `choice`, `score`). `input` is JSON state, or an array of `input_text`/`text`, `input_image`/`image_url`, `input_audio` and `input_embedding` parts for multimodal state. |
+| `POST /v1/decisions/rollouts` | `EvaluateRollouts` | Batch trajectory and rollout candidate evaluation for agentic workflows with candidate ranking. |
 | `POST /v1/judge` | `Judge` | Protobuf JSON of `JudgeRequest` / `JudgeResponse`. |
 | `GET /v1/models`, `GET /v1/models/{id}` | `ListModels` | Only models the key holds a vendor credential for. |
 

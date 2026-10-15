@@ -651,6 +651,120 @@ func (t *TrackingAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, user
 	return result, err
 }
 
+// EvaluateRollouts forwards to the wrapped adapter's optional rollout judgment capability and
+// tracks usage. Adapters without one surface ErrJudgmentUnsupported.
+func (t *TrackingAdapter) EvaluateRollouts(ctx context.Context, req *llm.EvaluateRolloutsRequest, userID string, meta map[string]string) (*llm.EvaluateRolloutsResult, error) {
+	rolloutJudge, ok := t.adapter.(llm.RolloutJudge)
+	if !ok {
+		return nil, llm.ErrJudgmentUnsupported
+	}
+
+	startTime := time.Now()
+	effort := "default"
+	if meta != nil && meta["effort"] != "" {
+		effort = meta["effort"]
+	}
+
+	attrs := []attribute.KeyValue{
+		observability.AttrGenAIProviderName.String(t.vendor),
+		observability.AttrGenAIRequestModel.String(t.model),
+	}
+	if meta != nil {
+		if r := meta["rule"]; r != "" {
+			attrs = append(attrs, observability.AttrLLMProxyRule.String(r))
+		}
+		if k := meta["api_key"]; k != "" {
+			attrs = append(attrs, observability.AttrLLMProxyClientKey.String(k))
+		}
+	}
+
+	ctx, span := observability.Tracer().Start(ctx, "rollouts "+t.model, trace.WithAttributes(attrs...))
+	defer span.End()
+
+	observability.ActiveRequests.WithLabelValues(t.vendor, t.model).Inc()
+	defer observability.ActiveRequests.WithLabelValues(t.vendor, t.model).Dec()
+
+	result, err := rolloutJudge.EvaluateRollouts(ctx, req, userID, meta)
+	duration := time.Since(startTime)
+	durationMs := duration.Milliseconds()
+
+	statusLabel := "success"
+	if err != nil {
+		statusLabel = "error"
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	observability.RequestsTotal.WithLabelValues(t.vendor, t.model, effort, statusLabel).Inc()
+	observability.RequestDuration.WithLabelValues(t.vendor, t.model, effort).Observe(duration.Seconds())
+
+	if t.tracker != nil {
+		status := usagev1.Status_STATUS_SUCCESS
+		if err != nil {
+			status = usagev1.Status_STATUS_ERROR
+		}
+
+		actionID := "llmproxy.rollouts"
+		if req != nil && req.ActionID != "" {
+			actionID = req.ActionID
+		}
+		model := t.model
+		var inTokens, outTokens int
+		if result != nil {
+			if result.Model != "" {
+				model = result.Model
+			}
+			inTokens = result.Usage.Input
+			outTokens = result.Usage.Output
+			observability.TokensTotal.WithLabelValues(t.vendor, model, "input").Add(float64(inTokens))
+			observability.TokensTotal.WithLabelValues(t.vendor, model, "output").Add(float64(outTokens))
+			span.SetAttributes(
+				observability.AttrGenAIResponseModel.String(model),
+				observability.AttrGenAIUsageInput.Int(inTokens),
+				observability.AttrGenAIUsageOutput.Int(outTokens),
+			)
+		}
+		trackMeta := map[string]string{}
+		for k, v := range meta {
+			trackMeta[k] = v
+		}
+		if req != nil {
+			trackMeta["candidates"] = strconv.Itoa(len(req.Candidates))
+			trackMeta["criteria"] = strconv.Itoa(len(req.Criteria))
+		}
+		if err != nil {
+			msg := err.Error()
+			if len(msg) > 300 {
+				msg = msg[:300]
+			}
+			trackMeta["error"] = msg
+		}
+
+		if trackErr := t.tracker.RecordUsage(
+			userID,
+			actionID,
+			t.vendor,
+			model,
+			inTokens,
+			outTokens,
+			durationMs,
+			t.cost(inTokens, outTokens, startTime),
+			status,
+			trackMeta,
+		); trackErr != nil {
+			log.Error().
+				Stack().
+				Err(trackErr).
+				Str("userID", userID).
+				Str("actionID", actionID).
+				Str("vendor", t.vendor).
+				Str("model", model).
+				Msg("Failed to record usage")
+		}
+	}
+
+	return result, err
+}
+
 // Unwrap returns the wrapped adapter.
 func (t *TrackingAdapter) Unwrap() llm.ClientAdapter {
 	return t.adapter

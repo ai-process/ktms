@@ -39,6 +39,7 @@ type fakeProxy struct {
 	embedReq       *pb.GetEmbeddingsRequest
 	embedResp      *pb.GetEmbeddingsResponse
 	embedErr       error
+	rolloutReq     *pb.EvaluateRolloutsRequest
 }
 
 func (f *fakeProxy) GenerateText(_ context.Context, r *pb.GenerateTextRequest) (*pb.GenerateTextResponse, error) {
@@ -162,6 +163,51 @@ func (f *fakeProxy) GetEmbeddings(_ context.Context, r *pb.GetEmbeddingsRequest)
 		ResolvedVendor: "openai",
 		MatchedRule:    "default",
 		Usage:          &pb.TokensUsage{Input: 5, Output: 0},
+	}, nil
+}
+
+func (f *fakeProxy) EvaluateRollouts(_ context.Context, r *pb.EvaluateRolloutsRequest) (*pb.EvaluateRolloutsResponse, error) {
+	f.rolloutReq = r
+	model := "jev"
+	if r.ModelOverride != "" {
+		model = r.ModelOverride
+	}
+	evals := make([]*pb.CandidateEvaluation, 0, len(r.Candidates))
+	for i, c := range r.Candidates {
+		answers := make(map[string]*pb.JudgeAnswer, len(r.Criteria))
+		for id, q := range r.Criteria {
+			switch q.Type {
+			case pb.JudgeType_JUDGE_TYPE_NOUL:
+				answers[id] = &pb.JudgeAnswer{Type: q.Type, Noul: 0.9}
+			case pb.JudgeType_JUDGE_TYPE_CHOICE:
+				answers[id] = &pb.JudgeAnswer{Type: q.Type, Choice: "opt1", Confidence: 0.95}
+			case pb.JudgeType_JUDGE_TYPE_SCORE:
+				answers[id] = &pb.JudgeAnswer{
+					Type:          q.Type,
+					Score:         2.5,
+					Probabilities: map[string]float64{"0": 0.2, "1": 0.8},
+					Confidence:    0.85,
+				}
+			}
+		}
+		evals = append(evals, &pb.CandidateEvaluation{
+			Id:             c.Id,
+			Rank:           int32(i + 1),
+			CompositeScore: 1.0 - float64(i)*0.2,
+			Answers:        answers,
+		})
+	}
+	bestID := ""
+	if len(evals) > 0 {
+		bestID = evals[0].Id
+	}
+	return &pb.EvaluateRolloutsResponse{
+		Evaluations:     evals,
+		BestCandidateId: bestID,
+		ResolvedModel:   model,
+		ResolvedVendor:  "openai",
+		MatchedRule:     "default",
+		Usage:           &pb.TokensUsage{Input: 40, Output: 0},
 	}, nil
 }
 
@@ -720,6 +766,95 @@ func TestDecisions(t *testing.T) {
 
 	if rec := do(h, "POST", "/v1/decisions", key, `{"model":"auto:invalid","input":"ok","questions":[{"name":"q","type":"predicate","instructions":"test"}]}`); rec.Code != 400 {
 		t.Errorf("auto:invalid status = %d, want 400", rec.Code)
+	}
+}
+
+func TestDecisionsRollouts(t *testing.T) {
+	proxy, h, key := newTestAPI(t)
+
+	body := `{
+		"model": "gpt-6-luna",
+		"state": {"board": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"},
+		"user": "user-456",
+		"metadata": {"task": "chess-bot"},
+		"candidates": [
+			{"id": "cand_1", "action": {"move": "e4"}, "action_text": "King's pawn opening"},
+			{"id": "cand_2", "action": {"move": "d4"}, "action_text": "Queen's pawn opening"}
+		],
+		"criteria": [
+			{"name": "quality", "type": "score", "instructions": "Evaluate rollout move quality", "levels": ["blunder", "inaccuracy", "good", "best"]},
+			{"name": "safety", "type": "predicate", "instructions": "Is move tactically safe?"}
+		]
+	}`
+
+	rec := do(h, "POST", "/v1/decisions/rollouts", key, body)
+	if rec.Code != 200 {
+		t.Fatalf("rollouts returned status %d: %s", rec.Code, rec.Body)
+	}
+
+	var out decisionsRolloutResponseOut
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("unmarshal rollouts response: %v", err)
+	}
+	if out.Model != "gpt-6-luna" {
+		t.Errorf("model = %q, want gpt-6-luna", out.Model)
+	}
+	if out.BestCandidateID != "cand_1" {
+		t.Errorf("best candidate = %q, want cand_1", out.BestCandidateID)
+	}
+	if len(out.Evaluations) != 2 {
+		t.Fatalf("evaluations count = %d, want 2", len(out.Evaluations))
+	}
+	if out.Evaluations[0].ID != "cand_1" || out.Evaluations[0].Rank != 1 {
+		t.Errorf("evaluations[0] = %+v, want cand_1 with rank 1", out.Evaluations[0])
+	}
+	if out.Evaluations[1].ID != "cand_2" || out.Evaluations[1].Rank != 2 {
+		t.Errorf("evaluations[1] = %+v, want cand_2 with rank 2", out.Evaluations[1])
+	}
+	if rec.Header().Get("X-LLM-Proxy-Model") != "gpt-6-luna" {
+		t.Errorf("X-LLM-Proxy-Model = %q, want gpt-6-luna", rec.Header().Get("X-LLM-Proxy-Model"))
+	}
+	if rec.Header().Get("X-LLM-Proxy-Vendor") != "openai" {
+		t.Errorf("X-LLM-Proxy-Vendor = %q, want openai", rec.Header().Get("X-LLM-Proxy-Vendor"))
+	}
+	if proxy.rolloutReq == nil || proxy.rolloutReq.Attributes["user_id"] != "user-456" || proxy.rolloutReq.Attributes["task"] != "chess-bot" {
+		t.Errorf("rollout request attributes = %+v", proxy.rolloutReq.GetAttributes())
+	}
+
+	// Empty candidates error
+	if recEmpty := do(h, "POST", "/v1/decisions/rollouts", key, `{"candidates":[]}`); recEmpty.Code != 400 {
+		t.Errorf("empty candidates status = %d, want 400", recEmpty.Code)
+	}
+
+	// Missing candidate id
+	if recNoID := do(h, "POST", "/v1/decisions/rollouts", key, `{"candidates":[{"action":{"a":1}}]}`); recNoID.Code != 400 {
+		t.Errorf("missing candidate id status = %d, want 400", recNoID.Code)
+	}
+
+	// Duplicate criteria name
+	dupCriteria := `{"candidates":[{"id":"c1","action":{"a":1}}],"criteria":[{"name":"q","type":"predicate","instructions":"a"},{"name":"q","type":"predicate","instructions":"b"}]}`
+	if recDup := do(h, "POST", "/v1/decisions/rollouts", key, dupCriteria); recDup.Code != 400 {
+		t.Errorf("duplicate criteria status = %d, want 400", recDup.Code)
+	}
+
+	// Default criteria without explicit criteria field populates answers
+	noCriteriaBody := `{"candidates":[{"id":"c1","action":{"move":"e4"}}]}`
+	recNoCrit := do(h, "POST", "/v1/decisions/rollouts", key, noCriteriaBody)
+	if recNoCrit.Code != 200 {
+		t.Fatalf("no criteria status = %d: %s", recNoCrit.Code, recNoCrit.Body)
+	}
+	var outNoCrit decisionsRolloutResponseOut
+	if err := json.Unmarshal(recNoCrit.Body.Bytes(), &outNoCrit); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(outNoCrit.Evaluations) == 0 || len(outNoCrit.Evaluations[0].Answers) == 0 {
+		t.Errorf("expected default reward answer, got %+v", outNoCrit.Evaluations)
+	}
+
+	// Unsupported candidate media type
+	unsupportedMedia := `{"candidates":[{"id":"c1","media":[{"type":"unknown_media_type"}]}]}`
+	if recBadMedia := do(h, "POST", "/v1/decisions/rollouts", key, unsupportedMedia); recBadMedia.Code != 400 {
+		t.Errorf("unsupported candidate media status = %d, want 400", recBadMedia.Code)
 	}
 }
 
