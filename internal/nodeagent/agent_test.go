@@ -1,9 +1,14 @@
 package nodeagent
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+	"github.com/ai-process/llm-proxy/internal/registry"
 )
 
 func TestDialCredentials(t *testing.T) {
@@ -69,5 +74,54 @@ func TestFilterModels(t *testing.T) {
 				t.Errorf("%s: got %v, want %v", c.name, got, c.want)
 			}
 		}
+	}
+}
+
+func TestTagJudgeModels(t *testing.T) {
+	models := []*pb.NodeModelSpec{
+		{ModelId: "gemma4:26b", RemoteModelName: "gemma4:26b"},
+		{ModelId: "jepa-fast", RemoteModelName: "jepa-fast"},
+	}
+	tagged := TagJudgeModels(models, []string{"jepa-fast"})
+	if len(tagged[0].Capabilities) != 0 {
+		t.Errorf("gemma should have no capabilities, got %v", tagged[0].Capabilities)
+	}
+	if len(tagged[1].Capabilities) != 1 || tagged[1].Capabilities[0] != registry.CapabilityJudge {
+		t.Errorf("jepa-fast should have [judge] capability, got %v", tagged[1].Capabilities)
+	}
+}
+
+func TestDecisionsInspector(t *testing.T) {
+	ctx := context.Background()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer secret" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"object":"list","data":[{"id":"jepa-v1"}]}`)
+	}))
+	defer srv.Close()
+
+	insp := &DecisionsInspector{}
+	specs, err := insp.Inspect(ctx, srv.URL, "secret")
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if len(specs) != 1 || specs[0].ModelId != "jepa-v1" {
+		t.Fatalf("unexpected specs: %+v", specs)
+	}
+	if len(specs[0].Capabilities) != 1 || specs[0].Capabilities[0] != registry.CapabilityJudge {
+		t.Errorf("expected [judge] capability, got %v", specs[0].Capabilities)
+	}
+
+	// Test non-200 error code
+	_, err = insp.Inspect(ctx, srv.URL, "wrong-token")
+	if err == nil {
+		t.Fatalf("expected error on unauthorized, got nil")
 	}
 }

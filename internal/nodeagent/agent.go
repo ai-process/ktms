@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+	"github.com/ai-process/llm-proxy/internal/registry"
 )
 
 type AgentConfig struct {
@@ -32,6 +33,7 @@ type AgentConfig struct {
 	NodeAuthToken  string   // bearer the proxy presents to Endpoint; replaced by a generated key when exposing
 	EngineToken    string   // bearer the engine itself requires, if any
 	OnlyModels     []string // when set, report only these engine models
+	JudgeModels    []string // models to tag with capability "judge"
 	Expose         string   // ExposeNone or ExposeCloudflared
 	CloudflaredBin string
 	BaseWeight     float64
@@ -101,6 +103,9 @@ func (a *Agent) snapshot(ctx context.Context) ([]*pb.NodeModelSpec, *pb.NodeReso
 		log.Warn().Err(err).Msg("engine inspection failed, reporting no models")
 	}
 	models = FilterModels(models, a.cfg.OnlyModels)
+	if len(a.cfg.JudgeModels) > 0 {
+		models = TagJudgeModels(models, a.cfg.JudgeModels)
+	}
 	res := &pb.NodeResources{BaseWeight: a.cfg.BaseWeight, MaxConcurrent: a.cfg.MaxConcurrent}
 	if gpu, _ := ReadNvidiaSMI(ctx); gpu != nil {
 		res.VramTotalMb = gpu.TotalVRAMMB
@@ -128,6 +133,29 @@ func FilterModels(models []*pb.NodeModelSpec, allow []string) []*pb.NodeModelSpe
 		}
 	}
 	return kept
+}
+
+// TagJudgeModels ensures models in judge list declare the "judge" capability.
+func TagJudgeModels(models []*pb.NodeModelSpec, judgeModels []string) []*pb.NodeModelSpec {
+	judgeSet := make(map[string]bool, len(judgeModels))
+	for _, jm := range judgeModels {
+		judgeSet[jm] = true
+	}
+	for _, m := range models {
+		if judgeSet[m.GetModelId()] || judgeSet[m.GetRemoteModelName()] {
+			hasJudge := false
+			for _, c := range m.Capabilities {
+				if c == registry.CapabilityJudge {
+					hasJudge = true
+					break
+				}
+			}
+			if !hasJudge {
+				m.Capabilities = append(m.Capabilities, registry.CapabilityJudge)
+			}
+		}
+	}
+	return models
 }
 
 func (a *Agent) register(ctx context.Context, models []*pb.NodeModelSpec, res *pb.NodeResources) (*pb.RegisterNodeResponse, error) {
