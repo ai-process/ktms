@@ -2,6 +2,7 @@ package llm
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/openai/openai-go/v3"
@@ -63,6 +64,25 @@ type SkipToNextModel interface {
 	SkipToNextModel() bool
 }
 
+// IsContentFilterError reports whether err indicates an Azure or vendor content filter block.
+func IsContentFilterError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var openaiErr *openai.Error
+	if errors.As(err, &openaiErr) && openaiErr != nil {
+		code := strings.ToLower(openaiErr.Code)
+		if code == "content_filter" || code == "responsibleaipolicyviolation" {
+			return true
+		}
+		msg := strings.ToLower(openaiErr.Message)
+		if strings.Contains(msg, "content filter") || strings.Contains(msg, "content management policy") {
+			return true
+		}
+	}
+	return false
+}
+
 // ShouldSkipToNextModel reports whether err or any wrapped error indicates that
 // the chain should advance to the next candidate model immediately.
 func ShouldSkipToNextModel(err error) bool {
@@ -73,6 +93,6 @@ func ShouldSkipToNextModel(err error) bool {
 	if errors.As(err, &s) {
 		return s.SkipToNextModel()
 	}
-	return false
+	return IsContentFilterError(err)
 }
 

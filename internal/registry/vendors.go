@@ -20,7 +20,11 @@ const (
 	VendorLocal     = "local"
 	VendorGroq      = "groq"
 	VendorMistral   = "mistral"
+	VendorAzure     = "azure"
 )
+
+// AzureDefaultAPIVersion is used when an azure model has no api-version query override.
+const AzureDefaultAPIVersion = "2024-06-01"
 
 // AnthropicDefaultEndpoint is used when an anthropic model has no endpoint override.
 const AnthropicDefaultEndpoint = "https://api.anthropic.com"
@@ -102,7 +106,7 @@ const (
 )
 
 func ValidVendor(v string) bool {
-	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorAnthropic || v == VendorLocal || v == VendorGroq || v == VendorMistral
+	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorAnthropic || v == VendorLocal || v == VendorGroq || v == VendorMistral || v == VendorAzure
 }
 
 // SoftSchema reports whether this model needs the prompt-and-verify path.
