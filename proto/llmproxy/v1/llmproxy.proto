@@ -246,6 +246,12 @@ service LLMProxyService {
   // Embeddings generates vector representations of text. Vector space isolation
   // is strictly preserved: cross-model fallbacks are disallowed.
   rpc GetEmbeddings(GetEmbeddingsRequest) returns (GetEmbeddingsResponse);
+  // JudgeStream provides bidirectional streaming decisions for real-time
+  // agent evaluation and robotics control loops.
+  rpc JudgeStream(stream JudgeRequest) returns (stream JudgeResponse);
+  // EvaluateRollouts scores candidate trajectories against state and criteria
+  // for speculative decoding and Best-of-N selection.
+  rpc EvaluateRollouts(EvaluateRolloutsRequest) returns (EvaluateRolloutsResponse);
   rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
 
   // Batch generation RPCs.
@@ -378,6 +384,39 @@ message GetEmbeddingsResponse {
   string resolved_model = 3;
   string resolved_vendor = 4;
   string matched_rule = 5;
+}
+
+message RolloutCandidate {
+  string id = 1;
+  string action_json = 2;
+  repeated MediaPart action_media = 3;
+  string action_text = 4;
+}
+
+message CandidateEvaluation {
+  string id = 1;
+  map<string, JudgeAnswer> answers = 2;
+  double composite_score = 3;
+  int32 rank = 4;
+}
+
+message EvaluateRolloutsRequest {
+  string state_json = 1;
+  repeated MediaPart state_media = 2;
+  repeated RolloutCandidate candidates = 3;
+  map<string, JudgeQuestion> criteria = 4;
+  map<string, string> attributes = 5;
+  string action_id = 6;
+  string model_override = 7;
+}
+
+message EvaluateRolloutsResponse {
+  repeated CandidateEvaluation evaluations = 1;
+  string best_candidate_id = 2;
+  TokensUsage usage = 3;
+  string resolved_model = 4;
+  string resolved_vendor = 5;
+  string matched_rule = 6;
 }
 
 enum BatchState {

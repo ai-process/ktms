@@ -3,11 +3,16 @@ package grpcapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"math"
+	"sort"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -378,4 +383,510 @@ func judgeTypeToProto(t string) pb.JudgeType {
 	default:
 		return pb.JudgeType_JUDGE_TYPE_UNSPECIFIED
 	}
+}
+
+// JudgeStream provides bidirectional streaming decisions for real-time
+// agent evaluation and robotics control loops.
+func (s *ProxyServer) JudgeStream(stream pb.LLMProxyService_JudgeStreamServer) error {
+	ctx := stream.Context()
+	for {
+		req, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		resp, err := s.Judge(ctx, req)
+		if err != nil {
+			return err
+		}
+		if err := stream.Send(resp); err != nil {
+			return err
+		}
+	}
+}
+
+const maxRolloutCandidates = 64
+
+// EvaluateRollouts scores multiple candidate trajectories against state and criteria
+// in parallel for speculative decoding and Best-of-N selection.
+func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRolloutsRequest) (*pb.EvaluateRolloutsResponse, error) {
+	rolloutReq, err := evaluateRolloutsRequestFromProto(req)
+	if err != nil {
+		return nil, err
+	}
+	var vault *guardrails.TokenVault
+	if s.guardrails != nil && s.guardrails.Enabled {
+		if s.guardrails.PIIAction == guardrails.ActionRedact {
+			vault = guardrails.NewTokenVault()
+		}
+		if rolloutReq.StateJSON != "" {
+			sanitizedState, _, err := s.guardrails.InspectText(rolloutReq.StateJSON, vault)
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+			}
+			rolloutReq.StateJSON = sanitizedState
+		}
+		for _, p := range rolloutReq.StateMedia {
+			if p.Type != llm.JudgeMediaText {
+				continue
+			}
+			sanitizedText, _, err := s.guardrails.InspectText(p.Text, vault)
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+			}
+			p.Text = sanitizedText
+		}
+		for _, q := range rolloutReq.Criteria {
+			sanitizedInst, _, err := s.guardrails.InspectText(q.Instructions, vault)
+			if err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+			}
+			q.Instructions = sanitizedInst
+			for i, opt := range q.Options {
+				sanitizedOpt, _, err := s.guardrails.InspectText(opt, vault)
+				if err != nil {
+					return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+				}
+				q.Options[i] = sanitizedOpt
+			}
+		}
+		for _, c := range rolloutReq.Candidates {
+			if c.ActionJSON != "" {
+				sanitizedAct, _, err := s.guardrails.InspectText(c.ActionJSON, vault)
+				if err != nil {
+					return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+				}
+				c.ActionJSON = sanitizedAct
+			}
+			if c.ActionText != "" {
+				sanitizedTxt, _, err := s.guardrails.InspectText(c.ActionText, vault)
+				if err != nil {
+					return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+				}
+				c.ActionText = sanitizedTxt
+			}
+			for _, p := range c.ActionMedia {
+				if p.Type != llm.JudgeMediaText {
+					continue
+				}
+				sanitizedText, _, err := s.guardrails.InspectText(p.Text, vault)
+				if err != nil {
+					return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+				}
+				p.Text = sanitizedText
+			}
+		}
+	}
+
+	plan, err := s.planMedia(ctx, req.GetAttributes(), req.GetModelOverride(), modalityJudge, rolloutCapabilities(rolloutReq)...)
+	if err != nil {
+		return nil, err
+	}
+
+	var out *llm.EvaluateRolloutsResult
+	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
+		Chain:    plan.chain,
+		KeyName:  plan.identity.Name,
+		UserID:   router.UserID(plan.attrs, plan.identity.Name),
+		Estimate: rolloutEstimate(rolloutReq),
+		Adapter:  plan.adapter,
+		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
+			if rj, ok := adapter.(llm.RolloutJudge); ok {
+				res, err := rj.EvaluateRollouts(ctx, rolloutReq, router.UserID(plan.attrs, plan.identity.Name), plan.meta)
+				if err == nil {
+					out = res
+					return res.Usage, nil
+				}
+				if !errors.Is(err, llm.ErrJudgmentUnsupported) {
+					return llm.TokensUsage{}, err
+				}
+			}
+			judge, ok := adapter.(llm.Judge)
+			if !ok {
+				return llm.TokensUsage{}, llm.ErrJudgmentUnsupported
+			}
+			res, err := executeParallelCandidateRollouts(ctx, judge, rolloutReq, router.UserID(plan.attrs, plan.identity.Name), plan.meta)
+			if err != nil {
+				return llm.TokensUsage{}, err
+			}
+			out = res
+			return res.Usage, nil
+		},
+	})
+	if err != nil {
+		return nil, router.ToStatus(err)
+	}
+
+	evals := make([]*pb.CandidateEvaluation, 0, len(out.Evaluations))
+	for _, e := range out.Evaluations {
+		ce := &pb.CandidateEvaluation{
+			Id:             e.ID,
+			CompositeScore: e.CompositeScore,
+			Rank:           int32(e.Rank),
+			Answers:        make(map[string]*pb.JudgeAnswer, len(e.Answers)),
+		}
+		for qID, ans := range e.Answers {
+			legend := ans.Legend
+			if vault != nil && len(legend) > 0 {
+				desan := make(map[string]string, len(legend))
+				for k, v := range legend {
+					desan[k] = vault.Desanitize(v)
+				}
+				legend = desan
+			}
+			ce.Answers[qID] = &pb.JudgeAnswer{
+				Type:          judgeTypeToProto(ans.Type),
+				Choice:        ans.Choice,
+				Noul:          ans.Noul,
+				Score:         ans.Score,
+				Probabilities: ans.Probabilities,
+				Confidence:    ans.Confidence,
+				Legend:        legend,
+			}
+		}
+		evals = append(evals, ce)
+	}
+
+	return &pb.EvaluateRolloutsResponse{
+		Evaluations:     evals,
+		BestCandidateId: out.BestCandidateID,
+		Usage:           &pb.TokensUsage{Input: int64(out.Usage.Input), Output: int64(out.Usage.Output)},
+		ResolvedModel:   model.ID,
+		ResolvedVendor:  model.Vendor,
+		MatchedRule:     plan.ruleName,
+	}, nil
+}
+
+func executeParallelCandidateRollouts(ctx context.Context, judge llm.Judge, rolloutReq *llm.EvaluateRolloutsRequest, userID string, meta map[string]string) (*llm.EvaluateRolloutsResult, error) {
+	evals := make([]*llm.CandidateEvaluation, len(rolloutReq.Candidates))
+	var (
+		mu         sync.Mutex
+		totalUsage llm.TokensUsage
+	)
+	g, gCtx := errgroup.WithContext(ctx)
+	concurrency := 16
+	if len(rolloutReq.Candidates) < concurrency {
+		concurrency = len(rolloutReq.Candidates)
+	}
+	g.SetLimit(concurrency)
+
+	for i, cand := range rolloutReq.Candidates {
+		idx := i
+		c := cand
+		g.Go(func() error {
+			candState := composeCandidateState(rolloutReq.StateJSON, c.ActionJSON, c.ActionText)
+			var candMedia []*llm.JudgeMediaPart
+			if len(rolloutReq.StateMedia) > 0 || len(c.ActionMedia) > 0 {
+				candMedia = make([]*llm.JudgeMediaPart, 0, len(rolloutReq.StateMedia)+len(c.ActionMedia))
+				candMedia = append(candMedia, rolloutReq.StateMedia...)
+				candMedia = append(candMedia, c.ActionMedia...)
+			}
+			jReq := &llm.JudgeRequest{
+				StateJSON:  candState,
+				StateMedia: candMedia,
+				Questions:  rolloutReq.Criteria,
+				ActionID:   rolloutReq.ActionID,
+			}
+			res, err := judge.Judge(gCtx, jReq, userID, meta)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			totalUsage.Input += res.Usage.Input
+			totalUsage.Output += res.Usage.Output
+			mu.Unlock()
+
+			score := calculateCompositeScore(res.Answers)
+			evals[idx] = &llm.CandidateEvaluation{
+				ID:             c.ID,
+				Answers:        res.Answers,
+				CompositeScore: score,
+			}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	rankEvaluations(evals)
+	bestID := ""
+	if len(evals) > 0 {
+		bestID = evals[0].ID
+	}
+	return &llm.EvaluateRolloutsResult{
+		Evaluations:     evals,
+		BestCandidateID: bestID,
+		Usage:           totalUsage,
+	}, nil
+}
+
+type rankedCandidate struct {
+	eval    *llm.CandidateEvaluation
+	origIdx int
+}
+
+func rankEvaluations(evals []*llm.CandidateEvaluation) {
+	ranked := make([]rankedCandidate, len(evals))
+	for i, e := range evals {
+		ranked[i] = rankedCandidate{eval: e, origIdx: i}
+	}
+	sort.SliceStable(ranked, func(i, j int) bool {
+		if ranked[i].eval.CompositeScore != ranked[j].eval.CompositeScore {
+			return ranked[i].eval.CompositeScore > ranked[j].eval.CompositeScore
+		}
+		return ranked[i].origIdx < ranked[j].origIdx
+	})
+	for r, rc := range ranked {
+		rc.eval.Rank = r + 1
+		evals[r] = rc.eval
+	}
+}
+
+func calculateCompositeScore(answers map[string]*llm.JudgeAnswer) float64 {
+	if len(answers) == 0 {
+		return 0.0
+	}
+	var total float64
+	for _, ans := range answers {
+		var s float64
+		switch ans.Type {
+		case llm.JudgeNoul:
+			s = ans.Noul
+		case llm.JudgeScore:
+			s = ans.Score
+			if len(ans.Legend) > 1 && s > 1.0 {
+				s = s / float64(len(ans.Legend)-1)
+			}
+		case llm.JudgeChoice:
+			if ans.Confidence > 0 {
+				s = ans.Confidence
+			} else if len(ans.Probabilities) > 0 {
+				for _, p := range ans.Probabilities {
+					if p > s {
+						s = p
+					}
+				}
+			}
+		}
+		if s < 0.0 {
+			s = 0.0
+		}
+		if s > 1.0 {
+			s = 1.0
+		}
+		total += s
+	}
+	return total / float64(len(answers))
+}
+
+func composeCandidateState(stateJSON, actionJSON, actionText string) string {
+	stateObj := parseOrWrapJSON(stateJSON)
+	actionObj := parseOrWrapJSON(actionJSON)
+
+	combined := make(map[string]any)
+	if stateObj != nil {
+		combined["state"] = stateObj
+	}
+	if actionObj != nil {
+		combined["action"] = actionObj
+	}
+	if actionText != "" {
+		combined["action_text"] = actionText
+	}
+	if len(combined) == 0 {
+		return "{}"
+	}
+	b, err := json.Marshal(combined)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
+func parseOrWrapJSON(raw string) any {
+	if raw == "" {
+		return nil
+	}
+	var val any
+	if err := json.Unmarshal([]byte(raw), &val); err == nil {
+		return val
+	}
+	return raw
+}
+
+func evaluateRolloutsRequestFromProto(req *pb.EvaluateRolloutsRequest) (*llm.EvaluateRolloutsRequest, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "bad_request: request is nil")
+	}
+	cands := req.GetCandidates()
+	if len(cands) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "bad_request: no candidates")
+	}
+	if len(cands) > maxRolloutCandidates {
+		return nil, status.Errorf(codes.InvalidArgument, "bad_request: candidates count %d exceeds max %d", len(cands), maxRolloutCandidates)
+	}
+
+	state := req.GetStateJson()
+	if state != "" && !json.Valid([]byte(state)) {
+		return nil, status.Error(codes.InvalidArgument, "bad_request: state_json is not valid JSON")
+	}
+	stateMedia, err := judgeMediaFromProto(req.GetStateMedia())
+	if err != nil {
+		return nil, err
+	}
+
+	seenIDs := make(map[string]bool, len(cands))
+	parsedCands := make([]*llm.RolloutCandidate, 0, len(cands))
+	for i, c := range cands {
+		id := c.GetId()
+		if id == "" {
+			return nil, status.Errorf(codes.InvalidArgument, "bad_request: candidate[%d] has empty id", i)
+		}
+		if seenIDs[id] {
+			return nil, status.Errorf(codes.InvalidArgument, "bad_request: duplicate candidate id %q", id)
+		}
+		seenIDs[id] = true
+
+		actJSON := c.GetActionJson()
+		if actJSON != "" && !json.Valid([]byte(actJSON)) {
+			return nil, status.Errorf(codes.InvalidArgument, "bad_request: candidate %q action_json is not valid JSON", id)
+		}
+		actMedia, err := judgeMediaFromProto(c.GetActionMedia())
+		if err != nil {
+			return nil, fmt.Errorf("candidate %q: %w", id, err)
+		}
+		if actJSON == "" && len(actMedia) == 0 && c.GetActionText() == "" && state == "" && len(stateMedia) == 0 {
+			return nil, status.Errorf(codes.InvalidArgument, "bad_request: candidate %q has no action or state", id)
+		}
+		parsedCands = append(parsedCands, &llm.RolloutCandidate{
+			ID:          id,
+			ActionJSON:  actJSON,
+			ActionMedia: actMedia,
+			ActionText:  c.GetActionText(),
+		})
+	}
+
+	criteriaMap := req.GetCriteria()
+	parsedCriteria := make(map[string]*llm.JudgeQuestion, len(criteriaMap))
+	if len(criteriaMap) == 0 {
+		parsedCriteria["reward"] = &llm.JudgeQuestion{
+			Type:         llm.JudgeScore,
+			Instructions: "Evaluate the expected reward and rollout quality of this candidate action.",
+			Levels:       []string{"poor", "suboptimal", "acceptable", "good", "optimal"},
+		}
+	} else {
+		for id, q := range criteriaMap {
+			if q.GetInstructions() == "" {
+				return nil, status.Errorf(codes.InvalidArgument, "bad_request: criteria %q has no instructions", id)
+			}
+			kind := judgeTypeFromProto(q.GetType())
+			switch kind {
+			case llm.JudgeChoice:
+				if len(q.GetOptions()) < 2 {
+					return nil, status.Errorf(codes.InvalidArgument, "bad_request: choice %q needs at least two options", id)
+				}
+			case llm.JudgeScore:
+				if len(q.GetLevels()) < 2 {
+					return nil, status.Errorf(codes.InvalidArgument, "bad_request: score %q needs at least two levels", id)
+				}
+			case llm.JudgeNoul:
+			default:
+				return nil, status.Errorf(codes.InvalidArgument, "bad_request: criteria %q has no type", id)
+			}
+			parsedCriteria[id] = &llm.JudgeQuestion{
+				Type:          kind,
+				Instructions:  q.GetInstructions(),
+				Options:       q.GetOptions(),
+				Levels:        q.GetLevels(),
+				TrueCriteria:  q.GetTrueCriteria(),
+				FalseCriteria: q.GetFalseCriteria(),
+			}
+		}
+	}
+
+	return &llm.EvaluateRolloutsRequest{
+		StateJSON:  state,
+		StateMedia: stateMedia,
+		Candidates: parsedCands,
+		Criteria:   parsedCriteria,
+		ActionID:   req.GetActionId(),
+	}, nil
+}
+
+func rolloutCapabilities(req *llm.EvaluateRolloutsRequest) []string {
+	caps := []string{registry.CapabilityJudge}
+	seen := make(map[string]bool, 3)
+	checkMedia := func(parts []*llm.JudgeMediaPart) {
+		for _, p := range parts {
+			var c string
+			switch p.Type {
+			case llm.JudgeMediaImage:
+				c = registry.CapabilityVision
+			case llm.JudgeMediaAudio:
+				c = registry.CapabilityAudioInput
+			case llm.JudgeMediaEmbedding:
+				c = registry.CapabilityEmbeddingInput
+			}
+			if c != "" && !seen[c] {
+				seen[c] = true
+				caps = append(caps, c)
+			}
+		}
+	}
+	checkMedia(req.StateMedia)
+	for _, c := range req.Candidates {
+		checkMedia(c.ActionMedia)
+	}
+	return caps
+}
+
+func mediaPartTokens(p *llm.JudgeMediaPart) int64 {
+	switch p.Type {
+	case llm.JudgeMediaText:
+		return int64(utf8.RuneCountInString(p.Text)) / 4
+	case llm.JudgeMediaImage:
+		if p.Detail == string(llm.ImageDetailLow) {
+			return 85
+		}
+		return 1000
+	case llm.JudgeMediaAudio:
+		return 200
+	case llm.JudgeMediaEmbedding:
+		return int64(len(p.Embedding))/4 + 1
+	default:
+		return 0
+	}
+}
+
+func rolloutEstimate(req *llm.EvaluateRolloutsRequest) int64 {
+	baseRunes := utf8.RuneCountInString(req.StateJSON)
+	var baseMediaTokens int64
+	for _, p := range req.StateMedia {
+		baseMediaTokens += mediaPartTokens(p)
+	}
+	criteriaRunes := 0
+	for _, q := range req.Criteria {
+		criteriaRunes += utf8.RuneCountInString(q.Instructions)
+		for _, opt := range q.Options {
+			criteriaRunes += utf8.RuneCountInString(opt)
+		}
+		for _, lvl := range q.Levels {
+			criteriaRunes += utf8.RuneCountInString(lvl)
+		}
+		criteriaRunes += utf8.RuneCountInString(q.TrueCriteria) + utf8.RuneCountInString(q.FalseCriteria)
+	}
+	var totalTokens int64
+	for _, c := range req.Candidates {
+		candRunes := baseRunes + utf8.RuneCountInString(c.ActionJSON) + utf8.RuneCountInString(c.ActionText) + criteriaRunes
+		var candMediaTokens int64
+		for _, p := range c.ActionMedia {
+			candMediaTokens += mediaPartTokens(p)
+		}
+		totalTokens += int64(candRunes)/4 + baseMediaTokens + candMediaTokens + 1
+	}
+	return totalTokens + 1
 }

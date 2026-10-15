@@ -26,6 +26,8 @@ var methodScopes = map[string]string{
 	method(pb.LLMProxyService_GenerateImage_FullMethodName):      apikeys.ScopeGenerate,
 	method(pb.LLMProxyService_Judge_FullMethodName):              apikeys.ScopeGenerate,
 	method(pb.LLMProxyService_GetEmbeddings_FullMethodName):      apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_JudgeStream_FullMethodName):        apikeys.ScopeGenerate,
+	method(pb.LLMProxyService_EvaluateRollouts_FullMethodName):   apikeys.ScopeGenerate,
 	method(pb.LLMProxyService_ListModels_FullMethodName):         apikeys.ScopeGenerate,
 	method(pb.LLMProxyService_SubmitBatch_FullMethodName):        apikeys.ScopeGenerate,
 	method(pb.LLMProxyService_GetBatch_FullMethodName):           apikeys.ScopeGenerate,

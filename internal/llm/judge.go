@@ -84,6 +84,39 @@ type JudgeResult struct {
 	Usage   TokensUsage // judge vendors bill input only, so Output is usually 0
 }
 
+// RolloutCandidate is one candidate action or branch in speculative evaluation.
+type RolloutCandidate struct {
+	ID          string
+	ActionJSON  string
+	ActionMedia []*JudgeMediaPart
+	ActionText  string
+}
+
+// CandidateEvaluation holds evaluation answers, rank, and composite score.
+type CandidateEvaluation struct {
+	ID             string
+	Answers        map[string]*JudgeAnswer
+	CompositeScore float64
+	Rank           int
+}
+
+// EvaluateRolloutsRequest evaluates multiple candidate rollouts against state and criteria.
+type EvaluateRolloutsRequest struct {
+	StateJSON  string
+	StateMedia []*JudgeMediaPart
+	Candidates []*RolloutCandidate
+	Criteria   map[string]*JudgeQuestion
+	ActionID   string
+}
+
+// EvaluateRolloutsResult is the outcome of candidate rollouts evaluation.
+type EvaluateRolloutsResult struct {
+	Evaluations     []*CandidateEvaluation
+	BestCandidateID string
+	Model           string
+	Usage           TokensUsage
+}
+
 // Judge is an optional adapter capability, discovered by type assertion so the
 // ClientAdapter contract stays untouched. meta carries usage attribution, like
 // SynthesizeSpeech and GenerateImage.
@@ -93,4 +126,9 @@ type JudgeResult struct {
 // call should stop rather than run on and be billed for an answer nobody reads.
 type Judge interface {
 	Judge(ctx context.Context, req *JudgeRequest, userID string, meta map[string]string) (*JudgeResult, error)
+}
+
+// RolloutJudge is an optional capability for adapters supporting native batch rollout scoring.
+type RolloutJudge interface {
+	EvaluateRollouts(ctx context.Context, req *EvaluateRolloutsRequest, userID string, meta map[string]string) (*EvaluateRolloutsResult, error)
 }

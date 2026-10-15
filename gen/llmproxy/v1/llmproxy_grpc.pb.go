@@ -25,6 +25,8 @@ const (
 	LLMProxyService_GenerateImage_FullMethodName      = "/llmproxy.v1.LLMProxyService/GenerateImage"
 	LLMProxyService_Judge_FullMethodName              = "/llmproxy.v1.LLMProxyService/Judge"
 	LLMProxyService_GetEmbeddings_FullMethodName      = "/llmproxy.v1.LLMProxyService/GetEmbeddings"
+	LLMProxyService_JudgeStream_FullMethodName        = "/llmproxy.v1.LLMProxyService/JudgeStream"
+	LLMProxyService_EvaluateRollouts_FullMethodName   = "/llmproxy.v1.LLMProxyService/EvaluateRollouts"
 	LLMProxyService_ListModels_FullMethodName         = "/llmproxy.v1.LLMProxyService/ListModels"
 	LLMProxyService_SubmitBatch_FullMethodName        = "/llmproxy.v1.LLMProxyService/SubmitBatch"
 	LLMProxyService_GetBatch_FullMethodName           = "/llmproxy.v1.LLMProxyService/GetBatch"
@@ -67,6 +69,12 @@ type LLMProxyServiceClient interface {
 	// Embeddings generates vector representations of text. Vector space isolation
 	// is strictly preserved: cross-model fallbacks are disallowed.
 	GetEmbeddings(ctx context.Context, in *GetEmbeddingsRequest, opts ...grpc.CallOption) (*GetEmbeddingsResponse, error)
+	// JudgeStream provides bidirectional streaming decisions for real-time
+	// agent evaluation and robotics control loops.
+	JudgeStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[JudgeRequest, JudgeResponse], error)
+	// EvaluateRollouts scores candidate trajectories against state and criteria
+	// for speculative decoding and Best-of-N selection.
+	EvaluateRollouts(ctx context.Context, in *EvaluateRolloutsRequest, opts ...grpc.CallOption) (*EvaluateRolloutsResponse, error)
 	ListModels(ctx context.Context, in *ListModelsRequest, opts ...grpc.CallOption) (*ListModelsResponse, error)
 	// Batch generation RPCs.
 	SubmitBatch(ctx context.Context, in *SubmitBatchRequest, opts ...grpc.CallOption) (*SubmitBatchResponse, error)
@@ -146,6 +154,29 @@ func (c *lLMProxyServiceClient) GetEmbeddings(ctx context.Context, in *GetEmbedd
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetEmbeddingsResponse)
 	err := c.cc.Invoke(ctx, LLMProxyService_GetEmbeddings_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lLMProxyServiceClient) JudgeStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[JudgeRequest, JudgeResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &LLMProxyService_ServiceDesc.Streams[1], LLMProxyService_JudgeStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[JudgeRequest, JudgeResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type LLMProxyService_JudgeStreamClient = grpc.BidiStreamingClient[JudgeRequest, JudgeResponse]
+
+func (c *lLMProxyServiceClient) EvaluateRollouts(ctx context.Context, in *EvaluateRolloutsRequest, opts ...grpc.CallOption) (*EvaluateRolloutsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EvaluateRolloutsResponse)
+	err := c.cc.Invoke(ctx, LLMProxyService_EvaluateRollouts_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -237,6 +268,12 @@ type LLMProxyServiceServer interface {
 	// Embeddings generates vector representations of text. Vector space isolation
 	// is strictly preserved: cross-model fallbacks are disallowed.
 	GetEmbeddings(context.Context, *GetEmbeddingsRequest) (*GetEmbeddingsResponse, error)
+	// JudgeStream provides bidirectional streaming decisions for real-time
+	// agent evaluation and robotics control loops.
+	JudgeStream(grpc.BidiStreamingServer[JudgeRequest, JudgeResponse]) error
+	// EvaluateRollouts scores candidate trajectories against state and criteria
+	// for speculative decoding and Best-of-N selection.
+	EvaluateRollouts(context.Context, *EvaluateRolloutsRequest) (*EvaluateRolloutsResponse, error)
 	ListModels(context.Context, *ListModelsRequest) (*ListModelsResponse, error)
 	// Batch generation RPCs.
 	SubmitBatch(context.Context, *SubmitBatchRequest) (*SubmitBatchResponse, error)
@@ -270,6 +307,12 @@ func (UnimplementedLLMProxyServiceServer) Judge(context.Context, *JudgeRequest) 
 }
 func (UnimplementedLLMProxyServiceServer) GetEmbeddings(context.Context, *GetEmbeddingsRequest) (*GetEmbeddingsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetEmbeddings not implemented")
+}
+func (UnimplementedLLMProxyServiceServer) JudgeStream(grpc.BidiStreamingServer[JudgeRequest, JudgeResponse]) error {
+	return status.Error(codes.Unimplemented, "method JudgeStream not implemented")
+}
+func (UnimplementedLLMProxyServiceServer) EvaluateRollouts(context.Context, *EvaluateRolloutsRequest) (*EvaluateRolloutsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method EvaluateRollouts not implemented")
 }
 func (UnimplementedLLMProxyServiceServer) ListModels(context.Context, *ListModelsRequest) (*ListModelsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListModels not implemented")
@@ -408,6 +451,31 @@ func _LLMProxyService_GetEmbeddings_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LLMProxyService_JudgeStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(LLMProxyServiceServer).JudgeStream(&grpc.GenericServerStream[JudgeRequest, JudgeResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type LLMProxyService_JudgeStreamServer = grpc.BidiStreamingServer[JudgeRequest, JudgeResponse]
+
+func _LLMProxyService_EvaluateRollouts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EvaluateRolloutsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyServiceServer).EvaluateRollouts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyService_EvaluateRollouts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyServiceServer).EvaluateRollouts(ctx, req.(*EvaluateRolloutsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _LLMProxyService_ListModels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListModelsRequest)
 	if err := dec(in); err != nil {
@@ -526,6 +594,10 @@ var LLMProxyService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _LLMProxyService_GetEmbeddings_Handler,
 		},
 		{
+			MethodName: "EvaluateRollouts",
+			Handler:    _LLMProxyService_EvaluateRollouts_Handler,
+		},
+		{
 			MethodName: "ListModels",
 			Handler:    _LLMProxyService_ListModels_Handler,
 		},
@@ -551,6 +623,12 @@ var LLMProxyService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "GenerateTextStream",
 			Handler:       _LLMProxyService_GenerateTextStream_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "JudgeStream",
+			Handler:       _LLMProxyService_JudgeStream_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "llmproxy/v1/llmproxy.proto",
