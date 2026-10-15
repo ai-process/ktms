@@ -711,10 +711,19 @@ The `model` parameter supports smart auto-routing and infrastructure placement:
 - `cloud_first`: Prefers managed cloud providers, falling back to registered nodes.
 - `cloud_only`: Excludes self-hosted nodes completely.
 
-Placement can also be specified in the JSON body (`"placement": "nodes_only"`) or via the `X-LLM-Proxy-Placement` HTTP header.
+Placement precedence:
+1. `X-LLM-Proxy-Placement` HTTP header
+2. Request body `"placement": "..."`
+3. Model suffix (e.g. `model: "auto:nodes-only"`)
+4. Default: `nodes_first`
 
 #### Fast Judge Auto-Selection
-When `model: "auto"` is requested without an explicit effort level, the proxy evaluates the prompt complexity using the configured Judge model (such as `jev-latest` or OpenAI Decisions) with a 250ms deadline. If the judge is not configured or times out, it safely falls back to standard medium effort without dropping the request.
+When `model: "auto"` is requested without an explicit effort level, the proxy evaluates prompt complexity using the configured Judge model (such as `jev-latest` or OpenAI Decisions) with a 250ms deadline. If the judge is not configured or times out, it safely falls back to standard medium effort without dropping the request.
+
+Effort precedence:
+1. Pinned effort in model string (e.g. `auto:low`)
+2. `reasoning_effort` request field (`low`, `medium`, `high`) — skips judge evaluation
+3. Dynamic Judge evaluation (fails open to `medium`)
 
 Routing attributes (what rules match on, and what usage events carry) come from OpenAI's own
 fields: `metadata` is passed through as attributes, `user` becomes `attributes["user_id"]`

@@ -365,63 +365,113 @@ func (m chatMessage) text() (string, error) {
 	return text, err
 }
 
+type routeDecision struct {
+	Effort          pb.Effort
+	ModelOverride   string
+	IsAuto          bool
+	EffortSpecified bool
+	Placement       string
+	HasPlacement    bool
+}
+
 // route resolves the OpenAI "model" field.
 // Supports "auto", "auto:nodes-first", "auto:nodes-only", "auto:cloud-only", "auto:low", etc.
-func route(model, reasoningEffort, explicitPlacement string) (effort pb.Effort, override string, isAuto, effortSpecified bool, placement string, err error) {
-	effort = pb.Effort_EFFORT_MEDIUM
-	placement = router.NormalizePlacement(explicitPlacement)
+func route(model, reasoningEffort, explicitPlacement string) (routeDecision, error) {
+	dec := routeDecision{
+		Effort: pb.Effort_EFFORT_MEDIUM,
+	}
+
+	if explicitPlacement != "" {
+		norm := router.NormalizePlacement(explicitPlacement)
+		if norm == "" {
+			return dec, invalid("unknown placement %q", explicitPlacement)
+		}
+		dec.Placement = norm
+		dec.HasPlacement = true
+	}
 
 	switch {
 	case model == "" || model == "auto":
-		isAuto = true
-		if placement == "" {
-			placement = router.PlacementNodesFirst
+		dec.IsAuto = true
+		if dec.Placement == "" {
+			dec.Placement = router.PlacementNodesFirst
 		}
 		if reasoningEffort != "" {
-			if effort, err = parseEffort(reasoningEffort); err != nil {
-				return 0, "", false, false, "", err
+			eff, err := parseEffort(reasoningEffort)
+			if err != nil {
+				return dec, err
 			}
-			effortSpecified = true
+			dec.Effort = eff
+			dec.EffortSpecified = true
 		}
+
 	case strings.HasPrefix(model, "auto:"):
-		isAuto = true
+		dec.IsAuto = true
 		suffix := strings.TrimPrefix(model, "auto:")
+		if suffix == "" {
+			return dec, invalid("auto route specifier cannot be empty")
+		}
 		parts := strings.Split(suffix, ":")
+		var (
+			seenEffort     bool
+			seenPlacement  bool
+			modelPlacement string
+		)
 		for _, part := range parts {
 			if part == "" {
-				continue
+				return dec, invalid("empty specifier in auto route %q", model)
 			}
 			if eff, effErr := parseEffort(part); effErr == nil {
-				effort = eff
-				effortSpecified = true
+				if seenEffort {
+					return dec, invalid("duplicate effort specifier %q in model", part)
+				}
+				seenEffort = true
+				dec.Effort = eff
+				dec.EffortSpecified = true
 				continue
 			}
 			if p := router.NormalizePlacement(part); p != "" {
-				if placement == "" {
-					placement = p
+				if seenPlacement {
+					return dec, invalid("duplicate placement specifier %q in model", part)
 				}
+				seenPlacement = true
+				modelPlacement = p
 				continue
 			}
-			return 0, "", false, false, "", invalid("unknown auto route specifier %q in model", part)
+			return dec, invalid("unknown auto route specifier %q in model", part)
 		}
-		if placement == "" {
-			placement = router.PlacementNodesFirst
-		}
-		if reasoningEffort != "" {
-			if effort, err = parseEffort(reasoningEffort); err != nil {
-				return 0, "", false, false, "", err
+
+		if modelPlacement != "" {
+			dec.HasPlacement = true
+			if dec.Placement == "" {
+				dec.Placement = modelPlacement
 			}
-			effortSpecified = true
 		}
+		if dec.Placement == "" {
+			dec.Placement = router.PlacementNodesFirst
+		}
+		// If model string did not specify effort, allow reasoning_effort to set it.
+		if !dec.EffortSpecified && reasoningEffort != "" {
+			eff, err := parseEffort(reasoningEffort)
+			if err != nil {
+				return dec, err
+			}
+			dec.Effort = eff
+			dec.EffortSpecified = true
+		}
+
 	default:
-		override = model
+		dec.ModelOverride = model
 		if reasoningEffort != "" {
-			if effort, err = parseEffort(reasoningEffort); err != nil {
-				return 0, "", false, false, "", err
+			eff, err := parseEffort(reasoningEffort)
+			if err != nil {
+				return dec, err
 			}
+			dec.Effort = eff
 		}
 	}
-	return effort, override, isAuto, effortSpecified, placement, nil
+
+	return dec, nil
 }
 
 func parseEffort(s string) (pb.Effort, error) {
@@ -451,7 +501,7 @@ func attributes(metadata map[string]string, user string) (attrs map[string]strin
 	return attrs, actionID
 }
 
-func (req *chatRequest) toProto(ctx context.Context, headerPlacement ...string) (*pb.GenerateTextRequest, error) {
+func (req *chatRequest) toProto(ctx context.Context, headerPlacement string) (*pb.GenerateTextRequest, error) {
 	if len(req.Functions) > 0 && string(req.Functions) != "null" {
 		return nil, invalid("functions is deprecated and not supported; use tools instead")
 	}
@@ -461,18 +511,13 @@ func (req *chatRequest) toProto(ctx context.Context, headerPlacement ...string) 
 	if len(req.Messages) == 0 {
 		return nil, invalid("messages is required")
 	}
-	var hp string
-	if len(headerPlacement) > 0 {
-		hp = headerPlacement[0]
+	chosenPlacement := req.Placement
+	if headerPlacement != "" {
+		chosenPlacement = headerPlacement
 	}
-	effort, override, isAuto, effortSpecified, placement, err := route(req.Model, req.ReasoningEffort, req.Placement)
+	dec, err := route(req.Model, req.ReasoningEffort, chosenPlacement)
 	if err != nil {
 		return nil, err
-	}
-	if hp != "" {
-		if norm := router.NormalizePlacement(hp); norm != "" {
-			placement = norm
-		}
 	}
 
 	var tools []*pb.Tool
@@ -535,12 +580,15 @@ func (req *chatRequest) toProto(ctx context.Context, headerPlacement ...string) 
 	}
 
 	out := &pb.GenerateTextRequest{
-		Effort:             effort,
-		ModelOverride:      override,
+		Effort:             dec.Effort,
+		ModelOverride:      dec.ModelOverride,
 		MaxOutputTokens:    req.MaxCompletionTokens,
 		EnableGoogleSearch: req.EnableGoogleSearch,
 		Tools:              tools,
 		ToolChoice:         toolChoice,
+		Placement:          dec.Placement,
+		AutoRoute:          dec.IsAuto,
+		EffortSpecified:    dec.EffortSpecified,
 	}
 	if out.MaxOutputTokens == 0 {
 		out.MaxOutputTokens = req.MaxTokens
@@ -549,15 +597,6 @@ func (req *chatRequest) toProto(ctx context.Context, headerPlacement ...string) 
 		return nil, invalid("max_tokens must not be negative")
 	}
 	out.Attributes, out.ActionId = attributes(req.Metadata, req.User)
-	if placement != "" {
-		out.Attributes[router.PlacementAttribute] = placement
-	}
-	if isAuto {
-		out.Attributes[router.AutoRouteAttribute] = "true"
-	}
-	if effortSpecified {
-		out.Attributes[router.EffortSpecifiedAttribute] = "true"
-	}
 
 	var system []string
 	for i, m := range req.Messages {
@@ -935,10 +974,14 @@ func (a *OpenAIAPI) audioSpeech(ctx context.Context, w http.ResponseWriter, r *h
 	if req.Input == "" {
 		return invalid("input is required")
 	}
-	_, override, _, _, _, err := route(req.Model, "", "")
+	dec, err := route(req.Model, "", "")
 	if err != nil {
 		return err
 	}
+	if dec.HasPlacement {
+		return invalid("placement is only supported for chat completions")
+	}
+	override := dec.ModelOverride
 	attrs, actionID := attributes(req.Metadata, req.User)
 	resp, err := a.proxy.SynthesizeSpeech(ctx, &pb.SynthesizeSpeechRequest{
 		Text: req.Input, Language: req.Language, Attributes: attrs, ActionId: actionID, ModelOverride: override,
@@ -983,10 +1026,14 @@ func (a *OpenAIAPI) imageGenerations(ctx context.Context, w http.ResponseWriter,
 	if req.ResponseFormat == "url" {
 		return invalid("response_format url is not supported; images are returned as b64_json")
 	}
-	_, override, _, _, _, err := route(req.Model, "", "")
+	dec, err := route(req.Model, "", "")
 	if err != nil {
 		return err
 	}
+	if dec.HasPlacement {
+		return invalid("placement is only supported for chat completions")
+	}
+	override := dec.ModelOverride
 	attrs, actionID := attributes(req.Metadata, req.User)
 	resp, err := a.proxy.GenerateImage(ctx, &pb.GenerateImageRequest{
 		Prompt: req.Prompt, Attributes: attrs, ActionId: actionID, ModelOverride: override,
@@ -1175,10 +1222,14 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 		pbQuestions[q.Name] = jq
 	}
 
-	_, override, _, _, _, err := route(decReq.Model, "", "")
+	dec, err := route(decReq.Model, "", "")
 	if err != nil {
 		return err
 	}
+	if dec.HasPlacement {
+		return invalid("placement is only supported for chat completions")
+	}
+	override := dec.ModelOverride
 	attrs, actionID := attributes(decReq.Metadata, decReq.User)
 	req := &pb.JudgeRequest{
 		StateJson:     string(decReq.Input),

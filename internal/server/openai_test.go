@@ -866,17 +866,17 @@ func TestChatCompletions_AutoRoutingAndPlacement(t *testing.T) {
 	fp.respJudgeScore = 0.88
 	fp.respJudgeModel = "jev-latest"
 
-	// 1. model: "auto" defaults to nodes_first placement
+	// 1. model: "auto" defaults to nodes_first placement and auto_route=true
 	body1 := `{"model":"auto","messages":[{"role":"user","content":"explain quantum computing"}]}`
 	rec1 := do(h, "POST", "/v1/chat/completions", key, body1)
 	if rec1.Code != 200 {
 		t.Fatalf("code = %d: %s", rec1.Code, rec1.Body)
 	}
-	if fp.text.Attributes[router.AutoRouteAttribute] != "true" {
-		t.Errorf("expected auto_route=true in attributes, got %v", fp.text.Attributes)
+	if !fp.text.AutoRoute {
+		t.Errorf("expected AutoRoute=true in proto request")
 	}
-	if fp.text.Attributes[router.PlacementAttribute] != router.PlacementNodesFirst {
-		t.Errorf("expected placement=nodes_first, got %s", fp.text.Attributes[router.PlacementAttribute])
+	if fp.text.Placement != router.PlacementNodesFirst {
+		t.Errorf("expected Placement=nodes_first, got %s", fp.text.Placement)
 	}
 	if got := rec1.Header().Get("X-LLM-Proxy-Placement"); got != router.PlacementNodesFirst {
 		t.Errorf("expected X-LLM-Proxy-Placement %q, got %q", router.PlacementNodesFirst, got)
@@ -897,8 +897,8 @@ func TestChatCompletions_AutoRoutingAndPlacement(t *testing.T) {
 	if rec2.Code != 200 {
 		t.Fatalf("code = %d: %s", rec2.Code, rec2.Body)
 	}
-	if fp.text.Attributes[router.PlacementAttribute] != router.PlacementNodesOnly {
-		t.Errorf("expected placement=nodes_only, got %s", fp.text.Attributes[router.PlacementAttribute])
+	if fp.text.Placement != router.PlacementNodesOnly {
+		t.Errorf("expected Placement=nodes_only, got %s", fp.text.Placement)
 	}
 
 	// 3. model: "auto:cloud-first" parses placement
@@ -907,8 +907,8 @@ func TestChatCompletions_AutoRoutingAndPlacement(t *testing.T) {
 	if rec3.Code != 200 {
 		t.Fatalf("code = %d: %s", rec3.Code, rec3.Body)
 	}
-	if fp.text.Attributes[router.PlacementAttribute] != router.PlacementCloudFirst {
-		t.Errorf("expected placement=cloud_first, got %s", fp.text.Attributes[router.PlacementAttribute])
+	if fp.text.Placement != router.PlacementCloudFirst {
+		t.Errorf("expected Placement=cloud_first, got %s", fp.text.Placement)
 	}
 
 	// 4. model: "auto:nodes-first:high" parses effort and placement
@@ -920,48 +920,82 @@ func TestChatCompletions_AutoRoutingAndPlacement(t *testing.T) {
 	if fp.text.Effort != pb.Effort_EFFORT_HIGH {
 		t.Errorf("expected effort high, got %v", fp.text.Effort)
 	}
-	if fp.text.Attributes[router.EffortSpecifiedAttribute] != "true" {
-		t.Errorf("expected effort_specified=true, got %v", fp.text.Attributes)
+	if !fp.text.EffortSpecified {
+		t.Errorf("expected EffortSpecified=true")
 	}
-	if fp.text.Attributes[router.PlacementAttribute] != router.PlacementNodesFirst {
-		t.Errorf("expected placement=nodes_first, got %s", fp.text.Attributes[router.PlacementAttribute])
+	if fp.text.Placement != router.PlacementNodesFirst {
+		t.Errorf("expected Placement=nodes_first, got %s", fp.text.Placement)
 	}
 
-	// 5. JSON body placement field
-	body5 := `{"model":"auto","placement":"nodes_only","messages":[{"role":"user","content":"hi"}]}`
+	// 5. reasoning_effort pins effort and marks EffortSpecified=true
+	body5 := `{"model":"auto","reasoning_effort":"low","messages":[{"role":"user","content":"hi"}]}`
 	rec5 := do(h, "POST", "/v1/chat/completions", key, body5)
 	if rec5.Code != 200 {
 		t.Fatalf("code = %d: %s", rec5.Code, rec5.Body)
 	}
-	if fp.text.Attributes[router.PlacementAttribute] != router.PlacementNodesOnly {
-		t.Errorf("expected placement=nodes_only from body, got %s", fp.text.Attributes[router.PlacementAttribute])
+	if fp.text.Effort != pb.Effort_EFFORT_LOW {
+		t.Errorf("expected effort low from reasoning_effort, got %v", fp.text.Effort)
+	}
+	if !fp.text.EffortSpecified {
+		t.Errorf("expected EffortSpecified=true when reasoning_effort set")
 	}
 
-	// 6. X-LLM-Proxy-Placement header overrides
-	body6 := `{"model":"auto:nodes-first","messages":[{"role":"user","content":"hi"}]}`
-	req6 := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body6))
-	req6.Header.Set("Authorization", "Bearer "+key)
-	req6.Header.Set("X-LLM-Proxy-Placement", "cloud_only")
-	rec6 := httptest.NewRecorder()
-	h.ServeHTTP(rec6, req6)
+	// 6. JSON body placement field
+	body6 := `{"model":"auto","placement":"nodes_only","messages":[{"role":"user","content":"hi"}]}`
+	rec6 := do(h, "POST", "/v1/chat/completions", key, body6)
 	if rec6.Code != 200 {
 		t.Fatalf("code = %d: %s", rec6.Code, rec6.Body)
 	}
-	if fp.text.Attributes[router.PlacementAttribute] != router.PlacementCloudOnly {
-		t.Errorf("expected placement=cloud_only from header, got %s", fp.text.Attributes[router.PlacementAttribute])
+	if fp.text.Placement != router.PlacementNodesOnly {
+		t.Errorf("expected Placement=nodes_only from body, got %s", fp.text.Placement)
 	}
 
-	// 7. Streaming response headers
-	body7 := `{"model":"auto","messages":[{"role":"user","content":"hi"}],"stream":true}`
-	rec7 := do(h, "POST", "/v1/chat/completions", key, body7)
+	// 7. X-LLM-Proxy-Placement header overrides body and model
+	body7 := `{"model":"auto:nodes-first","placement":"nodes_first","messages":[{"role":"user","content":"hi"}]}`
+	req7 := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body7))
+	req7.Header.Set("Authorization", "Bearer "+key)
+	req7.Header.Set("X-LLM-Proxy-Placement", "cloud_only")
+	rec7 := httptest.NewRecorder()
+	h.ServeHTTP(rec7, req7)
 	if rec7.Code != 200 {
 		t.Fatalf("code = %d: %s", rec7.Code, rec7.Body)
 	}
-	if got := rec7.Header().Get("X-LLM-Proxy-Placement"); got != router.PlacementNodesFirst {
+	if fp.text.Placement != router.PlacementCloudOnly {
+		t.Errorf("expected Placement=cloud_only from header override, got %s", fp.text.Placement)
+	}
+
+	// 8. Streaming response headers
+	body8 := `{"model":"auto","messages":[{"role":"user","content":"hi"}],"stream":true}`
+	rec8 := do(h, "POST", "/v1/chat/completions", key, body8)
+	if rec8.Code != 200 {
+		t.Fatalf("code = %d: %s", rec8.Code, rec8.Body)
+	}
+	if got := rec8.Header().Get("X-LLM-Proxy-Placement"); got != router.PlacementNodesFirst {
 		t.Errorf("expected stream X-LLM-Proxy-Placement %q, got %q", router.PlacementNodesFirst, got)
 	}
-	if got := rec7.Header().Get("X-LLM-Proxy-Route-Mode"); got != "auto-judge" {
+	if got := rec8.Header().Get("X-LLM-Proxy-Route-Mode"); got != "auto-judge" {
 		t.Errorf("expected stream X-LLM-Proxy-Route-Mode auto-judge, got %q", got)
+	}
+
+	// 9. Negative parsing tests: reject invalid auto specifiers
+	invalidBodies := []string{
+		`{"model":"auto:","messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"auto:low:high","messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"auto:nodes-only:cloud-only","messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"auto:unknown-spec","messages":[{"role":"user","content":"hi"}]}`,
+	}
+	for _, inv := range invalidBodies {
+		r := do(h, "POST", "/v1/chat/completions", key, inv)
+		if r.Code != 400 {
+			t.Errorf("expected 400 for invalid body %s, got %d: %s", inv, r.Code, r.Body)
+		}
+	}
+
+	// 10. Placement rejected for non-chat endpoint (speech)
+	speechBody := `{"model":"auto:nodes-only","input":"speak this"}`
+	recSpeech := do(h, "POST", "/v1/audio/speech", key, speechBody)
+	if recSpeech.Code != 400 {
+		t.Errorf("expected 400 for speech with placement, got %d: %s", recSpeech.Code, recSpeech.Body)
 	}
 }
 

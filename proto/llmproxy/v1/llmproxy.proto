@@ -146,6 +146,9 @@ message GenerateTextRequest {
   repeated Tool tools = 11;
   ToolChoice tool_choice = 12;
   bool enable_cache = 13; // opt-in prompt/response exact match cache
+  string placement = 14; // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
+  bool auto_route = 15; // true when smart model routing is enabled
+  bool effort_specified = 16; // true when effort was explicitly pinned by caller
 }
 
 message TokensUsage {
@@ -183,10 +186,10 @@ message GenerateTextChunk {
   string matched_rule = 6;
   repeated ToolCallChunk tool_call_chunks = 7;
   bool cached = 8; // true when served from cache
-  string route_mode = 9;
-  string placement = 10;
-  double judge_score = 11;
-  string judge_model = 12;
+  string route_mode = 9; // "direct" | "override" | "auto-judge" | "auto-default" | "auto-effort"
+  string placement = 10; // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
+  double judge_score = 11; // score or confidence from judge evaluation
+  string judge_model = 12; // judge model id if judge was invoked
 }
 
 message ListModelsRequest {}
