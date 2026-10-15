@@ -459,3 +459,22 @@ func TestBuildAdapter_Bedrock(t *testing.T) {
 	}
 }
 
+
+func TestSnapshotClientModelsIncludesLocalWithoutKey(t *testing.T) {
+	snap := &Snapshot{
+		Models: map[string]*proxydb.Model{
+			"a-google": model("a-google", VendorGoogle, EffortLow),
+			"b-local":  model("b-local", VendorLocal, EffortLow),
+		},
+		vendorKeys: map[string]map[string]string{"key1": {VendorGoogle: "g-secret"}, "bare": {}},
+	}
+	if got := snap.ClientModels("bare"); len(got) != 1 || got[0].ID != "b-local" {
+		t.Fatalf("a client with no keys should still list local models, got %v", got)
+	}
+	if got := snap.ClientModels("key1"); len(got) != 2 {
+		t.Fatalf("key1 should list both, got %v", got)
+	}
+	if _, ok := snap.VendorKey("bare", VendorLocal); ok {
+		t.Fatal("VendorKey must not invent a credential for local")
+	}
+}

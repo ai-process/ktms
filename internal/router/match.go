@@ -108,8 +108,8 @@ func MatchModality(snap *registry.Snapshot, effort, modalityKey, modality string
 }
 
 // FilterChain narrows a rule's chain to models that can serve this request:
-// right effort, google_search capability when asked for, vendor key
-// held by the calling client, and all required capabilities.
+// right effort, google_search capability when asked for, a vendor key
+// where the vendor needs one, and all required capabilities.
 func FilterChain(snap *registry.Snapshot, use []string, apiKeyID, effort string, needsGoogleSearch bool, requireCapabilities ...string) ([]*proxydb.Model, error) {
 	var out []*proxydb.Model
 	sawCapable := false
@@ -131,7 +131,7 @@ outer:
 			}
 		}
 		sawCapable = true
-		if _, hasKey := snap.VendorKey(apiKeyID, m.Vendor); !hasKey {
+		if !snap.CanCall(apiKeyID, m) {
 			continue
 		}
 		out = append(out, m)

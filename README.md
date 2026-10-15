@@ -307,7 +307,9 @@ Scopes: `generate` (data plane) and `admin` (implies everything).
 ### 2. Vendor keys (per client)
 
 A vendor credential is assigned to **one** API key and encrypted at rest. A client can
-only use models of vendors it holds a credential for, and `ListModels` reflects that.
+only use models of vendors it holds a credential for, and `ListModels` reflects that. The
+exception is the `local` vendor: models served by registered nodes need no vendor key, so every
+client can call them.
 
 ```bash
 grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
@@ -547,7 +549,7 @@ Server-streaming RPC `rpc GenerateTextStream(GenerateTextStreamRequest) returns 
 
 For offline or bulk workflows (such as page generation, backfills, or data pipelines) that prioritize cost over latency, batch generation processes thousands of items asynchronously through vendor Batch APIs (e.g., Google Gemini Batch API) at a **50% discount** compared to interactive calls. Jobs typically finish within 24 hours (vendor timeout at 48 hours).
 
-- **Route resolution:** Resolved once upon submission. The proxy selects the first model in the rule's chain that has the `batch` capability, a valid vendor key for the client, and available daily budget. Once submitted, there is no vendor fallback; per-item outcomes are returned to the client.
+- **Route resolution:** Resolved once upon submission. The proxy selects the first model in the rule's chain that has the `batch` capability, a vendor key for the client (not needed for `local` models), and available daily budget. Once submitted, there is no vendor fallback; per-item outcomes are returned to the client.
 - **Privacy:** Prompts are streamed/submitted to the vendor and never persisted in the proxy database.
 - **Throttling & Accounting:** RPM limits do not apply to batches. Daily token budgets are checked at submission (rejecting if already exhausted) and tokens are deducted when final item results arrive. Results are retained for `RESULTS_RETENTION_DAYS` (default 7 days; accepts integer days or Go duration strings).
 
@@ -784,7 +786,7 @@ API key's name. Any service implementing `RecordUsageEvent(s)` works as a sink.
 | `RESOURCE_EXHAUSTED` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` | Back off; don't hot-retry. Daily budget exhausted before batch submission. |
 | `FAILED_PRECONDITION` | `output_truncated` | Raise `max_output_tokens`; don't retry as-is. |
 | `FAILED_PRECONDITION` | `no_capable_model` | No model in the matched chain can serve this request, modality, or batch capability. |
-| `FAILED_PRECONDITION` | `no_vendor_key` | The client key holds no credential for the chain's vendors. |
+| `FAILED_PRECONDITION` | `no_vendor_key` | The client key holds no credential for the chain's vendors. `local` models never cause this. |
 | `FAILED_PRECONDITION` | `not_configured` | No models/rules configured yet. |
 | `FAILED_PRECONDITION` | `batch not configured` | Batch processing is not enabled/configured on the proxy (no batch store). |
 | `INTERNAL` | `vendor_error` | Terminal vendor failure. |
