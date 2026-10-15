@@ -21,10 +21,14 @@ const (
 	VendorGroq      = "groq"
 	VendorMistral   = "mistral"
 	VendorAzure     = "azure"
+	VendorBedrock   = "bedrock"
 )
 
 // AzureDefaultAPIVersion is used when an azure model has no api-version query override.
 const AzureDefaultAPIVersion = "2024-06-01"
+
+// BedrockDefaultRegion is used when a bedrock credential does not specify a region.
+const BedrockDefaultRegion = "us-east-1"
 
 // AnthropicDefaultEndpoint is used when an anthropic model has no endpoint override.
 const AnthropicDefaultEndpoint = "https://api.anthropic.com"
@@ -106,7 +110,7 @@ const (
 )
 
 func ValidVendor(v string) bool {
-	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorAnthropic || v == VendorLocal || v == VendorGroq || v == VendorMistral || v == VendorAzure
+	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorAnthropic || v == VendorLocal || v == VendorGroq || v == VendorMistral || v == VendorAzure || v == VendorBedrock
 }
 
 // SoftSchema reports whether this model needs the prompt-and-verify path.

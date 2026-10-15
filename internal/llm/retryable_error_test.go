@@ -2,6 +2,7 @@ package llm
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -99,6 +100,41 @@ func TestIsRetryableError_GenericError_NotRetryable(t *testing.T) {
 	}
 }
 
+type mockSmithyAPIError struct {
+	code string
+}
+
+func (m mockSmithyAPIError) Error() string     { return m.code }
+func (m mockSmithyAPIError) ErrorCode() string { return m.code }
+
+type mockHTTPStatusError struct {
+	code int
+}
+
+func (m mockHTTPStatusError) Error() string        { return fmt.Sprintf("status %d", m.code) }
+func (m mockHTTPStatusError) HTTPStatusCode() int { return m.code }
+
+func TestIsRetryableError_Bedrock(t *testing.T) {
+	if !IsRetryableError(mockSmithyAPIError{code: "ThrottlingException"}) {
+		t.Error("ThrottlingException should be retryable")
+	}
+	if !IsRetryableError(mockSmithyAPIError{code: "ServiceUnavailableException"}) {
+		t.Error("ServiceUnavailableException should be retryable")
+	}
+	if !IsRetryableError(mockHTTPStatusError{code: 429}) {
+		t.Error("HTTP 429 should be retryable")
+	}
+	if !IsRetryableError(mockHTTPStatusError{code: 503}) {
+		t.Error("HTTP 503 should be retryable")
+	}
+	if IsRetryableError(mockSmithyAPIError{code: "ValidationException"}) {
+		t.Error("ValidationException should not be retryable")
+	}
+	if IsRetryableError(mockHTTPStatusError{code: 400}) {
+		t.Error("HTTP 400 should not be retryable")
+	}
+}
+
 func TestIsContentFilterError(t *testing.T) {
 	cases := []struct {
 		err  error
@@ -108,6 +144,9 @@ func TestIsContentFilterError(t *testing.T) {
 		{&openai.Error{Code: "ResponsibleAIPolicyViolation"}, true},
 		{&openai.Error{Message: "The response was filtered due to the prompt triggering Azure OpenAI's content management policy."}, true},
 		{&openai.Error{Code: "invalid_request_error"}, false},
+		{mockSmithyAPIError{code: "GuardrailIntervened"}, true},
+		{errors.New("bedrock content filter: content_filtered"), true},
+		{errors.New("guardrail intervened during generation"), true},
 		{errors.New("some error"), false},
 		{nil, false},
 	}
@@ -120,4 +159,5 @@ func TestIsContentFilterError(t *testing.T) {
 		}
 	}
 }
+
 

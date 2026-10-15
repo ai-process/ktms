@@ -4,9 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/azure"
 	"github.com/openai/openai-go/v3/option"
@@ -171,6 +176,38 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		opts = append(opts, anthropicoption.WithBaseURL(endpoint))
 		client := anthropic.NewClient(opts...)
 		adapter := adapters.NewAnthropicAdapter(&client, m.ID, noThrottle)
+		adapter.SetSoftSchema(SoftSchema(m))
+		return adapter, nil
+	case VendorBedrock:
+		parts := strings.Split(key, ":")
+		if len(parts) < 2 {
+			return nil, fmt.Errorf("bedrock credentials format: <access_key_id>:<secret_access_key>[:<region>[:<session_token>]]")
+		}
+		accessKey := parts[0]
+		secretKey := parts[1]
+		region := BedrockDefaultRegion
+		sessionToken := ""
+		if len(parts) >= 3 && parts[2] != "" {
+			region = parts[2]
+		}
+		if len(parts) >= 4 {
+			sessionToken = parts[3]
+		}
+		cfg, err := config.LoadDefaultConfig(context.Background(),
+			config.WithRegion(region),
+			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, sessionToken)),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("bedrock aws config: %w", err)
+		}
+		var optFns []func(*bedrockruntime.Options)
+		if m.Endpoint != "" {
+			optFns = append(optFns, func(o *bedrockruntime.Options) {
+				o.BaseEndpoint = aws.String(m.Endpoint)
+			})
+		}
+		client := bedrockruntime.NewFromConfig(cfg, optFns...)
+		adapter := adapters.NewBedrockAdapter(client, m.ID, noThrottle)
 		adapter.SetSoftSchema(SoftSchema(m))
 		return adapter, nil
 	default:
