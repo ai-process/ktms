@@ -501,22 +501,32 @@ docker run -d -p 8081:8080 \
 
 Authenticate every call with `authorization: Bearer llm_…` gRPC metadata.
 
+You can import the committed Go stubs directly from this repository:
+```bash
+go get github.com/ai-process/llm-proxy/gen/llmproxy/v1
+```
+
 ### Consuming via Buf Schema Registry (BSR)
 
-The gRPC API is published to the [Buf Schema Registry](https://buf.build/ai-process/llm-proxy) (`buf.build/ai-process/llm-proxy`). You can install pre-generated SDKs directly in your language:
+The gRPC API is published to the [Buf Schema Registry](https://buf.build/ai-process/llm-proxy) (`buf.build/ai-process/llm-proxy`). Pre-generated client SDKs are available across languages:
 
-- **Go:**
+- **Go (BSR):**
   ```bash
   go get buf.build/gen/go/ai-process/llm-proxy/protocolbuffers/go
   go get buf.build/gen/go/ai-process/llm-proxy/grpc/go
   ```
 - **TypeScript / Node / Web (Connect / gRPC-Web):**
+  Configure npm for the `@buf` registry, then install the packages:
   ```bash
+  npm config set @buf:registry https://buf.build/gen/npm/v1/
   npm install @buf/ai-process_llm-proxy.bufbuild_es @buf/ai-process_llm-proxy.connectrpc_es
   ```
 - **Python:**
+  Install from the Buf Python registry:
   ```bash
-  pip install ai-process-llm-proxy-protocolbuffers-py ai-process-llm-proxy-grpc-py
+  pip install --extra-index-url https://buf.build/gen/python \
+    ai-process-llm-proxy-protocolbuffers-python \
+    ai-process-llm-proxy-grpc-python
   ```
 
 ### Local Client Generation

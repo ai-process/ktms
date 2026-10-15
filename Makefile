@@ -28,4 +28,3 @@ clients:
 
 fmt:
 	$(GO) fmt ./...
-

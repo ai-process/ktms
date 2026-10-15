@@ -8,10 +8,13 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   buf:
     runs-on: ubuntu-latest
+    env:
+      BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -24,8 +27,8 @@ jobs:
           breaking_against: "https://github.com/ai-process/llm-proxy.git#branch=main"
 
       - name: Push to Buf Schema Registry
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.BUF_TOKEN != ''
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.BUF_TOKEN != ''
         uses: bufbuild/buf-action@v1
         with:
-          token: ${{ secrets.BUF_TOKEN }}
+          token: ${{ env.BUF_TOKEN }}
           push: true
