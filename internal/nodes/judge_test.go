@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -42,6 +43,20 @@ func TestPoolAdapter_Judge_Success(t *testing.T) {
 					"type":        "noul",
 					"probability": prob,
 					"confidence":  conf,
+				},
+				{
+					"name":   "q2",
+					"type":   "choice",
+					"choice": "opt_a",
+					"probabilities": map[string]float64{
+						"opt_a": 0.9,
+						"opt_b": 0.1,
+					},
+				},
+				{
+					"name":  "q3",
+					"type":  "score",
+					"score": 4.0,
 				},
 			},
 			"usage": map[string]int{
@@ -93,6 +108,16 @@ func TestPoolAdapter_Judge_Success(t *testing.T) {
 				Type:         llm.JudgeNoul,
 				Instructions: "Is this valid?",
 			},
+			"q2": {
+				Type:         llm.JudgeChoice,
+				Instructions: "Which option?",
+				Options:      map[string]string{"opt_a": "A", "opt_b": "B"},
+			},
+			"q3": {
+				Type:         llm.JudgeScore,
+				Instructions: "Score from 1 to 5",
+				Levels:       []string{"1", "2", "3", "4", "5"},
+			},
 		},
 	}
 	callMeta := make(map[string]string)
@@ -105,6 +130,12 @@ func TestPoolAdapter_Judge_Success(t *testing.T) {
 	}
 	if ans, ok := res.Answers["q1"]; !ok || ans.Noul != 0.85 {
 		t.Errorf("q1 answer unexpected: %+v", ans)
+	}
+	if ans, ok := res.Answers["q2"]; !ok || ans.Choice != "opt_a" {
+		t.Errorf("q2 answer unexpected: %+v", ans)
+	}
+	if ans, ok := res.Answers["q3"]; !ok || ans.Score != 4.0 {
+		t.Errorf("q3 answer unexpected: %+v", ans)
 	}
 	if callMeta["node_id"] != "node-judge-1" {
 		t.Errorf("callMeta[node_id] = %q, want node-judge-1", callMeta["node_id"])
@@ -162,9 +193,13 @@ func TestPoolAdapter_Judge_CircuitBreakerClassification(t *testing.T) {
 	ctx := context.Background()
 	mgr, _ := setupTestManager(t)
 
-	var statusToReturn int = http.StatusInternalServerError
+	var reqCount atomic.Int32
+	var statusToReturn atomic.Int32
+	statusToReturn.Store(http.StatusBadRequest)
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(statusToReturn)
+		reqCount.Add(1)
+		w.WriteHeader(int(statusToReturn.Load()))
 		_, _ = io.WriteString(w, `{"error": "simulated"}`)
 	}))
 	defer srv.Close()
@@ -204,23 +239,46 @@ func TestPoolAdapter_Judge_CircuitBreakerClassification(t *testing.T) {
 	}
 
 	// 1. 400 Client error does not trip circuit breaker
-	statusToReturn = http.StatusBadRequest
+	statusToReturn.Store(http.StatusBadRequest)
 	for i := 0; i < 4; i++ {
-		_, _ = adapter.Judge(ctx, req, "u", nil)
+		_, err := adapter.Judge(ctx, req, "u", nil)
+		if err == nil {
+			t.Fatalf("expected 400 error, got nil")
+		}
+	}
+	if reqCount.Load() != 4 {
+		t.Fatalf("expected 4 requests reached server, got %d", reqCount.Load())
 	}
 	nodes, _ := mgr.ListNodes(ctx)
 	if len(nodes) == 0 || nodes[0].State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
 		t.Fatalf("400 errors tripped circuit breaker unexpectedly")
 	}
 
-	// 2. 500 Server error trips circuit breaker (threshold = 3)
-	statusToReturn = http.StatusInternalServerError
+	// 2. Caller context deadline / cancellation does not trip circuit breaker
+	cancelCtx, cancel := context.WithCancel(ctx)
+	cancel() // canceled caller context
+	for i := 0; i < 4; i++ {
+		_, err := adapter.Judge(cancelCtx, req, "u", nil)
+		if err == nil {
+			t.Fatalf("expected canceled context error, got nil")
+		}
+	}
+	nodes, _ = mgr.ListNodes(ctx)
+	if len(nodes) == 0 || nodes[0].State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
+		t.Fatalf("caller cancellation tripped circuit breaker unexpectedly")
+	}
+
+	// 3. 404 maps to ErrJudgmentUnsupported and counts as failure (misconfigured endpoint)
+	statusToReturn.Store(http.StatusNotFound)
 	for i := 0; i < 3; i++ {
-		_, _ = adapter.Judge(ctx, req, "u", nil)
+		_, err := adapter.Judge(ctx, req, "u", nil)
+		if !errors.Is(err, llm.ErrJudgmentUnsupported) {
+			t.Fatalf("expected ErrJudgmentUnsupported on 404, got %v", err)
+		}
 	}
 	nodes, _ = mgr.ListNodes(ctx)
 	if len(nodes) == 0 || nodes[0].State != pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
-		t.Fatalf("500 errors should have tripped circuit breaker, got state %v", nodes[0].State)
+		t.Fatalf("404 errors should have tripped circuit breaker, got state %v", nodes[0].State)
 	}
 }
 

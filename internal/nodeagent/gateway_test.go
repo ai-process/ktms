@@ -266,4 +266,3 @@ func TestGatewayAllowsDecisions(t *testing.T) {
 		t.Fatalf("engine saw %q, want Bearer engine-secret", gotAuth.Load())
 	}
 }
-

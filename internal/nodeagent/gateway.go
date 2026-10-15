@@ -21,8 +21,8 @@ const (
 )
 
 // Gateway is the only door to the engine that the proxy gets: a bearer check
-// plus an allowlist of the two routes it needs. Everything else (pull, delete,
-// engine admin APIs) is unreachable from outside.
+// plus an allowlist of the routes it needs (/v1/chat/completions, /v1/decisions,
+// /v1/models). Everything else (pull, delete, engine admin APIs) is unreachable.
 type Gateway struct {
 	upstream       string
 	accessKey      string
@@ -60,26 +60,20 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var stream bool
 	var body []byte
 	switch {
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/chat/completions":
+	case r.Method == http.MethodPost && (r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/decisions"):
 		var err error
 		body, err = io.ReadAll(http.MaxBytesReader(w, r.Body, maxGatewayBody))
 		if err != nil {
 			writeGatewayError(w, http.StatusRequestEntityTooLarge, "request body too large or unreadable")
 			return
 		}
-		var probe struct {
-			Stream bool `json:"stream"`
+		if r.URL.Path == "/v1/chat/completions" {
+			var probe struct {
+				Stream bool `json:"stream"`
+			}
+			_ = json.Unmarshal(body, &probe) // a malformed body is the engine's to reject
+			stream = probe.Stream
 		}
-		_ = json.Unmarshal(body, &probe) // a malformed body is the engine's to reject
-		stream = probe.Stream
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/decisions":
-		var err error
-		body, err = io.ReadAll(http.MaxBytesReader(w, r.Body, maxGatewayBody))
-		if err != nil {
-			writeGatewayError(w, http.StatusRequestEntityTooLarge, "request body too large or unreadable")
-			return
-		}
-		stream = false
 	case r.URL.Path == "/v1/models" && r.Method == http.MethodGet:
 	case r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/models" || r.URL.Path == "/v1/decisions":
 		writeGatewayError(w, http.StatusMethodNotAllowed, "method not allowed")
