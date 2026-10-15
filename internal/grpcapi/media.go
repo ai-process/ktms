@@ -40,9 +40,9 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 		if s.guardrails.PIIAction == guardrails.ActionRedact {
 			vault = guardrails.NewTokenVault()
 		}
-		redacted, _, err := s.guardrails.InspectText(speechText, vault)
+		redacted, _, err := s.guardrails.InspectText(ctx, speechText, vault)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+			return nil, guardrailStatus(err)
 		}
 		speechText = redacted
 	}
@@ -101,9 +101,9 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 		if s.guardrails.PIIAction == guardrails.ActionRedact {
 			vault = guardrails.NewTokenVault()
 		}
-		redacted, _, err := s.guardrails.InspectText(prompt, vault)
+		redacted, _, err := s.guardrails.InspectText(ctx, prompt, vault)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+			return nil, guardrailStatus(err)
 		}
 		prompt = redacted
 	}

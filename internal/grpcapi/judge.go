@@ -47,9 +47,9 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 		if s.guardrails.PIIAction == guardrails.ActionRedact {
 			vault = guardrails.NewTokenVault()
 		}
-		sanitizedState, _, err := s.guardrails.InspectText(judgeReq.StateJSON, vault)
+		sanitizedState, _, err := s.guardrails.InspectText(ctx, judgeReq.StateJSON, vault)
 		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+			return nil, guardrailStatus(err)
 		}
 		judgeReq.StateJSON = sanitizedState
 		// Images, audio and vectors are opaque to text guardrails; only the
@@ -58,22 +58,22 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 			if p.Type != llm.JudgeMediaText {
 				continue
 			}
-			sanitizedText, _, err := s.guardrails.InspectText(p.Text, vault)
+			sanitizedText, _, err := s.guardrails.InspectText(ctx, p.Text, vault)
 			if err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+				return nil, guardrailStatus(err)
 			}
 			p.Text = sanitizedText
 		}
 		for _, q := range judgeReq.Questions {
-			sanitizedInst, _, err := s.guardrails.InspectText(q.Instructions, vault)
+			sanitizedInst, _, err := s.guardrails.InspectText(ctx, q.Instructions, vault)
 			if err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+				return nil, guardrailStatus(err)
 			}
 			q.Instructions = sanitizedInst
 			for i, opt := range q.Options {
-				sanitizedOpt, _, err := s.guardrails.InspectText(opt, vault)
+				sanitizedOpt, _, err := s.guardrails.InspectText(ctx, opt, vault)
 				if err != nil {
-					return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+					return nil, guardrailStatus(err)
 				}
 				q.Options[i] = sanitizedOpt
 			}

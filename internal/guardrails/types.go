@@ -24,6 +24,7 @@ const (
 	CategorySSN             ViolationCategory = "ssn"
 	CategoryIPAddress       ViolationCategory = "ip_address"
 	CategoryPromptInjection ViolationCategory = "prompt_injection"
+	CategoryLatentThreat    ViolationCategory = "latent_threat"
 )
 
 // Violation records a detected security rule hit.
