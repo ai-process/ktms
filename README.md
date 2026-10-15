@@ -522,7 +522,7 @@ Python, TypeScript… clients from [`proto/llmproxy/v1`](proto/llmproxy/v1) with
 
 | Field | Notes |
 | --- | --- |
-| `effort` | Routing tier. |
+| `effort` | Routing tier (`EFFORT_LOW`, `EFFORT_MEDIUM`, `EFFORT_HIGH`). |
 | `attributes` | Opaque key/values matched by rules and copied to usage events. `user_id` charges the per-user daily budget (falls back to `svc:<key_name>` for service callers without `user_id`). `usage_project` overrides the usage project (see below). |
 | `base_system_instruction`, `request_instruction` | System content never travels as a message. |
 | `response_schema` | Unset = free text. Set = JSON output validated against the schema; a vendor that can't enforce it is verified by the proxy. |
@@ -532,16 +532,20 @@ Python, TypeScript… clients from [`proto/llmproxy/v1`](proto/llmproxy/v1) with
 | `enable_google_search` | Only Google models declaring `google_search` can serve it. |
 | `action_id` | Free-form label for usage attribution. |
 | `model_override` | Exact model id; bypasses rules but **not** throttles. |
+| `placement` | Compute locality preference: `nodes_first`, `nodes_only`, `cloud_first`, `cloud_only`. |
+| `auto_route` | Enables smart model auto-selection; when effort is unpinned, evaluates task complexity via Judge. |
+| `effort_specified` | Signals caller explicitly pinned effort (skips dynamic Judge evaluation). |
 
 The response carries `choices`, token `usage`, `resolved_model`, `resolved_vendor`,
-`matched_rule` (empty on override), and structured `details` (`Choice` objects with text, tool calls, and finish reasons).
+`matched_rule` (empty on override), structured `details` (`Choice` objects with text, tool calls, and finish reasons),
+`cached` status, and routing metadata: `route_mode`, `placement`, `judge_score`, and `judge_model`.
 
 ### GenerateTextStream
 
 Server-streaming RPC `rpc GenerateTextStream(GenerateTextStreamRequest) returns (stream GenerateTextChunk)`.
 
 - Takes a `GenerateTextStreamRequest` containing the standard `GenerateTextRequest`.
-- Streams incremental `GenerateTextChunk` items containing `delta` (token text), `tool_call_chunks`, `resolved_model`, `resolved_vendor`, and final `finish_reason` with token `usage`.
+- Streams incremental `GenerateTextChunk` items containing `delta` (token text), `tool_call_chunks`, `resolved_model`, `resolved_vendor`, `matched_rule`, `cached`, `route_mode`, `placement`, `judge_score`, `judge_model`, and final `finish_reason` with token `usage`.
 - **Fallback guarantee:** If upstream models fail before the first chunk is sent, the router falls back to the next model in the rule's chain. Once the first chunk is transmitted to the caller, the stream is locked to that model to guarantee integrity.
 - Usage events and daily token budgets are settled on stream completion.
 

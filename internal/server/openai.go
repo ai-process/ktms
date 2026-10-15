@@ -450,7 +450,7 @@ func route(model, reasoningEffort, explicitPlacement string) (routeDecision, err
 		if dec.Placement == "" {
 			dec.Placement = router.PlacementNodesFirst
 		}
-		// If model string did not specify effort, allow reasoning_effort to set it.
+		// Model string effort takes precedence; reasoning_effort serves as fallback effort.
 		if !dec.EffortSpecified && reasoningEffort != "" {
 			eff, err := parseEffort(reasoningEffort)
 			if err != nil {

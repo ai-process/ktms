@@ -117,10 +117,10 @@ func (s *ProxyServer) judgeEffort(ctx context.Context, attrs map[string]string, 
 	})
 	if err != nil {
 		ev := log.Warn().Err(err)
-		if plan != nil && plan.identity != nil {
+		if plan.identity != nil {
 			ev = ev.Str("key_id", plan.identity.KeyID)
 		}
-		if plan != nil && len(plan.chain) > 0 {
+		if len(plan.chain) > 0 {
 			ids := make([]string, len(plan.chain))
 			for i, m := range plan.chain {
 				ids[i] = m.ID
@@ -159,11 +159,8 @@ func (s *ProxyServer) judgeEffort(ctx context.Context, attrs map[string]string, 
 // planRoute resolves the model candidate chain, evaluating placement preferences and auto-judge when applicable.
 func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id *apikeys.Identity, req *pb.GenerateTextRequest) (*routePlan, error) {
 	placement := router.NormalizePlacement(req.GetPlacement())
-	if placement == "" {
-		placement = router.NormalizePlacement(req.GetAttributes()[router.PlacementAttribute])
-	}
-	isAuto := req.GetAutoRoute() || req.GetAttributes()[router.AutoRouteAttribute] == "true"
-	effortSpecified := req.GetEffortSpecified() || req.GetAttributes()[router.EffortSpecifiedAttribute] == "true"
+	isAuto := req.GetAutoRoute()
+	effortSpecified := req.GetEffortSpecified()
 
 	effort := effortToString(req.GetEffort())
 	var (

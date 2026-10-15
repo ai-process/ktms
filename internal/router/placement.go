@@ -15,11 +15,6 @@ const (
 	PlacementCloudFirst = "cloud_first"
 	PlacementCloudOnly  = "cloud_only"
 
-	// Routing attributes passed in GenerateTextRequest.Attributes.
-	PlacementAttribute       = "placement"
-	AutoRouteAttribute       = "auto_route"
-	EffortSpecifiedAttribute = "effort_specified"
-
 	// Route modes returned in GenerateTextResponse.RouteMode.
 	RouteModeDirect      = "direct"
 	RouteModeOverride    = "override"

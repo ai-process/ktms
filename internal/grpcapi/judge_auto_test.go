@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -222,9 +223,9 @@ func TestAutoRoute_JudgeTimeoutFallsBack(t *testing.T) {
 }
 
 func TestAutoRoute_EffortSpecifiedSkipsJudge(t *testing.T) {
-	var judgeCalled bool
+	var judgeCalled atomic.Bool
 	judgeHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		judgeCalled = true
+		judgeCalled.Store(true)
 		w.WriteHeader(http.StatusOK)
 	})
 	judgeSrv := httptest.NewServer(judgeHandler)
@@ -259,7 +260,7 @@ func TestAutoRoute_EffortSpecifiedSkipsJudge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateText failed: %v", err)
 	}
-	if judgeCalled {
+	if judgeCalled.Load() {
 		t.Errorf("expected judge NOT to be called when effort is explicitly specified")
 	}
 	if resp.RouteMode != router.RouteModeAutoEffort {
