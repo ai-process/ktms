@@ -158,7 +158,7 @@ func (a *OpenAIAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ stri
 			ja.Confidence = *ans.Confidence
 		}
 		switch ans.Type {
-		case "predicate":
+		case "predicate", "noul":
 			ja.Type = llm.JudgeNoul
 			if ans.Probability != nil {
 				ja.Noul = *ans.Probability

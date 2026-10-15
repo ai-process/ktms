@@ -198,7 +198,10 @@ Quick tunnels have no SLA; for a stable address use `--expose=none` and your own
 
 Flags: `--proxy-addr` (default `127.0.0.1:50051`), `--tls` (dial over TLS with the system CA
 roots, for a proxy behind a TLS load balancer; off by default), `--node-id` (defaults to the
-hostname), `--node-name`, `--engine`, `--base-weight`, `--max-concurrent`.
+hostname), `--node-name`, `--engine` (`ollama`, `vllm`, `tgi`, `llamacpp`, `decisions`, `generic`),
+`--base-weight`, `--max-concurrent`.
+`--judge-model` (repeat or comma-separate) tags specific models on the node with the `judge` capability
+for local JEPA / decision evaluation, routing `/v1/decisions` and `Judge` calls to them.
 `--only-model` (repeat it or comma-separate) reports only the named models to the proxy, for an
 engine that shares its model directory with other tools; by default every model the engine has is
 reported. If the node key restricts `allowed_models`, the proxy ignores (and logs) other reported
