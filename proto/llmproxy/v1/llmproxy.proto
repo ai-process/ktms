@@ -243,6 +243,9 @@ service LLMProxyService {
   // EFFORT_LOW plus a reserved attributes["modality"] of "judge", chain
   // filtered to models declaring the "judge" capability.
   rpc Judge(JudgeRequest) returns (JudgeResponse);
+  // Embeddings generates vector representations of text. Vector space isolation
+  // is strictly preserved: cross-model fallbacks are disallowed.
+  rpc GetEmbeddings(GetEmbeddingsRequest) returns (GetEmbeddingsResponse);
   rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
 
   // Batch generation RPCs.
@@ -349,6 +352,28 @@ message JudgeRequest {
 
 message JudgeResponse {
   map<string, JudgeAnswer> answers = 1; // one per requested question id
+  TokensUsage usage = 2;
+  string resolved_model = 3;
+  string resolved_vendor = 4;
+  string matched_rule = 5;
+}
+
+message Embedding {
+  int32 index = 1;
+  repeated float values = 2;
+}
+
+message GetEmbeddingsRequest {
+  repeated string inputs = 1;
+  string model = 2;
+  int32 dimensions = 3;
+  string input_type = 4; // "query" | "document"
+  string action_id = 5;
+  map<string, string> attributes = 6;
+}
+
+message GetEmbeddingsResponse {
+  repeated Embedding data = 1;
   TokensUsage usage = 2;
   string resolved_model = 3;
   string resolved_vendor = 4;

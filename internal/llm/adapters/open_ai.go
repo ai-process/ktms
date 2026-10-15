@@ -672,3 +672,56 @@ func (a *OpenAIAdapter) SynthesizeSpeech(ctx context.Context, text, language, us
 		Model:    a.ttsModel,
 	}, nil
 }
+
+// CreateEmbeddings implements llm.EmbeddingAdapter for OpenAI and OpenAI-compatible vendors.
+func (a *OpenAIAdapter) CreateEmbeddings(ctx context.Context, req *llm.EmbeddingRequest, userID string, meta map[string]string) (*llm.EmbeddingResult, error) {
+	if a.openAI == nil {
+		return nil, errors.New("OpenAIAdapter: client not configured")
+	}
+	if len(req.Inputs) == 0 {
+		return nil, errors.New("OpenAIAdapter: no inputs provided")
+	}
+
+	params := openai.EmbeddingNewParams{
+		Input: openai.EmbeddingNewParamsInputUnion{
+			OfArrayOfStrings: req.Inputs,
+		},
+		Model:          openai.EmbeddingModel(a.model),
+		EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
+	}
+	if req.Dimensions > 0 {
+		params.Dimensions = openai.Int(int64(req.Dimensions))
+	}
+	if userID != "" {
+		params.User = openai.String(userID)
+	}
+
+	a.throttle.WaitForSlot()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	res, err := a.openAI.Embeddings.New(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &llm.EmbeddingResult{
+		Model: res.Model,
+		Data:  make([]llm.EmbeddingItem, len(res.Data)),
+		Usage: llm.TokensUsage{
+			Input: int(res.Usage.PromptTokens),
+		},
+	}
+	for i, d := range res.Data {
+		result.Data[i] = llm.EmbeddingItem{
+			Index:  int(d.Index),
+			Values: make([]float32, len(d.Embedding)),
+		}
+		for j, val := range d.Embedding {
+			result.Data[i].Values[j] = float32(val)
+		}
+	}
+
+	return result, nil
+}
