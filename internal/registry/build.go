@@ -3,10 +3,12 @@ package registry
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/azure"
 	"github.com/openai/openai-go/v3/option"
 	"google.golang.org/genai"
 
@@ -113,6 +115,27 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 			}
 			adapter.SetDecisionsConfig(decEndpoint, key)
 		}
+		ConfigureOpenAI(adapter, m, "")
+		return adapter, nil
+	case VendorAzure:
+		if m.Endpoint == "" {
+			return nil, fmt.Errorf("azure models require an endpoint (e.g. https://<resource>.openai.azure.com)")
+		}
+		endpoint := m.Endpoint
+		apiVersion := AzureDefaultAPIVersion
+		if u, err := url.Parse(endpoint); err == nil && u.Query().Get("api-version") != "" {
+			apiVersion = u.Query().Get("api-version")
+			q := u.Query()
+			q.Del("api-version")
+			u.RawQuery = q.Encode()
+			endpoint = u.String()
+		}
+		opts := []option.RequestOption{
+			azure.WithEndpoint(endpoint, apiVersion),
+			azure.WithAPIKey(key),
+		}
+		client := openai.NewClient(opts...)
+		adapter := adapters.NewOpenAIAdapter(&client, m.ID, noThrottle)
 		ConfigureOpenAI(adapter, m, "")
 		return adapter, nil
 	case VendorGoogle:
