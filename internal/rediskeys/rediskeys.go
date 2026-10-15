@@ -40,6 +40,12 @@ func (k Keys) BudgetUser(userID, modelID, day string) string {
 	return fmt.Sprintf("%sllmproxy:bud:u:%s:%s:%s", k.prefix, userID, modelID, day)
 }
 
+// Spend is the nano-USD spend counter of one subject ("k" key, "u" user) in
+// one UTC period window ("d20261015", "m202610"), shared across models.
+func (k Keys) Spend(subject, subjectID, window string) string {
+	return fmt.Sprintf("%sllmproxy:spend:%s:%s:%s", k.prefix, subject, subjectID, window)
+}
+
 // NodeMeta holds the static & semi-static registration data of a node.
 func (k Keys) NodeMeta(nodeID string) string {
 	return fmt.Sprintf("%snode:meta:%s", k.prefix, nodeID)

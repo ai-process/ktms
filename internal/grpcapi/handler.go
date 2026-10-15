@@ -125,7 +125,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 				}
 				meta["api_key"] = id.Name
 				meta["cache"] = "hit"
-				if err := tracker.RecordUsage(userID, defaultActionID, cached.ResolvedVendor, cached.ResolvedModel, 0, 0, 0, usagev1.Status_STATUS_SUCCESS, meta); err != nil {
+				if err := tracker.RecordUsage(userID, defaultActionID, cached.ResolvedVendor, cached.ResolvedModel, 0, 0, 0, 0, usagev1.Status_STATUS_SUCCESS, meta); err != nil {
 					log.Warn().Err(err).Str("user_id", userID).Str("model", cached.ResolvedModel).Msg("failed to record cache hit usage")
 				}
 			}
@@ -254,7 +254,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 				}
 				meta["api_key"] = id.Name
 				meta["cache"] = "hit"
-				if err := tracker.RecordUsage(userID, defaultActionID, cached.ResolvedVendor, cached.ResolvedModel, 0, 0, 0, usagev1.Status_STATUS_SUCCESS, meta); err != nil {
+				if err := tracker.RecordUsage(userID, defaultActionID, cached.ResolvedVendor, cached.ResolvedModel, 0, 0, 0, 0, usagev1.Status_STATUS_SUCCESS, meta); err != nil {
 					log.Warn().Err(err).Str("user_id", userID).Str("model", cached.ResolvedModel).Msg("failed to record cache hit usage in stream")
 				}
 			}

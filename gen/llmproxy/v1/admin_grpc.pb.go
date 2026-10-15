@@ -37,6 +37,9 @@ const (
 	LLMProxyAdminService_SetUserRateLimit_FullMethodName    = "/llmproxy.v1.LLMProxyAdminService/SetUserRateLimit"
 	LLMProxyAdminService_DeleteUserRateLimit_FullMethodName = "/llmproxy.v1.LLMProxyAdminService/DeleteUserRateLimit"
 	LLMProxyAdminService_ListUserRateLimits_FullMethodName  = "/llmproxy.v1.LLMProxyAdminService/ListUserRateLimits"
+	LLMProxyAdminService_SetSpendLimit_FullMethodName       = "/llmproxy.v1.LLMProxyAdminService/SetSpendLimit"
+	LLMProxyAdminService_DeleteSpendLimit_FullMethodName    = "/llmproxy.v1.LLMProxyAdminService/DeleteSpendLimit"
+	LLMProxyAdminService_ListSpendLimits_FullMethodName     = "/llmproxy.v1.LLMProxyAdminService/ListSpendLimits"
 )
 
 // LLMProxyAdminServiceClient is the client API for LLMProxyAdminService service.
@@ -64,6 +67,9 @@ type LLMProxyAdminServiceClient interface {
 	SetUserRateLimit(ctx context.Context, in *SetUserRateLimitRequest, opts ...grpc.CallOption) (*SetUserRateLimitResponse, error)
 	DeleteUserRateLimit(ctx context.Context, in *DeleteUserRateLimitRequest, opts ...grpc.CallOption) (*DeleteUserRateLimitResponse, error)
 	ListUserRateLimits(ctx context.Context, in *ListUserRateLimitsRequest, opts ...grpc.CallOption) (*ListUserRateLimitsResponse, error)
+	SetSpendLimit(ctx context.Context, in *SetSpendLimitRequest, opts ...grpc.CallOption) (*SetSpendLimitResponse, error)
+	DeleteSpendLimit(ctx context.Context, in *DeleteSpendLimitRequest, opts ...grpc.CallOption) (*DeleteSpendLimitResponse, error)
+	ListSpendLimits(ctx context.Context, in *ListSpendLimitsRequest, opts ...grpc.CallOption) (*ListSpendLimitsResponse, error)
 }
 
 type lLMProxyAdminServiceClient struct {
@@ -254,6 +260,36 @@ func (c *lLMProxyAdminServiceClient) ListUserRateLimits(ctx context.Context, in 
 	return out, nil
 }
 
+func (c *lLMProxyAdminServiceClient) SetSpendLimit(ctx context.Context, in *SetSpendLimitRequest, opts ...grpc.CallOption) (*SetSpendLimitResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetSpendLimitResponse)
+	err := c.cc.Invoke(ctx, LLMProxyAdminService_SetSpendLimit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lLMProxyAdminServiceClient) DeleteSpendLimit(ctx context.Context, in *DeleteSpendLimitRequest, opts ...grpc.CallOption) (*DeleteSpendLimitResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteSpendLimitResponse)
+	err := c.cc.Invoke(ctx, LLMProxyAdminService_DeleteSpendLimit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lLMProxyAdminServiceClient) ListSpendLimits(ctx context.Context, in *ListSpendLimitsRequest, opts ...grpc.CallOption) (*ListSpendLimitsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSpendLimitsResponse)
+	err := c.cc.Invoke(ctx, LLMProxyAdminService_ListSpendLimits_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LLMProxyAdminServiceServer is the server API for LLMProxyAdminService service.
 // All implementations must embed UnimplementedLLMProxyAdminServiceServer
 // for forward compatibility.
@@ -279,6 +315,9 @@ type LLMProxyAdminServiceServer interface {
 	SetUserRateLimit(context.Context, *SetUserRateLimitRequest) (*SetUserRateLimitResponse, error)
 	DeleteUserRateLimit(context.Context, *DeleteUserRateLimitRequest) (*DeleteUserRateLimitResponse, error)
 	ListUserRateLimits(context.Context, *ListUserRateLimitsRequest) (*ListUserRateLimitsResponse, error)
+	SetSpendLimit(context.Context, *SetSpendLimitRequest) (*SetSpendLimitResponse, error)
+	DeleteSpendLimit(context.Context, *DeleteSpendLimitRequest) (*DeleteSpendLimitResponse, error)
+	ListSpendLimits(context.Context, *ListSpendLimitsRequest) (*ListSpendLimitsResponse, error)
 	mustEmbedUnimplementedLLMProxyAdminServiceServer()
 }
 
@@ -342,6 +381,15 @@ func (UnimplementedLLMProxyAdminServiceServer) DeleteUserRateLimit(context.Conte
 }
 func (UnimplementedLLMProxyAdminServiceServer) ListUserRateLimits(context.Context, *ListUserRateLimitsRequest) (*ListUserRateLimitsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListUserRateLimits not implemented")
+}
+func (UnimplementedLLMProxyAdminServiceServer) SetSpendLimit(context.Context, *SetSpendLimitRequest) (*SetSpendLimitResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetSpendLimit not implemented")
+}
+func (UnimplementedLLMProxyAdminServiceServer) DeleteSpendLimit(context.Context, *DeleteSpendLimitRequest) (*DeleteSpendLimitResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteSpendLimit not implemented")
+}
+func (UnimplementedLLMProxyAdminServiceServer) ListSpendLimits(context.Context, *ListSpendLimitsRequest) (*ListSpendLimitsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListSpendLimits not implemented")
 }
 func (UnimplementedLLMProxyAdminServiceServer) mustEmbedUnimplementedLLMProxyAdminServiceServer() {}
 func (UnimplementedLLMProxyAdminServiceServer) testEmbeddedByValue()                              {}
@@ -688,6 +736,60 @@ func _LLMProxyAdminService_ListUserRateLimits_Handler(srv interface{}, ctx conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LLMProxyAdminService_SetSpendLimit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetSpendLimitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyAdminServiceServer).SetSpendLimit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyAdminService_SetSpendLimit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyAdminServiceServer).SetSpendLimit(ctx, req.(*SetSpendLimitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LLMProxyAdminService_DeleteSpendLimit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteSpendLimitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyAdminServiceServer).DeleteSpendLimit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyAdminService_DeleteSpendLimit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyAdminServiceServer).DeleteSpendLimit(ctx, req.(*DeleteSpendLimitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LLMProxyAdminService_ListSpendLimits_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSpendLimitsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyAdminServiceServer).ListSpendLimits(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyAdminService_ListSpendLimits_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyAdminServiceServer).ListSpendLimits(ctx, req.(*ListSpendLimitsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LLMProxyAdminService_ServiceDesc is the grpc.ServiceDesc for LLMProxyAdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -766,6 +868,18 @@ var LLMProxyAdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListUserRateLimits",
 			Handler:    _LLMProxyAdminService_ListUserRateLimits_Handler,
+		},
+		{
+			MethodName: "SetSpendLimit",
+			Handler:    _LLMProxyAdminService_SetSpendLimit_Handler,
+		},
+		{
+			MethodName: "DeleteSpendLimit",
+			Handler:    _LLMProxyAdminService_DeleteSpendLimit_Handler,
+		},
+		{
+			MethodName: "ListSpendLimits",
+			Handler:    _LLMProxyAdminService_ListSpendLimits_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

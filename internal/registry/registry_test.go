@@ -478,3 +478,32 @@ func TestSnapshotClientModelsIncludesLocalWithoutKey(t *testing.T) {
 		t.Fatal("VendorKey must not invent a credential for local")
 	}
 }
+
+func TestSnapshotSpendLimitWildcard(t *testing.T) {
+	snap := &Snapshot{SpendLimits: map[string]map[string]int64{
+		spendKey("user", "*"):     {"month": 20},
+		spendKey("user", "vip"):   {"month": 500},
+		spendKey("key", "client"): {"day": 7},
+	}}
+	cases := []struct {
+		subject, id, period string
+		want                int64
+	}{
+		{"user", "vip", "month", 500},   // exact beats wildcard
+		{"user", "anyone", "month", 20}, // wildcard default
+		{"user", "vip", "day", 0},       // exact row without that period falls back to "*"
+		{"key", "client", "day", 7},
+		{"key", "client", "month", 0},
+		{"key", "other", "day", 0},
+		{"user", "", "month", 0}, // no identity, no limit
+	}
+	for _, c := range cases {
+		if got := snap.SpendLimit(c.subject, c.id, c.period); got != c.want {
+			t.Errorf("SpendLimit(%s, %s, %s) = %d, want %d", c.subject, c.id, c.period, got, c.want)
+		}
+	}
+	var nilSnap *Snapshot
+	if nilSnap.SpendLimit("user", "x", "month") != 0 {
+		t.Error("nil snapshot must have no limits")
+	}
+}

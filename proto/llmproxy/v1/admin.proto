@@ -92,6 +92,7 @@ message GetConfigResponse {
   repeated VendorKeyInfo vendor_keys = 3;
   int64 version = 4;
   repeated UserRateLimitSpec user_rate_limits = 5;
+  repeated SpendLimitSpec spend_limits = 6;
 }
 
 message MintAPIKeyRequest {
@@ -229,6 +230,40 @@ message ListUserRateLimitsResponse {
   repeated UserRateLimitSpec rate_limits = 1;
 }
 
+// SpendLimitSpec is a hard monetary cap across all models. Calls are priced
+// from the model catalog; the worst case (input estimate plus max output) is
+// reserved up front, and a request that would cross the cap is refused with
+// throttled:spend_<subject>_<daily|monthly> (HTTP 429 insufficient_quota).
+message SpendLimitSpec {
+  string subject_type = 1; // "key" (api key name) | "user" (attributes["user_id"] or svc:<key_name>)
+  string subject_id = 2; // key name / user id, or "*" for the default of that subject type
+  string period = 3; // "day" | "month", UTC calendar periods
+  int64 limit_nanousd = 4; // cap in nano-USD (1e-9 USD), > 0
+}
+
+message SetSpendLimitRequest {
+  SpendLimitSpec spend_limit = 1;
+}
+
+message SetSpendLimitResponse {}
+
+message DeleteSpendLimitRequest {
+  string subject_type = 1;
+  string subject_id = 2;
+  string period = 3;
+}
+
+message DeleteSpendLimitResponse {}
+
+message ListSpendLimitsRequest {
+  string subject_type = 1; // optional filter
+  string subject_id = 2; // optional filter
+}
+
+message ListSpendLimitsResponse {
+  repeated SpendLimitSpec spend_limits = 1;
+}
+
 // All admin RPCs require the "admin" scope. Every config mutation validates
 // the resulting full config in one transaction and bumps the config version.
 service LLMProxyAdminService {
@@ -250,4 +285,7 @@ service LLMProxyAdminService {
   rpc SetUserRateLimit(SetUserRateLimitRequest) returns (SetUserRateLimitResponse);
   rpc DeleteUserRateLimit(DeleteUserRateLimitRequest) returns (DeleteUserRateLimitResponse);
   rpc ListUserRateLimits(ListUserRateLimitsRequest) returns (ListUserRateLimitsResponse);
+  rpc SetSpendLimit(SetSpendLimitRequest) returns (SetSpendLimitResponse);
+  rpc DeleteSpendLimit(DeleteSpendLimitRequest) returns (DeleteSpendLimitResponse);
+  rpc ListSpendLimits(ListSpendLimitsRequest) returns (ListSpendLimitsResponse);
 }

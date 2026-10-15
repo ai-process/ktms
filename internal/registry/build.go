@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/llm/adapters"
+	"github.com/ai-process/llm-proxy/internal/pricing"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 )
 
@@ -43,7 +45,7 @@ func (s *Snapshot) Adapter(apiKeyID string, m *proxydb.Model) (llm.ClientAdapter
 				return nil, err
 			}
 			if s.tracker != nil {
-				adapter = adapters.NewTrackingAdapter(adapter, s.tracker, m.Vendor, m.ID)
+				adapter = adapters.NewTrackingAdapter(adapter, s.tracker, m.Vendor, m.ID).WithPricer(modelPricer(m))
 			}
 			actual, _ := s.adapters.LoadOrStore(cacheKey, adapter)
 			return actual.(llm.ClientAdapter), nil
@@ -60,10 +62,17 @@ func (s *Snapshot) Adapter(apiKeyID string, m *proxydb.Model) (llm.ClientAdapter
 		return nil, err
 	}
 	if s.tracker != nil {
-		adapter = adapters.NewTrackingAdapter(adapter, s.tracker, m.Vendor, m.ID)
+		adapter = adapters.NewTrackingAdapter(adapter, s.tracker, m.Vendor, m.ID).WithPricer(modelPricer(m))
 	}
 	actual, _ := s.adapters.LoadOrStore(cacheKey, adapter)
 	return actual.(llm.ClientAdapter), nil
+}
+
+// modelPricer prices usage events at the rate in force when the call started.
+func modelPricer(m *proxydb.Model) adapters.Pricer {
+	return func(usage llm.TokensUsage, startedAt time.Time) int64 {
+		return pricing.Cost(m, usage, pricing.ModeAt(m, startedAt))
+	}
 }
 
 // Default voices for models that declare the tts capability. The registry

@@ -39,6 +39,9 @@ func main() {
 
 	logger.Init()
 	cfg := config.Load()
+	if cfg.SpendLimitsFailMode != "open" && cfg.SpendLimitsFailMode != "closed" {
+		log.Fatal().Str("value", cfg.SpendLimitsFailMode).Msg(`SPEND_LIMITS_FAIL_MODE must be "open" or "closed"`)
+	}
 
 	shutdownTracing, err := observability.InitTracing(context.Background(), cfg.OTELServiceName, cfg.OTELExporterOTLPEndpoint)
 	if err != nil {
@@ -140,6 +143,11 @@ func main() {
 		rLimiter.SetUserRateLimitResolver(func(userID, modelID string) *proxydb.UserRateLimit {
 			return loader.Snapshot().UserRateLimit(userID, modelID)
 		})
+		rLimiter.SetSpendLimitResolver(func(subjectType, subjectID, period string) int64 {
+			return loader.Snapshot().SpendLimit(subjectType, subjectID, period)
+		})
+		rLimiter.SetSpendFailClosed(cfg.SpendFailClosed())
+		rLimiter.SetDefaultOutputReserve(int64(cfg.SpendDefaultOutputReserve))
 		limiter = rLimiter
 		log.Info().Str("addr", cfg.RedisAddr).Msg("redis throttling enabled")
 
@@ -166,7 +174,7 @@ func main() {
 
 		nodeReg = grpcapi.NewNodeRegistryServer(nodeMgr, keyring)
 	} else {
-		log.Warn().Msg("REDIS_ADDR unset: rpm and token budgets are NOT enforced, local node pool is disabled")
+		log.Warn().Msg("REDIS_ADDR unset: rpm, token budgets and spend limits are NOT enforced, local node pool is disabled")
 	}
 
 	rootCtx, rootCancel := context.WithCancel(context.Background())

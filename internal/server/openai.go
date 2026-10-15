@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -1388,7 +1390,10 @@ func writeAPIError(w http.ResponseWriter, err error) {
 		msg = "internal error"
 	}
 	if st.Code() == codes.ResourceExhausted {
-		w.Header().Set("Retry-After", "1")
+		w.Header().Set("Retry-After", retryAfterSeconds(st))
+		if quotaExhausted(st) {
+			typ, errCode = router.InsufficientQuota, router.InsufficientQuota
+		}
 	}
 	if msg == "vendor_error" {
 		code = http.StatusBadGateway
@@ -1396,6 +1401,30 @@ func writeAPIError(w http.ResponseWriter, err error) {
 	writeJSON(w, code, map[string]any{"error": map[string]any{
 		"message": msg, "type": typ, "param": nil, "code": errCode,
 	}})
+}
+
+// retryAfterSeconds honours a RetryInfo on the status (spend limits wait for
+// their period to reset); other throttles clear within a second or so.
+func retryAfterSeconds(st *status.Status) string {
+	for _, d := range st.Details() {
+		if ri, ok := d.(*errdetails.RetryInfo); ok && ri.GetRetryDelay() != nil {
+			secs := int64(math.Ceil(ri.GetRetryDelay().AsDuration().Seconds()))
+			if secs < 1 {
+				secs = 1
+			}
+			return strconv.FormatInt(secs, 10)
+		}
+	}
+	return "1"
+}
+
+func quotaExhausted(st *status.Status) bool {
+	for _, d := range st.Details() {
+		if ei, ok := d.(*errdetails.ErrorInfo); ok && ei.GetReason() == router.InsufficientQuota {
+			return true
+		}
+	}
+	return false
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

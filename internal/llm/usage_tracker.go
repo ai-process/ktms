@@ -23,6 +23,7 @@ type UsageTracker interface {
 	// inputTokens is the number of input tokens
 	// outputTokens is the number of output tokens
 	// durationMs is the request duration in milliseconds
+	// costNanoUSD is the call's price in nano-USD (1e-9 USD), 0 when unpriced
 	// status is the request status (success, error, etc.)
 	// meta is optional metadata stored on the event (keep small)
 	RecordUsage(
@@ -33,6 +34,7 @@ type UsageTracker interface {
 		inputTokens int,
 		outputTokens int,
 		durationMs int64,
+		costNanoUSD int64,
 		status usagev1.Status,
 		meta map[string]string,
 	) error
@@ -41,7 +43,7 @@ type UsageTracker interface {
 // NoOpUsageTracker is a usage tracker that does nothing (for when usage collection is disabled)
 type NoOpUsageTracker struct{}
 
-func (n *NoOpUsageTracker) RecordUsage(userID, actionID, vendor, model string, inputTokens, outputTokens int, durationMs int64, status usagev1.Status, meta map[string]string) error {
+func (n *NoOpUsageTracker) RecordUsage(userID, actionID, vendor, model string, inputTokens, outputTokens int, durationMs, costNanoUSD int64, status usagev1.Status, meta map[string]string) error {
 	// No-op
 	return nil
 }
