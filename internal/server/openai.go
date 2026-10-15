@@ -1120,6 +1120,113 @@ type decisionsResponseOut struct {
 	Usage   map[string]int       `json:"usage"`
 }
 
+// decisionsPartTypes are the OpenAI input content types (Responses and Chat
+// Completions spellings) plus the proxy's input_embedding extension.
+var decisionsPartTypes = map[string]bool{
+	"input_text": true, "text": true,
+	"input_image": true, "image_url": true,
+	"input_audio":     true,
+	"input_embedding": true,
+}
+
+type decisionsInputPart struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+	// ImageURL is a string in the Responses API and {"url","detail"} in Chat Completions.
+	ImageURL   json.RawMessage `json:"image_url"`
+	Detail     string          `json:"detail"`
+	InputAudio *struct {
+		Data   string `json:"data"`
+		Format string `json:"format"`
+	} `json:"input_audio"`
+	Embedding []float32 `json:"embedding"`
+	Model     string    `json:"model"`
+}
+
+// decisionsInput splits input into JSON state and media parts. Only an array
+// made entirely of known part types is multimodal, so existing callers whose
+// state happens to be an array keep having it passed verbatim.
+func decisionsInput(raw json.RawMessage) (string, []*pb.MediaPart, error) {
+	var probe []struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(raw, &probe) != nil || len(probe) == 0 {
+		return string(raw), nil, nil
+	}
+	for _, p := range probe {
+		if !decisionsPartTypes[p.Type] {
+			return string(raw), nil, nil
+		}
+	}
+	var parts []decisionsInputPart
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		return "", nil, invalid("invalid multimodal input: %v", err)
+	}
+	media := make([]*pb.MediaPart, 0, len(parts))
+	for i, p := range parts {
+		switch p.Type {
+		case "input_text", "text":
+			media = append(media, &pb.MediaPart{Part: &pb.MediaPart_Text{Text: &pb.TextPart{Text: p.Text}}})
+		case "input_image", "image_url":
+			img, err := decisionsImage(p)
+			if err != nil {
+				return "", nil, invalid("input[%d]: %v", i, err)
+			}
+			media = append(media, &pb.MediaPart{Part: &pb.MediaPart_Image{Image: img}})
+		case "input_audio":
+			if p.InputAudio == nil || p.InputAudio.Data == "" {
+				return "", nil, invalid("input[%d]: input_audio must contain base64 data", i)
+			}
+			data, err := base64.StdEncoding.DecodeString(p.InputAudio.Data)
+			if err != nil {
+				return "", nil, invalid("input[%d]: invalid base64 in input_audio: %v", i, err)
+			}
+			media = append(media, &pb.MediaPart{Part: &pb.MediaPart_Audio{Audio: &pb.AudioPart{
+				Data:   data,
+				Format: p.InputAudio.Format,
+			}}})
+		case "input_embedding":
+			media = append(media, &pb.MediaPart{Part: &pb.MediaPart_Embedding{Embedding: &pb.EmbeddingPart{
+				Values: p.Embedding,
+				Model:  p.Model,
+			}}})
+		}
+	}
+	return "", media, nil
+}
+
+// decisionsImage decodes data URIs locally; https URLs are forwarded for the
+// vendor to fetch, so the proxy never downloads judge media itself.
+func decisionsImage(p decisionsInputPart) (*pb.ImagePart, error) {
+	var url string
+	detail := p.Detail
+	if json.Unmarshal(p.ImageURL, &url) != nil {
+		var obj struct {
+			URL    string `json:"url"`
+			Detail string `json:"detail"`
+		}
+		if err := json.Unmarshal(p.ImageURL, &obj); err != nil {
+			return nil, errors.New("image_url must be a string or an object with url")
+		}
+		url = obj.URL
+		if detail == "" {
+			detail = obj.Detail
+		}
+	}
+	switch {
+	case strings.HasPrefix(url, "data:"):
+		mimeType, data, err := safefetch.ParseDataURI(url)
+		if err != nil {
+			return nil, fmt.Errorf("invalid data URI: %w", err)
+		}
+		return &pb.ImagePart{MimeType: mimeType, Data: data, Detail: detail}, nil
+	case strings.HasPrefix(url, "https://"):
+		return &pb.ImagePart{Url: url, Detail: detail}, nil
+	default:
+		return nil, errors.New("image_url must be an https URL or a data URI")
+	}
+}
+
 func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
 	var decReq decisionsRequest
 	if err := decodeBody(r, &decReq); err != nil {
@@ -1130,6 +1237,10 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 	if !json.Valid(decReq.Input) {
 		return invalid("input must be valid JSON")
+	}
+	stateJSON, stateMedia, err := decisionsInput(decReq.Input)
+	if err != nil {
+		return err
 	}
 	if len(decReq.Questions) == 0 {
 		return invalid("questions are required")
@@ -1232,7 +1343,8 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 	override := dec.ModelOverride
 	attrs, actionID := attributes(decReq.Metadata, decReq.User)
 	req := &pb.JudgeRequest{
-		StateJson:     string(decReq.Input),
+		StateJson:     stateJSON,
+		StateMedia:    stateMedia,
 		Questions:     pbQuestions,
 		ModelOverride: override,
 		Attributes:    attrs,
