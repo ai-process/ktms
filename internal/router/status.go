@@ -3,12 +3,20 @@ package router
 import (
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/rs/zerolog/log"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/ai-process/llm-proxy/internal/llm"
+	"github.com/ai-process/llm-proxy/internal/spendlimit"
 )
+
+// InsufficientQuota is the OpenAI-compatible code for an exhausted spend limit.
+const InsufficientQuota = "insufficient_quota"
 
 // Sentinels for the documented error contract (see llmproxy.proto).
 var (
@@ -21,7 +29,7 @@ var (
 type ChainExhausted struct {
 	Last         error  // last vendor error, nil when every model was skipped
 	AllThrottled bool   // every model skipped by a throttle
-	ThrottleKind string // "rpm" | "budget_key" | "budget_user"
+	ThrottleKind string // "rpm" | "budget_key" | "budget_user" | spendlimit reasons
 }
 
 func (e *ChainExhausted) Error() string {
@@ -52,7 +60,7 @@ func ToStatus(err error) error {
 	var exhausted *ChainExhausted
 	if errors.As(err, &exhausted) {
 		if exhausted.AllThrottled {
-			return status.Error(codes.ResourceExhausted, "throttled:"+exhausted.ThrottleKind)
+			return throttledStatus(exhausted.ThrottleKind, time.Now())
 		}
 		if llm.IsRetryableError(exhausted.Last) || llm.ShouldSkipToNextModel(exhausted.Last) {
 			return status.Error(codes.Unavailable, "vendors_unavailable")
@@ -60,4 +68,26 @@ func ToStatus(err error) error {
 		return status.Error(codes.Internal, "vendor_error")
 	}
 	return status.Error(codes.Internal, "vendor_error")
+}
+
+// throttledStatus carries a RetryInfo until the period resets for spend
+// refusals, so gRPC clients and the HTTP layer can tell when to come back.
+func throttledStatus(kind string, now time.Time) error {
+	if kind == spendlimit.ReasonUnavailable {
+		return status.Error(codes.Unavailable, "throttled:"+kind)
+	}
+	st := status.New(codes.ResourceExhausted, "throttled:"+kind)
+	retry, ok := spendlimit.RetryAfter(kind, now)
+	if !ok {
+		return st.Err()
+	}
+	withInfo, err := st.WithDetails(
+		&errdetails.ErrorInfo{Reason: InsufficientQuota, Domain: "llmproxy"},
+		&errdetails.RetryInfo{RetryDelay: durationpb.New(retry)},
+	)
+	if err != nil {
+		log.Error().Err(err).Str("kind", kind).Msg("attach retry info to spend refusal")
+		return st.Err()
+	}
+	return withInfo.Err()
 }

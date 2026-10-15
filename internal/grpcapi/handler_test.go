@@ -146,7 +146,7 @@ type trackedEvent struct {
 }
 
 func (f *fakeTracker) RecordUsage(userID, actionID, vendor, model string,
-	inputTokens, outputTokens int, durationMs int64, status usagev1.Status, meta map[string]string) error {
+	inputTokens, outputTokens int, durationMs, costNanoUSD int64, status usagev1.Status, meta map[string]string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.events = append(f.events, trackedEvent{userID, actionID, vendor, model, status, meta})

@@ -49,6 +49,9 @@ var methodScopes = map[string]string{
 	method(pb.LLMProxyAdminService_SetUserRateLimit_FullMethodName):    apikeys.ScopeAdmin,
 	method(pb.LLMProxyAdminService_DeleteUserRateLimit_FullMethodName): apikeys.ScopeAdmin,
 	method(pb.LLMProxyAdminService_ListUserRateLimits_FullMethodName):  apikeys.ScopeAdmin,
+	method(pb.LLMProxyAdminService_SetSpendLimit_FullMethodName):       apikeys.ScopeAdmin,
+	method(pb.LLMProxyAdminService_DeleteSpendLimit_FullMethodName):    apikeys.ScopeAdmin,
+	method(pb.LLMProxyAdminService_ListSpendLimits_FullMethodName):     apikeys.ScopeAdmin,
 
 	method(pb.NodeRegistryService_RegisterNode_FullMethodName):   apikeys.ScopeNode,
 	method(pb.NodeRegistryService_ValidateNode_FullMethodName):   apikeys.ScopeNode,

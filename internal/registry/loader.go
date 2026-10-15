@@ -124,12 +124,17 @@ func (l *Loader) build(ctx context.Context, version int64) (*Snapshot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load user rate limits: %w", err)
 	}
+	spendLimits, err := l.db.LoadSpendLimits(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load spend limits: %w", err)
+	}
 
 	snap := &Snapshot{
 		Version:        version,
 		Models:         map[string]*proxydb.Model{},
 		vendorKeys:     map[string]map[string]string{},
 		UserRateLimits: map[string]map[string]*proxydb.UserRateLimit{},
+		SpendLimits:    map[string]map[string]int64{},
 		tracker:        l.tracker,
 		nodePool:       l.nodePool,
 	}
@@ -138,6 +143,13 @@ func (l *Loader) build(ctx context.Context, version int64) (*Snapshot, error) {
 			snap.UserRateLimits[u.UserID] = map[string]*proxydb.UserRateLimit{}
 		}
 		snap.UserRateLimits[u.UserID][u.ModelID] = u
+	}
+	for _, sl := range spendLimits {
+		k := spendKey(sl.SubjectType, sl.SubjectID)
+		if snap.SpendLimits[k] == nil {
+			snap.SpendLimits[k] = map[string]int64{}
+		}
+		snap.SpendLimits[k][sl.Period] = sl.LimitNanoUSD
 	}
 	for _, m := range models {
 		if m.Enabled {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/observability"
+	"github.com/ai-process/llm-proxy/internal/pricing"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 )
 
@@ -27,34 +28,46 @@ const (
 type Throttle interface {
 	// AllowRPM takes an RPM slot, or reports the model saturated this minute.
 	AllowRPM(ctx context.Context, keyName, userID string, m *proxydb.Model) bool
-	// Reserve books the token estimate against the applicable daily budgets.
-	// tripped names the budget that refused ("budget_key" | "budget_user");
-	// empty tripped means reserved (res may still be nil when nothing applies).
-	Reserve(ctx context.Context, m *proxydb.Model, keyName, userID string, estimate int64) (res *Reservation, tripped string)
+	// Reserve books the token estimate against daily budgets and the priced worst
+	// case (estimate in, maxOutput out) against spend limits. tripped names the
+	// refusing limit (budget_*, spend_*); empty means reserved, res may be nil.
+	Reserve(ctx context.Context, m *proxydb.Model, keyName, userID string, estimate, maxOutput int64) (res *Reservation, tripped string)
 	// Settle adjusts reserved budgets to actual usage; usage zero = release.
 	Settle(res *Reservation, usage llm.TokensUsage)
 	// CheckDailyBudget reports if daily budget is already exhausted ("budget_key" | "budget_user"), or "" if OK.
 	CheckDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string) string
-	// ChargeDailyBudget increments the daily budgets with actual batch tokens.
-	ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string, tokens int64)
+	// ChargeDailyBudget books actual batch usage against daily token budgets
+	// and, priced at the batch rate, against spend limits.
+	ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string, usage llm.TokensUsage)
 }
 
 // Reservation is the throttle's bookkeeping handle for one admitted call.
 type Reservation struct {
 	Keys     []string
 	Estimate int64
+	Spend    *SpendHold
+}
+
+// SpendHold is the monetary side of a reservation: counters booked with
+// Reserved nano-USD, settled to the actual usage priced in Mode.
+type SpendHold struct {
+	Keys     []string
+	TTLs     []int64 // seconds, per key
+	Reserved int64
+	Model    *proxydb.Model
+	Mode     pricing.Mode
 }
 
 // NoopThrottle admits everything; used when Redis is not configured.
 type NoopThrottle struct{}
 
 func (NoopThrottle) AllowRPM(context.Context, string, string, *proxydb.Model) bool { return true }
-func (NoopThrottle) Reserve(context.Context, *proxydb.Model, string, string, int64) (*Reservation, string) {
+func (NoopThrottle) Reserve(context.Context, *proxydb.Model, string, string, int64, int64) (*Reservation, string) {
 	return nil, ""
 }
 func (NoopThrottle) Settle(*Reservation, llm.TokensUsage) {}
 func (NoopThrottle) CheckDailyBudget(context.Context, *proxydb.Model, string, string) string { return "" }
-func (NoopThrottle) ChargeDailyBudget(context.Context, *proxydb.Model, string, string, int64) {}
+func (NoopThrottle) ChargeDailyBudget(context.Context, *proxydb.Model, string, string, llm.TokensUsage) {}
 
 // UserID resolves user identity from attributes with an svc:<keyName> fallback.
 func UserID(attributes map[string]string, keyName string) string {
@@ -93,6 +106,14 @@ type Request struct {
 	SoftSchema func(m *proxydb.Model) bool
 }
 
+// maxOutput is the caller's output ceiling, 0 when none was set.
+func (r Request) maxOutput() int64 {
+	if r.Chat == nil {
+		return 0
+	}
+	return int64(r.Chat.GetMaxOutputTokens())
+}
+
 // Execute walks the chain: throttle-admit, call with per-model retries on
 // retryable errors, settle budgets. Terminal vendor errors stop the chain —
 // a schema rejection would fail identically on every model.
@@ -110,7 +131,7 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in chain")
 			continue
 		}
-		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate)
+		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate, r.maxOutput())
 		if tripped != "" {
 			throttleKind = tripped
 			observability.ThrottledTotal.WithLabelValues(tripped).Inc()
@@ -188,7 +209,7 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in stream chain")
 			continue
 		}
-		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate)
+		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate, r.maxOutput())
 		if tripped != "" {
 			throttleKind = tripped
 			observability.ThrottledTotal.WithLabelValues(tripped).Inc()
@@ -455,7 +476,7 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in chain")
 			continue
 		}
-		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate)
+		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate, 0)
 		if tripped != "" {
 			throttleKind = tripped
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("budget", tripped).

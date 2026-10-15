@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/ai-process/llm-proxy/internal/llm"
 	usagev1 "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1"
@@ -18,13 +19,15 @@ func (s *stubAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (
 type capturingTracker struct {
 	userID, actionID, vendor, model string
 	in, out                         int
+	cost                            int64
 	meta                            map[string]string
 	calls                           int
 }
 
-func (c *capturingTracker) RecordUsage(userID, actionID, vendor, model string, inputTokens, outputTokens int, durationMs int64, status usagev1.Status, meta map[string]string) error {
+func (c *capturingTracker) RecordUsage(userID, actionID, vendor, model string, inputTokens, outputTokens int, durationMs, costNanoUSD int64, status usagev1.Status, meta map[string]string) error {
 	c.userID, c.actionID, c.vendor, c.model = userID, actionID, vendor, model
 	c.in, c.out = inputTokens, outputTokens
+	c.cost = costNanoUSD
 	c.meta = meta
 	c.calls++
 	return nil
@@ -58,6 +61,37 @@ func TestTrackingAdapterPassesCallerMeta(t *testing.T) {
 	}
 	if tracker.meta["job_id"] != "job-1" || tracker.meta["gentask_id"] != "task-2" {
 		t.Fatalf("meta lost: %v", tracker.meta)
+	}
+}
+
+// Every event carries the cost the pricer derives from its own usage and start time.
+func TestTrackingAdapterStampsCost(t *testing.T) {
+	resp := &llm.Response{Usage: llm.TokensUsage{Input: 100, Output: 10}}
+	tracker := &capturingTracker{}
+	var pricedAt time.Time
+	adapter := NewTrackingAdapter(&stubAdapter{resp: resp}, tracker, "openai", "gpt-test").
+		WithPricer(func(u llm.TokensUsage, startedAt time.Time) int64 {
+			pricedAt = startedAt
+			return int64(u.Input*7 + u.Output*11)
+		})
+
+	before := time.Now()
+	if _, err := adapter.GenerateText(context.Background(), llm.NewChatContext()); err != nil {
+		t.Fatalf("GenerateText: %v", err)
+	}
+	if tracker.cost != 100*7+10*11 {
+		t.Fatalf("cost = %d, want 810", tracker.cost)
+	}
+	if pricedAt.Before(before) || pricedAt.After(time.Now()) {
+		t.Fatalf("priced at %s, want the call's start time", pricedAt)
+	}
+
+	unpriced := NewTrackingAdapter(&stubAdapter{resp: resp}, tracker, "openai", "gpt-test")
+	if _, err := unpriced.GenerateText(context.Background(), llm.NewChatContext()); err != nil {
+		t.Fatalf("GenerateText: %v", err)
+	}
+	if tracker.cost != 0 {
+		t.Fatalf("adapter without a pricer must report 0, got %d", tracker.cost)
 	}
 }
 
