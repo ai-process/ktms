@@ -452,14 +452,7 @@ func (pa *PoolAdapter) acquireSlot(ctx context.Context, userID string, estTokens
 
 // Judge evaluates a decision request against a local node with judge capability.
 func (pa *PoolAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, userID string, meta map[string]string) (*llm.JudgeResult, error) {
-	hasJudge := false
-	for _, c := range pa.model.Capabilities {
-		if c == registry.CapabilityJudge {
-			hasJudge = true
-			break
-		}
-	}
-	if !hasJudge {
+	if !hasCapability(pa.model.Capabilities, registry.CapabilityJudge) {
 		return nil, llm.ErrJudgmentUnsupported
 	}
 
@@ -498,10 +491,9 @@ func (pa *PoolAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, userID 
 			case 400, 413, 422:
 				isClientErr = true
 			case 404:
-				if recErr := pa.selector.mgr.Circuit().RecordFailure(context.Background(), cand.Snapshot.Meta.NodeID); recErr != nil {
-					log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record circuit failure")
-				}
-				return nil, llm.ErrJudgmentUnsupported
+				// Node engine does not expose /v1/decisions for this model.
+				// Yield to the next model in the chain without tripping the node's circuit breaker.
+				return nil, fmt.Errorf("%w: %v", llm.ErrJudgmentUnsupported, err)
 			}
 		}
 		if !isClientErr {

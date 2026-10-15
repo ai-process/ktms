@@ -196,9 +196,17 @@ func TestPoolAdapter_Judge_CircuitBreakerClassification(t *testing.T) {
 	var reqCount atomic.Int32
 	var statusToReturn atomic.Int32
 	statusToReturn.Store(http.StatusBadRequest)
+	var delayMs atomic.Int32
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqCount.Add(1)
+		if d := delayMs.Load(); d > 0 {
+			select {
+			case <-time.After(time.Duration(d) * time.Millisecond):
+			case <-r.Context().Done():
+				return
+			}
+		}
 		w.WriteHeader(int(statusToReturn.Load()))
 		_, _ = io.WriteString(w, `{"error": "simulated"}`)
 	}))
@@ -249,36 +257,67 @@ func TestPoolAdapter_Judge_CircuitBreakerClassification(t *testing.T) {
 	if reqCount.Load() != 4 {
 		t.Fatalf("expected 4 requests reached server, got %d", reqCount.Load())
 	}
-	nodes, _ := mgr.ListNodes(ctx)
+	nodes, err := mgr.ListNodes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(nodes) == 0 || nodes[0].State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
 		t.Fatalf("400 errors tripped circuit breaker unexpectedly")
 	}
 
-	// 2. Caller context deadline / cancellation does not trip circuit breaker
-	cancelCtx, cancel := context.WithCancel(ctx)
-	cancel() // canceled caller context
+	// 2. Caller context deadline exceeded in flight does not trip circuit breaker
+	delayMs.Store(200)
+	preTimeoutCount := reqCount.Load()
 	for i := 0; i < 4; i++ {
-		_, err := adapter.Judge(cancelCtx, req, "u", nil)
+		timeoutCtx, cancel := context.WithTimeout(ctx, 25*time.Millisecond)
+		_, err := adapter.Judge(timeoutCtx, req, "u", nil)
+		cancel()
 		if err == nil {
-			t.Fatalf("expected canceled context error, got nil")
+			t.Fatalf("expected deadline exceeded error, got nil")
 		}
 	}
-	nodes, _ = mgr.ListNodes(ctx)
-	if len(nodes) == 0 || nodes[0].State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
-		t.Fatalf("caller cancellation tripped circuit breaker unexpectedly")
+	if reqCount.Load() <= preTimeoutCount {
+		t.Fatalf("expected requests to reach server during timeout test, count = %d", reqCount.Load())
 	}
+	nodes, err = mgr.ListNodes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) == 0 || nodes[0].State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
+		t.Fatalf("caller timeout tripped circuit breaker unexpectedly")
+	}
+	delayMs.Store(0)
 
-	// 3. 404 maps to ErrJudgmentUnsupported and counts as failure (misconfigured endpoint)
+	// 3. 404 maps to ErrJudgmentUnsupported and does NOT trip circuit breaker for the node
 	statusToReturn.Store(http.StatusNotFound)
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
 		_, err := adapter.Judge(ctx, req, "u", nil)
 		if !errors.Is(err, llm.ErrJudgmentUnsupported) {
 			t.Fatalf("expected ErrJudgmentUnsupported on 404, got %v", err)
 		}
 	}
-	nodes, _ = mgr.ListNodes(ctx)
+	nodes, err = mgr.ListNodes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) == 0 || nodes[0].State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
+		t.Fatalf("404 errors should not trip circuit breaker for the node")
+	}
+
+	// 4. 500 Server error trips circuit breaker (threshold = 3)
+	statusToReturn.Store(http.StatusInternalServerError)
+	for i := 0; i < 3; i++ {
+		_, err := adapter.Judge(ctx, req, "u", nil)
+		if err == nil {
+			t.Fatalf("expected 500 error, got nil")
+		}
+	}
+	nodes, err = mgr.ListNodes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(nodes) == 0 || nodes[0].State != pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
-		t.Fatalf("404 errors should have tripped circuit breaker, got state %v", nodes[0].State)
+		t.Fatalf("500 errors should have tripped circuit breaker, got state %v", nodes[0].State)
 	}
 }
 

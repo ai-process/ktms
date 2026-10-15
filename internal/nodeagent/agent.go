@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+	"github.com/ai-process/llm-proxy/internal/registry"
 )
 
 type AgentConfig struct {
@@ -144,13 +145,13 @@ func TagJudgeModels(models []*pb.NodeModelSpec, judgeModels []string) []*pb.Node
 		if judgeSet[m.GetModelId()] || judgeSet[m.GetRemoteModelName()] {
 			hasJudge := false
 			for _, c := range m.Capabilities {
-				if c == "judge" {
+				if c == registry.CapabilityJudge {
 					hasJudge = true
 					break
 				}
 			}
 			if !hasJudge {
-				m.Capabilities = append(m.Capabilities, "judge")
+				m.Capabilities = append(m.Capabilities, registry.CapabilityJudge)
 			}
 		}
 	}
