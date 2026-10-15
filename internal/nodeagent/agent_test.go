@@ -71,3 +71,18 @@ func TestFilterModels(t *testing.T) {
 		}
 	}
 }
+
+func TestTagJudgeModels(t *testing.T) {
+	models := []*pb.NodeModelSpec{
+		{ModelId: "gemma4:26b", RemoteModelName: "gemma4:26b"},
+		{ModelId: "jepa-fast", RemoteModelName: "jepa-fast"},
+	}
+	tagged := TagJudgeModels(models, []string{"jepa-fast"})
+	if len(tagged[0].Capabilities) != 0 {
+		t.Errorf("gemma should have no capabilities, got %v", tagged[0].Capabilities)
+	}
+	if len(tagged[1].Capabilities) != 1 || tagged[1].Capabilities[0] != "judge" {
+		t.Errorf("jepa-fast should have [judge] capability, got %v", tagged[1].Capabilities)
+	}
+}
+
