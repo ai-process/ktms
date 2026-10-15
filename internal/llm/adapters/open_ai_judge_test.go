@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -341,5 +342,76 @@ func TestOpenAIDecisionInput(t *testing.T) {
 
 	if _, err := openAIDecisionInput(&llm.JudgeRequest{StateMedia: []*llm.JudgeMediaPart{{Type: "video"}}}); err == nil {
 		t.Error("unknown media type: want error")
+	}
+}
+
+func TestOpenAIAdapterEvaluateRollouts(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/decisions/rollouts" {
+			t.Errorf("path = %q, want /v1/decisions/rollouts", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"model":             "gpt-4o",
+			"best_candidate_id": "c1",
+			"evaluations": []map[string]any{
+				{
+					"id":              "c1",
+					"rank":            1,
+					"composite_score": 0.95,
+					"answers": []map[string]any{
+						{"name": "q1", "type": "score", "score": 0.95},
+					},
+				},
+			},
+			"usage": map[string]any{"input_tokens": 100, "output_tokens": 0},
+		})
+	}))
+	defer srv.Close()
+
+	adapter := NewOpenAIAdapter(nil, "gpt-4o", nil)
+	adapter.SetDecisionsConfig(srv.URL, "test-key")
+
+	req := &llm.EvaluateRolloutsRequest{
+		StateJSON: `{"s":1}`,
+		Candidates: []*llm.RolloutCandidate{
+			{ID: "c1", ActionJSON: `{"a":1}`},
+		},
+		Criteria: map[string]*llm.JudgeQuestion{
+			"q1": {Type: llm.JudgeScore, Instructions: "Rate", Levels: []string{"bad", "good"}},
+		},
+	}
+
+	res, err := adapter.EvaluateRollouts(context.Background(), req, "user-1", nil)
+	if err != nil {
+		t.Fatalf("EvaluateRollouts failed: %v", err)
+	}
+	if res.BestCandidateID != "c1" || len(res.Evaluations) != 1 {
+		t.Fatalf("unexpected result: %+v", res)
+	}
+}
+
+func TestOpenAIAdapterEvaluateRollouts_404(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	adapter := NewOpenAIAdapter(nil, "gpt-4o", nil)
+	adapter.SetDecisionsConfig(srv.URL, "test-key")
+
+	req := &llm.EvaluateRolloutsRequest{
+		StateJSON: `{"s":1}`,
+		Candidates: []*llm.RolloutCandidate{
+			{ID: "c1", ActionJSON: `{"a":1}`},
+		},
+		Criteria: map[string]*llm.JudgeQuestion{
+			"q1": {Type: llm.JudgeScore, Instructions: "Rate", Levels: []string{"bad", "good"}},
+		},
+	}
+
+	_, err := adapter.EvaluateRollouts(context.Background(), req, "user-1", nil)
+	if !errors.Is(err, llm.ErrJudgmentUnsupported) {
+		t.Fatalf("err = %v, want ErrJudgmentUnsupported", err)
 	}
 }

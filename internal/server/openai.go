@@ -62,6 +62,7 @@ func (a *OpenAIAPI) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/judge", a.wrap(judge, a.judge))
 	mux.HandleFunc("POST /v1/decisions", a.wrap(judge, a.decisions))
 	mux.HandleFunc("POST /v1/embeddings", a.wrap(embeddings, a.embeddings))
+	mux.HandleFunc("POST /v1/decisions/rollouts", a.wrap(judge, a.decisionsRollouts))
 	mux.HandleFunc("GET /v1/models", a.wrap(models, a.listModels))
 	mux.HandleFunc("GET /v1/models/{id...}", a.wrap(models, a.getModel))
 }
@@ -1545,6 +1546,291 @@ func float32sToBase64(vals []float32) string {
 		binary.LittleEndian.PutUint32(buf[i*4:], bits)
 	}
 	return base64.StdEncoding.EncodeToString(buf)
+}
+
+// ---- decisions rollouts (batch rollout evaluation) ----
+
+type decisionsRolloutCandidateReq struct {
+	ID         string               `json:"id"`
+	Action     json.RawMessage      `json:"action"`
+	Media      []decisionsInputPart `json:"media,omitempty"`
+	ActionText string               `json:"action_text,omitempty"`
+}
+
+type decisionsRolloutRequest struct {
+	Model      string                         `json:"model"`
+	State      json.RawMessage                `json:"state"`
+	Candidates []decisionsRolloutCandidateReq `json:"candidates"`
+	Criteria   []decisionsQuestionReq         `json:"criteria"`
+	Questions  []decisionsQuestionReq         `json:"questions"`
+	Metadata   map[string]string              `json:"metadata,omitempty"`
+	User       string                         `json:"user,omitempty"`
+}
+
+type decisionsRolloutEvaluationOut struct {
+	ID             string               `json:"id"`
+	Rank           int                  `json:"rank"`
+	CompositeScore float64              `json:"composite_score"`
+	Answers        []decisionsAnswerOut `json:"answers"`
+}
+
+type decisionsRolloutResponseOut struct {
+	Model           string                          `json:"model"`
+	BestCandidateID string                          `json:"best_candidate_id"`
+	Evaluations     []decisionsRolloutEvaluationOut `json:"evaluations"`
+	Usage           map[string]int                  `json:"usage"`
+}
+
+func (a *OpenAIAPI) decisionsRollouts(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+	var decReq decisionsRolloutRequest
+	if err := decodeBody(r, &decReq); err != nil {
+		return err
+	}
+	if len(decReq.Candidates) == 0 {
+		return invalid("candidates are required")
+	}
+
+	stateJSON, stateMedia, err := decisionsInput(decReq.State)
+	if err != nil {
+		return err
+	}
+
+	criteriaReqs := decReq.Criteria
+	if len(criteriaReqs) == 0 && len(decReq.Questions) > 0 {
+		criteriaReqs = decReq.Questions
+	}
+	if len(criteriaReqs) == 0 {
+		criteriaReqs = []decisionsQuestionReq{
+			{Name: "reward", Type: "predicate", Instructions: "Evaluate candidate rollout reward."},
+		}
+	}
+
+	scoreLabels := make(map[string][]string)
+	pbCriteria := make(map[string]*pb.JudgeQuestion, len(criteriaReqs))
+	for _, q := range criteriaReqs {
+		if q.Name == "" {
+			return invalid("criteria name is required")
+		}
+		if _, exists := pbCriteria[q.Name]; exists {
+			return invalid("duplicate criteria name %q", q.Name)
+		}
+		if q.Instructions == "" {
+			return invalid("criteria %q has no instructions", q.Name)
+		}
+		jq := &pb.JudgeQuestion{
+			Instructions: q.Instructions,
+		}
+		switch q.Type {
+		case "predicate":
+			jq.Type = pb.JudgeType_JUDGE_TYPE_NOUL
+		case "choice":
+			jq.Type = pb.JudgeType_JUDGE_TYPE_CHOICE
+			if len(q.Choices) < 2 {
+				return invalid("choice %q needs at least two choices", q.Name)
+			}
+			jq.Options = make(map[string]string, len(q.Choices))
+			for _, c := range q.Choices {
+				if _, exists := jq.Options[c.Value]; exists {
+					return invalid("choice %q has duplicate value %q", q.Name, c.Value)
+				}
+				jq.Options[c.Value] = c.Description
+			}
+		case "score":
+			jq.Type = pb.JudgeType_JUDGE_TYPE_SCORE
+			if len(q.Levels) == 0 {
+				return invalid("score %q needs levels", q.Name)
+			}
+			var objLevels []decisionsLevelReq
+			var labels []string
+			if err := json.Unmarshal(q.Levels, &objLevels); err == nil && len(objLevels) > 0 {
+				jq.Levels = make([]string, len(objLevels))
+				labels = make([]string, len(objLevels))
+				seenLabels := make(map[string]bool, len(objLevels))
+				for i, l := range objLevels {
+					lbl := l.Label
+					if lbl == "" {
+						lbl = l.Description
+					}
+					if lbl == "" {
+						lbl = strconv.Itoa(i)
+					}
+					if seenLabels[lbl] {
+						return invalid("score %q has duplicate level %q", q.Name, lbl)
+					}
+					seenLabels[lbl] = true
+					labels[i] = lbl
+					if l.Description != "" {
+						jq.Levels[i] = l.Description
+					} else {
+						jq.Levels[i] = l.Label
+					}
+				}
+			} else {
+				var strLevels []string
+				if err := json.Unmarshal(q.Levels, &strLevels); err == nil {
+					jq.Levels = strLevels
+					labels = make([]string, len(strLevels))
+					seenLabels := make(map[string]bool, len(strLevels))
+					for i, s := range strLevels {
+						if seenLabels[s] {
+							return invalid("score %q has duplicate level %q", q.Name, s)
+						}
+						seenLabels[s] = true
+						labels[i] = s
+					}
+				} else {
+					return invalid("invalid levels format for %q", q.Name)
+				}
+			}
+			if len(jq.Levels) < 2 {
+				return invalid("score %q needs at least two levels", q.Name)
+			}
+			scoreLabels[q.Name] = labels
+		default:
+			return invalid("unsupported criteria type %q", q.Type)
+		}
+		pbCriteria[q.Name] = jq
+	}
+
+	pbCandidates := make([]*pb.RolloutCandidate, 0, len(decReq.Candidates))
+	for i, c := range decReq.Candidates {
+		if c.ID == "" {
+			return invalid("candidate[%d] id is required", i)
+		}
+		candAction := string(c.Action)
+		var candMedia []*pb.MediaPart
+		if len(c.Media) > 0 {
+			for mi, p := range c.Media {
+				switch p.Type {
+				case "input_text", "text":
+					candMedia = append(candMedia, &pb.MediaPart{Part: &pb.MediaPart_Text{Text: &pb.TextPart{Text: p.Text}}})
+				case "input_image", "image_url":
+					img, err := decisionsImage(p)
+					if err != nil {
+						return invalid("candidate[%d].media[%d]: %v", i, mi, err)
+					}
+					candMedia = append(candMedia, &pb.MediaPart{Part: &pb.MediaPart_Image{Image: img}})
+				case "input_audio":
+					if p.InputAudio == nil || p.InputAudio.Data == "" {
+						return invalid("candidate[%d].media[%d]: input_audio must contain base64 data", i, mi)
+					}
+					data, err := base64.StdEncoding.DecodeString(p.InputAudio.Data)
+					if err != nil {
+						return invalid("candidate[%d].media[%d]: invalid base64: %v", i, mi, err)
+					}
+					candMedia = append(candMedia, &pb.MediaPart{Part: &pb.MediaPart_Audio{Audio: &pb.AudioPart{
+						Data:   data,
+						Format: p.InputAudio.Format,
+					}}})
+				case "input_embedding":
+					candMedia = append(candMedia, &pb.MediaPart{Part: &pb.MediaPart_Embedding{Embedding: &pb.EmbeddingPart{
+						Values: p.Embedding,
+						Model:  p.Model,
+					}}})
+				default:
+					return invalid("candidate[%d].media[%d]: unsupported media type %q", i, mi, p.Type)
+				}
+			}
+		}
+		pbCandidates = append(pbCandidates, &pb.RolloutCandidate{
+			Id:          c.ID,
+			ActionJson:  candAction,
+			ActionMedia: candMedia,
+			ActionText:  c.ActionText,
+		})
+	}
+
+	dec, err := route(decReq.Model, "", "")
+	if err != nil {
+		return err
+	}
+	if dec.HasPlacement {
+		return invalid("placement is only supported for chat completions")
+	}
+	override := dec.ModelOverride
+	attrs, actionID := attributes(decReq.Metadata, decReq.User)
+
+	req := &pb.EvaluateRolloutsRequest{
+		StateJson:     stateJSON,
+		StateMedia:    stateMedia,
+		Candidates:    pbCandidates,
+		Criteria:      pbCriteria,
+		ModelOverride: override,
+		Attributes:    attrs,
+		ActionId:      actionID,
+	}
+
+	resp, err := a.proxy.EvaluateRollouts(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	evalOuts := make([]decisionsRolloutEvaluationOut, 0, len(resp.Evaluations))
+	for _, e := range resp.Evaluations {
+		eo := decisionsRolloutEvaluationOut{
+			ID:             e.Id,
+			Rank:           int(e.Rank),
+			CompositeScore: e.CompositeScore,
+			Answers:        make([]decisionsAnswerOut, 0, len(e.Answers)),
+		}
+		for _, q := range criteriaReqs {
+			ans, ok := e.Answers[q.Name]
+			if !ok {
+				continue
+			}
+			outAns := decisionsAnswerOut{Name: q.Name}
+			switch ans.Type {
+			case pb.JudgeType_JUDGE_TYPE_NOUL:
+				outAns.Type = "predicate"
+				prob := ans.Noul
+				outAns.Probability = &prob
+			case pb.JudgeType_JUDGE_TYPE_CHOICE:
+				outAns.Type = "choice"
+				outAns.Choice = ans.Choice
+				outAns.Probabilities = ans.Probabilities
+				conf := ans.Confidence
+				outAns.Confidence = &conf
+			case pb.JudgeType_JUDGE_TYPE_SCORE:
+				outAns.Type = "score"
+				sc := ans.Score
+				outAns.Score = &sc
+				conf := ans.Confidence
+				outAns.Confidence = &conf
+				if labels, ok := scoreLabels[q.Name]; ok && len(ans.Probabilities) > 0 {
+					mappedProbs := make(map[string]float64, len(ans.Probabilities))
+					for k, v := range ans.Probabilities {
+						idx, err := strconv.Atoi(k)
+						if err == nil && idx >= 0 && idx < len(labels) {
+							mappedProbs[labels[idx]] = v
+						} else {
+							mappedProbs[k] = v
+						}
+					}
+					outAns.Probabilities = mappedProbs
+				} else {
+					outAns.Probabilities = ans.Probabilities
+				}
+			}
+			eo.Answers = append(eo.Answers, outAns)
+		}
+		evalOuts = append(evalOuts, eo)
+	}
+
+	usage := map[string]int{
+		"input_tokens":  int(resp.Usage.Input),
+		"output_tokens": int(resp.Usage.Output),
+		"total_tokens":  int(resp.Usage.Input + resp.Usage.Output),
+	}
+
+	setResolvedHeaders(w, resp.ResolvedVendor, resp.MatchedRule)
+	w.Header().Set("X-LLM-Proxy-Model", resp.ResolvedModel)
+	writeJSON(w, http.StatusOK, decisionsRolloutResponseOut{
+		Model:           resp.ResolvedModel,
+		BestCandidateID: resp.BestCandidateId,
+		Evaluations:     evalOuts,
+		Usage:           usage,
+	})
+	return nil
 }
 
 // ---- models ----

@@ -60,7 +60,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var stream bool
 	var body []byte
 	switch {
-	case r.Method == http.MethodPost && (r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/decisions"):
+	case r.Method == http.MethodPost && (r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/decisions" || r.URL.Path == "/v1/decisions/rollouts"):
 		var err error
 		body, err = io.ReadAll(http.MaxBytesReader(w, r.Body, maxGatewayBody))
 		if err != nil {
@@ -75,7 +75,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			stream = probe.Stream
 		}
 	case r.URL.Path == "/v1/models" && r.Method == http.MethodGet:
-	case r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/models" || r.URL.Path == "/v1/decisions":
+	case r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/models" || r.URL.Path == "/v1/decisions" || r.URL.Path == "/v1/decisions/rollouts":
 		writeGatewayError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	default:

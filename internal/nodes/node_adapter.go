@@ -544,3 +544,103 @@ func judgeInputEstimate(req *llm.JudgeRequest) int64 {
 	}
 	return est
 }
+
+// EvaluateRollouts scores multiple rollout candidate actions against a local node.
+func (pa *PoolAdapter) EvaluateRollouts(ctx context.Context, req *llm.EvaluateRolloutsRequest, userID string, meta map[string]string) (*llm.EvaluateRolloutsResult, error) {
+	if !hasCapability(pa.model.Capabilities, registry.CapabilityJudge) {
+		return nil, llm.ErrJudgmentUnsupported
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	estTokens := float64(rolloutInputEstimate(req))
+	cand, reqID, err := pa.acquireSlot(ctx, userID, estTokens, registry.CapabilityJudge)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if relErr := pa.selector.mgr.Slots().ReleaseLease(context.Background(), cand.Snapshot.Meta.NodeID, reqID); relErr != nil {
+			log.Warn().Err(relErr).Str("node_id", cand.Snapshot.Meta.NodeID).Str("req_id", reqID).Msg("failed to release node slot lease")
+		}
+	}()
+
+	client, underlyingModel, plainAuthToken, err := pa.buildNodeClient(cand)
+	if err != nil {
+		return nil, err
+	}
+
+	adapter := pa.newNodeAdapter(client, underlyingModel, cand)
+	adapter.SetDecisionsConfig(cand.Snapshot.Meta.Endpoint, plainAuthToken)
+
+	start := time.Now()
+	res, err := adapter.EvaluateRollouts(ctx, req, userID, meta)
+	duration := time.Since(start)
+
+	if err != nil {
+		isClientErr := ctx.Err() != nil
+		var decisionErr *adapters.OpenAIDecisionError
+		if errors.As(err, &decisionErr) {
+			switch decisionErr.Status {
+			case 400, 413, 422:
+				isClientErr = true
+			case 404:
+				// Node engine does not expose /v1/decisions/rollouts for this model.
+				// Yield to the next model in the chain without tripping the node's circuit breaker.
+				return nil, fmt.Errorf("%w: %v", llm.ErrJudgmentUnsupported, err)
+			}
+		}
+		if !isClientErr {
+			if recErr := pa.selector.mgr.Circuit().RecordFailure(context.Background(), cand.Snapshot.Meta.NodeID); recErr != nil {
+				log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record circuit failure")
+			}
+		}
+		return nil, err
+	}
+
+	if recErr := pa.selector.mgr.Circuit().RecordSuccess(context.Background(), cand.Snapshot.Meta.NodeID); recErr != nil {
+		log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record circuit success")
+	}
+
+	if res != nil && res.Usage.Input > 0 && duration > 0 {
+		inputTokens := float64(res.Usage.Input)
+		ttftNorm := (float64(duration.Milliseconds()) / inputTokens) * 1000.0
+		if recErr := pa.selector.mgr.Telemetry().RecordMetrics(context.Background(), cand.Snapshot.Meta.NodeID, pa.model.ID, -1, ttftNorm); recErr != nil {
+			log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record node telemetry")
+		}
+	}
+
+	if meta != nil {
+		meta["node_id"] = cand.Snapshot.Meta.NodeID
+	}
+
+	return res, nil
+}
+
+func rolloutInputEstimate(req *llm.EvaluateRolloutsRequest) int64 {
+	if req == nil {
+		return 50
+	}
+	baseRunes := utf8.RuneCountInString(req.StateJSON)
+	critRunes := 0
+	for _, q := range req.Criteria {
+		critRunes += utf8.RuneCountInString(q.Instructions)
+		for _, opt := range q.Options {
+			critRunes += utf8.RuneCountInString(opt)
+		}
+		for _, lvl := range q.Levels {
+			critRunes += utf8.RuneCountInString(lvl)
+		}
+		critRunes += utf8.RuneCountInString(q.TrueCriteria) + utf8.RuneCountInString(q.FalseCriteria)
+	}
+	var total int64
+	for _, c := range req.Candidates {
+		candRunes := baseRunes + utf8.RuneCountInString(c.ActionJSON) + utf8.RuneCountInString(c.ActionText) + critRunes
+		total += int64(candRunes)/4 + 1
+	}
+	if total < 10 {
+		return 10
+	}
+	return total
+}
