@@ -314,15 +314,37 @@ message JudgeAnswer {
   map<string, string> legend = 7; // SCORE: level index -> its description
 }
 
+// EmbeddingPart is a latent state vector (JEPA, CLIP, ...) judged as-is, so a
+// caller with an encoder never has to decode it back to text first.
+message EmbeddingPart {
+  repeated float values = 1;
+  string model = 2; // encoder that produced the vector, e.g. "v-jepa-2"
+}
+
+// MediaPart is one non-JSON piece of judge state. Image URLs must be https;
+// they are forwarded to the vendor, not fetched by the proxy.
+message MediaPart {
+  oneof part {
+    TextPart text = 1;
+    ImagePart image = 2;
+    AudioPart audio = 3;
+    EmbeddingPart embedding = 4;
+  }
+}
+
 message JudgeRequest {
   // The state to judge, as JSON: an object, array or bare string. Passed to the
   // vendor verbatim, so the caller owns its shape; the proxy only checks that
-  // it parses.
+  // it parses. Optional when state_media is set.
   string state_json = 1;
   map<string, JudgeQuestion> questions = 2; // caller's ids; answers come back under them
   map<string, string> attributes = 3; // same routing/usage attributes as text
   string action_id = 4;
   string model_override = 5; // exact registry model id; bypasses rules
+  // Multimodal state judged alongside state_json. Images, audio and embeddings
+  // narrow the chain to judge models that also declare "vision", "audio_input"
+  // or "embedding_input"; guardrails inspect text parts only.
+  repeated MediaPart state_media = 6;
 }
 
 message JudgeResponse {

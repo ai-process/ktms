@@ -160,7 +160,7 @@ type mediaPlan struct {
 	adapter  func(m *proxydb.Model) (llm.ClientAdapter, error)
 }
 
-func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, override, modality, capability string) (*mediaPlan, error) {
+func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, override, modality string, capabilities ...string) (*mediaPlan, error) {
 	id := apikeys.IdentityFrom(ctx)
 	if id == nil {
 		return nil, status.Error(codes.Unauthenticated, "no identity")
@@ -197,7 +197,7 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 		ruleName = rule.Name
 	}
 
-	models, err := router.FilterChain(snap, chain, id.KeyID, mediaEffort, false, capability)
+	models, err := router.FilterChain(snap, chain, id.KeyID, mediaEffort, false, capabilities...)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}

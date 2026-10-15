@@ -1025,3 +1025,63 @@ func TestChatCompletions_AutoRoutingAndPlacement(t *testing.T) {
 	}
 }
 
+
+func TestDecisionsMultimodalInput(t *testing.T) {
+	proxy, h, key := newTestAPI(t)
+	png := base64.StdEncoding.EncodeToString([]byte("png"))
+	wav := base64.StdEncoding.EncodeToString([]byte("wav"))
+	body := `{"input":[
+		{"type":"input_text","text":"Is the lane clear?"},
+		{"type":"input_image","image_url":"data:image/png;base64,` + png + `","detail":"low"},
+		{"type":"image_url","image_url":{"url":"https://cdn.example.com/cam.jpg","detail":"high"}},
+		{"type":"input_audio","input_audio":{"data":"` + wav + `","format":"wav"}},
+		{"type":"input_embedding","embedding":[0.5,-1],"model":"v-jepa-2"}
+	],"questions":[{"name":"q","type":"predicate","instructions":"clear?"}]}`
+	if rec := do(h, "POST", "/v1/decisions", key, body); rec.Code != 200 {
+		t.Fatalf("decisions: %d %s", rec.Code, rec.Body)
+	}
+	req := proxy.judgeReq
+	if req.GetStateJson() != "" || len(req.GetStateMedia()) != 5 {
+		t.Fatalf("state_json = %q, media = %d parts, want empty and 5", req.GetStateJson(), len(req.GetStateMedia()))
+	}
+	m := req.GetStateMedia()
+	if m[0].GetText().GetText() != "Is the lane clear?" {
+		t.Errorf("text part = %v", m[0])
+	}
+	if img := m[1].GetImage(); img.GetMimeType() != "image/png" || string(img.GetData()) != "png" || img.GetDetail() != "low" || img.GetUrl() != "" {
+		t.Errorf("data URI image = %v", img)
+	}
+	if img := m[2].GetImage(); img.GetUrl() != "https://cdn.example.com/cam.jpg" || img.GetDetail() != "high" || len(img.GetData()) != 0 {
+		t.Errorf("https image = %v", img)
+	}
+	if aud := m[3].GetAudio(); string(aud.GetData()) != "wav" || aud.GetFormat() != "wav" {
+		t.Errorf("audio = %v", aud)
+	}
+	if emb := m[4].GetEmbedding(); len(emb.GetValues()) != 2 || emb.GetValues()[1] != -1 || emb.GetModel() != "v-jepa-2" {
+		t.Errorf("embedding = %v", emb)
+	}
+
+	// An array state that is not made of known part types stays verbatim JSON.
+	plain := `{"input":[{"type":"car","speed":3}],"questions":[{"name":"q","type":"predicate","instructions":"fast?"}]}`
+	if rec := do(h, "POST", "/v1/decisions", key, plain); rec.Code != 200 {
+		t.Fatalf("plain array: %d %s", rec.Code, rec.Body)
+	}
+	if proxy.judgeReq.GetStateJson() != `[{"type":"car","speed":3}]` || len(proxy.judgeReq.GetStateMedia()) != 0 {
+		t.Errorf("plain array state = %q, media = %v", proxy.judgeReq.GetStateJson(), proxy.judgeReq.GetStateMedia())
+	}
+
+	bad := map[string]string{
+		"http image":     `[{"type":"input_image","image_url":"http://x/a.png"}]`,
+		"bad data uri":   `[{"type":"input_image","image_url":"data:image/png;base64,%%%"}]`,
+		"image no url":   `[{"type":"input_image"}]`,
+		"audio no data":  `[{"type":"input_audio","input_audio":{"format":"wav"}}]`,
+		"audio bad b64":  `[{"type":"input_audio","input_audio":{"data":"%%%","format":"wav"}}]`,
+		"embedding text": `[{"type":"input_embedding","embedding":["a"]}]`,
+	}
+	for name, input := range bad {
+		rec := do(h, "POST", "/v1/decisions", key, `{"input":`+input+`,"questions":[{"name":"q","type":"predicate","instructions":"x"}]}`)
+		if rec.Code != 400 {
+			t.Errorf("%s: status %d, want 400: %s", name, rec.Code, rec.Body)
+		}
+	}
+}
