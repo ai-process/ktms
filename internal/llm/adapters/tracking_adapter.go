@@ -691,3 +691,117 @@ func (t *TrackingAdapter) FetchBatchResults(ctx context.Context, vendorJobID str
 	}
 	return b.FetchBatchResults(ctx, vendorJobID, items)
 }
+
+// CreateEmbeddings forwards to the wrapped adapter's optional embedding capability and
+// tracks usage. Adapters without one surface ErrEmbeddingUnsupported.
+func (t *TrackingAdapter) CreateEmbeddings(ctx context.Context, req *llm.EmbeddingRequest, userID string, meta map[string]string) (*llm.EmbeddingResult, error) {
+	emb, ok := t.adapter.(llm.EmbeddingAdapter)
+	if !ok {
+		return nil, llm.ErrEmbeddingUnsupported
+	}
+
+	startTime := time.Now()
+	effort := "default"
+	if meta != nil && meta["effort"] != "" {
+		effort = meta["effort"]
+	}
+
+	attrs := []attribute.KeyValue{
+		observability.AttrGenAIProviderName.String(t.vendor),
+		observability.AttrGenAIRequestModel.String(t.model),
+	}
+	if meta != nil {
+		if r := meta["rule"]; r != "" {
+			attrs = append(attrs, observability.AttrLLMProxyRule.String(r))
+		}
+		if k := meta["api_key"]; k != "" {
+			attrs = append(attrs, observability.AttrLLMProxyClientKey.String(k))
+		}
+	}
+
+	ctx, span := observability.Tracer().Start(ctx, "embeddings "+t.model, trace.WithAttributes(attrs...))
+	defer span.End()
+
+	observability.ActiveRequests.WithLabelValues(t.vendor, t.model).Inc()
+	defer observability.ActiveRequests.WithLabelValues(t.vendor, t.model).Dec()
+
+	result, err := emb.CreateEmbeddings(ctx, req, userID, meta)
+	duration := time.Since(startTime)
+	durationMs := duration.Milliseconds()
+
+	statusLabel := "success"
+	if err != nil {
+		statusLabel = "error"
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	observability.RequestsTotal.WithLabelValues(t.vendor, t.model, effort, statusLabel).Inc()
+	observability.RequestDuration.WithLabelValues(t.vendor, t.model, effort).Observe(duration.Seconds())
+
+	if t.tracker != nil {
+		status := usagev1.Status_STATUS_SUCCESS
+		if err != nil {
+			status = usagev1.Status_STATUS_ERROR
+		}
+
+		actionID := "llmproxy.embeddings"
+		if req != nil && req.ActionID != "" {
+			actionID = req.ActionID
+		}
+		model := t.model
+		var inTokens int
+		if result != nil {
+			if result.Model != "" {
+				model = result.Model
+			}
+			inTokens = result.Usage.Input
+			observability.TokensTotal.WithLabelValues(t.vendor, model, "input").Add(float64(inTokens))
+			span.SetAttributes(
+				observability.AttrGenAIResponseModel.String(model),
+				observability.AttrGenAIUsageInput.Int(inTokens),
+			)
+		}
+		trackMeta := map[string]string{}
+		for k, v := range meta {
+			trackMeta[k] = v
+		}
+		trackMeta["modality"] = "embedding"
+		if req != nil {
+			trackMeta["inputs"] = strconv.Itoa(len(req.Inputs))
+			if req.Dimensions > 0 {
+				trackMeta["dimensions"] = strconv.Itoa(req.Dimensions)
+			}
+		}
+		if err != nil {
+			msg := err.Error()
+			if len(msg) > 300 {
+				msg = msg[:300]
+			}
+			trackMeta["error"] = msg
+		}
+
+		if trackErr := t.tracker.RecordUsage(
+			userID,
+			actionID,
+			t.vendor,
+			model,
+			inTokens,
+			0,
+			durationMs,
+			t.cost(inTokens, 0, startTime),
+			status,
+			trackMeta,
+		); trackErr != nil {
+			log.Error().
+				Stack().
+				Err(trackErr).
+				Str("userID", userID).
+				Str("actionID", actionID).
+				Str("vendor", t.vendor).
+				Str("model", model).
+				Msg("Failed to record usage")
+		}
+	}
+
+	return result, err
+}

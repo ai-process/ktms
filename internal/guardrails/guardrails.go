@@ -83,6 +83,39 @@ func (g *Guardrails) InspectText(text string, vault *TokenVault) (string, []Viol
 	return text, allViolations, nil
 }
 
+// InspectPII checks or redacts PII without applying prompt injection heuristics.
+func (g *Guardrails) InspectPII(text string, vault *TokenVault) (string, []Violation, error) {
+	if !g.Enabled || text == "" {
+		return text, nil, nil
+	}
+
+	var allViolations []Violation
+	if g.PIIAction == ActionBlock {
+		spans := DetectPII(text)
+		if len(spans) > 0 {
+			var cats []string
+			for _, s := range spans {
+				cats = append(cats, string(s.Category))
+				allViolations = append(allViolations, Violation{
+					Category: s.Category,
+					Detail:   "blocked " + string(s.Category),
+					Value:    s.Value,
+				})
+			}
+			return "", allViolations, fmt.Errorf("%w: PII detected (%s)", ErrGuardrailViolation, strings.Join(cats, ", "))
+		}
+		return text, allViolations, nil
+	}
+
+	if g.PIIAction == ActionRedact && vault != nil {
+		redacted, piiViolations := vault.Redact(text)
+		allViolations = append(allViolations, piiViolations...)
+		return redacted, allViolations, nil
+	}
+
+	return text, allViolations, nil
+}
+
 // InspectChatContext validates and sanitizes instructions and messages in a ChatContext.
 func (g *Guardrails) InspectChatContext(ctx context.Context, chat *llm.ChatContext, vault *TokenVault) ([]Violation, error) {
 	if !g.Enabled || chat == nil {

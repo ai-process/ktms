@@ -28,7 +28,7 @@ func IsRetryableError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, ErrNoAudioContent) || errors.Is(err, ErrJudgmentUnsupported) {
+	if errors.Is(err, ErrNoAudioContent) || errors.Is(err, ErrJudgmentUnsupported) || errors.Is(err, ErrEmbeddingUnsupported) {
 		return true
 	}
 	var httpErr HTTPStatusError

@@ -24,6 +24,7 @@ const (
 	LLMProxyService_SynthesizeSpeech_FullMethodName   = "/llmproxy.v1.LLMProxyService/SynthesizeSpeech"
 	LLMProxyService_GenerateImage_FullMethodName      = "/llmproxy.v1.LLMProxyService/GenerateImage"
 	LLMProxyService_Judge_FullMethodName              = "/llmproxy.v1.LLMProxyService/Judge"
+	LLMProxyService_GetEmbeddings_FullMethodName      = "/llmproxy.v1.LLMProxyService/GetEmbeddings"
 	LLMProxyService_ListModels_FullMethodName         = "/llmproxy.v1.LLMProxyService/ListModels"
 	LLMProxyService_SubmitBatch_FullMethodName        = "/llmproxy.v1.LLMProxyService/SubmitBatch"
 	LLMProxyService_GetBatch_FullMethodName           = "/llmproxy.v1.LLMProxyService/GetBatch"
@@ -63,6 +64,9 @@ type LLMProxyServiceClient interface {
 	// EFFORT_LOW plus a reserved attributes["modality"] of "judge", chain
 	// filtered to models declaring the "judge" capability.
 	Judge(ctx context.Context, in *JudgeRequest, opts ...grpc.CallOption) (*JudgeResponse, error)
+	// Embeddings generates vector representations of text. Vector space isolation
+	// is strictly preserved: cross-model fallbacks are disallowed.
+	GetEmbeddings(ctx context.Context, in *GetEmbeddingsRequest, opts ...grpc.CallOption) (*GetEmbeddingsResponse, error)
 	ListModels(ctx context.Context, in *ListModelsRequest, opts ...grpc.CallOption) (*ListModelsResponse, error)
 	// Batch generation RPCs.
 	SubmitBatch(ctx context.Context, in *SubmitBatchRequest, opts ...grpc.CallOption) (*SubmitBatchResponse, error)
@@ -132,6 +136,16 @@ func (c *lLMProxyServiceClient) Judge(ctx context.Context, in *JudgeRequest, opt
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(JudgeResponse)
 	err := c.cc.Invoke(ctx, LLMProxyService_Judge_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lLMProxyServiceClient) GetEmbeddings(ctx context.Context, in *GetEmbeddingsRequest, opts ...grpc.CallOption) (*GetEmbeddingsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetEmbeddingsResponse)
+	err := c.cc.Invoke(ctx, LLMProxyService_GetEmbeddings_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -220,6 +234,9 @@ type LLMProxyServiceServer interface {
 	// EFFORT_LOW plus a reserved attributes["modality"] of "judge", chain
 	// filtered to models declaring the "judge" capability.
 	Judge(context.Context, *JudgeRequest) (*JudgeResponse, error)
+	// Embeddings generates vector representations of text. Vector space isolation
+	// is strictly preserved: cross-model fallbacks are disallowed.
+	GetEmbeddings(context.Context, *GetEmbeddingsRequest) (*GetEmbeddingsResponse, error)
 	ListModels(context.Context, *ListModelsRequest) (*ListModelsResponse, error)
 	// Batch generation RPCs.
 	SubmitBatch(context.Context, *SubmitBatchRequest) (*SubmitBatchResponse, error)
@@ -250,6 +267,9 @@ func (UnimplementedLLMProxyServiceServer) GenerateImage(context.Context, *Genera
 }
 func (UnimplementedLLMProxyServiceServer) Judge(context.Context, *JudgeRequest) (*JudgeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Judge not implemented")
+}
+func (UnimplementedLLMProxyServiceServer) GetEmbeddings(context.Context, *GetEmbeddingsRequest) (*GetEmbeddingsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetEmbeddings not implemented")
 }
 func (UnimplementedLLMProxyServiceServer) ListModels(context.Context, *ListModelsRequest) (*ListModelsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListModels not implemented")
@@ -370,6 +390,24 @@ func _LLMProxyService_Judge_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LLMProxyService_GetEmbeddings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetEmbeddingsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LLMProxyServiceServer).GetEmbeddings(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LLMProxyService_GetEmbeddings_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LLMProxyServiceServer).GetEmbeddings(ctx, req.(*GetEmbeddingsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _LLMProxyService_ListModels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListModelsRequest)
 	if err := dec(in); err != nil {
@@ -482,6 +520,10 @@ var LLMProxyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Judge",
 			Handler:    _LLMProxyService_Judge_Handler,
+		},
+		{
+			MethodName: "GetEmbeddings",
+			Handler:    _LLMProxyService_GetEmbeddings_Handler,
 		},
 		{
 			MethodName: "ListModels",

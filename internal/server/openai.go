@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -52,6 +53,7 @@ func (a *OpenAIAPI) Register(mux *http.ServeMux) {
 	speech := method(pb.LLMProxyService_SynthesizeSpeech_FullMethodName)
 	image := method(pb.LLMProxyService_GenerateImage_FullMethodName)
 	judge := method(pb.LLMProxyService_Judge_FullMethodName)
+	embeddings := method(pb.LLMProxyService_GetEmbeddings_FullMethodName)
 	models := method(pb.LLMProxyService_ListModels_FullMethodName)
 
 	mux.HandleFunc("POST /v1/chat/completions", a.wrap(chat, a.chatCompletions))
@@ -59,6 +61,7 @@ func (a *OpenAIAPI) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/images/generations", a.wrap(image, a.imageGenerations))
 	mux.HandleFunc("POST /v1/judge", a.wrap(judge, a.judge))
 	mux.HandleFunc("POST /v1/decisions", a.wrap(judge, a.decisions))
+	mux.HandleFunc("POST /v1/embeddings", a.wrap(embeddings, a.embeddings))
 	mux.HandleFunc("GET /v1/models", a.wrap(models, a.listModels))
 	mux.HandleFunc("GET /v1/models/{id...}", a.wrap(models, a.getModel))
 }
@@ -1414,6 +1417,134 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 		Usage:   usage,
 	})
 	return nil
+}
+
+// ---- embeddings ----
+
+type embeddingRequest struct {
+	Input          json.RawMessage   `json:"input"`
+	Model          string            `json:"model"`
+	Dimensions     *int32            `json:"dimensions,omitempty"`
+	EncodingFormat string            `json:"encoding_format,omitempty"`
+	User           string            `json:"user,omitempty"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
+}
+
+func (a *OpenAIAPI) embeddings(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+	var req embeddingRequest
+	if err := decodeBody(r, &req); err != nil {
+		return err
+	}
+	if req.Model == "" {
+		return invalid("model is required")
+	}
+	if req.Model == "auto" {
+		return invalid("auto routing is not supported for embeddings")
+	}
+	format := req.EncodingFormat
+	if format == "" {
+		format = "float"
+	}
+	if format != "float" && format != "base64" {
+		return invalid("encoding_format must be 'float' or 'base64'")
+	}
+
+	var inputs []string
+	if len(req.Input) == 0 {
+		return invalid("input is required")
+	}
+
+	var singleStr string
+	if err := json.Unmarshal(req.Input, &singleStr); err == nil {
+		if singleStr == "" {
+			return invalid("input is required")
+		}
+		inputs = []string{singleStr}
+	} else {
+		var strArr []string
+		if err := json.Unmarshal(req.Input, &strArr); err == nil {
+			if len(strArr) == 0 {
+				return invalid("input is required")
+			}
+			for _, s := range strArr {
+				if s == "" {
+					return invalid("input items must not be empty")
+				}
+			}
+			inputs = strArr
+		} else {
+			var intArr []int
+			if err := json.Unmarshal(req.Input, &intArr); err == nil {
+				return invalid("token input is not supported; provide text strings")
+			}
+			return invalid("input must be a string or array of strings")
+		}
+	}
+
+	var dims int32
+	if req.Dimensions != nil {
+		dims = *req.Dimensions
+	}
+	attrs, actionID := attributes(req.Metadata, req.User)
+	preq := &pb.GetEmbeddingsRequest{
+		Inputs:     inputs,
+		Model:      req.Model,
+		Dimensions: dims,
+		ActionId:   actionID,
+		Attributes: attrs,
+	}
+
+	resp, err := a.proxy.GetEmbeddings(ctx, preq)
+	if err != nil {
+		return err
+	}
+
+	if resp.ResolvedModel != "" {
+		w.Header().Set("X-LLM-Proxy-Model", resp.ResolvedModel)
+	}
+	setResolvedHeaders(w, resp.ResolvedVendor, resp.MatchedRule)
+
+	type openAIEmbeddingItem struct {
+		Object    string `json:"object"`
+		Index     int    `json:"index"`
+		Embedding any    `json:"embedding"`
+	}
+
+	data := make([]openAIEmbeddingItem, len(resp.Data))
+	for i, d := range resp.Data {
+		var embVal any
+		if format == "base64" {
+			embVal = float32sToBase64(d.Values)
+		} else {
+			embVal = d.Values
+		}
+		data[i] = openAIEmbeddingItem{
+			Object:    "embedding",
+			Index:     int(d.Index),
+			Embedding: embVal,
+		}
+	}
+
+	out := map[string]any{
+		"object": "list",
+		"data":   data,
+		"model":  resp.ResolvedModel,
+		"usage": map[string]any{
+			"prompt_tokens": resp.Usage.GetInput(),
+			"total_tokens":  resp.Usage.GetInput() + resp.Usage.GetOutput(),
+		},
+	}
+	writeJSON(w, http.StatusOK, out)
+	return nil
+}
+
+func float32sToBase64(vals []float32) string {
+	buf := make([]byte, len(vals)*4)
+	for i, v := range vals {
+		bits := math.Float32bits(v)
+		binary.LittleEndian.PutUint32(buf[i*4:], bits)
+	}
+	return base64.StdEncoding.EncodeToString(buf)
 }
 
 // ---- models ----
