@@ -60,6 +60,19 @@ func TestResolveBatchModel_NoVendorKey(t *testing.T) {
 	}
 }
 
+func TestResolveBatchModel_LocalNeedsNoVendorKey(t *testing.T) {
+	snap := registry.NewSnapshotForTest(
+		[]*proxydb.Model{{ID: "m-local", Vendor: registry.VendorLocal, Capabilities: []string{registry.CapabilityBatch}, Enabled: true}},
+		nil,
+		map[string]map[string]string{"key1": {}},
+		nil,
+	)
+	m, err := ResolveBatchModel(context.Background(), snap, NoopThrottle{}, []string{"m-local"}, "key1", "gen", "user1")
+	if err != nil || m.ID != "m-local" {
+		t.Fatalf("got %v, %v; a local model must not require a vendor key", m, err)
+	}
+}
+
 func TestResolveBatchModel_BudgetExhausted(t *testing.T) {
 	snap := registry.NewSnapshotForTest(
 		[]*proxydb.Model{

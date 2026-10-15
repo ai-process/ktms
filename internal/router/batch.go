@@ -25,7 +25,7 @@ func ResolveBatchModel(ctx context.Context, snap *registry.Snapshot, th Throttle
 		}
 		sawCapable = true
 
-		if _, hasKey := snap.VendorKey(apiKeyID, m.Vendor); !hasKey {
+		if !snap.CanCall(apiKeyID, m) {
 			continue
 		}
 		sawKey = true

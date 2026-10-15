@@ -196,7 +196,7 @@ message ModelInfo {
 }
 
 message ListModelsResponse {
-  // Only models the calling client holds a vendor key for.
+  // Models the calling client can call: those it holds a vendor key for, plus every local model (no key needed).
   repeated ModelInfo models = 1;
 }
 

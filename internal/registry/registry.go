@@ -67,12 +67,22 @@ func (s *Snapshot) VendorKey(apiKeyID, vendor string) (string, bool) {
 	return key, ok
 }
 
-// ClientModels lists enabled models the client holds a vendor key for,
+// CanCall reports whether the client may use m. Local models reach nodes with
+// the node's own token, so they need no vendor key.
+func (s *Snapshot) CanCall(apiKeyID string, m *proxydb.Model) bool {
+	if m.Vendor == VendorLocal {
+		return true
+	}
+	_, ok := s.vendorKeys[apiKeyID][m.Vendor]
+	return ok
+}
+
+// ClientModels lists enabled models the client can call,
 // sorted by id for stable ListModels output.
 func (s *Snapshot) ClientModels(apiKeyID string) []*proxydb.Model {
 	var out []*proxydb.Model
 	for _, m := range s.Models {
-		if _, ok := s.vendorKeys[apiKeyID][m.Vendor]; ok {
+		if s.CanCall(apiKeyID, m) {
 			out = append(out, m)
 		}
 	}

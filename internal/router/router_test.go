@@ -96,6 +96,69 @@ func TestFilterChain(t *testing.T) {
 	}
 }
 
+// Local models reach nodes with the node's own token, so a client needs no
+// vendor key for them. Before this, a rule of only local models was emptied
+// and every request failed with no_vendor_key.
+func TestFilterChainLocalModelsNeedNoVendorKey(t *testing.T) {
+	models := []*proxydb.Model{
+		model("local-a", registry.VendorLocal, registry.EffortHigh),
+		model("local-b", registry.VendorLocal, registry.EffortHigh),
+		model("big", registry.VendorOpenAI, registry.EffortHigh),
+	}
+	// The client holds no vendor keys at all.
+	snap := registry.NewSnapshotForTest(models, nil, map[string]map[string]string{"bare": {}}, nil)
+
+	got, err := FilterChain(snap, []string{"local-a", "local-b"}, "bare", registry.EffortHigh, false, "")
+	if err != nil || len(got) != 2 || got[0].ID != "local-a" || got[1].ID != "local-b" {
+		t.Fatalf("local-only chain: got %v, err %v; want both local models", got, err)
+	}
+
+	// In a mixed chain the keyless vendor model drops out and the local one stays, in order.
+	got, err = FilterChain(snap, []string{"big", "local-a"}, "bare", registry.EffortHigh, false, "")
+	if err != nil || len(got) != 1 || got[0].ID != "local-a" {
+		t.Fatalf("mixed chain: got %v, err %v; want only local-a", got, err)
+	}
+
+	// Vendors that do need a key still fail without one.
+	if _, err = FilterChain(snap, []string{"big"}, "bare", registry.EffortHigh, false, ""); !errors.Is(err, ErrNoVendorKey) {
+		t.Fatalf("err=%v, want ErrNoVendorKey for a vendor model without a key", err)
+	}
+
+	// An unknown client id (no entry at all) behaves the same.
+	got, err = FilterChain(snap, []string{"local-a"}, "no-such-key", registry.EffortHigh, false, "")
+	if err != nil || len(got) != 1 {
+		t.Fatalf("client without any key row: got %v, err %v", got, err)
+	}
+}
+
+// The production path: a rule whose models are all local, called by a client
+// that has no vendor keys. It must route and be served, not end in no_vendor_key.
+func TestLocalOnlyRuleServesKeylessClient(t *testing.T) {
+	models := []*proxydb.Model{
+		model("local-a", registry.VendorLocal, registry.EffortLow),
+		model("local-b", registry.VendorLocal, registry.EffortLow),
+	}
+	rules := []*proxydb.Rule{rule("local-only", 1, registry.EffortLow, nil, "local-a", "local-b")}
+	snap := registry.NewSnapshotForTest(models, rules, map[string]map[string]string{"bare": {}}, nil)
+
+	r := Match(snap, registry.EffortLow, nil)
+	if r == nil {
+		t.Fatal("no rule matched")
+	}
+	chain, err := FilterChain(snap, r.Use, "bare", registry.EffortLow, false, "")
+	if err != nil {
+		t.Fatalf("FilterChain: %v", err)
+	}
+	served := &fakeAdapter{responses: []func() (*llm.Response, error){ok("from a node")}}
+	resp, m, err := Execute(context.Background(), &recordingThrottle{}, Request{
+		Chain: chain, KeyName: "bare-key", Chat: llm.NewChatContext(),
+		Adapter: func(*proxydb.Model) (llm.ClientAdapter, error) { return served, nil },
+	})
+	if err != nil || m.ID != "local-a" || resp.Choices[0].Text != "from a node" {
+		t.Fatalf("resolved %v, %v, err %v", m, resp, err)
+	}
+}
+
 func TestFilterChainMultimodalCapabilities(t *testing.T) {
 	snap := snapshot()
 	snap.Models["big"].Capabilities = []string{registry.CapabilityVision, registry.CapabilityAudioInput}
