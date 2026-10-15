@@ -1033,3 +1033,75 @@ func mapItemError(err error) *llm.BatchItemError {
 		Message: err.Error(),
 	}
 }
+
+// CreateEmbeddings implements llm.EmbeddingAdapter for Google Gemini models.
+func (a *GoogleAdapter) CreateEmbeddings(ctx context.Context, req *llm.EmbeddingRequest, userID string, meta map[string]string) (*llm.EmbeddingResult, error) {
+	if a.geminiClient == nil {
+		return nil, errors.New("GoogleAdapter: client not configured")
+	}
+	if len(req.Inputs) == 0 {
+		return nil, errors.New("GoogleAdapter: no inputs provided")
+	}
+
+	contents := make([]*genai.Content, len(req.Inputs))
+	var totalChars int
+	for i, inp := range req.Inputs {
+		contents[i] = genai.NewContentFromText(inp, "user")
+		totalChars += len(inp)
+	}
+
+	var config *genai.EmbedContentConfig
+	if req.Dimensions > 0 || req.InputType != "" {
+		config = &genai.EmbedContentConfig{}
+		if req.Dimensions > 0 {
+			dim := int32(req.Dimensions)
+			config.OutputDimensionality = &dim
+		}
+		if req.InputType != "" {
+			switch strings.ToLower(req.InputType) {
+			case "query":
+				config.TaskType = "RETRIEVAL_QUERY"
+			case "document":
+				config.TaskType = "RETRIEVAL_DOCUMENT"
+			default:
+				config.TaskType = req.InputType
+			}
+		}
+	}
+
+	a.throttle.WaitForSlot()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	res, err := a.geminiClient.Models.EmbedContent(ctx, a.model, contents, config)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &llm.EmbeddingResult{
+		Model: a.model,
+		Data:  make([]llm.EmbeddingItem, len(res.Embeddings)),
+	}
+	var totalTokens int
+	for i, emb := range res.Embeddings {
+		result.Data[i] = llm.EmbeddingItem{
+			Index:  i,
+			Values: emb.Values,
+		}
+		if emb.Statistics != nil && emb.Statistics.TokenCount > 0 {
+			totalTokens += int(emb.Statistics.TokenCount)
+		}
+	}
+	if totalTokens == 0 {
+		totalTokens = totalChars / 4
+		if totalTokens < 1 && totalChars > 0 {
+			totalTokens = 1
+		}
+	}
+	result.Usage = llm.TokensUsage{
+		Input: totalTokens,
+	}
+
+	return result, nil
+}

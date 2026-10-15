@@ -42,7 +42,7 @@ func ToStatus(err error) error {
 	switch {
 	case errors.Is(err, ErrNotConfigured):
 		return status.Error(codes.FailedPrecondition, "not_configured")
-	case errors.Is(err, ErrNoCapableModel), errors.Is(err, llm.ErrJudgmentUnsupported):
+	case errors.Is(err, ErrNoCapableModel), errors.Is(err, llm.ErrJudgmentUnsupported), errors.Is(err, llm.ErrEmbeddingUnsupported):
 		return status.Error(codes.FailedPrecondition, "no_capable_model")
 	case errors.Is(err, ErrNoVendorKey):
 		return status.Error(codes.FailedPrecondition, "no_vendor_key")

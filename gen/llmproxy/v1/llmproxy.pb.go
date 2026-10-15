@@ -2667,6 +2667,218 @@ func (x *JudgeResponse) GetMatchedRule() string {
 	return ""
 }
 
+type Embedding struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Index         int32                  `protobuf:"varint,1,opt,name=index,proto3" json:"index,omitempty"`
+	Values        []float32              `protobuf:"fixed32,2,rep,packed,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Embedding) Reset() {
+	*x = Embedding{}
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Embedding) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Embedding) ProtoMessage() {}
+
+func (x *Embedding) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Embedding.ProtoReflect.Descriptor instead.
+func (*Embedding) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *Embedding) GetIndex() int32 {
+	if x != nil {
+		return x.Index
+	}
+	return 0
+}
+
+func (x *Embedding) GetValues() []float32 {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
+type GetEmbeddingsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Inputs        []string               `protobuf:"bytes,1,rep,name=inputs,proto3" json:"inputs,omitempty"`
+	Model         string                 `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
+	Dimensions    int32                  `protobuf:"varint,3,opt,name=dimensions,proto3" json:"dimensions,omitempty"`
+	InputType     string                 `protobuf:"bytes,4,opt,name=input_type,json=inputType,proto3" json:"input_type,omitempty"` // "query" | "document"
+	ActionId      string                 `protobuf:"bytes,5,opt,name=action_id,json=actionId,proto3" json:"action_id,omitempty"`
+	Attributes    map[string]string      `protobuf:"bytes,6,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetEmbeddingsRequest) Reset() {
+	*x = GetEmbeddingsRequest{}
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetEmbeddingsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetEmbeddingsRequest) ProtoMessage() {}
+
+func (x *GetEmbeddingsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetEmbeddingsRequest.ProtoReflect.Descriptor instead.
+func (*GetEmbeddingsRequest) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *GetEmbeddingsRequest) GetInputs() []string {
+	if x != nil {
+		return x.Inputs
+	}
+	return nil
+}
+
+func (x *GetEmbeddingsRequest) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *GetEmbeddingsRequest) GetDimensions() int32 {
+	if x != nil {
+		return x.Dimensions
+	}
+	return 0
+}
+
+func (x *GetEmbeddingsRequest) GetInputType() string {
+	if x != nil {
+		return x.InputType
+	}
+	return ""
+}
+
+func (x *GetEmbeddingsRequest) GetActionId() string {
+	if x != nil {
+		return x.ActionId
+	}
+	return ""
+}
+
+func (x *GetEmbeddingsRequest) GetAttributes() map[string]string {
+	if x != nil {
+		return x.Attributes
+	}
+	return nil
+}
+
+type GetEmbeddingsResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Data           []*Embedding           `protobuf:"bytes,1,rep,name=data,proto3" json:"data,omitempty"`
+	Usage          *TokensUsage           `protobuf:"bytes,2,opt,name=usage,proto3" json:"usage,omitempty"`
+	ResolvedModel  string                 `protobuf:"bytes,3,opt,name=resolved_model,json=resolvedModel,proto3" json:"resolved_model,omitempty"`
+	ResolvedVendor string                 `protobuf:"bytes,4,opt,name=resolved_vendor,json=resolvedVendor,proto3" json:"resolved_vendor,omitempty"`
+	MatchedRule    string                 `protobuf:"bytes,5,opt,name=matched_rule,json=matchedRule,proto3" json:"matched_rule,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *GetEmbeddingsResponse) Reset() {
+	*x = GetEmbeddingsResponse{}
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetEmbeddingsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetEmbeddingsResponse) ProtoMessage() {}
+
+func (x *GetEmbeddingsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetEmbeddingsResponse.ProtoReflect.Descriptor instead.
+func (*GetEmbeddingsResponse) Descriptor() ([]byte, []int) {
+	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *GetEmbeddingsResponse) GetData() []*Embedding {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *GetEmbeddingsResponse) GetUsage() *TokensUsage {
+	if x != nil {
+		return x.Usage
+	}
+	return nil
+}
+
+func (x *GetEmbeddingsResponse) GetResolvedModel() string {
+	if x != nil {
+		return x.ResolvedModel
+	}
+	return ""
+}
+
+func (x *GetEmbeddingsResponse) GetResolvedVendor() string {
+	if x != nil {
+		return x.ResolvedVendor
+	}
+	return ""
+}
+
+func (x *GetEmbeddingsResponse) GetMatchedRule() string {
+	if x != nil {
+		return x.MatchedRule
+	}
+	return ""
+}
+
 type BatchCounts struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Total         int32                  `protobuf:"varint,1,opt,name=total,proto3" json:"total,omitempty"`
@@ -2678,7 +2890,7 @@ type BatchCounts struct {
 
 func (x *BatchCounts) Reset() {
 	*x = BatchCounts{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[31]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2690,7 +2902,7 @@ func (x *BatchCounts) String() string {
 func (*BatchCounts) ProtoMessage() {}
 
 func (x *BatchCounts) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[31]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2703,7 +2915,7 @@ func (x *BatchCounts) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchCounts.ProtoReflect.Descriptor instead.
 func (*BatchCounts) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{31}
+	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *BatchCounts) GetTotal() int32 {
@@ -2742,7 +2954,7 @@ type Batch struct {
 
 func (x *Batch) Reset() {
 	*x = Batch{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[32]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2754,7 +2966,7 @@ func (x *Batch) String() string {
 func (*Batch) ProtoMessage() {}
 
 func (x *Batch) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[32]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2767,7 +2979,7 @@ func (x *Batch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Batch.ProtoReflect.Descriptor instead.
 func (*Batch) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{32}
+	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *Batch) GetId() string {
@@ -2829,7 +3041,7 @@ type BatchItemRequest struct {
 
 func (x *BatchItemRequest) Reset() {
 	*x = BatchItemRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[33]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2841,7 +3053,7 @@ func (x *BatchItemRequest) String() string {
 func (*BatchItemRequest) ProtoMessage() {}
 
 func (x *BatchItemRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[33]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2854,7 +3066,7 @@ func (x *BatchItemRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchItemRequest.ProtoReflect.Descriptor instead.
 func (*BatchItemRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{33}
+	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *BatchItemRequest) GetCustomId() string {
@@ -2883,7 +3095,7 @@ type SubmitBatchRequest struct {
 
 func (x *SubmitBatchRequest) Reset() {
 	*x = SubmitBatchRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[34]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2895,7 +3107,7 @@ func (x *SubmitBatchRequest) String() string {
 func (*SubmitBatchRequest) ProtoMessage() {}
 
 func (x *SubmitBatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[34]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2908,7 +3120,7 @@ func (x *SubmitBatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitBatchRequest.ProtoReflect.Descriptor instead.
 func (*SubmitBatchRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{34}
+	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *SubmitBatchRequest) GetItems() []*BatchItemRequest {
@@ -2948,7 +3160,7 @@ type SubmitBatchResponse struct {
 
 func (x *SubmitBatchResponse) Reset() {
 	*x = SubmitBatchResponse{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[35]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2960,7 +3172,7 @@ func (x *SubmitBatchResponse) String() string {
 func (*SubmitBatchResponse) ProtoMessage() {}
 
 func (x *SubmitBatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[35]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2973,7 +3185,7 @@ func (x *SubmitBatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitBatchResponse.ProtoReflect.Descriptor instead.
 func (*SubmitBatchResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{35}
+	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *SubmitBatchResponse) GetBatch() *Batch {
@@ -2992,7 +3204,7 @@ type GetBatchRequest struct {
 
 func (x *GetBatchRequest) Reset() {
 	*x = GetBatchRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[36]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3004,7 +3216,7 @@ func (x *GetBatchRequest) String() string {
 func (*GetBatchRequest) ProtoMessage() {}
 
 func (x *GetBatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[36]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3017,7 +3229,7 @@ func (x *GetBatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBatchRequest.ProtoReflect.Descriptor instead.
 func (*GetBatchRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{36}
+	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *GetBatchRequest) GetBatchId() string {
@@ -3038,7 +3250,7 @@ type BatchItemError struct {
 
 func (x *BatchItemError) Reset() {
 	*x = BatchItemError{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[37]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3050,7 +3262,7 @@ func (x *BatchItemError) String() string {
 func (*BatchItemError) ProtoMessage() {}
 
 func (x *BatchItemError) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[37]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3063,7 +3275,7 @@ func (x *BatchItemError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchItemError.ProtoReflect.Descriptor instead.
 func (*BatchItemError) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{37}
+	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *BatchItemError) GetCode() int32 {
@@ -3101,7 +3313,7 @@ type BatchItemResult struct {
 
 func (x *BatchItemResult) Reset() {
 	*x = BatchItemResult{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[38]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3113,7 +3325,7 @@ func (x *BatchItemResult) String() string {
 func (*BatchItemResult) ProtoMessage() {}
 
 func (x *BatchItemResult) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[38]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3126,7 +3338,7 @@ func (x *BatchItemResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchItemResult.ProtoReflect.Descriptor instead.
 func (*BatchItemResult) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{38}
+	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *BatchItemResult) GetCustomId() string {
@@ -3188,7 +3400,7 @@ type ListBatchResultsRequest struct {
 
 func (x *ListBatchResultsRequest) Reset() {
 	*x = ListBatchResultsRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[39]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3200,7 +3412,7 @@ func (x *ListBatchResultsRequest) String() string {
 func (*ListBatchResultsRequest) ProtoMessage() {}
 
 func (x *ListBatchResultsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[39]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3213,7 +3425,7 @@ func (x *ListBatchResultsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBatchResultsRequest.ProtoReflect.Descriptor instead.
 func (*ListBatchResultsRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{39}
+	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ListBatchResultsRequest) GetBatchId() string {
@@ -3247,7 +3459,7 @@ type ListBatchResultsResponse struct {
 
 func (x *ListBatchResultsResponse) Reset() {
 	*x = ListBatchResultsResponse{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[40]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3259,7 +3471,7 @@ func (x *ListBatchResultsResponse) String() string {
 func (*ListBatchResultsResponse) ProtoMessage() {}
 
 func (x *ListBatchResultsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[40]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3272,7 +3484,7 @@ func (x *ListBatchResultsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBatchResultsResponse.ProtoReflect.Descriptor instead.
 func (*ListBatchResultsResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{40}
+	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ListBatchResultsResponse) GetItems() []*BatchItemResult {
@@ -3298,7 +3510,7 @@ type CancelBatchRequest struct {
 
 func (x *CancelBatchRequest) Reset() {
 	*x = CancelBatchRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[41]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3310,7 +3522,7 @@ func (x *CancelBatchRequest) String() string {
 func (*CancelBatchRequest) ProtoMessage() {}
 
 func (x *CancelBatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[41]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3323,7 +3535,7 @@ func (x *CancelBatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelBatchRequest.ProtoReflect.Descriptor instead.
 func (*CancelBatchRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{41}
+	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *CancelBatchRequest) GetBatchId() string {
@@ -3341,7 +3553,7 @@ type CancelBatchResponse struct {
 
 func (x *CancelBatchResponse) Reset() {
 	*x = CancelBatchResponse{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[42]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3353,7 +3565,7 @@ func (x *CancelBatchResponse) String() string {
 func (*CancelBatchResponse) ProtoMessage() {}
 
 func (x *CancelBatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[42]
+	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3366,7 +3578,7 @@ func (x *CancelBatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelBatchResponse.ProtoReflect.Descriptor instead.
 func (*CancelBatchResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{42}
+	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{45}
 }
 
 var File_llmproxy_v1_llmproxy_proto protoreflect.FileDescriptor
@@ -3626,7 +3838,31 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\fmatched_rule\x18\x05 \x01(\tR\vmatchedRule\x1aT\n" +
 	"\fAnswersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12.\n" +
-	"\x05value\x18\x02 \x01(\v2\x18.llmproxy.v1.JudgeAnswerR\x05value:\x028\x01\"O\n" +
+	"\x05value\x18\x02 \x01(\v2\x18.llmproxy.v1.JudgeAnswerR\x05value:\x028\x01\"9\n" +
+	"\tEmbedding\x12\x14\n" +
+	"\x05index\x18\x01 \x01(\x05R\x05index\x12\x16\n" +
+	"\x06values\x18\x02 \x03(\x02R\x06values\"\xb2\x02\n" +
+	"\x14GetEmbeddingsRequest\x12\x16\n" +
+	"\x06inputs\x18\x01 \x03(\tR\x06inputs\x12\x14\n" +
+	"\x05model\x18\x02 \x01(\tR\x05model\x12\x1e\n" +
+	"\n" +
+	"dimensions\x18\x03 \x01(\x05R\n" +
+	"dimensions\x12\x1d\n" +
+	"\n" +
+	"input_type\x18\x04 \x01(\tR\tinputType\x12\x1b\n" +
+	"\taction_id\x18\x05 \x01(\tR\bactionId\x12Q\n" +
+	"\n" +
+	"attributes\x18\x06 \x03(\v21.llmproxy.v1.GetEmbeddingsRequest.AttributesEntryR\n" +
+	"attributes\x1a=\n" +
+	"\x0fAttributesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe6\x01\n" +
+	"\x15GetEmbeddingsResponse\x12*\n" +
+	"\x04data\x18\x01 \x03(\v2\x16.llmproxy.v1.EmbeddingR\x04data\x12.\n" +
+	"\x05usage\x18\x02 \x01(\v2\x18.llmproxy.v1.TokensUsageR\x05usage\x12%\n" +
+	"\x0eresolved_model\x18\x03 \x01(\tR\rresolvedModel\x12'\n" +
+	"\x0fresolved_vendor\x18\x04 \x01(\tR\x0eresolvedVendor\x12!\n" +
+	"\fmatched_rule\x18\x05 \x01(\tR\vmatchedRule\"O\n" +
 	"\vBatchCounts\x12\x14\n" +
 	"\x05total\x18\x01 \x01(\x05R\x05total\x12\x12\n" +
 	"\x04done\x18\x02 \x01(\x05R\x04done\x12\x16\n" +
@@ -3701,13 +3937,14 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\x15BATCH_STATE_SUCCEEDED\x10\x03\x12\x16\n" +
 	"\x12BATCH_STATE_FAILED\x10\x04\x12\x19\n" +
 	"\x15BATCH_STATE_CANCELLED\x10\x05\x12\x17\n" +
-	"\x13BATCH_STATE_EXPIRED\x10\x062\xd1\x06\n" +
+	"\x13BATCH_STATE_EXPIRED\x10\x062\xa9\a\n" +
 	"\x0fLLMProxyService\x12S\n" +
 	"\fGenerateText\x12 .llmproxy.v1.GenerateTextRequest\x1a!.llmproxy.v1.GenerateTextResponse\x12^\n" +
 	"\x12GenerateTextStream\x12&.llmproxy.v1.GenerateTextStreamRequest\x1a\x1e.llmproxy.v1.GenerateTextChunk0\x01\x12_\n" +
 	"\x10SynthesizeSpeech\x12$.llmproxy.v1.SynthesizeSpeechRequest\x1a%.llmproxy.v1.SynthesizeSpeechResponse\x12V\n" +
 	"\rGenerateImage\x12!.llmproxy.v1.GenerateImageRequest\x1a\".llmproxy.v1.GenerateImageResponse\x12>\n" +
-	"\x05Judge\x12\x19.llmproxy.v1.JudgeRequest\x1a\x1a.llmproxy.v1.JudgeResponse\x12M\n" +
+	"\x05Judge\x12\x19.llmproxy.v1.JudgeRequest\x1a\x1a.llmproxy.v1.JudgeResponse\x12V\n" +
+	"\rGetEmbeddings\x12!.llmproxy.v1.GetEmbeddingsRequest\x1a\".llmproxy.v1.GetEmbeddingsResponse\x12M\n" +
 	"\n" +
 	"ListModels\x12\x1e.llmproxy.v1.ListModelsRequest\x1a\x1f.llmproxy.v1.ListModelsResponse\x12P\n" +
 	"\vSubmitBatch\x12\x1f.llmproxy.v1.SubmitBatchRequest\x1a .llmproxy.v1.SubmitBatchResponse\x12<\n" +
@@ -3729,7 +3966,7 @@ func file_llmproxy_v1_llmproxy_proto_rawDescGZIP() []byte {
 }
 
 var file_llmproxy_v1_llmproxy_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_llmproxy_v1_llmproxy_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
+var file_llmproxy_v1_llmproxy_proto_msgTypes = make([]protoimpl.MessageInfo, 59)
 var file_llmproxy_v1_llmproxy_proto_goTypes = []any{
 	(Effort)(0),                       // 0: llmproxy.v1.Effort
 	(MessageRole)(0),                  // 1: llmproxy.v1.MessageRole
@@ -3767,31 +4004,35 @@ var file_llmproxy_v1_llmproxy_proto_goTypes = []any{
 	(*JudgeAnswer)(nil),               // 33: llmproxy.v1.JudgeAnswer
 	(*JudgeRequest)(nil),              // 34: llmproxy.v1.JudgeRequest
 	(*JudgeResponse)(nil),             // 35: llmproxy.v1.JudgeResponse
-	(*BatchCounts)(nil),               // 36: llmproxy.v1.BatchCounts
-	(*Batch)(nil),                     // 37: llmproxy.v1.Batch
-	(*BatchItemRequest)(nil),          // 38: llmproxy.v1.BatchItemRequest
-	(*SubmitBatchRequest)(nil),        // 39: llmproxy.v1.SubmitBatchRequest
-	(*SubmitBatchResponse)(nil),       // 40: llmproxy.v1.SubmitBatchResponse
-	(*GetBatchRequest)(nil),           // 41: llmproxy.v1.GetBatchRequest
-	(*BatchItemError)(nil),            // 42: llmproxy.v1.BatchItemError
-	(*BatchItemResult)(nil),           // 43: llmproxy.v1.BatchItemResult
-	(*ListBatchResultsRequest)(nil),   // 44: llmproxy.v1.ListBatchResultsRequest
-	(*ListBatchResultsResponse)(nil),  // 45: llmproxy.v1.ListBatchResultsResponse
-	(*CancelBatchRequest)(nil),        // 46: llmproxy.v1.CancelBatchRequest
-	(*CancelBatchResponse)(nil),       // 47: llmproxy.v1.CancelBatchResponse
-	nil,                               // 48: llmproxy.v1.SchemaProperty.PropertiesEntry
-	nil,                               // 49: llmproxy.v1.ResponseSchema.PropertiesEntry
-	nil,                               // 50: llmproxy.v1.GenerateTextRequest.AttributesEntry
-	nil,                               // 51: llmproxy.v1.SynthesizeSpeechRequest.AttributesEntry
-	nil,                               // 52: llmproxy.v1.GenerateImageRequest.AttributesEntry
-	nil,                               // 53: llmproxy.v1.JudgeQuestion.OptionsEntry
-	nil,                               // 54: llmproxy.v1.JudgeAnswer.ProbabilitiesEntry
-	nil,                               // 55: llmproxy.v1.JudgeAnswer.LegendEntry
-	nil,                               // 56: llmproxy.v1.JudgeRequest.QuestionsEntry
-	nil,                               // 57: llmproxy.v1.JudgeRequest.AttributesEntry
-	nil,                               // 58: llmproxy.v1.JudgeResponse.AnswersEntry
-	nil,                               // 59: llmproxy.v1.SubmitBatchRequest.AttributesEntry
-	(*timestamppb.Timestamp)(nil),     // 60: google.protobuf.Timestamp
+	(*Embedding)(nil),                 // 36: llmproxy.v1.Embedding
+	(*GetEmbeddingsRequest)(nil),      // 37: llmproxy.v1.GetEmbeddingsRequest
+	(*GetEmbeddingsResponse)(nil),     // 38: llmproxy.v1.GetEmbeddingsResponse
+	(*BatchCounts)(nil),               // 39: llmproxy.v1.BatchCounts
+	(*Batch)(nil),                     // 40: llmproxy.v1.Batch
+	(*BatchItemRequest)(nil),          // 41: llmproxy.v1.BatchItemRequest
+	(*SubmitBatchRequest)(nil),        // 42: llmproxy.v1.SubmitBatchRequest
+	(*SubmitBatchResponse)(nil),       // 43: llmproxy.v1.SubmitBatchResponse
+	(*GetBatchRequest)(nil),           // 44: llmproxy.v1.GetBatchRequest
+	(*BatchItemError)(nil),            // 45: llmproxy.v1.BatchItemError
+	(*BatchItemResult)(nil),           // 46: llmproxy.v1.BatchItemResult
+	(*ListBatchResultsRequest)(nil),   // 47: llmproxy.v1.ListBatchResultsRequest
+	(*ListBatchResultsResponse)(nil),  // 48: llmproxy.v1.ListBatchResultsResponse
+	(*CancelBatchRequest)(nil),        // 49: llmproxy.v1.CancelBatchRequest
+	(*CancelBatchResponse)(nil),       // 50: llmproxy.v1.CancelBatchResponse
+	nil,                               // 51: llmproxy.v1.SchemaProperty.PropertiesEntry
+	nil,                               // 52: llmproxy.v1.ResponseSchema.PropertiesEntry
+	nil,                               // 53: llmproxy.v1.GenerateTextRequest.AttributesEntry
+	nil,                               // 54: llmproxy.v1.SynthesizeSpeechRequest.AttributesEntry
+	nil,                               // 55: llmproxy.v1.GenerateImageRequest.AttributesEntry
+	nil,                               // 56: llmproxy.v1.JudgeQuestion.OptionsEntry
+	nil,                               // 57: llmproxy.v1.JudgeAnswer.ProbabilitiesEntry
+	nil,                               // 58: llmproxy.v1.JudgeAnswer.LegendEntry
+	nil,                               // 59: llmproxy.v1.JudgeRequest.QuestionsEntry
+	nil,                               // 60: llmproxy.v1.JudgeRequest.AttributesEntry
+	nil,                               // 61: llmproxy.v1.JudgeResponse.AnswersEntry
+	nil,                               // 62: llmproxy.v1.GetEmbeddingsRequest.AttributesEntry
+	nil,                               // 63: llmproxy.v1.SubmitBatchRequest.AttributesEntry
+	(*timestamppb.Timestamp)(nil),     // 64: google.protobuf.Timestamp
 }
 var file_llmproxy_v1_llmproxy_proto_depIdxs = []int32{
 	6,  // 0: llmproxy.v1.ToolCall.function:type_name -> llmproxy.v1.FunctionCall
@@ -3805,12 +4046,12 @@ var file_llmproxy_v1_llmproxy_proto_depIdxs = []int32{
 	1,  // 8: llmproxy.v1.ChatMessage.role:type_name -> llmproxy.v1.MessageRole
 	5,  // 9: llmproxy.v1.ChatMessage.tool_calls:type_name -> llmproxy.v1.ToolCall
 	15, // 10: llmproxy.v1.ChatMessage.parts:type_name -> llmproxy.v1.ContentPart
-	48, // 11: llmproxy.v1.SchemaProperty.properties:type_name -> llmproxy.v1.SchemaProperty.PropertiesEntry
+	51, // 11: llmproxy.v1.SchemaProperty.properties:type_name -> llmproxy.v1.SchemaProperty.PropertiesEntry
 	17, // 12: llmproxy.v1.SchemaProperty.items:type_name -> llmproxy.v1.SchemaProperty
-	49, // 13: llmproxy.v1.ResponseSchema.properties:type_name -> llmproxy.v1.ResponseSchema.PropertiesEntry
+	52, // 13: llmproxy.v1.ResponseSchema.properties:type_name -> llmproxy.v1.ResponseSchema.PropertiesEntry
 	17, // 14: llmproxy.v1.ResponseSchema.items:type_name -> llmproxy.v1.SchemaProperty
 	0,  // 15: llmproxy.v1.GenerateTextRequest.effort:type_name -> llmproxy.v1.Effort
-	50, // 16: llmproxy.v1.GenerateTextRequest.attributes:type_name -> llmproxy.v1.GenerateTextRequest.AttributesEntry
+	53, // 16: llmproxy.v1.GenerateTextRequest.attributes:type_name -> llmproxy.v1.GenerateTextRequest.AttributesEntry
 	16, // 17: llmproxy.v1.GenerateTextRequest.messages:type_name -> llmproxy.v1.ChatMessage
 	18, // 18: llmproxy.v1.GenerateTextRequest.response_schema:type_name -> llmproxy.v1.ResponseSchema
 	8,  // 19: llmproxy.v1.GenerateTextRequest.tools:type_name -> llmproxy.v1.Tool
@@ -3823,60 +4064,65 @@ var file_llmproxy_v1_llmproxy_proto_depIdxs = []int32{
 	0,  // 26: llmproxy.v1.ModelInfo.efforts:type_name -> llmproxy.v1.Effort
 	25, // 27: llmproxy.v1.ListModelsResponse.models:type_name -> llmproxy.v1.ModelInfo
 	19, // 28: llmproxy.v1.GenerateTextStreamRequest.request:type_name -> llmproxy.v1.GenerateTextRequest
-	51, // 29: llmproxy.v1.SynthesizeSpeechRequest.attributes:type_name -> llmproxy.v1.SynthesizeSpeechRequest.AttributesEntry
+	54, // 29: llmproxy.v1.SynthesizeSpeechRequest.attributes:type_name -> llmproxy.v1.SynthesizeSpeechRequest.AttributesEntry
 	20, // 30: llmproxy.v1.SynthesizeSpeechResponse.usage:type_name -> llmproxy.v1.TokensUsage
-	52, // 31: llmproxy.v1.GenerateImageRequest.attributes:type_name -> llmproxy.v1.GenerateImageRequest.AttributesEntry
+	55, // 31: llmproxy.v1.GenerateImageRequest.attributes:type_name -> llmproxy.v1.GenerateImageRequest.AttributesEntry
 	20, // 32: llmproxy.v1.GenerateImageResponse.usage:type_name -> llmproxy.v1.TokensUsage
 	2,  // 33: llmproxy.v1.JudgeQuestion.type:type_name -> llmproxy.v1.JudgeType
-	53, // 34: llmproxy.v1.JudgeQuestion.options:type_name -> llmproxy.v1.JudgeQuestion.OptionsEntry
+	56, // 34: llmproxy.v1.JudgeQuestion.options:type_name -> llmproxy.v1.JudgeQuestion.OptionsEntry
 	2,  // 35: llmproxy.v1.JudgeAnswer.type:type_name -> llmproxy.v1.JudgeType
-	54, // 36: llmproxy.v1.JudgeAnswer.probabilities:type_name -> llmproxy.v1.JudgeAnswer.ProbabilitiesEntry
-	55, // 37: llmproxy.v1.JudgeAnswer.legend:type_name -> llmproxy.v1.JudgeAnswer.LegendEntry
-	56, // 38: llmproxy.v1.JudgeRequest.questions:type_name -> llmproxy.v1.JudgeRequest.QuestionsEntry
-	57, // 39: llmproxy.v1.JudgeRequest.attributes:type_name -> llmproxy.v1.JudgeRequest.AttributesEntry
-	58, // 40: llmproxy.v1.JudgeResponse.answers:type_name -> llmproxy.v1.JudgeResponse.AnswersEntry
+	57, // 36: llmproxy.v1.JudgeAnswer.probabilities:type_name -> llmproxy.v1.JudgeAnswer.ProbabilitiesEntry
+	58, // 37: llmproxy.v1.JudgeAnswer.legend:type_name -> llmproxy.v1.JudgeAnswer.LegendEntry
+	59, // 38: llmproxy.v1.JudgeRequest.questions:type_name -> llmproxy.v1.JudgeRequest.QuestionsEntry
+	60, // 39: llmproxy.v1.JudgeRequest.attributes:type_name -> llmproxy.v1.JudgeRequest.AttributesEntry
+	61, // 40: llmproxy.v1.JudgeResponse.answers:type_name -> llmproxy.v1.JudgeResponse.AnswersEntry
 	20, // 41: llmproxy.v1.JudgeResponse.usage:type_name -> llmproxy.v1.TokensUsage
-	3,  // 42: llmproxy.v1.Batch.state:type_name -> llmproxy.v1.BatchState
-	36, // 43: llmproxy.v1.Batch.counts:type_name -> llmproxy.v1.BatchCounts
-	60, // 44: llmproxy.v1.Batch.created_at:type_name -> google.protobuf.Timestamp
-	60, // 45: llmproxy.v1.Batch.completed_at:type_name -> google.protobuf.Timestamp
-	19, // 46: llmproxy.v1.BatchItemRequest.request:type_name -> llmproxy.v1.GenerateTextRequest
-	38, // 47: llmproxy.v1.SubmitBatchRequest.items:type_name -> llmproxy.v1.BatchItemRequest
-	0,  // 48: llmproxy.v1.SubmitBatchRequest.effort:type_name -> llmproxy.v1.Effort
-	59, // 49: llmproxy.v1.SubmitBatchRequest.attributes:type_name -> llmproxy.v1.SubmitBatchRequest.AttributesEntry
-	37, // 50: llmproxy.v1.SubmitBatchResponse.batch:type_name -> llmproxy.v1.Batch
-	22, // 51: llmproxy.v1.BatchItemResult.response:type_name -> llmproxy.v1.GenerateTextResponse
-	42, // 52: llmproxy.v1.BatchItemResult.error:type_name -> llmproxy.v1.BatchItemError
-	43, // 53: llmproxy.v1.ListBatchResultsResponse.items:type_name -> llmproxy.v1.BatchItemResult
-	17, // 54: llmproxy.v1.SchemaProperty.PropertiesEntry.value:type_name -> llmproxy.v1.SchemaProperty
-	17, // 55: llmproxy.v1.ResponseSchema.PropertiesEntry.value:type_name -> llmproxy.v1.SchemaProperty
-	32, // 56: llmproxy.v1.JudgeRequest.QuestionsEntry.value:type_name -> llmproxy.v1.JudgeQuestion
-	33, // 57: llmproxy.v1.JudgeResponse.AnswersEntry.value:type_name -> llmproxy.v1.JudgeAnswer
-	19, // 58: llmproxy.v1.LLMProxyService.GenerateText:input_type -> llmproxy.v1.GenerateTextRequest
-	27, // 59: llmproxy.v1.LLMProxyService.GenerateTextStream:input_type -> llmproxy.v1.GenerateTextStreamRequest
-	28, // 60: llmproxy.v1.LLMProxyService.SynthesizeSpeech:input_type -> llmproxy.v1.SynthesizeSpeechRequest
-	30, // 61: llmproxy.v1.LLMProxyService.GenerateImage:input_type -> llmproxy.v1.GenerateImageRequest
-	34, // 62: llmproxy.v1.LLMProxyService.Judge:input_type -> llmproxy.v1.JudgeRequest
-	24, // 63: llmproxy.v1.LLMProxyService.ListModels:input_type -> llmproxy.v1.ListModelsRequest
-	39, // 64: llmproxy.v1.LLMProxyService.SubmitBatch:input_type -> llmproxy.v1.SubmitBatchRequest
-	41, // 65: llmproxy.v1.LLMProxyService.GetBatch:input_type -> llmproxy.v1.GetBatchRequest
-	44, // 66: llmproxy.v1.LLMProxyService.ListBatchResults:input_type -> llmproxy.v1.ListBatchResultsRequest
-	46, // 67: llmproxy.v1.LLMProxyService.CancelBatch:input_type -> llmproxy.v1.CancelBatchRequest
-	22, // 68: llmproxy.v1.LLMProxyService.GenerateText:output_type -> llmproxy.v1.GenerateTextResponse
-	23, // 69: llmproxy.v1.LLMProxyService.GenerateTextStream:output_type -> llmproxy.v1.GenerateTextChunk
-	29, // 70: llmproxy.v1.LLMProxyService.SynthesizeSpeech:output_type -> llmproxy.v1.SynthesizeSpeechResponse
-	31, // 71: llmproxy.v1.LLMProxyService.GenerateImage:output_type -> llmproxy.v1.GenerateImageResponse
-	35, // 72: llmproxy.v1.LLMProxyService.Judge:output_type -> llmproxy.v1.JudgeResponse
-	26, // 73: llmproxy.v1.LLMProxyService.ListModels:output_type -> llmproxy.v1.ListModelsResponse
-	40, // 74: llmproxy.v1.LLMProxyService.SubmitBatch:output_type -> llmproxy.v1.SubmitBatchResponse
-	37, // 75: llmproxy.v1.LLMProxyService.GetBatch:output_type -> llmproxy.v1.Batch
-	45, // 76: llmproxy.v1.LLMProxyService.ListBatchResults:output_type -> llmproxy.v1.ListBatchResultsResponse
-	47, // 77: llmproxy.v1.LLMProxyService.CancelBatch:output_type -> llmproxy.v1.CancelBatchResponse
-	68, // [68:78] is the sub-list for method output_type
-	58, // [58:68] is the sub-list for method input_type
-	58, // [58:58] is the sub-list for extension type_name
-	58, // [58:58] is the sub-list for extension extendee
-	0,  // [0:58] is the sub-list for field type_name
+	62, // 42: llmproxy.v1.GetEmbeddingsRequest.attributes:type_name -> llmproxy.v1.GetEmbeddingsRequest.AttributesEntry
+	36, // 43: llmproxy.v1.GetEmbeddingsResponse.data:type_name -> llmproxy.v1.Embedding
+	20, // 44: llmproxy.v1.GetEmbeddingsResponse.usage:type_name -> llmproxy.v1.TokensUsage
+	3,  // 45: llmproxy.v1.Batch.state:type_name -> llmproxy.v1.BatchState
+	39, // 46: llmproxy.v1.Batch.counts:type_name -> llmproxy.v1.BatchCounts
+	64, // 47: llmproxy.v1.Batch.created_at:type_name -> google.protobuf.Timestamp
+	64, // 48: llmproxy.v1.Batch.completed_at:type_name -> google.protobuf.Timestamp
+	19, // 49: llmproxy.v1.BatchItemRequest.request:type_name -> llmproxy.v1.GenerateTextRequest
+	41, // 50: llmproxy.v1.SubmitBatchRequest.items:type_name -> llmproxy.v1.BatchItemRequest
+	0,  // 51: llmproxy.v1.SubmitBatchRequest.effort:type_name -> llmproxy.v1.Effort
+	63, // 52: llmproxy.v1.SubmitBatchRequest.attributes:type_name -> llmproxy.v1.SubmitBatchRequest.AttributesEntry
+	40, // 53: llmproxy.v1.SubmitBatchResponse.batch:type_name -> llmproxy.v1.Batch
+	22, // 54: llmproxy.v1.BatchItemResult.response:type_name -> llmproxy.v1.GenerateTextResponse
+	45, // 55: llmproxy.v1.BatchItemResult.error:type_name -> llmproxy.v1.BatchItemError
+	46, // 56: llmproxy.v1.ListBatchResultsResponse.items:type_name -> llmproxy.v1.BatchItemResult
+	17, // 57: llmproxy.v1.SchemaProperty.PropertiesEntry.value:type_name -> llmproxy.v1.SchemaProperty
+	17, // 58: llmproxy.v1.ResponseSchema.PropertiesEntry.value:type_name -> llmproxy.v1.SchemaProperty
+	32, // 59: llmproxy.v1.JudgeRequest.QuestionsEntry.value:type_name -> llmproxy.v1.JudgeQuestion
+	33, // 60: llmproxy.v1.JudgeResponse.AnswersEntry.value:type_name -> llmproxy.v1.JudgeAnswer
+	19, // 61: llmproxy.v1.LLMProxyService.GenerateText:input_type -> llmproxy.v1.GenerateTextRequest
+	27, // 62: llmproxy.v1.LLMProxyService.GenerateTextStream:input_type -> llmproxy.v1.GenerateTextStreamRequest
+	28, // 63: llmproxy.v1.LLMProxyService.SynthesizeSpeech:input_type -> llmproxy.v1.SynthesizeSpeechRequest
+	30, // 64: llmproxy.v1.LLMProxyService.GenerateImage:input_type -> llmproxy.v1.GenerateImageRequest
+	34, // 65: llmproxy.v1.LLMProxyService.Judge:input_type -> llmproxy.v1.JudgeRequest
+	37, // 66: llmproxy.v1.LLMProxyService.GetEmbeddings:input_type -> llmproxy.v1.GetEmbeddingsRequest
+	24, // 67: llmproxy.v1.LLMProxyService.ListModels:input_type -> llmproxy.v1.ListModelsRequest
+	42, // 68: llmproxy.v1.LLMProxyService.SubmitBatch:input_type -> llmproxy.v1.SubmitBatchRequest
+	44, // 69: llmproxy.v1.LLMProxyService.GetBatch:input_type -> llmproxy.v1.GetBatchRequest
+	47, // 70: llmproxy.v1.LLMProxyService.ListBatchResults:input_type -> llmproxy.v1.ListBatchResultsRequest
+	49, // 71: llmproxy.v1.LLMProxyService.CancelBatch:input_type -> llmproxy.v1.CancelBatchRequest
+	22, // 72: llmproxy.v1.LLMProxyService.GenerateText:output_type -> llmproxy.v1.GenerateTextResponse
+	23, // 73: llmproxy.v1.LLMProxyService.GenerateTextStream:output_type -> llmproxy.v1.GenerateTextChunk
+	29, // 74: llmproxy.v1.LLMProxyService.SynthesizeSpeech:output_type -> llmproxy.v1.SynthesizeSpeechResponse
+	31, // 75: llmproxy.v1.LLMProxyService.GenerateImage:output_type -> llmproxy.v1.GenerateImageResponse
+	35, // 76: llmproxy.v1.LLMProxyService.Judge:output_type -> llmproxy.v1.JudgeResponse
+	38, // 77: llmproxy.v1.LLMProxyService.GetEmbeddings:output_type -> llmproxy.v1.GetEmbeddingsResponse
+	26, // 78: llmproxy.v1.LLMProxyService.ListModels:output_type -> llmproxy.v1.ListModelsResponse
+	43, // 79: llmproxy.v1.LLMProxyService.SubmitBatch:output_type -> llmproxy.v1.SubmitBatchResponse
+	40, // 80: llmproxy.v1.LLMProxyService.GetBatch:output_type -> llmproxy.v1.Batch
+	48, // 81: llmproxy.v1.LLMProxyService.ListBatchResults:output_type -> llmproxy.v1.ListBatchResultsResponse
+	50, // 82: llmproxy.v1.LLMProxyService.CancelBatch:output_type -> llmproxy.v1.CancelBatchResponse
+	72, // [72:83] is the sub-list for method output_type
+	61, // [61:72] is the sub-list for method input_type
+	61, // [61:61] is the sub-list for extension type_name
+	61, // [61:61] is the sub-list for extension extendee
+	0,  // [0:61] is the sub-list for field type_name
 }
 
 func init() { file_llmproxy_v1_llmproxy_proto_init() }
@@ -3890,7 +4136,7 @@ func file_llmproxy_v1_llmproxy_proto_init() {
 		(*ContentPart_Audio)(nil),
 		(*ContentPart_Document)(nil),
 	}
-	file_llmproxy_v1_llmproxy_proto_msgTypes[38].OneofWrappers = []any{
+	file_llmproxy_v1_llmproxy_proto_msgTypes[41].OneofWrappers = []any{
 		(*BatchItemResult_Response)(nil),
 		(*BatchItemResult_Error)(nil),
 	}
@@ -3900,7 +4146,7 @@ func file_llmproxy_v1_llmproxy_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_llmproxy_v1_llmproxy_proto_rawDesc), len(file_llmproxy_v1_llmproxy_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   55,
+			NumMessages:   59,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

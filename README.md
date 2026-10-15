@@ -56,7 +56,7 @@ Two gRPC services share port `9090`:
 
 | Service | Purpose | Needed scope |
 | --- | --- | --- |
-| `llmproxy.v1.LLMProxyService` | `GenerateText`, `GenerateTextStream`, `SubmitBatch`, `GetBatch`, `ListBatchResults`, `CancelBatch`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `ListModels` | `generate` |
+| `llmproxy.v1.LLMProxyService` | `GenerateText`, `GenerateTextStream`, `SubmitBatch`, `GetBatch`, `ListBatchResults`, `CancelBatch`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `GetEmbeddings`, `ListModels` | `generate` |
 | `llmproxy.v1.LLMProxyAdminService` | models, rules, vendor keys, API keys, key rotation | `admin` |
 
 Port `8080` serves the health probes (`/healthz`, `/readyz`) and the
@@ -684,6 +684,17 @@ are answered against the same state in parallel.
 
 Supported decision vendors are [TypeSafe](https://typesafe.ai) (`jev-latest`, billing input only) and [OpenAI](https://openai.com) (`gpt-6-luna`, billing input and output tokens); both write no text and declare the `judge` capability.
 
+### Embeddings
+
+Vector representations of text. Vector space isolation is strictly enforced: `auto` model routing and cross-model fallbacks are disallowed to prevent corrupting downstream vector indices. Models must declare the `embedding` capability.
+
+```bash
+grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
+  "model": "text-embedding-3-small",
+  "inputs": ["Hello world", "Search document"]
+}' localhost:9090 llmproxy.v1.LLMProxyService/GetEmbeddings
+```
+
 ### ListModels
 
 Returns the models the calling key can use (those whose vendor it holds a credential for), with
@@ -719,6 +730,7 @@ curl -s localhost:8080/v1/chat/completions \
 | Endpoint | Maps to | Notes |
 | --- | --- | --- |
 | `POST /v1/chat/completions` | `GenerateText` / `GenerateTextStream` | Text, multimodal parts (`image_url`, `input_audio`, `file`/`document`), structured output, `tools`, and SSE streaming. |
+| `POST /v1/embeddings` | `GetEmbeddings` | Vector embeddings with `float` or `base64` encoding format and optional dimensionality. |
 | `POST /v1/audio/speech` | `SynthesizeSpeech` | Returns OGG/Opus audio. |
 | `POST /v1/images/generations` | `GenerateImage` | Returns `b64_json`. |
 | `POST /v1/decisions` | `Judge` | OpenAI Decisions API format (`predicate`, `choice`, `score`). |

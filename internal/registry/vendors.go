@@ -98,6 +98,9 @@ const (
 // declare it, so a chat model can never be handed a judgment.
 const CapabilityJudge = "judge"
 
+// CapabilityEmbedding marks models that compute text vector embeddings.
+const CapabilityEmbedding = "embedding"
+
 // CapabilityBatch marks models that support batch processing.
 const CapabilityBatch = "batch"
 

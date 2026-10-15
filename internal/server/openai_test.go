@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -33,6 +35,9 @@ type fakeProxy struct {
 	emptyStream    bool
 	media          map[string]string
 	judgeReq       *pb.JudgeRequest
+	embedReq       *pb.GetEmbeddingsRequest
+	embedResp      *pb.GetEmbeddingsResponse
+	embedErr       error
 }
 
 func (f *fakeProxy) GenerateText(_ context.Context, r *pb.GenerateTextRequest) (*pb.GenerateTextResponse, error) {
@@ -137,6 +142,25 @@ func (f *fakeProxy) Judge(_ context.Context, r *pb.JudgeRequest) (*pb.JudgeRespo
 		Answers:       answers,
 		ResolvedModel: model,
 		Usage:         &pb.TokensUsage{Input: 15, Output: 0},
+	}, nil
+}
+
+func (f *fakeProxy) GetEmbeddings(_ context.Context, r *pb.GetEmbeddingsRequest) (*pb.GetEmbeddingsResponse, error) {
+	f.embedReq = r
+	if f.embedErr != nil {
+		return nil, f.embedErr
+	}
+	if f.embedResp != nil {
+		return f.embedResp, nil
+	}
+	return &pb.GetEmbeddingsResponse{
+		Data: []*pb.Embedding{
+			{Index: 0, Values: []float32{0.1, 0.2, 0.3}},
+		},
+		ResolvedModel:  "text-embedding-3-small",
+		ResolvedVendor: "openai",
+		MatchedRule:    "default",
+		Usage:          &pb.TokensUsage{Input: 5, Output: 0},
 	}, nil
 }
 
@@ -998,4 +1022,156 @@ func TestChatCompletions_AutoRoutingAndPlacement(t *testing.T) {
 		t.Errorf("expected 400 for speech with placement, got %d: %s", recSpeech.Code, recSpeech.Body)
 	}
 }
+
+func TestEmbeddingsEndpoint(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+
+	// 1. Single string input with float encoding (default)
+	body1 := `{"model":"text-embedding-3-small","input":"hello world"}`
+	rec1 := do(h, "POST", "/v1/embeddings", key, body1)
+	if rec1.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", rec1.Code, rec1.Body)
+	}
+	if fp.embedReq == nil || len(fp.embedReq.Inputs) != 1 || fp.embedReq.Inputs[0] != "hello world" {
+		t.Fatalf("unexpected embedReq inputs: %v", fp.embedReq)
+	}
+	if fp.embedReq.Model != "text-embedding-3-small" {
+		t.Errorf("expected model text-embedding-3-small, got %s", fp.embedReq.Model)
+	}
+	if rec1.Header().Get("X-LLM-Proxy-Model") != "text-embedding-3-small" {
+		t.Errorf("expected header X-LLM-Proxy-Model text-embedding-3-small, got %s", rec1.Header().Get("X-LLM-Proxy-Model"))
+	}
+	if rec1.Header().Get("X-LLM-Proxy-Vendor") != "openai" {
+		t.Errorf("expected header X-LLM-Proxy-Vendor openai, got %s", rec1.Header().Get("X-LLM-Proxy-Vendor"))
+	}
+	if rec1.Header().Get("X-LLM-Proxy-Rule") != "default" {
+		t.Errorf("expected header X-LLM-Proxy-Rule default, got %s", rec1.Header().Get("X-LLM-Proxy-Rule"))
+	}
+
+	var resp1 struct {
+		Object string `json:"object"`
+		Data   []struct {
+			Object    string    `json:"object"`
+			Index     int       `json:"index"`
+			Embedding []float32 `json:"embedding"`
+		} `json:"data"`
+		Model string `json:"model"`
+		Usage struct {
+			PromptTokens int `json:"prompt_tokens"`
+			TotalTokens  int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(rec1.Body.Bytes(), &resp1); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp1.Object != "list" || len(resp1.Data) != 1 {
+		t.Fatalf("unexpected resp structure: %+v", resp1)
+	}
+	if resp1.Data[0].Index != 0 || len(resp1.Data[0].Embedding) != 3 {
+		t.Fatalf("unexpected embedding data: %+v", resp1.Data[0])
+	}
+	if resp1.Usage.PromptTokens != 5 || resp1.Usage.TotalTokens != 5 {
+		t.Errorf("unexpected usage: %+v", resp1.Usage)
+	}
+
+	// 2. Batch input with base64 encoding and metadata/user
+	fp.embedResp = &pb.GetEmbeddingsResponse{
+		Data: []*pb.Embedding{
+			{Index: 0, Values: []float32{1.5, -2.5}},
+			{Index: 1, Values: []float32{0.0, 4.2}},
+		},
+		ResolvedModel:  "text-embedding-3-large",
+		ResolvedVendor: "openai",
+		MatchedRule:    "custom-emb",
+		Usage:          &pb.TokensUsage{Input: 12, Output: 0},
+	}
+	body2 := `{
+		"model": "text-embedding-3-large",
+		"input": ["doc1", "doc2"],
+		"encoding_format": "base64",
+		"dimensions": 2,
+		"user": "alice",
+		"metadata": {"action_id": "act-123", "dept": "engineering"}
+	}`
+	rec2 := do(h, "POST", "/v1/embeddings", key, body2)
+	if rec2.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", rec2.Code, rec2.Body)
+	}
+	if fp.embedReq.Dimensions != 2 {
+		t.Errorf("expected dimensions 2, got %d", fp.embedReq.Dimensions)
+	}
+	if fp.embedReq.ActionId != "act-123" {
+		t.Errorf("expected action_id act-123, got %s", fp.embedReq.ActionId)
+	}
+	if fp.embedReq.Attributes["user_id"] != "alice" || fp.embedReq.Attributes["dept"] != "engineering" {
+		t.Errorf("unexpected attributes: %v", fp.embedReq.Attributes)
+	}
+
+	var resp2 struct {
+		Object string `json:"object"`
+		Data   []struct {
+			Object    string `json:"object"`
+			Index     int    `json:"index"`
+			Embedding string `json:"embedding"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec2.Body.Bytes(), &resp2); err != nil {
+		t.Fatalf("failed to decode base64 response: %v", err)
+	}
+	if len(resp2.Data) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(resp2.Data))
+	}
+	decodeFloats := func(s string) []float32 {
+		raw, err := base64.StdEncoding.DecodeString(s)
+		if err != nil {
+			t.Fatalf("invalid base64: %v", err)
+		}
+		floats := make([]float32, len(raw)/4)
+		for i := range floats {
+			bits := binary.LittleEndian.Uint32(raw[i*4:])
+			floats[i] = math.Float32frombits(bits)
+		}
+		return floats
+	}
+	f0 := decodeFloats(resp2.Data[0].Embedding)
+	if len(f0) != 2 || f0[0] != 1.5 || f0[1] != -2.5 {
+		t.Errorf("unexpected floats for item 0: %v", f0)
+	}
+	f1 := decodeFloats(resp2.Data[1].Embedding)
+	if len(f1) != 2 || f1[0] != 0.0 || f1[1] != 4.2 {
+		t.Errorf("unexpected floats for item 1: %v", f1)
+	}
+
+	// 3. Validation / error cases
+	fp.embedResp = nil
+	errCases := []struct {
+		name string
+		body string
+		code int
+	}{
+		{"missing model", `{"input":"hi"}`, 400},
+		{"auto model forbidden", `{"model":"auto","input":"hi"}`, 400},
+		{"empty string input", `{"model":"m","input":""}`, 400},
+		{"empty array input", `{"model":"m","input":[]}`, 400},
+		{"empty item in array", `{"model":"m","input":["hello",""]}`, 400},
+		{"token input rejected", `{"model":"m","input":[1,2,3]}`, 400},
+		{"invalid encoding format", `{"model":"m","input":"hi","encoding_format":"hex"}`, 400},
+	}
+	for _, tc := range errCases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := do(h, "POST", "/v1/embeddings", key, tc.body)
+			if r.Code != tc.code {
+				t.Errorf("expected status %d for %s, got %d: %s", tc.code, tc.name, r.Code, r.Body)
+			}
+		})
+	}
+
+	// 4. Upstream error mapping
+	fp.embedErr = status.Error(codes.FailedPrecondition, "no_capable_model")
+	recErr := do(h, "POST", "/v1/embeddings", key, `{"model":"m","input":"hi"}`)
+	if recErr.Code != 400 {
+		t.Errorf("expected 400 for FailedPrecondition, got %d: %s", recErr.Code, recErr.Body)
+	}
+}
+
 
