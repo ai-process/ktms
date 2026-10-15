@@ -295,6 +295,42 @@ func TestGroqAndMistralVendorsBuildAdapters(t *testing.T) {
 	}
 }
 
+func TestAzureVendorBuildAdapter(t *testing.T) {
+	if !ValidVendor(VendorAzure) {
+		t.Fatal("azure should be reported as valid vendor")
+	}
+
+	// Azure requires endpoint
+	mNoEndpoint := model("azure-gpt-4o", VendorAzure, EffortLow)
+	if _, err := buildAdapter(mNoEndpoint, "azure-key"); err == nil {
+		t.Fatal("expected error when endpoint is missing for azure")
+	}
+
+	// Azure with valid endpoint
+	m := model("azure-gpt-4o", VendorAzure, EffortLow)
+	m.Endpoint = "https://my-resource.openai.azure.com"
+	if err := ValidateModel(m); err != nil {
+		t.Fatalf("ValidateModel: %v", err)
+	}
+	adapter, err := buildAdapter(m, "azure-key")
+	if err != nil {
+		t.Fatalf("buildAdapter: %v", err)
+	}
+	if _, ok := adapter.(llm.ClientAdapter); !ok {
+		t.Error("azure adapter does not implement llm.ClientAdapter")
+	}
+	if _, ok := adapter.(llm.StreamAdapter); !ok {
+		t.Error("azure adapter does not implement llm.StreamAdapter")
+	}
+
+	// Azure with query param api-version
+	mQuery := model("azure-gpt-4o", VendorAzure, EffortLow)
+	mQuery.Endpoint = "https://my-resource.openai.azure.com?api-version=2024-10-21"
+	if _, err := buildAdapter(mQuery, "azure-key"); err != nil {
+		t.Fatalf("buildAdapter with api-version query: %v", err)
+	}
+}
+
 func TestUserRateLimitWildcards(t *testing.T) {
 	snap := &Snapshot{
 		UserRateLimits: map[string]map[string]*proxydb.UserRateLimit{

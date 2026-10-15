@@ -98,3 +98,26 @@ func TestIsRetryableError_GenericError_NotRetryable(t *testing.T) {
 		t.Error("generic error should not be retryable")
 	}
 }
+
+func TestIsContentFilterError(t *testing.T) {
+	cases := []struct {
+		err  error
+		want bool
+	}{
+		{&openai.Error{Code: "content_filter"}, true},
+		{&openai.Error{Code: "ResponsibleAIPolicyViolation"}, true},
+		{&openai.Error{Message: "The response was filtered due to the prompt triggering Azure OpenAI's content management policy."}, true},
+		{&openai.Error{Code: "invalid_request_error"}, false},
+		{errors.New("some error"), false},
+		{nil, false},
+	}
+	for _, c := range cases {
+		if got := IsContentFilterError(c.err); got != c.want {
+			t.Errorf("IsContentFilterError(%v) = %v, want %v", c.err, got, c.want)
+		}
+		if got := ShouldSkipToNextModel(c.err); got != c.want {
+			t.Errorf("ShouldSkipToNextModel(%v) = %v, want %v", c.err, got, c.want)
+		}
+	}
+}
+

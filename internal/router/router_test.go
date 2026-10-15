@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/url"
 	"testing"
 
 	"google.golang.org/genai"
@@ -12,6 +14,7 @@ import (
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/registry"
+	"github.com/openai/openai-go/v3"
 )
 
 func model(id, vendor string, efforts ...string) *proxydb.Model {
@@ -640,6 +643,100 @@ func TestExecuteStream_SkipToNextModel_Fallback(t *testing.T) {
 		t.Errorf("expected cloud2, got %s", chosen.ID)
 	}
 	if len(chunks) != 1 || chunks[0] != "stream from cloud" {
+		t.Errorf("unexpected chunks: %v", chunks)
+	}
+}
+
+func TestExecute_AzureContentFilter_Fallback(t *testing.T) {
+	m1 := model("azure-gpt-4o", registry.VendorAzure, registry.EffortHigh)
+	m2 := model("cloud-fallback", registry.VendorOpenAI, registry.EffortHigh)
+
+	azureErr := &openai.Error{
+		Code:     "content_filter",
+		Message:  "The response was filtered due to the prompt triggering Azure OpenAI's content management policy.",
+		Request:  &http.Request{Method: "POST", URL: &url.URL{Path: "/chat/completions"}},
+		Response: &http.Response{StatusCode: 400},
+	}
+
+	ad1 := &fakeAdapter{
+		responses: []func() (*llm.Response, error){
+			func() (*llm.Response, error) {
+				return nil, azureErr
+			},
+		},
+	}
+	ad2 := &fakeAdapter{
+		responses: []func() (*llm.Response, error){
+			func() (*llm.Response, error) {
+				return &llm.Response{Choices: []*llm.Message{{Text: "safe reply from fallback"}}}, nil
+			},
+		},
+	}
+
+	resp, chosen, err := Execute(context.Background(), NoopThrottle{}, Request{
+		Chain: []*proxydb.Model{m1, m2},
+		Chat:  llm.NewChatContext(),
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "azure-gpt-4o" {
+				return ad1, nil
+			}
+			return ad2, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if chosen.ID != "cloud-fallback" {
+		t.Errorf("expected cloud-fallback to be chosen, got %s", chosen.ID)
+	}
+	if resp.Choices[0].Text != "safe reply from fallback" {
+		t.Errorf("unexpected response text: %s", resp.Choices[0].Text)
+	}
+}
+
+func TestExecuteStream_AzureContentFilter_Fallback(t *testing.T) {
+	m1 := model("azure-gpt-4o", registry.VendorAzure, registry.EffortHigh)
+	m2 := model("cloud-fallback", registry.VendorOpenAI, registry.EffortHigh)
+
+	azureErr := &openai.Error{
+		Code:     "ResponsibleAIPolicyViolation",
+		Message:  "The response was filtered due to Azure OpenAI policy.",
+		Request:  &http.Request{Method: "POST", URL: &url.URL{Path: "/chat/completions"}},
+		Response: &http.Response{StatusCode: 400},
+	}
+
+	s1 := &fakeStreamAdapter{
+		stream: func(_ context.Context, _ *llm.ChatContext, _ func(llm.StreamChunk) error) error {
+			return azureErr
+		},
+	}
+	s2 := &fakeStreamAdapter{
+		stream: func(_ context.Context, _ *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+			return onChunk(llm.StreamChunk{Delta: "stream from fallback"})
+		},
+	}
+
+	var chunks []string
+	chosen, err := ExecuteStream(context.Background(), NoopThrottle{}, Request{
+		Chain: []*proxydb.Model{m1, m2},
+		Chat:  llm.NewChatContext(),
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "azure-gpt-4o" {
+				return s1, nil
+			}
+			return s2, nil
+		},
+	}, func(_ *proxydb.Model, c llm.StreamChunk) error {
+		chunks = append(chunks, c.Delta)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if chosen.ID != "cloud-fallback" {
+		t.Errorf("expected cloud-fallback, got %s", chosen.ID)
+	}
+	if len(chunks) != 1 || chunks[0] != "stream from fallback" {
 		t.Errorf("unexpected chunks: %v", chunks)
 	}
 }

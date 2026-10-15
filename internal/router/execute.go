@@ -137,9 +137,13 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 			if i+1 < len(r.Chain) {
 				nextModel = r.Chain[i+1].ID
 			}
-			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, "capacity_exhausted").Inc()
-			log.Warn().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).
-				Msg("model capacity exhausted, trying next in chain")
+			reason := "capacity_exhausted"
+			if llm.IsContentFilterError(err) {
+				reason = "content_filter"
+			}
+			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, reason).Inc()
+			log.Warn().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).Str("reason", reason).
+				Msg("model skipped, trying next in chain")
 			continue
 		}
 		var schemaErr *SchemaFailure
@@ -333,9 +337,13 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			if i+1 < len(r.Chain) {
 				nextModel = r.Chain[i+1].ID
 			}
-			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, "capacity_exhausted").Inc()
-			log.Warn().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).
-				Msg("model capacity exhausted, trying next in chain")
+			reason := "capacity_exhausted"
+			if llm.IsContentFilterError(err) {
+				reason = "content_filter"
+			}
+			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, reason).Inc()
+			log.Warn().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).Str("reason", reason).
+				Msg("model skipped in stream, trying next in chain")
 			continue
 		}
 
