@@ -55,8 +55,8 @@ func TestResolveBatchModel_NoVendorKey(t *testing.T) {
 	)
 
 	_, err := ResolveBatchModel(context.Background(), snap, NoopThrottle{}, []string{"m-batch"}, "key1", "gen", "user1")
-	if !errors.Is(err, ErrNoCapableModel) {
-		t.Fatalf("expected ErrNoCapableModel when vendor key is missing, got %v", err)
+	if !errors.Is(err, ErrNoVendorKey) {
+		t.Fatalf("expected ErrNoVendorKey when vendor key is missing, got %v", err)
 	}
 }
 

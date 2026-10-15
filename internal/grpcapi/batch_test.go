@@ -559,3 +559,84 @@ func TestSubmitBatch_RejectsMultimodal(t *testing.T) {
 		t.Fatalf("expected InvalidArgument for multimodal batch, got %v", err)
 	}
 }
+
+func TestSubmitBatch_NoVendorKey(t *testing.T) {
+	adapter := &fakeBatchAdapter{}
+	models := []*proxydb.Model{
+		{
+			ID:           "gemini-flash",
+			Vendor:       registry.VendorGoogle,
+			Capabilities: []string{registry.CapabilityBatch},
+			Efforts:      []string{registry.EffortMedium},
+			Enabled:      true,
+		},
+	}
+	rules := []*proxydb.Rule{
+		{
+			Name:     "default-batch",
+			Priority: 1,
+			Effort:   registry.EffortMedium,
+			Use:      []string{"gemini-flash"},
+			Enabled:  true,
+		},
+	}
+	// key-no-vendor has no Google vendor key configured
+	keys := map[string]map[string]string{
+		"key-no-vendor": {registry.VendorOpenAI: "o-key"},
+	}
+
+	snap := registry.NewSnapshotForTest(models, rules, keys, nil)
+	snap.SetAdapter("key-no-vendor", "gemini-flash", adapter)
+
+	store := newFakeBatchStore()
+	server := NewProxyServer(fixedSnapshot{snap}, nil).WithBatch(store, 100)
+	ctx := authCtx("key-no-vendor", "no-vendor-client")
+
+	req := &pb.SubmitBatchRequest{
+		Effort: pb.Effort_EFFORT_MEDIUM,
+		Items: []*pb.BatchItemRequest{
+			{CustomId: "c1", Request: &pb.GenerateTextRequest{Messages: []*pb.ChatMessage{{Text: "hi"}}}},
+		},
+	}
+
+	_, err := server.SubmitBatch(ctx, req)
+	if status.Code(err) != codes.FailedPrecondition || status.Convert(err).Message() != "no_vendor_key" {
+		t.Fatalf("expected FailedPrecondition (no_vendor_key), got %v", err)
+	}
+}
+
+func TestBatchRPCs_BatchNotConfigured(t *testing.T) {
+	snap := registry.NewSnapshotForTest(nil, nil, nil, nil)
+	server := NewProxyServer(fixedSnapshot{snap}, nil) // WithBatch not called -> batchStore is nil
+	ctx := authCtx("key-1", "test-client")
+
+	// 1. SubmitBatch
+	_, err := server.SubmitBatch(ctx, &pb.SubmitBatchRequest{
+		Effort: pb.Effort_EFFORT_MEDIUM,
+		Items: []*pb.BatchItemRequest{
+			{CustomId: "c1", Request: &pb.GenerateTextRequest{Messages: []*pb.ChatMessage{{Text: "hi"}}}},
+		},
+	})
+	if status.Code(err) != codes.FailedPrecondition || status.Convert(err).Message() != "batch not configured" {
+		t.Fatalf("SubmitBatch: expected FailedPrecondition (batch not configured), got %v", err)
+	}
+
+	// 2. GetBatch
+	_, err = server.GetBatch(ctx, &pb.GetBatchRequest{BatchId: "b-1"})
+	if status.Code(err) != codes.FailedPrecondition || status.Convert(err).Message() != "batch not configured" {
+		t.Fatalf("GetBatch: expected FailedPrecondition (batch not configured), got %v", err)
+	}
+
+	// 3. ListBatchResults
+	_, err = server.ListBatchResults(ctx, &pb.ListBatchResultsRequest{BatchId: "b-1"})
+	if status.Code(err) != codes.FailedPrecondition || status.Convert(err).Message() != "batch not configured" {
+		t.Fatalf("ListBatchResults: expected FailedPrecondition (batch not configured), got %v", err)
+	}
+
+	// 4. CancelBatch
+	_, err = server.CancelBatch(ctx, &pb.CancelBatchRequest{BatchId: "b-1"})
+	if status.Code(err) != codes.FailedPrecondition || status.Convert(err).Message() != "batch not configured" {
+		t.Fatalf("CancelBatch: expected FailedPrecondition (batch not configured), got %v", err)
+	}
+}
+

@@ -777,13 +777,15 @@ API key's name. Any service implementing `RecordUsageEvent(s)` works as a sink.
 | gRPC status | Reason | What to do |
 | --- | --- | --- |
 | `NOT_FOUND` | – | Unknown batch ID. |
-| `INVALID_ARGUMENT` | – | Empty batch, duplicate `custom_id`, too many items (> `BATCH_MAX_ITEMS`), or invalid parameters. |
+| `INVALID_ARGUMENT` | `guardrail_violation` | Blocked due to detected prompt injection or PII violation. Clean input before retrying. |
+| `INVALID_ARGUMENT` | `bad_request: <message>` | Empty batch, duplicate `custom_id`, too many items (> `BATCH_MAX_ITEMS`), or invalid parameters. |
 | `UNAVAILABLE` | `vendors_unavailable` | The whole chain failed. **The only retryable error.** |
 | `RESOURCE_EXHAUSTED` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` | Back off; don't hot-retry. Daily budget exhausted before batch submission. |
 | `FAILED_PRECONDITION` | `output_truncated` | Raise `max_output_tokens`; don't retry as-is. |
 | `FAILED_PRECONDITION` | `no_capable_model` | No model in the matched chain can serve this request, modality, or batch capability. |
 | `FAILED_PRECONDITION` | `no_vendor_key` | The client key holds no credential for the chain's vendors. |
 | `FAILED_PRECONDITION` | `not_configured` | No models/rules configured yet. |
+| `FAILED_PRECONDITION` | `batch not configured` | Batch processing is not enabled/configured on the proxy (no batch store). |
 | `INTERNAL` | `vendor_error` | Terminal vendor failure. |
 | `UNAUTHENTICATED` / `PERMISSION_DENIED` | – | Missing/invalid key, or key lacks the scope. |
 
@@ -796,6 +798,7 @@ Items returned in `ListBatchResults` that failed have an `error` containing a gR
 | `output_truncated` | Item reached `max_output_tokens` or candidate finish limit. | Re-submit item with higher `max_output_tokens`. |
 | `vendor_error` | Vendor error occurred during processing or structured schema validation failed. | Retry synchronously or resubmit in another batch. |
 | `batch_expired` | Vendor batch expired (after 48 h) before the item finished. | Re-submit the item. |
+| `batch_cancelled` | Batch was cancelled before the item completed. | Re-submit if still needed. |
 
 ## Operations
 
