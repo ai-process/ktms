@@ -485,21 +485,25 @@ func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRoll
 		return nil, err
 	}
 
+	userID := router.UserID(plan.attrs, plan.identity.Name)
 	var out *llm.EvaluateRolloutsResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
 		Chain:    plan.chain,
 		KeyName:  plan.identity.Name,
-		UserID:   router.UserID(plan.attrs, plan.identity.Name),
+		UserID:   userID,
 		Estimate: rolloutEstimate(rolloutReq),
 		Adapter:  plan.adapter,
 		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			if rj, ok := adapter.(llm.RolloutJudge); ok {
-				res, err := rj.EvaluateRollouts(ctx, rolloutReq, router.UserID(plan.attrs, plan.identity.Name), plan.meta)
+				res, err := rj.EvaluateRollouts(ctx, rolloutReq, userID, plan.meta)
 				if err == nil {
 					out = res
 					return res.Usage, nil
 				}
 				if !errors.Is(err, llm.ErrJudgmentUnsupported) {
+					if res != nil {
+						return res.Usage, err
+					}
 					return llm.TokensUsage{}, err
 				}
 			}
@@ -507,8 +511,11 @@ func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRoll
 			if !ok {
 				return llm.TokensUsage{}, llm.ErrJudgmentUnsupported
 			}
-			res, err := executeParallelCandidateRollouts(ctx, judge, rolloutReq, router.UserID(plan.attrs, plan.identity.Name), plan.meta)
+			res, err := executeParallelCandidateRollouts(ctx, judge, rolloutReq, userID, plan.meta)
 			if err != nil {
+				if res != nil {
+					return res.Usage, err
+				}
 				return llm.TokensUsage{}, err
 			}
 			out = res
@@ -559,6 +566,9 @@ func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRoll
 	}, nil
 }
 
+// maxRolloutConcurrency bounds parallel rollout evaluations to avoid socket starvation.
+const maxRolloutConcurrency = 16
+
 func executeParallelCandidateRollouts(ctx context.Context, judge llm.Judge, rolloutReq *llm.EvaluateRolloutsRequest, userID string, meta map[string]string) (*llm.EvaluateRolloutsResult, error) {
 	evals := make([]*llm.CandidateEvaluation, len(rolloutReq.Candidates))
 	var (
@@ -566,7 +576,7 @@ func executeParallelCandidateRollouts(ctx context.Context, judge llm.Judge, roll
 		totalUsage llm.TokensUsage
 	)
 	g, gCtx := errgroup.WithContext(ctx)
-	concurrency := 16
+	concurrency := maxRolloutConcurrency
 	if len(rolloutReq.Candidates) < concurrency {
 		concurrency = len(rolloutReq.Candidates)
 	}
@@ -583,13 +593,28 @@ func executeParallelCandidateRollouts(ctx context.Context, judge llm.Judge, roll
 				candMedia = append(candMedia, rolloutReq.StateMedia...)
 				candMedia = append(candMedia, c.ActionMedia...)
 			}
+			if len(candMedia) > maxJudgeMediaParts {
+				return status.Errorf(codes.InvalidArgument, "candidate[%d] combined media parts %d exceed ceiling %d", idx, len(candMedia), maxJudgeMediaParts)
+			}
+			var candBytes int
+			for _, p := range candMedia {
+				candBytes += len(p.Data)
+			}
+			if candBytes > maxJudgeMediaBytes {
+				return status.Errorf(codes.InvalidArgument, "candidate[%d] combined media bytes %d exceed ceiling %d", idx, candBytes, maxJudgeMediaBytes)
+			}
 			jReq := &llm.JudgeRequest{
 				StateJSON:  candState,
 				StateMedia: candMedia,
 				Questions:  rolloutReq.Criteria,
 				ActionID:   rolloutReq.ActionID,
 			}
-			res, err := judge.Judge(gCtx, jReq, userID, meta)
+			// Copy meta for each candidate goroutine to prevent concurrent map write races.
+			candMeta := make(map[string]string, len(meta))
+			for k, v := range meta {
+				candMeta[k] = v
+			}
+			res, err := judge.Judge(gCtx, jReq, userID, candMeta)
 			if err != nil {
 				return err
 			}
@@ -598,7 +623,7 @@ func executeParallelCandidateRollouts(ctx context.Context, judge llm.Judge, roll
 			totalUsage.Output += res.Usage.Output
 			mu.Unlock()
 
-			score := calculateCompositeScore(res.Answers)
+			score := calculateCompositeScore(res.Answers, rolloutReq.Criteria)
 			evals[idx] = &llm.CandidateEvaluation{
 				ID:             c.ID,
 				Answers:        res.Answers,
@@ -609,7 +634,7 @@ func executeParallelCandidateRollouts(ctx context.Context, judge llm.Judge, roll
 	}
 
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return &llm.EvaluateRolloutsResult{Usage: totalUsage}, err
 	}
 
 	rankEvaluations(evals)
@@ -646,29 +671,40 @@ func rankEvaluations(evals []*llm.CandidateEvaluation) {
 	}
 }
 
-func calculateCompositeScore(answers map[string]*llm.JudgeAnswer) float64 {
-	if len(answers) == 0 {
+func calculateCompositeScore(answers map[string]*llm.JudgeAnswer, criteria map[string]*llm.JudgeQuestion) float64 {
+	if len(criteria) == 0 {
 		return 0.0
 	}
 	var total float64
-	for _, ans := range answers {
+	for id, q := range criteria {
+		ans, ok := answers[id]
+		if !ok || ans == nil {
+			continue
+		}
 		var s float64
-		switch ans.Type {
+		switch q.Type {
 		case llm.JudgeNoul:
 			s = ans.Noul
 		case llm.JudgeScore:
-			s = ans.Score
-			if len(ans.Legend) > 1 && s > 1.0 {
-				s = s / float64(len(ans.Legend)-1)
+			numLevels := len(q.Levels)
+			if numLevels <= 1 {
+				numLevels = len(ans.Legend)
+			}
+			if numLevels > 1 {
+				s = ans.Score / float64(numLevels-1)
+			} else {
+				s = ans.Score
 			}
 		case llm.JudgeChoice:
+			s = 0.5
 			if ans.Confidence > 0 {
-				s = ans.Confidence
-			} else if len(ans.Probabilities) > 0 {
-				for _, p := range ans.Probabilities {
-					if p > s {
-						s = p
-					}
+				lower := strings.ToLower(ans.Choice)
+				if lower == "yes" || lower == "true" || lower == "good" {
+					s = ans.Confidence
+				} else if lower == "no" || lower == "false" || lower == "bad" {
+					s = 1.0 - ans.Confidence
+				} else {
+					s = ans.Confidence
 				}
 			}
 		}
@@ -680,7 +716,7 @@ func calculateCompositeScore(answers map[string]*llm.JudgeAnswer) float64 {
 		}
 		total += s
 	}
-	return total / float64(len(answers))
+	return total / float64(len(criteria))
 }
 
 func composeCandidateState(stateJSON, actionJSON, actionText string) string {

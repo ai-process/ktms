@@ -386,33 +386,37 @@ message GetEmbeddingsResponse {
   string matched_rule = 5;
 }
 
+// RolloutCandidate is one speculative action or trajectory to evaluate.
 message RolloutCandidate {
-  string id = 1;
-  string action_json = 2;
-  repeated MediaPart action_media = 3;
-  string action_text = 4;
+  string id = 1; // unique candidate identifier
+  string action_json = 2; // structured action payload or state transition
+  repeated MediaPart action_media = 3; // multimodal parts for action (vision, audio, embeddings)
+  string action_text = 4; // textual action summary or command
 }
 
+// CandidateEvaluation carries the calibrated evaluation and rank for one candidate.
 message CandidateEvaluation {
   string id = 1;
-  map<string, JudgeAnswer> answers = 2;
-  double composite_score = 3;
-  int32 rank = 4;
+  map<string, JudgeAnswer> answers = 2; // answers to criteria questions
+  double composite_score = 3; // normalized score in [0.0, 1.0]; higher is better
+  int32 rank = 4; // 1-based candidate rank sorted by composite score
 }
 
+// EvaluateRolloutsRequest specifies batch candidates to evaluate against state and criteria.
 message EvaluateRolloutsRequest {
-  string state_json = 1;
-  repeated MediaPart state_media = 2;
-  repeated RolloutCandidate candidates = 3;
-  map<string, JudgeQuestion> criteria = 4;
+  string state_json = 1; // current environmental state JSON
+  repeated MediaPart state_media = 2; // state media parts (vision, audio, embeddings)
+  repeated RolloutCandidate candidates = 3; // candidate rollouts (up to 64)
+  map<string, JudgeQuestion> criteria = 4; // evaluation criteria (defaults to reward predicate if omitted)
   map<string, string> attributes = 5;
   string action_id = 6;
   string model_override = 7;
 }
 
+// EvaluateRolloutsResponse returns ranked evaluations and identifies the best candidate.
 message EvaluateRolloutsResponse {
-  repeated CandidateEvaluation evaluations = 1;
-  string best_candidate_id = 2;
+  repeated CandidateEvaluation evaluations = 1; // evaluations in ranked order (best first)
+  string best_candidate_id = 2; // candidate with rank 1
   TokensUsage usage = 3;
   string resolved_model = 4;
   string resolved_vendor = 5;

@@ -1599,6 +1599,11 @@ func (a *OpenAIAPI) decisionsRollouts(ctx context.Context, w http.ResponseWriter
 	if len(criteriaReqs) == 0 && len(decReq.Questions) > 0 {
 		criteriaReqs = decReq.Questions
 	}
+	if len(criteriaReqs) == 0 {
+		criteriaReqs = []decisionsQuestionReq{
+			{Name: "reward", Type: "predicate", Instructions: "Evaluate candidate rollout reward."},
+		}
+	}
 
 	scoreLabels := make(map[string][]string)
 	pbCriteria := make(map[string]*pb.JudgeQuestion, len(criteriaReqs))
@@ -1722,6 +1727,8 @@ func (a *OpenAIAPI) decisionsRollouts(ctx context.Context, w http.ResponseWriter
 						Values: p.Embedding,
 						Model:  p.Model,
 					}}})
+				default:
+					return invalid("candidate[%d].media[%d]: unsupported media type %q", i, mi, p.Type)
 				}
 			}
 		}

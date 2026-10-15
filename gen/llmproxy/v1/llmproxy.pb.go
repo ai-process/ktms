@@ -3060,12 +3060,13 @@ func (x *GetEmbeddingsResponse) GetMatchedRule() string {
 	return ""
 }
 
+// RolloutCandidate is one speculative action or trajectory to evaluate.
 type RolloutCandidate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	ActionJson    string                 `protobuf:"bytes,2,opt,name=action_json,json=actionJson,proto3" json:"action_json,omitempty"`
-	ActionMedia   []*MediaPart           `protobuf:"bytes,3,rep,name=action_media,json=actionMedia,proto3" json:"action_media,omitempty"`
-	ActionText    string                 `protobuf:"bytes,4,opt,name=action_text,json=actionText,proto3" json:"action_text,omitempty"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                      // unique candidate identifier
+	ActionJson    string                 `protobuf:"bytes,2,opt,name=action_json,json=actionJson,proto3" json:"action_json,omitempty"`    // structured action payload or state transition
+	ActionMedia   []*MediaPart           `protobuf:"bytes,3,rep,name=action_media,json=actionMedia,proto3" json:"action_media,omitempty"` // multimodal parts for action (vision, audio, embeddings)
+	ActionText    string                 `protobuf:"bytes,4,opt,name=action_text,json=actionText,proto3" json:"action_text,omitempty"`    // textual action summary or command
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3128,12 +3129,13 @@ func (x *RolloutCandidate) GetActionText() string {
 	return ""
 }
 
+// CandidateEvaluation carries the calibrated evaluation and rank for one candidate.
 type CandidateEvaluation struct {
 	state          protoimpl.MessageState  `protogen:"open.v1"`
 	Id             string                  `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Answers        map[string]*JudgeAnswer `protobuf:"bytes,2,rep,name=answers,proto3" json:"answers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	CompositeScore float64                 `protobuf:"fixed64,3,opt,name=composite_score,json=compositeScore,proto3" json:"composite_score,omitempty"`
-	Rank           int32                   `protobuf:"varint,4,opt,name=rank,proto3" json:"rank,omitempty"`
+	Answers        map[string]*JudgeAnswer `protobuf:"bytes,2,rep,name=answers,proto3" json:"answers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // answers to criteria questions
+	CompositeScore float64                 `protobuf:"fixed64,3,opt,name=composite_score,json=compositeScore,proto3" json:"composite_score,omitempty"`                                     // normalized score in [0.0, 1.0]; higher is better
+	Rank           int32                   `protobuf:"varint,4,opt,name=rank,proto3" json:"rank,omitempty"`                                                                                // 1-based candidate rank sorted by composite score
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -3196,12 +3198,13 @@ func (x *CandidateEvaluation) GetRank() int32 {
 	return 0
 }
 
+// EvaluateRolloutsRequest specifies batch candidates to evaluate against state and criteria.
 type EvaluateRolloutsRequest struct {
 	state         protoimpl.MessageState    `protogen:"open.v1"`
-	StateJson     string                    `protobuf:"bytes,1,opt,name=state_json,json=stateJson,proto3" json:"state_json,omitempty"`
-	StateMedia    []*MediaPart              `protobuf:"bytes,2,rep,name=state_media,json=stateMedia,proto3" json:"state_media,omitempty"`
-	Candidates    []*RolloutCandidate       `protobuf:"bytes,3,rep,name=candidates,proto3" json:"candidates,omitempty"`
-	Criteria      map[string]*JudgeQuestion `protobuf:"bytes,4,rep,name=criteria,proto3" json:"criteria,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	StateJson     string                    `protobuf:"bytes,1,opt,name=state_json,json=stateJson,proto3" json:"state_json,omitempty"`                                                        // current environmental state JSON
+	StateMedia    []*MediaPart              `protobuf:"bytes,2,rep,name=state_media,json=stateMedia,proto3" json:"state_media,omitempty"`                                                     // state media parts (vision, audio, embeddings)
+	Candidates    []*RolloutCandidate       `protobuf:"bytes,3,rep,name=candidates,proto3" json:"candidates,omitempty"`                                                                       // candidate rollouts (up to 64)
+	Criteria      map[string]*JudgeQuestion `protobuf:"bytes,4,rep,name=criteria,proto3" json:"criteria,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // evaluation criteria (defaults to reward predicate if omitted)
 	Attributes    map[string]string         `protobuf:"bytes,5,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	ActionId      string                    `protobuf:"bytes,6,opt,name=action_id,json=actionId,proto3" json:"action_id,omitempty"`
 	ModelOverride string                    `protobuf:"bytes,7,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`
@@ -3288,10 +3291,11 @@ func (x *EvaluateRolloutsRequest) GetModelOverride() string {
 	return ""
 }
 
+// EvaluateRolloutsResponse returns ranked evaluations and identifies the best candidate.
 type EvaluateRolloutsResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	Evaluations     []*CandidateEvaluation `protobuf:"bytes,1,rep,name=evaluations,proto3" json:"evaluations,omitempty"`
-	BestCandidateId string                 `protobuf:"bytes,2,opt,name=best_candidate_id,json=bestCandidateId,proto3" json:"best_candidate_id,omitempty"`
+	Evaluations     []*CandidateEvaluation `protobuf:"bytes,1,rep,name=evaluations,proto3" json:"evaluations,omitempty"`                                  // evaluations in ranked order (best first)
+	BestCandidateId string                 `protobuf:"bytes,2,opt,name=best_candidate_id,json=bestCandidateId,proto3" json:"best_candidate_id,omitempty"` // candidate with rank 1
 	Usage           *TokensUsage           `protobuf:"bytes,3,opt,name=usage,proto3" json:"usage,omitempty"`
 	ResolvedModel   string                 `protobuf:"bytes,4,opt,name=resolved_model,json=resolvedModel,proto3" json:"resolved_model,omitempty"`
 	ResolvedVendor  string                 `protobuf:"bytes,5,opt,name=resolved_vendor,json=resolvedVendor,proto3" json:"resolved_vendor,omitempty"`

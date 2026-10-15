@@ -435,3 +435,72 @@ func BenchmarkEvaluateRollouts(b *testing.B) {
 		}
 	}
 }
+
+func TestCalculateCompositeScore_MonotonicScoreLevels(t *testing.T) {
+	criteria := map[string]*llm.JudgeQuestion{
+		"quality": {
+			Type:   llm.JudgeScore,
+			Levels: []string{"bad", "suboptimal", "ok", "good", "best"}, // 5 levels: 0..4
+		},
+	}
+
+	scoreBad := calculateCompositeScore(map[string]*llm.JudgeAnswer{
+		"quality": {Type: llm.JudgeScore, Score: 0.0},
+	}, criteria)
+	scoreSub := calculateCompositeScore(map[string]*llm.JudgeAnswer{
+		"quality": {Type: llm.JudgeScore, Score: 1.0},
+	}, criteria)
+	scoreOk := calculateCompositeScore(map[string]*llm.JudgeAnswer{
+		"quality": {Type: llm.JudgeScore, Score: 2.0},
+	}, criteria)
+	scoreGood := calculateCompositeScore(map[string]*llm.JudgeAnswer{
+		"quality": {Type: llm.JudgeScore, Score: 3.0},
+	}, criteria)
+	scoreBest := calculateCompositeScore(map[string]*llm.JudgeAnswer{
+		"quality": {Type: llm.JudgeScore, Score: 4.0},
+	}, criteria)
+
+	if !(scoreBad < scoreSub && scoreSub < scoreOk && scoreOk < scoreGood && scoreGood < scoreBest) {
+		t.Errorf("scores not strictly monotonic: bad=%f, sub=%f, ok=%f, good=%f, best=%f",
+			scoreBad, scoreSub, scoreOk, scoreGood, scoreBest)
+	}
+	if scoreBest != 1.0 {
+		t.Errorf("best score = %f, want 1.0", scoreBest)
+	}
+	if scoreSub != 0.25 {
+		t.Errorf("suboptimal score = %f, want 0.25", scoreSub)
+	}
+}
+
+type mutatingJudge struct{}
+
+func (m *mutatingJudge) Judge(_ context.Context, req *llm.JudgeRequest, _ string, meta map[string]string) (*llm.JudgeResult, error) {
+	// Mutate meta to verify concurrent safety across candidate goroutines
+	meta["node_id"] = "node-123"
+	meta["visited"] = "true"
+	return &llm.JudgeResult{
+		Answers: map[string]*llm.JudgeAnswer{"q": {Type: llm.JudgeNoul, Noul: 0.8}},
+		Usage:   llm.TokensUsage{Input: 10, Output: 2},
+	}, nil
+}
+
+func TestParallelRollouts_ConcurrentMetaSafety(t *testing.T) {
+	rolloutReq := &llm.EvaluateRolloutsRequest{
+		Candidates: []*llm.RolloutCandidate{
+			{ID: "c1", ActionText: "a1"},
+			{ID: "c2", ActionText: "a2"},
+			{ID: "c3", ActionText: "a3"},
+			{ID: "c4", ActionText: "a4"},
+		},
+		Criteria: map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul}},
+	}
+	sharedMeta := map[string]string{"initial": "key"}
+	res, err := executeParallelCandidateRollouts(context.Background(), &mutatingJudge{}, rolloutReq, "user", sharedMeta)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(res.Evaluations) != 4 {
+		t.Errorf("got %d evals, want 4", len(res.Evaluations))
+	}
+}
+

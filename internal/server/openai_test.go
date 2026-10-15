@@ -836,6 +836,26 @@ func TestDecisionsRollouts(t *testing.T) {
 	if recDup := do(h, "POST", "/v1/decisions/rollouts", key, dupCriteria); recDup.Code != 400 {
 		t.Errorf("duplicate criteria status = %d, want 400", recDup.Code)
 	}
+
+	// Default criteria without explicit criteria field populates answers
+	noCriteriaBody := `{"candidates":[{"id":"c1","action":{"move":"e4"}}]}`
+	recNoCrit := do(h, "POST", "/v1/decisions/rollouts", key, noCriteriaBody)
+	if recNoCrit.Code != 200 {
+		t.Fatalf("no criteria status = %d: %s", recNoCrit.Code, recNoCrit.Body)
+	}
+	var outNoCrit decisionsRolloutResponseOut
+	if err := json.Unmarshal(recNoCrit.Body.Bytes(), &outNoCrit); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(outNoCrit.Evaluations) == 0 || len(outNoCrit.Evaluations[0].Answers) == 0 {
+		t.Errorf("expected default reward answer, got %+v", outNoCrit.Evaluations)
+	}
+
+	// Unsupported candidate media type
+	unsupportedMedia := `{"candidates":[{"id":"c1","media":[{"type":"unknown_media_type"}]}]}`
+	if recBadMedia := do(h, "POST", "/v1/decisions/rollouts", key, unsupportedMedia); recBadMedia.Code != 400 {
+		t.Errorf("unsupported candidate media status = %d, want 400", recBadMedia.Code)
+	}
 }
 
 func TestAdminKeyCannotGenerate(t *testing.T) {
