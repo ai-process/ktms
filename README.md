@@ -519,7 +519,7 @@ The gRPC API is published to the [Buf Schema Registry](https://buf.build/ai-proc
   Configure npm for the `@buf` registry, then install the packages:
   ```bash
   npm config set @buf:registry https://buf.build/gen/npm/v1/
-  npm install @buf/ai-process_llm-proxy.bufbuild_es @buf/ai-process_llm-proxy.connectrpc_es
+  npm install @buf/ai-process_llm-proxy.bufbuild_es @connectrpc/connect
   ```
 - **Python:**
   Install from the Buf Python registry:
