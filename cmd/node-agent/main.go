@@ -43,6 +43,7 @@ type settings struct {
 	baseWeight    *float64
 	maxConcurrent *uint
 	onlyModels    stringList
+	judgeModels   stringList
 }
 
 // stringList is a repeatable flag whose values may also be comma separated.
@@ -71,12 +72,13 @@ func newSettings(name string) *settings {
 		nodeName:      fs.String("node-name", "", "Human-readable node name"),
 		engineURL:     fs.String("engine-url", "", "Local engine URL the agent polls (default "+nodeagent.DefaultEngineURL+", or --endpoint if only that is set)"),
 		endpoint:      fs.String("endpoint", "", "Address the proxy dials to reach the engine (default: --engine-url)"),
-		engine:        fs.String("engine", "ollama", "Inference engine (ollama, vllm, tgi, llamacpp)"),
+		engine:        fs.String("engine", "ollama", "Inference engine (ollama, vllm, tgi, llamacpp, decisions)"),
 		keyFile:       fs.String("node-key-file", "", "Path to file containing node authentication key"),
 		baseWeight:    fs.Float64("base-weight", 100.0, "Base routing weight"),
 		maxConcurrent: fs.Uint("max-concurrent", 16, "Maximum concurrent requests"),
 	}
 	fs.Var(&s.onlyModels, "only-model", "Report only these engine models to the proxy; repeat the flag or comma-separate (default: every model the engine has)")
+	fs.Var(&s.judgeModels, "judge-model", "Model ID that serves the judge capability; repeat or comma-separate")
 	return s
 }
 
@@ -120,6 +122,7 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 		NodeAuthToken:  os.Getenv("NODE_AUTH_TOKEN"),
 		EngineToken:    os.Getenv("NODE_AUTH_TOKEN"),
 		OnlyModels:     s.onlyModels,
+		JudgeModels:    s.judgeModels,
 		Expose:         *s.expose,
 		CloudflaredBin: *s.cloudflared,
 		BaseWeight:     *s.baseWeight,
