@@ -99,6 +99,14 @@ func (u *UserRateLimit) EffectiveBurst() int32 {
 	return 0
 }
 
+// SpendLimit caps spend for one subject over one UTC calendar period.
+type SpendLimit struct {
+	SubjectType  string // "key" | "user" | "team"
+	SubjectID    string // key name / user id, or "*" for the subject type's default
+	Period       string // "day" | "month"
+	LimitNanoUSD int64
+}
+
 func (m *Model) BatchPriceInPerMtok() float64 {
 	if m.PriceInBatchPerMtok > 0 {
 		return m.PriceInBatchPerMtok

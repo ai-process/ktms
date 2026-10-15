@@ -61,6 +61,13 @@ type Config struct {
 
 	BudgetGraceMargin float64
 
+	// SpendLimitsFailMode is "open" (Redis down lets calls through unmetered)
+	// or "closed" (calls under a spend limit are refused until it is back).
+	SpendLimitsFailMode string
+	// SpendDefaultOutputReserve is the output tokens priced into a spend
+	// reservation when the call sets no max tokens.
+	SpendDefaultOutputReserve int
+
 	MetricsAddr              string
 	OTELServiceName          string
 	OTELExporterOTLPEndpoint string
@@ -112,6 +119,8 @@ func Load() *Config {
 		NodeRetentionTTL:      getRetentionEnv("NODE_RETENTION_TTL_DAYS", 24*time.Hour),
 		NodeAllowLocalhost:    getBoolEnv("NODE_ALLOW_LOCALHOST_ENDPOINTS", false),
 		BudgetGraceMargin:        getFloatEnv("BUDGET_GRACE_MARGIN", 0.05),
+		SpendLimitsFailMode:       getEnv("SPEND_LIMITS_FAIL_MODE", "open"),
+		SpendDefaultOutputReserve: getIntEnv("SPEND_DEFAULT_OUTPUT_RESERVE_TOKENS", 4096),
 		MetricsAddr:              getEnv("METRICS_ADDR", ":9091"),
 		OTELServiceName:          getEnv("OTEL_SERVICE_NAME", "llm-proxy"),
 		OTELExporterOTLPEndpoint: getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
@@ -131,6 +140,10 @@ func Load() *Config {
 // RedisConfigured reports whether throttling has a backing store; without it
 // all requests are allowed (fail-open by design).
 func (c *Config) RedisConfigured() bool { return c.RedisAddr != "" }
+
+// SpendFailClosed reports whether spend limits refuse calls while their
+// counters are unreachable.
+func (c *Config) SpendFailClosed() bool { return c.SpendLimitsFailMode == "closed" }
 
 // UsageConfigured reports whether usage events are forwarded anywhere.
 func (c *Config) UsageConfigured() bool { return c.UsageCollectorHost != "" }

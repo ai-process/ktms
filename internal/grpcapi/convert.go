@@ -123,6 +123,24 @@ func userRateLimitToProto(u *proxydb.UserRateLimit) *pb.UserRateLimitSpec {
 	}
 }
 
+func spendLimitFromProto(l *pb.SpendLimitSpec) *proxydb.SpendLimit {
+	return &proxydb.SpendLimit{
+		SubjectType:  l.GetSubjectType(),
+		SubjectID:    l.GetSubjectId(),
+		Period:       l.GetPeriod(),
+		LimitNanoUSD: l.GetLimitNanousd(),
+	}
+}
+
+func spendLimitToProto(l *proxydb.SpendLimit) *pb.SpendLimitSpec {
+	return &pb.SpendLimitSpec{
+		SubjectType:  l.SubjectType,
+		SubjectId:    l.SubjectID,
+		Period:       l.Period,
+		LimitNanousd: l.LimitNanoUSD,
+	}
+}
+
 func schemaFromProto(s *pb.ResponseSchema) *llm.ResponseSchema {
 	if s == nil {
 		return nil

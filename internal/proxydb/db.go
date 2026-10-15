@@ -373,3 +373,49 @@ func UpdateVendorKeyCiphertext(ctx context.Context, tx pgx.Tx, id string, cipher
 func LoadVendorKeysTx(ctx context.Context, tx pgx.Tx) ([]*VendorKey, error) {
 	return loadVendorKeys(ctx, tx)
 }
+
+func (d *DB) LoadSpendLimits(ctx context.Context) ([]*SpendLimit, error) {
+	return loadSpendLimits(ctx, d.pool)
+}
+
+func loadSpendLimits(ctx context.Context, q querier) ([]*SpendLimit, error) {
+	rows, err := q.Query(ctx,
+		`SELECT subject_type, subject_id, period, limit_nanousd
+		 FROM spend_limit ORDER BY subject_type, subject_id, period`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*SpendLimit
+	for rows.Next() {
+		var l SpendLimit
+		if err := rows.Scan(&l.SubjectType, &l.SubjectID, &l.Period, &l.LimitNanoUSD); err != nil {
+			return nil, err
+		}
+		out = append(out, &l)
+	}
+	return out, rows.Err()
+}
+
+func UpsertSpendLimit(ctx context.Context, tx pgx.Tx, l *SpendLimit) error {
+	_, err := tx.Exec(ctx,
+		`INSERT INTO spend_limit (subject_type, subject_id, period, limit_nanousd, updated_at)
+		 VALUES ($1, $2, $3, $4, NOW())
+		 ON CONFLICT (subject_type, subject_id, period) DO UPDATE SET
+		   limit_nanousd = $4, updated_at = NOW()`,
+		l.SubjectType, l.SubjectID, l.Period, l.LimitNanoUSD)
+	return err
+}
+
+func DeleteSpendLimit(ctx context.Context, tx pgx.Tx, subjectType, subjectID, period string) error {
+	tag, err := tx.Exec(ctx,
+		`DELETE FROM spend_limit WHERE subject_type = $1 AND subject_id = $2 AND period = $3`,
+		subjectType, subjectID, period)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

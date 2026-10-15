@@ -110,7 +110,10 @@ type UsageEvent struct {
 	// Vendor HTTP status code (optional)
 	VendorHttpStatus int32 `protobuf:"varint,14,opt,name=vendor_http_status,json=vendorHttpStatus,proto3" json:"vendor_http_status,omitempty"`
 	// Additional metadata as key-value pairs (optional, keep small)
-	Meta          map[string]string `protobuf:"bytes,15,rep,name=meta,proto3" json:"meta,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Meta map[string]string `protobuf:"bytes,15,rep,name=meta,proto3" json:"meta,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Cost of the call in nano-USD (1e-9 USD), computed by the caller from its
+	// price catalog at settle time; stored as an immutable fact (optional, >= 0)
+	CostNanousd   int64 `protobuf:"varint,16,opt,name=cost_nanousd,json=costNanousd,proto3" json:"cost_nanousd,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -248,6 +251,13 @@ func (x *UsageEvent) GetMeta() map[string]string {
 		return x.Meta
 	}
 	return nil
+}
+
+func (x *UsageEvent) GetCostNanousd() int64 {
+	if x != nil {
+		return x.CostNanousd
+	}
+	return 0
 }
 
 // RecordUsageEventRequest is the request for recording a single usage event
@@ -613,6 +623,8 @@ type UsageSummaryRow struct {
 	TokensTotal   int64 `protobuf:"varint,12,opt,name=tokens_total,json=tokensTotal,proto3" json:"tokens_total,omitempty"`
 	RequestCount  int64 `protobuf:"varint,13,opt,name=request_count,json=requestCount,proto3" json:"request_count,omitempty"`
 	SumDurationMs int64 `protobuf:"varint,14,opt,name=sum_duration_ms,json=sumDurationMs,proto3" json:"sum_duration_ms,omitempty"`
+	// Summed cost in nano-USD (1e-9 USD)
+	CostNanousd   int64 `protobuf:"varint,15,opt,name=cost_nanousd,json=costNanousd,proto3" json:"cost_nanousd,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -731,10 +743,18 @@ func (x *UsageSummaryRow) GetSumDurationMs() int64 {
 	return 0
 }
 
+func (x *UsageSummaryRow) GetCostNanousd() int64 {
+	if x != nil {
+		return x.CostNanousd
+	}
+	return 0
+}
+
 // GetUsageSummaryResponse is the response for getting usage summary
 type GetUsageSummaryResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Rows          []*UsageSummaryRow     `protobuf:"bytes,1,rep,name=rows,proto3" json:"rows,omitempty"`
+	Truncated     bool                   `protobuf:"varint,2,opt,name=truncated,proto3" json:"truncated,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -776,6 +796,13 @@ func (x *GetUsageSummaryResponse) GetRows() []*UsageSummaryRow {
 	return nil
 }
 
+func (x *GetUsageSummaryResponse) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
 // GetUsageByMetaRequest aggregates usage over events carrying a given meta
 // key/value (e.g. all events of one batch job, meta_key="job_id").
 type GetUsageByMetaRequest struct {
@@ -784,7 +811,7 @@ type GetUsageByMetaRequest struct {
 	MetaKey string `protobuf:"bytes,1,opt,name=meta_key,json=metaKey,proto3" json:"meta_key,omitempty"`
 	// Meta value to filter on (required, e.g. the job UUID)
 	MetaValue string `protobuf:"bytes,2,opt,name=meta_value,json=metaValue,proto3" json:"meta_value,omitempty"`
-	// Optional second meta key to split rows by (e.g. "gentask_id");
+	// Optional second meta key to split rows by (e.g. "task_id");
 	// events without it aggregate under an empty group_value.
 	GroupByMetaKey string `protobuf:"bytes,3,opt,name=group_by_meta_key,json=groupByMetaKey,proto3" json:"group_by_meta_key,omitempty"`
 	// Optional project filter
@@ -855,13 +882,15 @@ func (x *GetUsageByMetaRequest) GetProjectId() string {
 type UsageByMetaRow struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Value of group_by_meta_key ("" when the key is absent or not requested)
-	GroupValue    string `protobuf:"bytes,1,opt,name=group_value,json=groupValue,proto3" json:"group_value,omitempty"`
-	Vendor        string `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`
-	Model         string `protobuf:"bytes,3,opt,name=model,proto3" json:"model,omitempty"`
-	TokensInput   int64  `protobuf:"varint,4,opt,name=tokens_input,json=tokensInput,proto3" json:"tokens_input,omitempty"`
-	TokensOutput  int64  `protobuf:"varint,5,opt,name=tokens_output,json=tokensOutput,proto3" json:"tokens_output,omitempty"`
-	TokensTotal   int64  `protobuf:"varint,6,opt,name=tokens_total,json=tokensTotal,proto3" json:"tokens_total,omitempty"`
-	RequestCount  int64  `protobuf:"varint,7,opt,name=request_count,json=requestCount,proto3" json:"request_count,omitempty"`
+	GroupValue   string `protobuf:"bytes,1,opt,name=group_value,json=groupValue,proto3" json:"group_value,omitempty"`
+	Vendor       string `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`
+	Model        string `protobuf:"bytes,3,opt,name=model,proto3" json:"model,omitempty"`
+	TokensInput  int64  `protobuf:"varint,4,opt,name=tokens_input,json=tokensInput,proto3" json:"tokens_input,omitempty"`
+	TokensOutput int64  `protobuf:"varint,5,opt,name=tokens_output,json=tokensOutput,proto3" json:"tokens_output,omitempty"`
+	TokensTotal  int64  `protobuf:"varint,6,opt,name=tokens_total,json=tokensTotal,proto3" json:"tokens_total,omitempty"`
+	RequestCount int64  `protobuf:"varint,7,opt,name=request_count,json=requestCount,proto3" json:"request_count,omitempty"`
+	// Summed cost in nano-USD (1e-9 USD)
+	CostNanousd   int64 `protobuf:"varint,8,opt,name=cost_nanousd,json=costNanousd,proto3" json:"cost_nanousd,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -945,10 +974,18 @@ func (x *UsageByMetaRow) GetRequestCount() int64 {
 	return 0
 }
 
+func (x *UsageByMetaRow) GetCostNanousd() int64 {
+	if x != nil {
+		return x.CostNanousd
+	}
+	return 0
+}
+
 // GetUsageByMetaResponse is the response for meta-scoped aggregation
 type GetUsageByMetaResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Rows          []*UsageByMetaRow      `protobuf:"bytes,1,rep,name=rows,proto3" json:"rows,omitempty"`
+	Truncated     bool                   `protobuf:"varint,2,opt,name=truncated,proto3" json:"truncated,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -990,11 +1027,18 @@ func (x *GetUsageByMetaResponse) GetRows() []*UsageByMetaRow {
 	return nil
 }
 
+func (x *GetUsageByMetaResponse) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
 var File_usage_v1_usage_proto protoreflect.FileDescriptor
 
 const file_usage_v1_usage_proto_rawDesc = "" +
 	"\n" +
-	"\x14usage/v1/usage.proto\x12\busage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd9\x04\n" +
+	"\x14usage/v1/usage.proto\x12\busage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfc\x04\n" +
 	"\n" +
 	"UsageEvent\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12;\n" +
@@ -1016,7 +1060,8 @@ const file_usage_v1_usage_proto_rawDesc = "" +
 	"\verror_class\x18\r \x01(\tR\n" +
 	"errorClass\x12,\n" +
 	"\x12vendor_http_status\x18\x0e \x01(\x05R\x10vendorHttpStatus\x122\n" +
-	"\x04meta\x18\x0f \x03(\v2\x1e.usage.v1.UsageEvent.MetaEntryR\x04meta\x1a7\n" +
+	"\x04meta\x18\x0f \x03(\v2\x1e.usage.v1.UsageEvent.MetaEntryR\x04meta\x12!\n" +
+	"\fcost_nanousd\x18\x10 \x01(\x03R\vcostNanousd\x1a7\n" +
 	"\tMetaEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"E\n" +
@@ -1045,7 +1090,7 @@ const file_usage_v1_usage_proto_rawDesc = "" +
 	"\x0fgroup_by_vendor\x18\f \x01(\bR\rgroupByVendor\x12$\n" +
 	"\x0egroup_by_model\x18\r \x01(\bR\fgroupByModel\x12+\n" +
 	"\x12group_by_action_id\x18\x0e \x01(\bR\x0fgroupByActionId\x12&\n" +
-	"\x0fgroup_by_status\x18\x0f \x01(\bR\rgroupByStatus\"\xaa\x03\n" +
+	"\x0fgroup_by_status\x18\x0f \x01(\bR\rgroupByStatus\"\xcd\x03\n" +
 	"\x0fUsageSummaryRow\x122\n" +
 	"\x06bucket\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x06bucket\x12\x1d\n" +
 	"\n" +
@@ -1060,16 +1105,18 @@ const file_usage_v1_usage_proto_rawDesc = "" +
 	"\rtokens_output\x18\v \x01(\x03R\ftokensOutput\x12!\n" +
 	"\ftokens_total\x18\f \x01(\x03R\vtokensTotal\x12#\n" +
 	"\rrequest_count\x18\r \x01(\x03R\frequestCount\x12&\n" +
-	"\x0fsum_duration_ms\x18\x0e \x01(\x03R\rsumDurationMs\"H\n" +
+	"\x0fsum_duration_ms\x18\x0e \x01(\x03R\rsumDurationMs\x12!\n" +
+	"\fcost_nanousd\x18\x0f \x01(\x03R\vcostNanousd\"f\n" +
 	"\x17GetUsageSummaryResponse\x12-\n" +
-	"\x04rows\x18\x01 \x03(\v2\x19.usage.v1.UsageSummaryRowR\x04rows\"\x9b\x01\n" +
+	"\x04rows\x18\x01 \x03(\v2\x19.usage.v1.UsageSummaryRowR\x04rows\x12\x1c\n" +
+	"\ttruncated\x18\x02 \x01(\bR\ttruncated\"\x9b\x01\n" +
 	"\x15GetUsageByMetaRequest\x12\x19\n" +
 	"\bmeta_key\x18\x01 \x01(\tR\ametaKey\x12\x1d\n" +
 	"\n" +
 	"meta_value\x18\x02 \x01(\tR\tmetaValue\x12)\n" +
 	"\x11group_by_meta_key\x18\x03 \x01(\tR\x0egroupByMetaKey\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x04 \x01(\tR\tprojectId\"\xef\x01\n" +
+	"project_id\x18\x04 \x01(\tR\tprojectId\"\x92\x02\n" +
 	"\x0eUsageByMetaRow\x12\x1f\n" +
 	"\vgroup_value\x18\x01 \x01(\tR\n" +
 	"groupValue\x12\x16\n" +
@@ -1078,9 +1125,11 @@ const file_usage_v1_usage_proto_rawDesc = "" +
 	"\ftokens_input\x18\x04 \x01(\x03R\vtokensInput\x12#\n" +
 	"\rtokens_output\x18\x05 \x01(\x03R\ftokensOutput\x12!\n" +
 	"\ftokens_total\x18\x06 \x01(\x03R\vtokensTotal\x12#\n" +
-	"\rrequest_count\x18\a \x01(\x03R\frequestCount\"F\n" +
+	"\rrequest_count\x18\a \x01(\x03R\frequestCount\x12!\n" +
+	"\fcost_nanousd\x18\b \x01(\x03R\vcostNanousd\"d\n" +
 	"\x16GetUsageByMetaResponse\x12,\n" +
-	"\x04rows\x18\x01 \x03(\v2\x18.usage.v1.UsageByMetaRowR\x04rows*p\n" +
+	"\x04rows\x18\x01 \x03(\v2\x18.usage.v1.UsageByMetaRowR\x04rows\x12\x1c\n" +
+	"\ttruncated\x18\x02 \x01(\bR\ttruncated*p\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eSTATUS_SUCCESS\x10\x01\x12\x10\n" +

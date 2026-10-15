@@ -7,6 +7,7 @@ import (
 
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
+	"github.com/ai-process/llm-proxy/internal/spendlimit"
 )
 
 // Snapshot is one immutable view of the routing config: enabled models and
@@ -20,6 +21,8 @@ type Snapshot struct {
 	vendorKeys map[string]map[string]string
 	// UserRateLimits[userID][modelID] = user rate limit overrides.
 	UserRateLimits map[string]map[string]*proxydb.UserRateLimit
+	// SpendLimits[subjectType+"\x00"+subjectID][period] = cap in nano-USD.
+	SpendLimits map[string]map[string]int64
 	// adapters caches built vendor adapters per (apiKeyID, modelID) for this
 	// snapshot's lifetime; dropped wholesale on config change.
 	adapters sync.Map
@@ -60,6 +63,20 @@ func (s *Snapshot) UserRateLimit(userID, modelID string) *proxydb.UserRateLimit 
 	}
 	return nil
 }
+
+// SpendLimit returns the cap in nano-USD for a subject and period, falling
+// back to the subject type's "*" default; 0 means no cap.
+func (s *Snapshot) SpendLimit(subjectType, subjectID, period string) int64 {
+	if s == nil || s.SpendLimits == nil || subjectID == "" {
+		return 0
+	}
+	if limit, ok := s.SpendLimits[spendKey(subjectType, subjectID)][period]; ok {
+		return limit
+	}
+	return s.SpendLimits[spendKey(subjectType, spendlimit.Wildcard)][period]
+}
+
+func spendKey(subjectType, subjectID string) string { return subjectType + "\x00" + subjectID }
 
 // VendorKey returns the calling client's decrypted credential for a vendor.
 func (s *Snapshot) VendorKey(apiKeyID, vendor string) (string, bool) {

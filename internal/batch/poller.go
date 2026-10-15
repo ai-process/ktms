@@ -16,6 +16,7 @@ import (
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/observability"
 	"github.com/ai-process/llm-proxy/internal/panicsafe"
+	"github.com/ai-process/llm-proxy/internal/pricing"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/registry"
 	"github.com/ai-process/llm-proxy/internal/router"
@@ -232,7 +233,7 @@ func (p *Poller) completeBatch(
 	}
 
 	var doneCount, failedCount int32
-	var totalTokens int64
+	var total llm.TokensUsage
 	itemsToUpdate := make([]*proxydb.BatchItem, len(results))
 
 	type pendingUsage struct {
@@ -282,8 +283,8 @@ func (p *Poller) completeBatch(
 			resBytes, _ := protojson.Marshal(respProto)
 			itemUpdate.Result = resBytes
 
-			itemTokens := int64(res.Response.Usage.Input + res.Response.Usage.Output)
-			totalTokens += itemTokens
+			total.Input += res.Response.Usage.Input
+			total.Output += res.Response.Usage.Output
 			usageQueue = append(usageQueue, pendingUsage{
 				customID:  res.CustomID,
 				inTokens:  res.Response.Usage.Input,
@@ -338,9 +339,9 @@ func (p *Poller) completeBatch(
 		p.emitUsage(b, m, u.customID, u.inTokens, u.outTokens, u.status, u.errReason)
 	}
 
-	if p.throttle != nil && totalTokens > 0 {
+	if p.throttle != nil && total.Input+total.Output > 0 {
 		userID := router.UserID(b.Attributes, b.KeyName)
-		p.throttle.ChargeDailyBudget(ctx, m, b.KeyName, userID, totalTokens)
+		p.throttle.ChargeDailyBudget(ctx, m, b.KeyName, userID, total)
 	}
 
 	return nil
@@ -373,9 +374,9 @@ func (p *Poller) emitUsage(
 	meta["price_out_batch_per_mtok"] = strconv.FormatFloat(priceOut, 'f', -1, 64)
 	meta["price_in_per_mtok"] = strconv.FormatFloat(priceIn, 'f', -1, 64)
 	meta["price_out_per_mtok"] = strconv.FormatFloat(priceOut, 'f', -1, 64)
+	cost := pricing.Cost(m, llm.TokensUsage{Input: inTokens, Output: outTokens}, pricing.ModeBatch)
 	if inTokens > 0 || outTokens > 0 {
-		cost := (float64(inTokens)*priceIn + float64(outTokens)*priceOut) / 1_000_000.0
-		meta["cost_usd"] = strconv.FormatFloat(cost, 'f', -1, 64)
+		meta["cost_usd"] = strconv.FormatFloat(float64(cost)/pricing.NanoPerUSD, 'f', -1, 64)
 	}
 
 	userID := router.UserID(b.Attributes, b.KeyName)
@@ -392,6 +393,7 @@ func (p *Poller) emitUsage(
 		inTokens,
 		outTokens,
 		0,
+		cost,
 		status,
 		meta,
 	); err != nil {

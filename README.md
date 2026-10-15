@@ -232,8 +232,9 @@ Cloudflare tunnel per attempt.
 - **Back up the encryption keyring.** Without `LLMPROXY_ENCRYPTION_KEYS` the stored vendor
   keys are unreadable. Treat it like any other root secret.
 - **Mint real keys, then unset `BOOTSTRAP_ADMIN_KEY`.** It is accepted as an implicit admin key.
-- **Run Redis if you want limits.** With `REDIS_ADDR` empty, RPM and token budgets are
-  **not enforced** (the proxy fails open by design, and does the same if Redis errors).
+- **Run Redis if you want limits.** With `REDIS_ADDR` empty, RPM, token budgets and spend
+  limits are **not enforced** (the proxy fails open by design, and does the same if Redis
+  errors; set `SPEND_LIMITS_FAIL_MODE=closed` to refuse spend-limited calls instead).
 - **Give each client its own API key** (and its own vendor credentials), so spend, models
   and revocation are per client.
 - **Mind your Postgres connection count.** Each replica holds up to `DB_MAX_CONNS`
@@ -264,6 +265,8 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `REDIS_PASSWORD` / `REDIS_DB` | empty / `0` | Redis auth and database. |
 | `REDIS_KEY_PREFIX` | empty | Namespace for counters when Redis is shared (compose uses `dev`). |
 | `BUDGET_GRACE_MARGIN` | `0.05` | Fraction of daily token budget allowed as grace overdraft (0.05 = 5%, 0.0 or negative disables grace overdraft). |
+| `SPEND_LIMITS_FAIL_MODE` | `open` | What spend limits do when Redis errors: `open` lets calls through unmetered (logged), `closed` refuses calls under a spend limit with `UNAVAILABLE throttled:spend_unavailable`. |
+| `SPEND_DEFAULT_OUTPUT_RESERVE_TOKENS` | `4096` | Output tokens priced into a spend reservation when the call sets no max tokens. |
 | `BATCH_POLL_SECONDS` | `60` | Background polling interval in seconds for checking unfinished batch jobs. |
 | `BATCH_MAX_ITEMS` | `10000` | Maximum number of items allowed in a single batch submission. |
 | `RESULTS_RETENTION_DAYS` | `7` | Retention period for completed batch results before cleanup (accepts integer days, e.g. `7`, or Go duration string, e.g. `168h`). |
@@ -395,6 +398,38 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"rules":[
 - `ReplaceRules` swaps the whole set atomically; there is no per-rule CRUD.
 
 Inspect the live configuration with `GetConfig`.
+
+### 5. Spend limits (optional)
+
+Hard caps in USD across all models, kept in nano-USD (1 USD = 1 000 000 000) to avoid float
+drift. Calls are priced from the model's `price_*_per_mtok` (peak and batch rates included):
+
+```bash
+# $50 a day for the "support-bot" key, and $20 a month for every end user by default.
+grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"spend_limit":
+  {"subject_type":"key","subject_id":"support-bot","period":"day","limit_nanousd":50000000000}}' \
+  localhost:9090 llmproxy.v1.LLMProxyAdminService/SetSpendLimit
+grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"spend_limit":
+  {"subject_type":"user","subject_id":"*","period":"month","limit_nanousd":20000000000}}' \
+  localhost:9090 llmproxy.v1.LLMProxyAdminService/SetSpendLimit
+```
+
+- `subject_type` is `key` (API key name) or `user` (`attributes["user_id"]`, or
+  `svc:<key_name>`); `subject_id` `*` is the default for every subject of that type.
+  `period` is a UTC `day` or `month`.
+- Before each model in the chain is called, its worst case
+  (`estimated input × input price + max tokens × output price`, or
+  `SPEND_DEFAULT_OUTPUT_RESERVE_TOKENS` without max tokens) is reserved atomically on every
+  applicable counter by one Redis Lua script; when the call ends the reservation is settled
+  to the actual cost. A call that would cross any cap is refused, so a cheaper model further
+  down the chain may still be tried.
+- Batches are checked at submission (refused once a cap is reached) and charged at the
+  batch rate when results arrive.
+- Refusals are `RESOURCE_EXHAUSTED throttled:spend_key_daily`, `throttled:spend_key_monthly`,
+  `throttled:spend_user_daily` or `throttled:spend_user_monthly`, with a `RetryInfo` until the
+  period resets (HTTP: 429 `insufficient_quota` plus `Retry-After`).
+- `ListSpendLimits`, `DeleteSpendLimit` and `GetConfig` show and lift caps. Every usage event
+  carries its `cost_nanousd`, which light-tokenmeter sums per day, model, user or job.
 
 ### Speech, image and judgment rules
 
@@ -814,8 +849,9 @@ Errors use OpenAI's shape, `{"error": {"message", "type", "param", "code"}}`, an
 | 400 | `invalid_request_error` | `output_truncated`, `no_capable_model`, `no_vendor_key`, `not_configured`; validation messages |
 | 401 / 403 | `authentication_error` / `permission_error` | missing or invalid key, missing scope |
 | 429 | `rate_limit_error` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` (with `Retry-After`) |
+| 429 | `insufficient_quota` | `insufficient_quota`; the message names the cap, e.g. `throttled:spend_key_daily`. `Retry-After` is the seconds until the period resets (UTC midnight or month start). |
 | 502 | `server_error` | `vendor_error` |
-| 503 | `server_error` | `vendors_unavailable` (the only error worth retrying) |
+| 503 | `server_error` | `vendors_unavailable` (the only error worth retrying); `throttled:spend_unavailable` with `SPEND_LIMITS_FAIL_MODE=closed` |
 
 OpenAI SDKs retry 429 and 5xx automatically; for `throttled:*` and `vendor_error` you may want to
 disable that (`max_retries=0`) and handle them yourself.
@@ -828,6 +864,7 @@ purpose travels in free-form attributes, so the proxy knows nothing about your p
 **Throttling & Wait Buffer:**
 - **GCRA Rate Limiting:** Enforces requests-per-minute (`rpm`) via the Generic Cell Rate Algorithm in Redis, with configurable burst capacity (`rpm_burst`, defaulting to `rpm - 1` to preserve classic fixed-window behavior, `< 0` to disable burst). Key limits and user limits are evaluated atomically.
 - **User & Model Overrides:** Configure fine-grained limits per user and model with `SetUserRateLimit` (supports `*` wildcards for user-wide or model-wide defaults).
+- **Spend Limits:** Hard USD caps per API key and per end user (UTC day or month), reserved atomically before each call and settled to the actual cost; see [Spend limits](#5-spend-limits-optional).
 - **Daily Token Budgets:** Limits tokens per API key (`daily_tokens_per_key`) and per end-user (`daily_tokens_per_user`, UTC day). A configurable grace margin (`budget_grace_margin`, default 5%, `< 0` to strictly disable) absorbs requests that exceed the budget on their last call without refusing them mid-stream.
 - **Inference Pool Wait Buffer:** For local node pools, requests waiting for free slots use jittered backoff polling up to `queue_timeout_ms`. Interactive requests (non-service callers) are automatically capped to 250ms to safeguard Time-To-First-Token (TTFT). Little's Law predictive admission evaluates the queue depth and estimated duration, immediately falling back to the next model in the chain if expected wait time exceeds the timeout.
 - A throttled model is skipped in the fallback chain; if none of the chain is available the caller gets `RESOURCE_EXHAUSTED`.
@@ -849,6 +886,8 @@ API key's name. Any service implementing `RecordUsageEvent(s)` works as a sink.
 | `INVALID_ARGUMENT` | `bad_request: <message>` | Empty batch, duplicate `custom_id`, too many items (> `BATCH_MAX_ITEMS`), or invalid parameters. |
 | `UNAVAILABLE` | `vendors_unavailable` | The whole chain failed. **The only retryable error.** |
 | `RESOURCE_EXHAUSTED` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` | Back off; don't hot-retry. Daily budget exhausted before batch submission. |
+| `RESOURCE_EXHAUSTED` | `throttled:spend_key_daily`, `throttled:spend_key_monthly`, `throttled:spend_user_daily`, `throttled:spend_user_monthly` | Spend limit reached. Details carry `ErrorInfo{reason: "insufficient_quota"}` and `RetryInfo` until the period resets. |
+| `UNAVAILABLE` | `throttled:spend_unavailable` | Spend counters unreachable with `SPEND_LIMITS_FAIL_MODE=closed`. Retry with backoff. |
 | `FAILED_PRECONDITION` | `output_truncated` | Raise `max_output_tokens`; don't retry as-is. |
 | `FAILED_PRECONDITION` | `no_capable_model` | No model in the matched chain can serve this request, modality, or batch capability. |
 | `FAILED_PRECONDITION` | `no_vendor_key` | The client key holds no credential for the chain's vendors. `local` models never cause this. |
