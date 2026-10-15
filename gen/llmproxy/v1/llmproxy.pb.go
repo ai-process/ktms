@@ -1841,7 +1841,7 @@ func (x *ModelInfo) GetPriceOutBatchPerMtok() float64 {
 
 type ListModelsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Only models the calling client holds a vendor key for.
+	// Models the calling client can call: those it holds a vendor key for, plus every local model (no key needed).
 	Models        []*ModelInfo `protobuf:"bytes,1,rep,name=models,proto3" json:"models,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
