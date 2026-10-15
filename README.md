@@ -289,6 +289,19 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `GUARDRAILS_ENABLED` | `false` | Enable input/output security guardrails (PII masking and prompt injection detection). |
 | `GUARDRAILS_PII_ACTION` | `block` | Action on detected PII: `block` (reject with `guardrail_violation`) or `redact` (mask with placeholders and desanitize in output). |
 | `GUARDRAILS_PROMPT_INJECTION_ACTION` | `block` | Action on detected prompt injection: `block` or `log`. |
+| `GUARDRAILS_LATENT_ENABLED` | `false` | With `GUARDRAILS_ENABLED`, also screen prompts in latent space against injection, jailbreak, prompt-leak and exfiltration centroids (see [Latent guardrails](#semantic-cache-and-latent-guardrails)). |
+| `GUARDRAILS_LATENT_THRESHOLD` | `0.70` | Cosine similarity to a malicious centroid at which a prompt is flagged. Tuned for the local encoder; recalibrate for a JEPA encoder. |
+| `GUARDRAILS_LATENT_ACTION` | `block` | `block` (reject with `guardrail_violation`) or `log`. |
+| `GUARDRAILS_LATENT_CATEGORIES_FILE` | empty | JSON array of extra categories (`name`, `phrases`, and/or precomputed `centroids` of `{model, vector}`), added to the built-in set. |
+| `SEMANTIC_CACHE_ENABLED` | `false` | Serve `enable_cache` requests whose final user message is semantically close to a cached one. Needs Redis; uses `CACHE_TTL` and `CACHE_MAX_BYTES`. |
+| `SEMANTIC_CACHE_SIMILARITY_THRESHOLD` | `0.95` | Minimum cosine similarity for a semantic hit. |
+| `SEMANTIC_CACHE_MAX_ENTRIES` | `256` | Vectors kept (and scanned per lookup) for one exact context; older entries are trimmed. |
+| `LATENT_ENCODER_URL` | empty | OpenAI-compatible `/v1/embeddings` endpoint, e.g. a node serving a JEPA encoder. Empty uses the local hash encoder; failures fall back to it. |
+| `LATENT_ENCODER_MODEL` | `jepa-text` | Model name sent to the encoder; also namespaces cached vectors. |
+| `LATENT_ENCODER_API_KEY` | empty | Bearer token for the encoder, if it needs one. |
+| `LATENT_ENCODER_TIMEOUT` | `50ms` | Bound for one encoder call before falling back to the local encoder. |
+| `LATENT_LOCAL_ENCODER_DIMS` | `512` | Width of the local hash encoder's vectors. |
+| `LATENT_ENCODER_CACHE_SIZE` | `4096` | In-memory LRU of recent embeddings, so guardrails and cache encode a prompt once. `0` disables it. |
 
 
 ## Setting it up: keys, models, rules
@@ -895,6 +908,26 @@ gRPC service implementing [`usage-proto/usage/v1/usage.proto`](usage-proto/usage
 Events are attributed to the project named by the `usage_project` attribute, falling back to the
 API key's name. Any service implementing `RecordUsageEvent(s)` works as a sink.
 
+### Semantic cache and latent guardrails
+
+Both project text into a representation space with the encoder at `LATENT_ENCODER_URL` (a JEPA
+or any embedding model behind an OpenAI-compatible `/v1/embeddings`), falling back to a local,
+lexical hash encoder that folds case, homoglyphs, zero-width and spaced-out letters.
+
+- **Semantic cache.** After an exact-cache miss, a request with `enable_cache` compares its final
+  user message (or `request_instruction` when there are no messages) with earlier ones whose
+  everything else — key, config version, system prompt, history, tools, effort, attributes and
+  every number in the message — matches exactly. A hit at `SEMANTIC_CACHE_SIMILARITY_THRESHOLD`
+  returns `cached: true` and usage metadata `cache_match=semantic` with `cache_similarity`.
+  Prompts containing PII and responses with tool calls are never cached; with guardrails on, the
+  message is screened before a near match is served. Vectors and responses are encrypted at rest.
+- **Latent guardrails.** Each prompt is scored against category centroids; the nearest one at
+  `GUARDRAILS_LATENT_THRESHOLD` blocks (or logs) with `guardrail_violation: latent <category>
+  intent detected`. An unreachable encoder fails open after the regex checks have run.
+- **Overhead.** With the local encoder a short prompt adds ~15µs of screening and a 256-entry
+  semantic lookup ~2ms, well under 15ms (`go test -bench . ./internal/latent ./internal/guardrails ./internal/cache`);
+  a remote encoder adds its own latency, bounded by `LATENT_ENCODER_TIMEOUT`.
+
 ## Error contract
 
 ### RPC status codes
@@ -902,7 +935,7 @@ API key's name. Any service implementing `RecordUsageEvent(s)` works as a sink.
 | gRPC status | Reason | What to do |
 | --- | --- | --- |
 | `NOT_FOUND` | – | Unknown batch ID. |
-| `INVALID_ARGUMENT` | `guardrail_violation` | Blocked due to detected prompt injection or PII violation. Clean input before retrying. |
+| `INVALID_ARGUMENT` | `guardrail_violation` | Blocked due to detected prompt injection, PII, or a latent-space threat match. Clean input before retrying. |
 | `INVALID_ARGUMENT` | `bad_request: <message>` | Empty batch, duplicate `custom_id`, too many items (> `BATCH_MAX_ITEMS`), or invalid parameters. |
 | `UNAVAILABLE` | `vendors_unavailable` | The whole chain failed. **The only retryable error.** |
 | `RESOURCE_EXHAUSTED` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` | Back off; don't hot-retry. Daily budget exhausted before batch submission. |

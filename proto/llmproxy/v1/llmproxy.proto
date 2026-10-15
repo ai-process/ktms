@@ -145,7 +145,7 @@ message GenerateTextRequest {
   string model_override = 10; // exact registry model id; bypasses rules, not throttles
   repeated Tool tools = 11;
   ToolChoice tool_choice = 12;
-  bool enable_cache = 13; // opt-in prompt/response exact match cache
+  bool enable_cache = 13; // opt-in response cache: exact match, plus latent-similarity match when the proxy enables SEMANTIC_CACHE_ENABLED
   string placement = 14; // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
   bool auto_route = 15; // true when smart model routing is enabled
   bool effort_specified = 16; // true when effort was explicitly pinned by caller

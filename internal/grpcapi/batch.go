@@ -86,22 +86,26 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 		if s.guardrails.PIIAction == guardrails.ActionRedact {
 			return nil, status.Error(codes.InvalidArgument, "bad_request: pii redaction is not supported for batch jobs")
 		}
-		for _, it := range items {
+		// One flattened pass so latent screening batches encoder calls across items.
+		var texts []string
+		var owner []int
+		for i, it := range items {
 			itemReq := it.GetRequest()
 			if itemReq == nil {
 				continue
 			}
-			if _, _, err := s.guardrails.InspectText(itemReq.GetBaseSystemInstruction(), nil); err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q: %v", it.GetCustomId(), err)
-			}
-			if _, _, err := s.guardrails.InspectText(itemReq.GetRequestInstruction(), nil); err != nil {
-				return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q: %v", it.GetCustomId(), err)
-			}
+			texts = append(texts, itemReq.GetBaseSystemInstruction(), itemReq.GetRequestInstruction())
+			owner = append(owner, i, i)
 			for _, msg := range itemReq.GetMessages() {
-				if _, _, err := s.guardrails.InspectText(msg.GetText(), nil); err != nil {
-					return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q: %v", it.GetCustomId(), err)
-				}
+				texts = append(texts, msg.GetText())
+				owner = append(owner, i)
 			}
+		}
+		if bad, _, err := s.guardrails.InspectTexts(ctx, texts); err != nil {
+			if bad < 0 {
+				return nil, guardrailStatus(err)
+			}
+			return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q: %v", items[owner[bad]].GetCustomId(), err)
 		}
 	}
 
