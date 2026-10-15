@@ -318,7 +318,10 @@ Vendors: `openai`, `anthropic`, `google`, `deepseek` (OpenAI-compatible API, def
 `https://api.deepseek.com`), `groq` (OpenAI-compatible API, default endpoint `https://api.groq.com/openai/v1`),
 `mistral` (OpenAI-compatible API, default endpoint `https://api.mistral.ai/v1`), `azure` (Azure OpenAI Service;
 endpoint is required, e.g. `https://<resource>.openai.azure.com` with optional `?api-version=...`; model id maps
-to deployment name; content filter violations automatically advance to the next fallback candidate), `ollama` (any
+to deployment name; content filter violations automatically advance to the next fallback candidate), `bedrock`
+(Amazon Bedrock Converse/ConverseStream API; key format is `<access_key_id>:<secret_access_key>[:<region>[:<session_token>]]`,
+defaulting region to `us-east-1`; model id maps to Bedrock foundation model or inference profile ARN/ID; optional `endpoint`
+overrides the base URL; content filter and guardrail interventions automatically advance to fallback candidate), `ollama` (any
 self-hosted OpenAI-compatible server such as Ollama or llama.cpp; the model's `endpoint` is required, e.g.
 `https://host/v1`, and the vendor key is the server's own) and `typesafe`
 (judgments only). Use `DeleteVendorKey` to remove one.

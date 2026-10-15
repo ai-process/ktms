@@ -54,6 +54,25 @@ func IsRetryableError(err error) bool {
 		code := genaiErr.Code
 		return code == 429 || (code >= 500 && code < 600)
 	}
+	// AWS smithy: HTTPStatusCode and ErrorCode
+	type httpStatusCodeError interface {
+		HTTPStatusCode() int
+	}
+	var httpStatusErr httpStatusCodeError
+	if errors.As(err, &httpStatusErr) {
+		code := httpStatusErr.HTTPStatusCode()
+		return code == 429 || (code >= 500 && code < 600)
+	}
+	type smithyAPIError interface {
+		ErrorCode() string
+	}
+	var smithyErr smithyAPIError
+	if errors.As(err, &smithyErr) {
+		switch smithyErr.ErrorCode() {
+		case "ThrottlingException", "ServiceUnavailableException", "InternalServerException", "ModelTimeoutException", "ModelErrorException":
+			return true
+		}
+	}
 	return false
 }
 
@@ -76,9 +95,21 @@ func IsContentFilterError(err error) bool {
 			return true
 		}
 		msg := strings.ToLower(openaiErr.Message)
-		if strings.Contains(msg, "content filter") || strings.Contains(msg, "content management policy") {
+		return strings.Contains(msg, "content filter") || strings.Contains(msg, "content management policy")
+	}
+	type smithyAPIError interface {
+		ErrorCode() string
+	}
+	var smithyErr smithyAPIError
+	if errors.As(err, &smithyErr) {
+		code := strings.ToLower(smithyErr.ErrorCode())
+		if strings.Contains(code, "guardrail") || strings.Contains(code, "contentfilter") {
 			return true
 		}
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "content filter") || strings.Contains(msg, "guardrail intervened") {
+		return true
 	}
 	return false
 }

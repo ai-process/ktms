@@ -399,3 +399,63 @@ func TestThinkingOff(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildAdapter_Bedrock(t *testing.T) {
+	cases := []struct {
+		name      string
+		key       string
+		endpoint  string
+		wantError bool
+	}{
+		{
+			name:      "valid credentials with region",
+			key:       "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY:us-west-2",
+			wantError: false,
+		},
+		{
+			name:      "valid credentials without region defaults to us-east-1",
+			key:       "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+			wantError: false,
+		},
+		{
+			name:      "valid credentials with session token",
+			key:       "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY:eu-central-1:session_tok",
+			wantError: false,
+		},
+		{
+			name:      "custom endpoint override",
+			key:       "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY:us-east-1",
+			endpoint:  "http://localhost:4566",
+			wantError: false,
+		},
+		{
+			name:      "invalid format single part",
+			key:       "invalid_single_key",
+			wantError: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &proxydb.Model{
+				ID:       "anthropic.claude-3-5-sonnet-20240620-v1:0",
+				Vendor:   VendorBedrock,
+				Endpoint: tc.endpoint,
+			}
+			adapter, err := buildAdapter(m, tc.key)
+			if tc.wantError {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if adapter == nil {
+				t.Fatalf("expected non-nil adapter")
+			}
+		})
+	}
+}
+
