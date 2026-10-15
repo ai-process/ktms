@@ -21,6 +21,7 @@ import (
 	"github.com/ai-process/llm-proxy/internal/nodes"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/registry"
+	"github.com/ai-process/llm-proxy/internal/spendlimit"
 )
 
 // AdminServer implements LLMProxyAdminService.
@@ -121,6 +122,10 @@ func (s *AdminServer) GetConfig(ctx context.Context, _ *pb.GetConfigRequest) (*p
 	if err != nil {
 		return nil, dbStatus(err)
 	}
+	spendLimits, err := s.db.LoadSpendLimits(ctx)
+	if err != nil {
+		return nil, dbStatus(err)
+	}
 	version, err := s.db.ConfigVersion(ctx)
 	if err != nil {
 		return nil, dbStatus(err)
@@ -144,6 +149,9 @@ func (s *AdminServer) GetConfig(ctx context.Context, _ *pb.GetConfigRequest) (*p
 	}
 	for _, u := range userRateLimits {
 		resp.UserRateLimits = append(resp.UserRateLimits, userRateLimitToProto(u))
+	}
+	for _, l := range spendLimits {
+		resp.SpendLimits = append(resp.SpendLimits, spendLimitToProto(l))
 	}
 	return resp, nil
 }
@@ -194,6 +202,73 @@ func (s *AdminServer) ListUserRateLimits(ctx context.Context, req *pb.ListUserRa
 		out = append(out, userRateLimitToProto(l))
 	}
 	return &pb.ListUserRateLimitsResponse{RateLimits: out}, nil
+}
+
+func validateSpendScope(subjectType, subjectID, period string) error {
+	if !spendlimit.ValidSubject(subjectType) {
+		return status.Error(codes.InvalidArgument, `subject_type must be "key" or "user"`)
+	}
+	if subjectID == "" {
+		return status.Error(codes.InvalidArgument, "subject_id is required")
+	}
+	if !spendlimit.ValidPeriod(period) {
+		return status.Error(codes.InvalidArgument, `period must be "day" or "month"`)
+	}
+	return nil
+}
+
+func (s *AdminServer) SetSpendLimit(ctx context.Context, req *pb.SetSpendLimitRequest) (*pb.SetSpendLimitResponse, error) {
+	sl := req.GetSpendLimit()
+	if sl == nil {
+		return nil, status.Error(codes.InvalidArgument, "spend_limit is required")
+	}
+	if err := validateSpendScope(sl.GetSubjectType(), sl.GetSubjectId(), sl.GetPeriod()); err != nil {
+		return nil, err
+	}
+	if sl.GetLimitNanousd() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "limit_nanousd must be positive; delete the limit to lift it")
+	}
+	l := spendLimitFromProto(sl)
+	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {
+		return proxydb.UpsertSpendLimit(ctx, tx, l)
+	}, nil)
+	if err != nil {
+		return nil, mutationStatus(err)
+	}
+	s.onChange()
+	return &pb.SetSpendLimitResponse{}, nil
+}
+
+func (s *AdminServer) DeleteSpendLimit(ctx context.Context, req *pb.DeleteSpendLimitRequest) (*pb.DeleteSpendLimitResponse, error) {
+	if err := validateSpendScope(req.GetSubjectType(), req.GetSubjectId(), req.GetPeriod()); err != nil {
+		return nil, err
+	}
+	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {
+		return proxydb.DeleteSpendLimit(ctx, tx, req.GetSubjectType(), req.GetSubjectId(), req.GetPeriod())
+	}, nil)
+	if err != nil {
+		return nil, mutationStatus(err)
+	}
+	s.onChange()
+	return &pb.DeleteSpendLimitResponse{}, nil
+}
+
+func (s *AdminServer) ListSpendLimits(ctx context.Context, req *pb.ListSpendLimitsRequest) (*pb.ListSpendLimitsResponse, error) {
+	limits, err := s.db.LoadSpendLimits(ctx)
+	if err != nil {
+		return nil, dbStatus(err)
+	}
+	var out []*pb.SpendLimitSpec
+	for _, l := range limits {
+		if req.GetSubjectType() != "" && l.SubjectType != req.GetSubjectType() {
+			continue
+		}
+		if req.GetSubjectId() != "" && l.SubjectID != req.GetSubjectId() {
+			continue
+		}
+		out = append(out, spendLimitToProto(l))
+	}
+	return &pb.ListSpendLimitsResponse{SpendLimits: out}, nil
 }
 
 // errInvalidConfig marks registry.Validate failures so mutationStatus can

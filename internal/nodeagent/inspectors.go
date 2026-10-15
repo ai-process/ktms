@@ -10,6 +10,7 @@ import (
 	"time"
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+	"github.com/ai-process/llm-proxy/internal/registry"
 )
 
 type EngineInspector interface {
@@ -26,6 +27,8 @@ func GetInspector(engine string) EngineInspector {
 		return &TGIInspector{}
 	case "llamacpp":
 		return &LlamaCppInspector{}
+	case "decisions":
+		return &DecisionsInspector{}
 	default:
 		return &GenericOpenAIInspector{}
 	}
@@ -120,7 +123,8 @@ type VLLMInspector struct{}
 
 type vllmModelsResponse struct {
 	Data []struct {
-		ID string `json:"id"`
+		ID           string   `json:"id"`
+		Capabilities []string `json:"capabilities"`
 	} `json:"data"`
 }
 
@@ -241,10 +245,7 @@ func (li *LlamaCppInspector) Inspect(ctx context.Context, endpoint, authToken st
 	}, nil
 }
 
-// Generic OpenAI Inspector
-type GenericOpenAIInspector struct{}
-
-func (goi *GenericOpenAIInspector) Inspect(ctx context.Context, endpoint, authToken string) ([]*pb.NodeModelSpec, error) {
+func inspectOpenAIModels(ctx context.Context, endpoint, authToken string, defaultCaps ...string) ([]*pb.NodeModelSpec, error) {
 	u, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, err
@@ -267,6 +268,10 @@ func (goi *GenericOpenAIInspector) Inspect(ctx context.Context, endpoint, authTo
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("openai models inspect: unexpected status %d", resp.StatusCode)
+	}
+
 	var mResp vllmModelsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&mResp); err != nil {
 		return nil, err
@@ -274,12 +279,31 @@ func (goi *GenericOpenAIInspector) Inspect(ctx context.Context, endpoint, authTo
 
 	var specs []*pb.NodeModelSpec
 	for _, m := range mResp.Data {
+		caps := m.Capabilities
+		if len(caps) == 0 && len(defaultCaps) > 0 {
+			caps = defaultCaps
+		}
 		specs = append(specs, &pb.NodeModelSpec{
 			ModelId:         m.ID,
 			RemoteModelName: m.ID,
 			ContextLength:   4096,
 			IsWarm:          true,
+			Capabilities:    caps,
 		})
 	}
 	return specs, nil
+}
+
+// Generic OpenAI Inspector
+type GenericOpenAIInspector struct{}
+
+func (goi *GenericOpenAIInspector) Inspect(ctx context.Context, endpoint, authToken string) ([]*pb.NodeModelSpec, error) {
+	return inspectOpenAIModels(ctx, endpoint, authToken)
+}
+
+// DecisionsInspector inspects engines serving decision models (/v1/decisions).
+type DecisionsInspector struct{}
+
+func (di *DecisionsInspector) Inspect(ctx context.Context, endpoint, authToken string) ([]*pb.NodeModelSpec, error) {
+	return inspectOpenAIModels(ctx, endpoint, authToken, registry.CapabilityJudge)
 }

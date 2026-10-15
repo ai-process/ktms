@@ -92,6 +92,7 @@ func (c *UsageCollectorClient) RecordUsage(
 	inputTokens int,
 	outputTokens int,
 	durationMs int64,
+	costNanoUSD int64,
 	status usagev1.Status,
 	meta map[string]string,
 ) error {
@@ -137,6 +138,7 @@ func (c *UsageCollectorClient) RecordUsage(
 			TokensOutput: int64(outputTokens),
 			TokensTotal:  int64(inputTokens + outputTokens),
 			Meta:         meta,
+			CostNanousd:  costNanoUSD,
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

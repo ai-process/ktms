@@ -96,11 +96,12 @@ type recordedUsage struct {
 	model        string
 	inputTokens  int
 	outputTokens int
+	costNanoUSD  int64
 	status       usagev1.Status
 	meta         map[string]string
 }
 
-func (t *fakeUsageTracker) RecordUsage(userID, actionID, vendor, model string, inputTokens, outputTokens int, durationMs int64, status usagev1.Status, meta map[string]string) error {
+func (t *fakeUsageTracker) RecordUsage(userID, actionID, vendor, model string, inputTokens, outputTokens int, durationMs, costNanoUSD int64, status usagev1.Status, meta map[string]string) error {
 	t.recordedEvents = append(t.recordedEvents, recordedUsage{
 		userID:       userID,
 		actionID:     actionID,
@@ -108,6 +109,7 @@ func (t *fakeUsageTracker) RecordUsage(userID, actionID, vendor, model string, i
 		model:        model,
 		inputTokens:  inputTokens,
 		outputTokens: outputTokens,
+		costNanoUSD:  costNanoUSD,
 		status:       status,
 		meta:         meta,
 	})
@@ -119,11 +121,11 @@ type fakeThrottle struct {
 	chargedTokens map[string]int64
 }
 
-func (th *fakeThrottle) ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string, tokens int64) {
+func (th *fakeThrottle) ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string, usage llm.TokensUsage) {
 	if th.chargedTokens == nil {
 		th.chargedTokens = make(map[string]int64)
 	}
-	th.chargedTokens[m.ID+":"+keyName+":"+userID] += tokens
+	th.chargedTokens[m.ID+":"+keyName+":"+userID] += int64(usage.Input + usage.Output)
 }
 
 type fakeBatchAdapter struct {
@@ -238,10 +240,17 @@ func TestPoller_ProcessSucceededBatch(t *testing.T) {
 	if ev1.meta["price_in_batch_per_mtok"] != "0.5" || ev1.meta["price_out_batch_per_mtok"] != "2" {
 		t.Fatalf("unexpected batch pricing in meta: %+v", ev1.meta)
 	}
+	// Batch rate: 100 in * 500 nano + 50 out * 2000 nano.
+	if ev1.costNanoUSD != 150_000 || ev1.meta["cost_usd"] != "0.00015" {
+		t.Fatalf("batch cost = %d nano (meta %q), want 150000", ev1.costNanoUSD, ev1.meta["cost_usd"])
+	}
 
 	ev2 := tracker.recordedEvents[1]
 	if ev2.status != usagev1.Status_STATUS_ERROR || ev2.meta["custom_id"] != "c2" || ev2.meta["error_reason"] != "output_truncated" {
 		t.Fatalf("unexpected event 2: %+v", ev2)
+	}
+	if ev2.costNanoUSD != 0 {
+		t.Fatalf("failed item without tokens must cost 0, got %d", ev2.costNanoUSD)
 	}
 
 	// 3. Verify tokens charged to daily budget

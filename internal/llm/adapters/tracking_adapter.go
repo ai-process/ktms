@@ -23,7 +23,12 @@ type TrackingAdapter struct {
 	tracker llm.UsageTracker
 	vendor  string
 	model   string
+	pricer  Pricer
 }
+
+// Pricer prices one call's usage in nano-USD for a call that started at the
+// given time (rates can depend on the hour).
+type Pricer func(usage llm.TokensUsage, startedAt time.Time) int64
 
 // NewTrackingAdapter creates a new tracking adapter that wraps an existing adapter
 func NewTrackingAdapter(adapter llm.ClientAdapter, tracker llm.UsageTracker, vendor, model string) *TrackingAdapter {
@@ -33,6 +38,19 @@ func NewTrackingAdapter(adapter llm.ClientAdapter, tracker llm.UsageTracker, ven
 		vendor:  vendor,
 		model:   model,
 	}
+}
+
+// WithPricer stamps every usage event with its cost; without one events carry 0.
+func (t *TrackingAdapter) WithPricer(p Pricer) *TrackingAdapter {
+	t.pricer = p
+	return t
+}
+
+func (t *TrackingAdapter) cost(in, out int, startedAt time.Time) int64 {
+	if t.pricer == nil {
+		return 0
+	}
+	return t.pricer(llm.TokensUsage{Input: in, Output: out}, startedAt)
 }
 
 // GenerateText generates text and tracks usage
@@ -115,6 +133,7 @@ func (t *TrackingAdapter) GenerateText(ctx context.Context, chat *llm.ChatContex
 				resp.Usage.Input,
 				resp.Usage.Output,
 				durationMs,
+				t.cost(resp.Usage.Input, resp.Usage.Output, startTime),
 				status,
 				meta,
 			); trackErr != nil {
@@ -136,6 +155,7 @@ func (t *TrackingAdapter) GenerateText(ctx context.Context, chat *llm.ChatContex
 				0,
 				0,
 				durationMs,
+				0,
 				status,
 				meta,
 			); trackErr != nil {
@@ -276,6 +296,7 @@ func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.Chat
 			lastUsage.Input,
 			lastUsage.Output,
 			durationMs,
+			t.cost(lastUsage.Input, lastUsage.Output, startTime),
 			status,
 			meta,
 		); trackErr != nil {
@@ -388,6 +409,7 @@ func (t *TrackingAdapter) SynthesizeSpeech(ctx context.Context, text, language, 
 			inTokens,
 			outTokens,
 			durationMs,
+			t.cost(inTokens, outTokens, startTime),
 			status,
 			trackMeta,
 		); trackErr != nil {
@@ -496,6 +518,7 @@ func (t *TrackingAdapter) GenerateImage(ctx context.Context, prompt, userID stri
 			inTokens,
 			outTokens,
 			durationMs,
+			t.cost(inTokens, outTokens, startTime),
 			status,
 			trackMeta,
 		); trackErr != nil {
@@ -610,6 +633,7 @@ func (t *TrackingAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, user
 			inTokens,
 			outTokens,
 			durationMs,
+			t.cost(inTokens, outTokens, startTime),
 			status,
 			trackMeta,
 		); trackErr != nil {
@@ -764,6 +788,7 @@ func (t *TrackingAdapter) CreateEmbeddings(ctx context.Context, req *llm.Embeddi
 			inTokens,
 			0,
 			durationMs,
+			t.cost(inTokens, 0, startTime),
 			status,
 			trackMeta,
 		); trackErr != nil {

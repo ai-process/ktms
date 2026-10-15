@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+	"github.com/ai-process/llm-proxy/internal/registry"
 )
 
 type Candidate struct {
@@ -36,6 +37,12 @@ func NewSelector(mgr *Manager) *Selector {
 // 3. Compute effective weights: W_eff = base_weight * F_perf * F_load.
 // 4. Smooth WRR selection.
 func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, error) {
+	return s.SelectNodeForCapability(ctx, modelID, "")
+}
+
+// SelectNodeForCapability performs candidate filtering and weighted selection,
+// optionally filtering for a specific capability (e.g. "judge").
+func (s *Selector) SelectNodeForCapability(ctx context.Context, modelID string, capability string) (*Candidate, error) {
 	nodes, err := s.mgr.ListNodes(ctx)
 	if err != nil {
 		return nil, err
@@ -51,6 +58,13 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 	for _, n := range nodes {
 		for _, m := range n.Meta.Models {
 			if m.ModelId == modelID {
+				if capability != "" {
+					if !hasCapability(m.Capabilities, capability) {
+						continue
+					}
+				} else if isJudgeOnly(m.Capabilities) {
+					continue
+				}
 				if perf, ok := n.Perf[modelID]; ok {
 					if perf.TPSEMA > 0 {
 						totalTPS += perf.TPSEMA
@@ -89,6 +103,14 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 			}
 		}
 		if spec == nil {
+			continue
+		}
+
+		if capability != "" {
+			if !hasCapability(spec.Capabilities, capability) {
+				continue
+			}
+		} else if isJudgeOnly(spec.Capabilities) {
 			continue
 		}
 
@@ -231,5 +253,18 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 		s.curWeight[best.Snapshot.Meta.NodeID] -= totalWeight
 	}
 	return best, nil
+}
+
+func hasCapability(caps []string, target string) bool {
+	for _, c := range caps {
+		if c == target {
+			return true
+		}
+	}
+	return false
+}
+
+func isJudgeOnly(caps []string) bool {
+	return len(caps) == 1 && caps[0] == registry.CapabilityJudge
 }
 

@@ -36,9 +36,12 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Error contract: retry only on UNAVAILABLE ("vendors_unavailable").
+// Error contract: retry only on UNAVAILABLE ("vendors_unavailable", or
+// "throttled:spend_unavailable" when spend limits fail closed).
 // RESOURCE_EXHAUSTED = throttled ("throttled:rpm" | "throttled:budget_key" |
-// "throttled:budget_user") — back off, do not hot-retry.
+// "throttled:budget_user") — back off, do not hot-retry; or a spend limit
+// ("throttled:spend_<key|user>_<daily|monthly>") with ErrorInfo
+// "insufficient_quota" and RetryInfo until the UTC period resets.
 // FAILED_PRECONDITION: "output_truncated" (raise max_output_tokens, do not
 // retry as-is), "no_capable_model", "no_vendor_key", "not_configured",
 // "batch not configured".
@@ -203,9 +206,12 @@ func (c *lLMProxyServiceClient) CancelBatch(ctx context.Context, in *CancelBatch
 // All implementations must embed UnimplementedLLMProxyServiceServer
 // for forward compatibility.
 //
-// Error contract: retry only on UNAVAILABLE ("vendors_unavailable").
+// Error contract: retry only on UNAVAILABLE ("vendors_unavailable", or
+// "throttled:spend_unavailable" when spend limits fail closed).
 // RESOURCE_EXHAUSTED = throttled ("throttled:rpm" | "throttled:budget_key" |
-// "throttled:budget_user") — back off, do not hot-retry.
+// "throttled:budget_user") — back off, do not hot-retry; or a spend limit
+// ("throttled:spend_<key|user>_<daily|monthly>") with ErrorInfo
+// "insufficient_quota" and RetryInfo until the UTC period resets.
 // FAILED_PRECONDITION: "output_truncated" (raise max_output_tokens, do not
 // retry as-is), "no_capable_model", "no_vendor_key", "not_configured",
 // "batch not configured".

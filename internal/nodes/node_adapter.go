@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/openai/openai-go/v3"
@@ -76,6 +77,9 @@ func (pa *PoolAdapter) SupportsStreaming() bool {
 }
 
 func (pa *PoolAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
+	if isJudgeOnly(pa.model.Capabilities) {
+		return nil, adapters.ErrTextGenerationUnsupported
+	}
 	if ctx == nil {
 		ctx = context.Background()
 		if chat != nil && chat.Context() != nil {
@@ -92,7 +96,7 @@ func (pa *PoolAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) 
 		}
 	}()
 
-	client, underlyingModel, err := pa.buildNodeClient(cand)
+	client, underlyingModel, _, err := pa.buildNodeClient(cand)
 	if err != nil {
 		return nil, err
 	}
@@ -137,6 +141,9 @@ func (pa *PoolAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) 
 }
 
 func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+	if isJudgeOnly(pa.model.Capabilities) {
+		return adapters.ErrTextGenerationUnsupported
+	}
 	cand, reqID, err := pa.acquireSlotWithWait(ctx, chat)
 	if err != nil {
 		return err
@@ -168,7 +175,7 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 		}
 	}()
 
-	client, underlyingModel, err := pa.buildNodeClient(cand)
+	client, underlyingModel, _, err := pa.buildNodeClient(cand)
 	if err != nil {
 		return err
 	}
@@ -237,19 +244,23 @@ func (pa *PoolAdapter) newNodeAdapter(client *openai.Client, model string, cand 
 	return a
 }
 
-func (pa *PoolAdapter) buildNodeClient(cand *Candidate) (*openai.Client, string, error) {
+func (pa *PoolAdapter) buildNodeClient(cand *Candidate) (*openai.Client, string, string, error) {
 	endpoint := strings.TrimRight(cand.Snapshot.Meta.Endpoint, "/")
 	if !strings.HasSuffix(endpoint, "/v1") {
 		endpoint += "/v1"
 	}
 
 	var plainAuthToken string
-	if cand.Snapshot.Meta.AuthToken != "" && pa.keyring != nil {
-		dec, err := pa.keyring.DecodeVersioned(cand.Snapshot.Meta.AuthToken)
-		if err != nil {
-			log.Warn().Err(err).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to decrypt node auth token")
+	if cand.Snapshot.Meta.AuthToken != "" {
+		if pa.keyring != nil {
+			dec, err := pa.keyring.DecodeVersioned(cand.Snapshot.Meta.AuthToken)
+			if err != nil {
+				log.Warn().Err(err).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to decrypt node auth token")
+			} else {
+				plainAuthToken = dec
+			}
 		} else {
-			plainAuthToken = dec
+			plainAuthToken = cand.Snapshot.Meta.AuthToken
 		}
 	}
 	if plainAuthToken == "" {
@@ -268,12 +279,32 @@ func (pa *PoolAdapter) buildNodeClient(cand *Candidate) (*openai.Client, string,
 		underlyingModel = cand.ModelSpec.ModelId
 	}
 
-	return &cl, underlyingModel, nil
+	return &cl, underlyingModel, plainAuthToken, nil
 }
 
 func (pa *PoolAdapter) acquireSlotWithWait(ctx context.Context, chat *llm.ChatContext) (*Candidate, string, error) {
+	var userID string
+	tokens := 50.0
+	if chat != nil {
+		userID = chat.GetInternalUserID()
+		if userID == "" {
+			if meta := chat.GetMeta(); meta != nil {
+				userID = meta["user_id"]
+			}
+		}
+		if chat.GetMaxOutputTokens() > 0 {
+			tokens = float64(chat.GetMaxOutputTokens())
+			if tokens > 500 {
+				tokens = 500
+			}
+		}
+	}
+	return pa.acquireSlot(ctx, userID, tokens, "")
+}
+
+func (pa *PoolAdapter) acquireSlot(ctx context.Context, userID string, estTokens float64, capability string) (*Candidate, string, error) {
 	// 1. Quick attempt without waiting
-	cand, err := pa.selector.SelectNode(ctx, pa.model.ID)
+	cand, err := pa.selector.SelectNodeForCapability(ctx, pa.model.ID, capability)
 	if err == nil {
 		reqID := uuid.NewString()
 		acquired, leaseErr := pa.selector.mgr.Slots().AcquireLease(ctx, cand.Snapshot.Meta.NodeID, reqID, cand.Snapshot.Meta.MaxConcurrent, pa.leaseTTL)
@@ -285,17 +316,6 @@ func (pa *PoolAdapter) acquireSlotWithWait(ctx context.Context, chat *llm.ChatCo
 		}
 	} else if !errors.Is(err, ErrNodePoolFull) {
 		return nil, "", err
-	}
-
-	// Determine user ID
-	var userID string
-	if chat != nil {
-		userID = chat.GetInternalUserID()
-		if userID == "" {
-			if meta := chat.GetMeta(); meta != nil {
-				userID = meta["user_id"]
-			}
-		}
 	}
 
 	// Determine queue wait timeout
@@ -333,8 +353,15 @@ func (pa *PoolAdapter) acquireSlotWithWait(ctx context.Context, chat *llm.ChatCo
 			hasModel := false
 			for _, m := range n.Meta.Models {
 				if m.ModelId == pa.model.ID {
-					hasModel = true
-					break
+					if capability != "" {
+						if hasCapability(m.Capabilities, capability) {
+							hasModel = true
+							break
+						}
+					} else if !isJudgeOnly(m.Capabilities) {
+						hasModel = true
+						break
+					}
 				}
 			}
 			if !hasModel {
@@ -347,14 +374,7 @@ func (pa *PoolAdapter) acquireSlotWithWait(ctx context.Context, chat *llm.ChatCo
 				queueDepth += n.Heartbeat.QueueDepth
 			}
 			if perf, ok := n.Perf[pa.model.ID]; ok && perf.TPSEMA > 0 {
-				tokens := 50.0
-				if chat != nil && chat.GetMaxOutputTokens() > 0 {
-					tokens = float64(chat.GetMaxOutputTokens())
-					if tokens > 500 {
-						tokens = 500
-					}
-				}
-				dur := (tokens / perf.TPSEMA) * 1000.0
+				dur := (estTokens / perf.TPSEMA) * 1000.0
 				if dur < 10 {
 					dur = 10
 				}
@@ -409,7 +429,7 @@ func (pa *PoolAdapter) acquireSlotWithWait(ctx context.Context, chat *llm.ChatCo
 		case <-time.After(sleepDur):
 		}
 
-		cand, err := pa.selector.SelectNode(ctx, pa.model.ID)
+		cand, err := pa.selector.SelectNodeForCapability(ctx, pa.model.ID, capability)
 		if err == nil {
 			reqID := uuid.NewString()
 			acquired, leaseErr := pa.selector.mgr.Slots().AcquireLease(ctx, cand.Snapshot.Meta.NodeID, reqID, cand.Snapshot.Meta.MaxConcurrent, pa.leaseTTL)
@@ -428,4 +448,99 @@ func (pa *PoolAdapter) acquireSlotWithWait(ctx context.Context, chat *llm.ChatCo
 			backoff = 100 * time.Millisecond
 		}
 	}
+}
+
+// Judge evaluates a decision request against a local node with judge capability.
+func (pa *PoolAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, userID string, meta map[string]string) (*llm.JudgeResult, error) {
+	if !hasCapability(pa.model.Capabilities, registry.CapabilityJudge) {
+		return nil, llm.ErrJudgmentUnsupported
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	estTokens := float64(judgeInputEstimate(req))
+	cand, reqID, err := pa.acquireSlot(ctx, userID, estTokens, registry.CapabilityJudge)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if relErr := pa.selector.mgr.Slots().ReleaseLease(context.Background(), cand.Snapshot.Meta.NodeID, reqID); relErr != nil {
+			log.Warn().Err(relErr).Str("node_id", cand.Snapshot.Meta.NodeID).Str("req_id", reqID).Msg("failed to release node slot lease")
+		}
+	}()
+
+	client, underlyingModel, plainAuthToken, err := pa.buildNodeClient(cand)
+	if err != nil {
+		return nil, err
+	}
+
+	adapter := pa.newNodeAdapter(client, underlyingModel, cand)
+	adapter.SetDecisionsConfig(cand.Snapshot.Meta.Endpoint, plainAuthToken)
+
+	start := time.Now()
+	res, err := adapter.Judge(ctx, req, userID, meta)
+	duration := time.Since(start)
+
+	if err != nil {
+		isClientErr := ctx.Err() != nil
+		var decisionErr *adapters.OpenAIDecisionError
+		if errors.As(err, &decisionErr) {
+			switch decisionErr.Status {
+			case 400, 413, 422:
+				isClientErr = true
+			case 404:
+				// Node engine does not expose /v1/decisions for this model.
+				// Yield to the next model in the chain without tripping the node's circuit breaker.
+				return nil, fmt.Errorf("%w: %v", llm.ErrJudgmentUnsupported, err)
+			}
+		}
+		if !isClientErr {
+			if recErr := pa.selector.mgr.Circuit().RecordFailure(context.Background(), cand.Snapshot.Meta.NodeID); recErr != nil {
+				log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record circuit failure")
+			}
+		}
+		return nil, err
+	}
+
+	if recErr := pa.selector.mgr.Circuit().RecordSuccess(context.Background(), cand.Snapshot.Meta.NodeID); recErr != nil {
+		log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record circuit success")
+	}
+
+	if res != nil && res.Usage.Input > 0 && duration > 0 {
+		inputTokens := float64(res.Usage.Input)
+		ttftNorm := (float64(duration.Milliseconds()) / inputTokens) * 1000.0
+		if recErr := pa.selector.mgr.Telemetry().RecordMetrics(context.Background(), cand.Snapshot.Meta.NodeID, pa.model.ID, -1, ttftNorm); recErr != nil {
+			log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record node telemetry")
+		}
+	}
+
+	if meta != nil {
+		meta["node_id"] = cand.Snapshot.Meta.NodeID
+	}
+
+	return res, nil
+}
+
+func judgeInputEstimate(req *llm.JudgeRequest) int64 {
+	if req == nil {
+		return 50
+	}
+	runes := utf8.RuneCountInString(req.StateJSON)
+	for _, q := range req.Questions {
+		runes += utf8.RuneCountInString(q.Instructions)
+		for _, opt := range q.Options {
+			runes += utf8.RuneCountInString(opt)
+		}
+		for _, lvl := range q.Levels {
+			runes += utf8.RuneCountInString(lvl)
+		}
+		runes += utf8.RuneCountInString(q.TrueCriteria) + utf8.RuneCountInString(q.FalseCriteria)
+	}
+	est := int64(runes)/4 + 1
+	if est < 10 {
+		return 10
+	}
+	return est
 }

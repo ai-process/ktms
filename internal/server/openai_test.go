@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -429,6 +430,31 @@ func TestErrorMapping(t *testing.T) {
 		if strings.Contains(e["message"].(string), "password") {
 			t.Errorf("internal detail leaked: %v", e["message"])
 		}
+	}
+}
+
+func TestSpendLimitErrorMapping(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	body := `{"messages":[{"role":"user","content":"x"}]}`
+
+	fp.textErr = router.ToStatus(&router.ChainExhausted{AllThrottled: true, ThrottleKind: "spend_key_daily"})
+	rec := do(h, "POST", "/v1/chat/completions", key, body)
+	e := errBody(t, rec)
+	if rec.Code != http.StatusTooManyRequests || e["code"] != "insufficient_quota" || e["type"] != "insufficient_quota" {
+		t.Fatalf("got %d %v", rec.Code, e)
+	}
+	if e["message"] != "throttled:spend_key_daily" {
+		t.Errorf("message = %v, want the tripped limit named", e["message"])
+	}
+	secs, err := strconv.Atoi(rec.Header().Get("Retry-After"))
+	if err != nil || secs < 1 || secs > 24*60*60 {
+		t.Errorf("Retry-After = %q, want seconds until UTC midnight", rec.Header().Get("Retry-After"))
+	}
+
+	fp.textErr = router.ToStatus(&router.ChainExhausted{AllThrottled: true, ThrottleKind: "spend_unavailable"})
+	rec = do(h, "POST", "/v1/chat/completions", key, body)
+	if e := errBody(t, rec); rec.Code != http.StatusServiceUnavailable || e["code"] != "throttled:spend_unavailable" {
+		t.Errorf("fail-closed refusal: got %d %v", rec.Code, e)
 	}
 }
 
