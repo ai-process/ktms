@@ -11,6 +11,7 @@ import (
 // picks the first model in the rule's chain that has the batch capability,
 // a vendor key for the client, and daily budget left.
 func ResolveBatchModel(ctx context.Context, snap *registry.Snapshot, th Throttle, use []string, apiKeyID, keyName, userID string) (*proxydb.Model, error) {
+	sawCapable := false
 	sawKey := false
 	lastTripped := ""
 
@@ -22,6 +23,7 @@ func ResolveBatchModel(ctx context.Context, snap *registry.Snapshot, th Throttle
 		if !registry.HasCapability(m, registry.CapabilityBatch) {
 			continue
 		}
+		sawCapable = true
 
 		if _, hasKey := snap.VendorKey(apiKeyID, m.Vendor); !hasKey {
 			continue
@@ -41,6 +43,9 @@ func ResolveBatchModel(ctx context.Context, snap *registry.Snapshot, th Throttle
 
 	if sawKey && lastTripped != "" {
 		return nil, &ChainExhausted{AllThrottled: true, ThrottleKind: lastTripped}
+	}
+	if sawCapable && !sawKey {
+		return nil, ErrNoVendorKey
 	}
 	return nil, ErrNoCapableModel
 }
