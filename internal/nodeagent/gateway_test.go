@@ -83,6 +83,7 @@ func TestGatewayAllowlistAndKeySwap(t *testing.T) {
 		{"DELETE", "/api/delete", 404},
 		{"GET", "/v1/chat/completions", 405},
 		{"POST", "/v1/models", 405},
+		{"GET", "/v1/decisions", 405},
 	} {
 		req, _ := http.NewRequest(c.method, srv.URL+c.path, strings.NewReader(`{}`))
 		req.Header.Set("Authorization", "Bearer access-key")
@@ -239,3 +240,30 @@ func TestGatewayHealthzNeedsNoKey(t *testing.T) {
 		t.Fatalf("healthz status %d, engine hits %d", resp.StatusCode, hits.Load())
 	}
 }
+
+func TestGatewayAllowsDecisions(t *testing.T) {
+	var gotAuth atomic.Value
+	_, srv, hits := newTestGateway(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth.Store(r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"model":"jepa","answers":[]}`)
+	}))
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/decisions", strings.NewReader(`{"model":"jepa","questions":[]}`))
+	req.Header.Set("Authorization", "Bearer access-key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /v1/decisions status %d, want 200", resp.StatusCode)
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("engine was reached %d times, want 1", hits.Load())
+	}
+	if gotAuth.Load() != "Bearer engine-secret" {
+		t.Fatalf("engine saw %q, want Bearer engine-secret", gotAuth.Load())
+	}
+}
+

@@ -36,6 +36,12 @@ func NewSelector(mgr *Manager) *Selector {
 // 3. Compute effective weights: W_eff = base_weight * F_perf * F_load.
 // 4. Smooth WRR selection.
 func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, error) {
+	return s.SelectNodeForCapability(ctx, modelID, "")
+}
+
+// SelectNodeForCapability performs candidate filtering and weighted selection,
+// optionally filtering for a specific capability (e.g. "judge").
+func (s *Selector) SelectNodeForCapability(ctx context.Context, modelID string, capability string) (*Candidate, error) {
 	nodes, err := s.mgr.ListNodes(ctx)
 	if err != nil {
 		return nil, err
@@ -51,6 +57,18 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 	for _, n := range nodes {
 		for _, m := range n.Meta.Models {
 			if m.ModelId == modelID {
+				if capability != "" {
+					hasCap := false
+					for _, c := range m.Capabilities {
+						if c == capability {
+							hasCap = true
+							break
+						}
+					}
+					if !hasCap {
+						continue
+					}
+				}
 				if perf, ok := n.Perf[modelID]; ok {
 					if perf.TPSEMA > 0 {
 						totalTPS += perf.TPSEMA
@@ -90,6 +108,23 @@ func (s *Selector) SelectNode(ctx context.Context, modelID string) (*Candidate, 
 		}
 		if spec == nil {
 			continue
+		}
+
+		if capability != "" {
+			hasCap := false
+			for _, c := range spec.Capabilities {
+				if c == capability {
+					hasCap = true
+					break
+				}
+			}
+			if !hasCap {
+				continue
+			}
+		} else {
+			if len(spec.Capabilities) == 1 && spec.Capabilities[0] == "judge" {
+				continue
+			}
 		}
 
 		if n.State == pb.NodeState_NODE_STATE_HEALTHY || n.State == pb.NodeState_NODE_STATE_SUSPECT {

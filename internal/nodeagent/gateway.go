@@ -72,8 +72,16 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = json.Unmarshal(body, &probe) // a malformed body is the engine's to reject
 		stream = probe.Stream
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/decisions":
+		var err error
+		body, err = io.ReadAll(http.MaxBytesReader(w, r.Body, maxGatewayBody))
+		if err != nil {
+			writeGatewayError(w, http.StatusRequestEntityTooLarge, "request body too large or unreadable")
+			return
+		}
+		stream = false
 	case r.URL.Path == "/v1/models" && r.Method == http.MethodGet:
-	case r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/models":
+	case r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/models" || r.URL.Path == "/v1/decisions":
 		writeGatewayError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	default:
