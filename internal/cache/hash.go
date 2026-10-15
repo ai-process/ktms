@@ -24,11 +24,22 @@ func ComputeKey(apiKeyID string, configVersion int64, req *pb.GenerateTextReques
 	if req == nil {
 		return hex.EncodeToString(h.Sum(nil))
 	}
+	writeParams(h, req, true)
+	for i, m := range req.GetMessages() {
+		writeMessage(h, i, m)
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
 
+// writeParams hashes everything but the messages, in the order ComputeKey has
+// always used so existing cache keys stay valid.
+func writeParams(h io.Writer, req *pb.GenerateTextRequest, withRequestInstruction bool) {
 	fmt.Fprintf(h, "effort:%s\n", req.GetEffort().String())
 	fmt.Fprintf(h, "override:%s\n", req.GetModelOverride())
 	fmt.Fprintf(h, "base_sys:%s\n", req.GetBaseSystemInstruction())
-	fmt.Fprintf(h, "req_inst:%s\n", req.GetRequestInstruction())
+	if withRequestInstruction {
+		fmt.Fprintf(h, "req_inst:%s\n", req.GetRequestInstruction())
+	}
 	fmt.Fprintf(h, "max_tokens:%d\n", req.GetMaxOutputTokens())
 	fmt.Fprintf(h, "search:%t\n", req.GetEnableGoogleSearch())
 
@@ -63,43 +74,40 @@ func ComputeKey(apiKeyID string, configVersion int64, req *pb.GenerateTextReques
 			}
 		}
 	}
+}
 
-	// Messages sequence
-	for i, m := range req.GetMessages() {
-		fmt.Fprintf(h, "msg:%d:%s:%s:%s\n", i, m.GetRole().String(), m.GetText(), m.GetToolCallId())
-		for j, tc := range m.GetToolCalls() {
-			fmt.Fprintf(h, "tc:%d:%d:%s:%s:%s:%s\n", i, j, tc.GetId(), tc.GetType(), tc.GetFunction().GetName(), tc.GetFunction().GetArguments())
-		}
-		for k, p := range m.GetParts() {
-			switch part := p.GetPart().(type) {
-			case *pb.ContentPart_Text:
-				fmt.Fprintf(h, "part_txt:%d:%d:%s\n", i, k, part.Text.GetText())
-			case *pb.ContentPart_Image:
-				img := part.Image
-				fmt.Fprintf(h, "part_img:%d:%d:%s:%s:%s:%d\n", i, k, img.GetMimeType(), img.GetUrl(), img.GetDetail(), len(img.GetData()))
-				if len(img.GetData()) > 0 {
-					dataHash := sha256.Sum256(img.GetData())
-					fmt.Fprintf(h, "part_img_hash:%s\n", hex.EncodeToString(dataHash[:]))
-				}
-			case *pb.ContentPart_Audio:
-				aud := part.Audio
-				fmt.Fprintf(h, "part_aud:%d:%d:%s:%s:%d\n", i, k, aud.GetMimeType(), aud.GetFormat(), len(aud.GetData()))
-				if len(aud.GetData()) > 0 {
-					dataHash := sha256.Sum256(aud.GetData())
-					fmt.Fprintf(h, "part_aud_hash:%s\n", hex.EncodeToString(dataHash[:]))
-				}
-			case *pb.ContentPart_Document:
-				doc := part.Document
-				fmt.Fprintf(h, "part_doc:%d:%d:%s:%s:%d\n", i, k, doc.GetMimeType(), doc.GetFileName(), len(doc.GetData()))
-				if len(doc.GetData()) > 0 {
-					dataHash := sha256.Sum256(doc.GetData())
-					fmt.Fprintf(h, "part_doc_hash:%s\n", hex.EncodeToString(dataHash[:]))
-				}
+func writeMessage(h io.Writer, i int, m *pb.ChatMessage) {
+	fmt.Fprintf(h, "msg:%d:%s:%s:%s\n", i, m.GetRole().String(), m.GetText(), m.GetToolCallId())
+	for j, tc := range m.GetToolCalls() {
+		fmt.Fprintf(h, "tc:%d:%d:%s:%s:%s:%s\n", i, j, tc.GetId(), tc.GetType(), tc.GetFunction().GetName(), tc.GetFunction().GetArguments())
+	}
+	for k, p := range m.GetParts() {
+		switch part := p.GetPart().(type) {
+		case *pb.ContentPart_Text:
+			fmt.Fprintf(h, "part_txt:%d:%d:%s\n", i, k, part.Text.GetText())
+		case *pb.ContentPart_Image:
+			img := part.Image
+			fmt.Fprintf(h, "part_img:%d:%d:%s:%s:%s:%d\n", i, k, img.GetMimeType(), img.GetUrl(), img.GetDetail(), len(img.GetData()))
+			if len(img.GetData()) > 0 {
+				dataHash := sha256.Sum256(img.GetData())
+				fmt.Fprintf(h, "part_img_hash:%s\n", hex.EncodeToString(dataHash[:]))
+			}
+		case *pb.ContentPart_Audio:
+			aud := part.Audio
+			fmt.Fprintf(h, "part_aud:%d:%d:%s:%s:%d\n", i, k, aud.GetMimeType(), aud.GetFormat(), len(aud.GetData()))
+			if len(aud.GetData()) > 0 {
+				dataHash := sha256.Sum256(aud.GetData())
+				fmt.Fprintf(h, "part_aud_hash:%s\n", hex.EncodeToString(dataHash[:]))
+			}
+		case *pb.ContentPart_Document:
+			doc := part.Document
+			fmt.Fprintf(h, "part_doc:%d:%d:%s:%s:%d\n", i, k, doc.GetMimeType(), doc.GetFileName(), len(doc.GetData()))
+			if len(doc.GetData()) > 0 {
+				dataHash := sha256.Sum256(doc.GetData())
+				fmt.Fprintf(h, "part_doc_hash:%s\n", hex.EncodeToString(dataHash[:]))
 			}
 		}
 	}
-
-	return hex.EncodeToString(h.Sum(nil))
 }
 
 func writeResponseSchema(w io.Writer, schema *pb.ResponseSchema) {

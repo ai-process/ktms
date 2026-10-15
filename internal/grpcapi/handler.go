@@ -5,7 +5,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -16,7 +15,6 @@ import (
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/registry"
 	"github.com/ai-process/llm-proxy/internal/router"
-	usagev1 "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1"
 )
 
 const defaultActionID = "llmproxy.generate_text"
@@ -39,6 +37,7 @@ type ProxyServer struct {
 	snapshots     SnapshotProvider
 	throttle      router.Throttle
 	cache         TextCache
+	semantic      SemanticCache
 	guardrails    *guardrails.Guardrails
 	batchStore    BatchStore
 	batchMaxItems int
@@ -104,33 +103,11 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		return nil, router.ToStatus(router.ErrNotConfigured)
 	}
 
-	if req.GetEnableCache() && s.cache != nil {
-		cached, hit, err := s.cache.Get(ctx, id.KeyID, snap.Version, req)
-		if err != nil {
-			log.Warn().Err(err).Str("api_key_id", id.KeyID).Msg("cache lookup failed")
-		} else if hit && cached != nil {
-			userID := router.UserID(req.GetAttributes(), id.Name)
-			if m, ok := snap.Models[cached.ResolvedModel]; ok && m != nil {
-				if !s.throttle.AllowRPM(ctx, id.Name, userID, m) {
-					return nil, status.Error(codes.ResourceExhausted, "resource_exhausted: rpm limit exceeded")
-				}
-			}
-			if tracker := snap.Tracker(); tracker != nil {
-				meta := make(map[string]string, len(req.GetAttributes())+3)
-				for k, v := range req.GetAttributes() {
-					meta[k] = v
-				}
-				if cached.MatchedRule != "" {
-					meta["rule"] = cached.MatchedRule
-				}
-				meta["api_key"] = id.Name
-				meta["cache"] = "hit"
-				if err := tracker.RecordUsage(userID, defaultActionID, cached.ResolvedVendor, cached.ResolvedModel, 0, 0, 0, 0, usagev1.Status_STATUS_SUCCESS, meta); err != nil {
-					log.Warn().Err(err).Str("user_id", userID).Str("model", cached.ResolvedModel).Msg("failed to record cache hit usage")
-				}
-			}
-			return cached, nil
+	if hit := s.lookupCache(ctx, snap, id, req); hit != nil {
+		if err := s.admitCacheHit(ctx, snap, id, req, hit); err != nil {
+			return nil, err
 		}
+		return hit.resp, nil
 	}
 
 	plan, err := s.planRoute(ctx, snap, id, req)
@@ -145,7 +122,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 			vault = guardrails.NewTokenVault()
 		}
 		if _, err := s.guardrails.InspectChatContext(ctx, chat, vault); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+			return nil, guardrailStatus(err)
 		}
 	}
 	resp, model, err := router.Execute(ctx, s.throttle, router.Request{
@@ -206,11 +183,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 			FinishReason: finish,
 		})
 	}
-	if req.GetEnableCache() && s.cache != nil {
-		if err := s.cache.Set(ctx, id.KeyID, snap.Version, req, out); err != nil {
-			log.Warn().Err(err).Str("api_key_id", id.KeyID).Msg("failed to cache response")
-		}
-	}
+	s.storeCache(ctx, snap, id, req, out)
 	return out, nil
 }
 
@@ -233,33 +206,11 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		return router.ToStatus(router.ErrNotConfigured)
 	}
 
-	if inner.GetEnableCache() && s.cache != nil {
-		cached, hit, err := s.cache.Get(stream.Context(), id.KeyID, snap.Version, inner)
-		if err != nil {
-			log.Warn().Err(err).Str("api_key_id", id.KeyID).Msg("cache lookup failed in stream")
-		} else if hit && cached != nil {
-			userID := router.UserID(inner.GetAttributes(), id.Name)
-			if m, ok := snap.Models[cached.ResolvedModel]; ok && m != nil {
-				if !s.throttle.AllowRPM(stream.Context(), id.Name, userID, m) {
-					return status.Error(codes.ResourceExhausted, "resource_exhausted: rpm limit exceeded")
-				}
-			}
-			if tracker := snap.Tracker(); tracker != nil {
-				meta := make(map[string]string, len(inner.GetAttributes())+3)
-				for k, v := range inner.GetAttributes() {
-					meta[k] = v
-				}
-				if cached.MatchedRule != "" {
-					meta["rule"] = cached.MatchedRule
-				}
-				meta["api_key"] = id.Name
-				meta["cache"] = "hit"
-				if err := tracker.RecordUsage(userID, defaultActionID, cached.ResolvedVendor, cached.ResolvedModel, 0, 0, 0, 0, usagev1.Status_STATUS_SUCCESS, meta); err != nil {
-					log.Warn().Err(err).Str("user_id", userID).Str("model", cached.ResolvedModel).Msg("failed to record cache hit usage in stream")
-				}
-			}
-			return sendCachedStream(stream, cached)
+	if hit := s.lookupCache(stream.Context(), snap, id, inner); hit != nil {
+		if err := s.admitCacheHit(stream.Context(), snap, id, inner, hit); err != nil {
+			return err
 		}
+		return sendCachedStream(stream, hit.resp)
 	}
 
 	plan, err := s.planRoute(stream.Context(), snap, id, inner)
@@ -278,7 +229,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 			streamer = guardrails.NewStreamDesanitizer(vault)
 		}
 		if _, err := s.guardrails.InspectChatContext(stream.Context(), chat, vault); err != nil {
-			return status.Errorf(codes.InvalidArgument, "%s", err.Error())
+			return guardrailStatus(err)
 		}
 	}
 	var (
@@ -376,7 +327,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		return router.ToStatus(err)
 	}
 
-	if inner.GetEnableCache() && s.cache != nil {
+	if inner.GetEnableCache() && (s.cache != nil || s.semantic != nil) {
 		if streamFinish == "" {
 			streamFinish = "stop"
 		}
@@ -410,9 +361,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 			JudgeScore:     plan.judgeScore,
 			JudgeModel:     plan.judgeModel,
 		}
-		if err := s.cache.Set(stream.Context(), id.KeyID, snap.Version, inner, cachedResp); err != nil {
-			log.Warn().Err(err).Str("api_key_id", id.KeyID).Msg("failed to cache stream response")
-		}
+		s.storeCache(stream.Context(), snap, id, inner, cachedResp)
 	}
 	return nil
 }

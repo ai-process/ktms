@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -20,6 +21,7 @@ import (
 	"github.com/ai-process/llm-proxy/internal/crypto"
 	"github.com/ai-process/llm-proxy/internal/grpcapi"
 	"github.com/ai-process/llm-proxy/internal/guardrails"
+	"github.com/ai-process/llm-proxy/internal/latent"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/logger"
 	"github.com/ai-process/llm-proxy/internal/nodes"
@@ -194,10 +196,32 @@ func main() {
 		proxySrv.WithCache(c)
 		log.Info().Dur("ttl", cfg.CacheTTL).Int("max_bytes", cfg.CacheMaxBytes).Msg("response caching enabled")
 	}
+	var encoder latent.Encoder
+	if cfg.LatentEncoderNeeded() {
+		encoder = newLatentEncoder(cfg)
+	}
+	if cfg.SemanticCacheEnabled {
+		if redisClient == nil {
+			log.Warn().Msg("SEMANTIC_CACHE_ENABLED needs REDIS_ADDR: semantic cache disabled")
+		} else {
+			sc := cache.NewSemantic(redisClient, keyring, encoder, cache.SemanticOptions{
+				Threshold:  cfg.SemanticCacheThreshold,
+				MaxEntries: cfg.SemanticCacheMaxEntries,
+				TTL:        cfg.CacheTTL,
+				MaxBytes:   cfg.CacheMaxBytes,
+				Prefix:     cfg.RedisKeyPrefix,
+			})
+			proxySrv.WithSemanticCache(sc)
+			log.Info().Float64("threshold", cfg.SemanticCacheThreshold).Int("max_entries", cfg.SemanticCacheMaxEntries).Msg("semantic caching enabled")
+		}
+	}
 	if cfg.GuardrailsEnabled {
 		g := guardrails.New(cfg.GuardrailsEnabled, cfg.GuardrailsPIIAction, cfg.GuardrailsPromptInjectionAction)
+		if cfg.GuardrailsLatentEnabled {
+			g.WithLatent(newLatentDetector(rootCtx, cfg, encoder), cfg.GuardrailsLatentAction)
+		}
 		proxySrv.WithGuardrails(g)
-		log.Info().Str("pii_action", cfg.GuardrailsPIIAction).Str("prompt_injection_action", cfg.GuardrailsPromptInjectionAction).Msg("guardrails enabled")
+		log.Info().Str("pii_action", cfg.GuardrailsPIIAction).Str("prompt_injection_action", cfg.GuardrailsPromptInjectionAction).Bool("latent", cfg.GuardrailsLatentEnabled).Msg("guardrails enabled")
 	}
 
 	batchPoller := batch.NewPoller(db, loader, limiter, tracker, cfg.BatchPollInterval, cfg.ResultsRetention)
@@ -238,4 +262,40 @@ func main() {
 	if err := httpSrv.Shutdown(ctx); err != nil {
 		log.Error().Err(err).Msg("HTTP shutdown error")
 	}
+}
+
+// newLatentEncoder memoizes the configured encoder; a remote one falls back to
+// the local hash encoder so an encoder outage degrades instead of failing.
+func newLatentEncoder(cfg *config.Config) latent.Encoder {
+	local := latent.NewHashEncoder(cfg.LatentLocalEncoderDims)
+	var enc latent.Encoder = local
+	if cfg.LatentEncoderURL != "" {
+		remote := latent.NewHTTPEncoder(cfg.LatentEncoderURL, cfg.LatentEncoderModel, cfg.LatentEncoderAPIKey, cfg.LatentEncoderTimeout, &http.Client{})
+		enc = latent.NewFallback(remote, local)
+		log.Info().Str("url", cfg.LatentEncoderURL).Str("model", cfg.LatentEncoderModel).Dur("timeout", cfg.LatentEncoderTimeout).Msg("latent encoder configured")
+	} else {
+		log.Info().Str("model", local.Model()).Msg("latent encoder: local hash encoder")
+	}
+	return latent.NewMemo(enc, cfg.LatentEncoderCacheSize)
+}
+
+func newLatentDetector(ctx context.Context, cfg *config.Config, enc latent.Encoder) *guardrails.LatentDetector {
+	cats := guardrails.DefaultLatentCategories()
+	if cfg.GuardrailsLatentCategoriesFile != "" {
+		extra, err := guardrails.LoadLatentCategories(cfg.GuardrailsLatentCategoriesFile)
+		if err != nil {
+			log.Fatal().Err(err).Msg("latent guardrail categories")
+		}
+		cats = append(cats, extra...)
+	}
+	d, err := guardrails.NewLatentDetector(enc, cfg.GuardrailsLatentThreshold, cats)
+	if err != nil {
+		log.Fatal().Err(err).Msg("latent guardrail")
+	}
+	warmCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := d.Warmup(warmCtx); err != nil {
+		log.Warn().Err(err).Msg("latent guardrail warmup failed; centroids compile on first request")
+	}
+	return d
 }

@@ -1257,7 +1257,7 @@ type GenerateTextRequest struct {
 	ModelOverride         string            `protobuf:"bytes,10,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`                          // exact registry model id; bypasses rules, not throttles
 	Tools                 []*Tool           `protobuf:"bytes,11,rep,name=tools,proto3" json:"tools,omitempty"`
 	ToolChoice            *ToolChoice       `protobuf:"bytes,12,opt,name=tool_choice,json=toolChoice,proto3" json:"tool_choice,omitempty"`
-	EnableCache           bool              `protobuf:"varint,13,opt,name=enable_cache,json=enableCache,proto3" json:"enable_cache,omitempty"`             // opt-in prompt/response exact match cache
+	EnableCache           bool              `protobuf:"varint,13,opt,name=enable_cache,json=enableCache,proto3" json:"enable_cache,omitempty"`             // opt-in response cache: exact match, plus latent-similarity match when the proxy enables SEMANTIC_CACHE_ENABLED
 	Placement             string            `protobuf:"bytes,14,opt,name=placement,proto3" json:"placement,omitempty"`                                     // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
 	AutoRoute             bool              `protobuf:"varint,15,opt,name=auto_route,json=autoRoute,proto3" json:"auto_route,omitempty"`                   // true when smart model routing is enabled
 	EffortSpecified       bool              `protobuf:"varint,16,opt,name=effort_specified,json=effortSpecified,proto3" json:"effort_specified,omitempty"` // true when effort was explicitly pinned by caller

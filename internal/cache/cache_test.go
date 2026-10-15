@@ -13,7 +13,7 @@ import (
 	"github.com/ai-process/llm-proxy/internal/crypto"
 )
 
-func testKeyring(t *testing.T) *crypto.Keyring {
+func testKeyring(t testing.TB) *crypto.Keyring {
 	t.Helper()
 	kr, err := crypto.ParseKeyring("1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
 	if err != nil {

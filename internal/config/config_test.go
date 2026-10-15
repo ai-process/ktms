@@ -26,7 +26,7 @@ func TestEnvVarDocumentationConsistency(t *testing.T) {
 		t.Fatalf("read README.md: %v", err)
 	}
 
-	reEnv := regexp.MustCompile(`get(?:Bool|Int|Duration|Retention)?Env\("([A-Z0-9_]+)"`)
+	reEnv := regexp.MustCompile(`get(?:Bool|Int|Float|Duration|Retention)?Env\("([A-Z0-9_]+)"`)
 	matches := reEnv.FindAllStringSubmatch(string(configSrc), -1)
 
 	var foundVars []string
