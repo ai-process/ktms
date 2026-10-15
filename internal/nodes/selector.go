@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+	"github.com/ai-process/llm-proxy/internal/registry"
 )
 
 type Candidate struct {
@@ -58,16 +59,11 @@ func (s *Selector) SelectNodeForCapability(ctx context.Context, modelID string, 
 		for _, m := range n.Meta.Models {
 			if m.ModelId == modelID {
 				if capability != "" {
-					hasCap := false
-					for _, c := range m.Capabilities {
-						if c == capability {
-							hasCap = true
-							break
-						}
-					}
-					if !hasCap {
+					if !hasCapability(m.Capabilities, capability) {
 						continue
 					}
+				} else if isJudgeOnly(m.Capabilities) {
+					continue
 				}
 				if perf, ok := n.Perf[modelID]; ok {
 					if perf.TPSEMA > 0 {
@@ -111,20 +107,11 @@ func (s *Selector) SelectNodeForCapability(ctx context.Context, modelID string, 
 		}
 
 		if capability != "" {
-			hasCap := false
-			for _, c := range spec.Capabilities {
-				if c == capability {
-					hasCap = true
-					break
-				}
-			}
-			if !hasCap {
+			if !hasCapability(spec.Capabilities, capability) {
 				continue
 			}
-		} else {
-			if len(spec.Capabilities) == 1 && spec.Capabilities[0] == "judge" {
-				continue
-			}
+		} else if isJudgeOnly(spec.Capabilities) {
+			continue
 		}
 
 		if n.State == pb.NodeState_NODE_STATE_HEALTHY || n.State == pb.NodeState_NODE_STATE_SUSPECT {
@@ -266,5 +253,18 @@ func (s *Selector) SelectNodeForCapability(ctx context.Context, modelID string, 
 		s.curWeight[best.Snapshot.Meta.NodeID] -= totalWeight
 	}
 	return best, nil
+}
+
+func hasCapability(caps []string, target string) bool {
+	for _, c := range caps {
+		if c == target {
+			return true
+		}
+	}
+	return false
+}
+
+func isJudgeOnly(caps []string) bool {
+	return len(caps) == 1 && caps[0] == registry.CapabilityJudge
 }
 

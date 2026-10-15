@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/openai/openai-go/v3"
@@ -76,7 +77,7 @@ func (pa *PoolAdapter) SupportsStreaming() bool {
 }
 
 func (pa *PoolAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
-	if len(pa.model.Capabilities) == 1 && pa.model.Capabilities[0] == registry.CapabilityJudge {
+	if isJudgeOnly(pa.model.Capabilities) {
 		return nil, adapters.ErrTextGenerationUnsupported
 	}
 	if ctx == nil {
@@ -95,7 +96,7 @@ func (pa *PoolAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) 
 		}
 	}()
 
-	client, underlyingModel, err := pa.buildNodeClient(cand)
+	client, underlyingModel, _, err := pa.buildNodeClient(cand)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +141,7 @@ func (pa *PoolAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) 
 }
 
 func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
-	if len(pa.model.Capabilities) == 1 && pa.model.Capabilities[0] == registry.CapabilityJudge {
+	if isJudgeOnly(pa.model.Capabilities) {
 		return adapters.ErrTextGenerationUnsupported
 	}
 	cand, reqID, err := pa.acquireSlotWithWait(ctx, chat)
@@ -174,7 +175,7 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 		}
 	}()
 
-	client, underlyingModel, err := pa.buildNodeClient(cand)
+	client, underlyingModel, _, err := pa.buildNodeClient(cand)
 	if err != nil {
 		return err
 	}
@@ -243,7 +244,7 @@ func (pa *PoolAdapter) newNodeAdapter(client *openai.Client, model string, cand 
 	return a
 }
 
-func (pa *PoolAdapter) buildNodeClient(cand *Candidate) (*openai.Client, string, error) {
+func (pa *PoolAdapter) buildNodeClient(cand *Candidate) (*openai.Client, string, string, error) {
 	endpoint := strings.TrimRight(cand.Snapshot.Meta.Endpoint, "/")
 	if !strings.HasSuffix(endpoint, "/v1") {
 		endpoint += "/v1"
@@ -278,7 +279,7 @@ func (pa *PoolAdapter) buildNodeClient(cand *Candidate) (*openai.Client, string,
 		underlyingModel = cand.ModelSpec.ModelId
 	}
 
-	return &cl, underlyingModel, nil
+	return &cl, underlyingModel, plainAuthToken, nil
 }
 
 func (pa *PoolAdapter) acquireSlotWithWait(ctx context.Context, chat *llm.ChatContext) (*Candidate, string, error) {
@@ -353,16 +354,12 @@ func (pa *PoolAdapter) acquireSlot(ctx context.Context, userID string, estTokens
 			for _, m := range n.Meta.Models {
 				if m.ModelId == pa.model.ID {
 					if capability != "" {
-						for _, c := range m.Capabilities {
-							if c == capability {
-								hasModel = true
-								break
-							}
+						if hasCapability(m.Capabilities, capability) {
+							hasModel = true
+							break
 						}
-					} else {
+					} else if !isJudgeOnly(m.Capabilities) {
 						hasModel = true
-					}
-					if hasModel {
 						break
 					}
 				}
@@ -481,22 +478,12 @@ func (pa *PoolAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, userID 
 		}
 	}()
 
-	client, underlyingModel, err := pa.buildNodeClient(cand)
+	client, underlyingModel, plainAuthToken, err := pa.buildNodeClient(cand)
 	if err != nil {
 		return nil, err
 	}
 
 	adapter := pa.newNodeAdapter(client, underlyingModel, cand)
-	plainAuthToken := "dummy-node-key"
-	if cand.Snapshot.Meta.AuthToken != "" {
-		if pa.keyring != nil {
-			if dec, decErr := pa.keyring.DecodeVersioned(cand.Snapshot.Meta.AuthToken); decErr == nil && dec != "" {
-				plainAuthToken = dec
-			}
-		} else {
-			plainAuthToken = cand.Snapshot.Meta.AuthToken
-		}
-	}
 	adapter.SetDecisionsConfig(cand.Snapshot.Meta.Endpoint, plainAuthToken)
 
 	start := time.Now()
@@ -504,11 +491,17 @@ func (pa *PoolAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, userID 
 	duration := time.Since(start)
 
 	if err != nil {
-		isClientErr := errors.Is(ctx.Err(), context.Canceled)
+		isClientErr := ctx.Err() != nil
 		var decisionErr *adapters.OpenAIDecisionError
 		if errors.As(err, &decisionErr) {
-			if decisionErr.Status >= 400 && decisionErr.Status < 500 {
+			switch decisionErr.Status {
+			case 400, 413, 422:
 				isClientErr = true
+			case 404:
+				if recErr := pa.selector.mgr.Circuit().RecordFailure(context.Background(), cand.Snapshot.Meta.NodeID); recErr != nil {
+					log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record circuit failure")
+				}
+				return nil, llm.ErrJudgmentUnsupported
 			}
 		}
 		if !isClientErr {
@@ -523,15 +516,10 @@ func (pa *PoolAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, userID 
 		log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record circuit success")
 	}
 
-	// Update telemetry: compute input prefill speed & normalized latency
-	inputTokens := estTokens
-	if res != nil && res.Usage.Input > 0 {
-		inputTokens = float64(res.Usage.Input)
-	}
-	if duration > 0 && inputTokens > 0 {
-		tps := inputTokens / duration.Seconds()
+	if res != nil && res.Usage.Input > 0 && duration > 0 {
+		inputTokens := float64(res.Usage.Input)
 		ttftNorm := (float64(duration.Milliseconds()) / inputTokens) * 1000.0
-		if recErr := pa.selector.mgr.Telemetry().RecordMetrics(context.Background(), cand.Snapshot.Meta.NodeID, pa.model.ID, tps, ttftNorm); recErr != nil {
+		if recErr := pa.selector.mgr.Telemetry().RecordMetrics(context.Background(), cand.Snapshot.Meta.NodeID, pa.model.ID, -1, ttftNorm); recErr != nil {
 			log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record node telemetry")
 		}
 	}
@@ -547,12 +535,16 @@ func judgeInputEstimate(req *llm.JudgeRequest) int64 {
 	if req == nil {
 		return 50
 	}
-	runes := len(req.StateJSON)
+	runes := utf8.RuneCountInString(req.StateJSON)
 	for _, q := range req.Questions {
-		runes += len(q.Instructions)
+		runes += utf8.RuneCountInString(q.Instructions)
 		for _, opt := range q.Options {
-			runes += len(opt)
+			runes += utf8.RuneCountInString(opt)
 		}
+		for _, lvl := range q.Levels {
+			runes += utf8.RuneCountInString(lvl)
+		}
+		runes += utf8.RuneCountInString(q.TrueCriteria) + utf8.RuneCountInString(q.FalseCriteria)
 	}
 	est := int64(runes)/4 + 1
 	if est < 10 {
