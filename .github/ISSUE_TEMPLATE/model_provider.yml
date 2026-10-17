@@ -1,0 +1,72 @@
+name: Model Provider / Vendor Adapter
+description: Propose or contribute support for a new LLM provider or self-hosted engine
+title: "feat(vendor): add support for "
+labels: ["enhancement", "vendor-adapter"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template when requesting or contributing a new LLM vendor adapter in `internal/llm/adapters/`.
+
+  - type: input
+    id: provider_name
+    attributes:
+      label: Provider Name
+      description: What is the official name of the provider or inference engine?
+      placeholder: "e.g., Groq, Mistral, Cohere, Ollama, vLLM"
+    validations:
+      required: true
+
+  - type: input
+    id: docs_url
+    attributes:
+      label: API Documentation URL
+      description: Official API and authentication documentation.
+      placeholder: "https://docs.example.com/api"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: api_protocol
+    attributes:
+      label: Upstream Wire Protocol
+      description: Does the provider use standard OpenAI format, dedicated REST endpoints, or an official SDK?
+      options:
+        - OpenAI-compatible REST API (standard /v1/chat/completions)
+        - Custom REST API
+        - Official Go SDK Available
+        - gRPC Upstream
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: capabilities
+    attributes:
+      label: Supported Provider Capabilities
+      description: Check all capabilities offered by this provider that should be integrated.
+      options:
+        - label: Text Generation (GenerateText)
+        - label: Streaming (GenerateTextStream / SSE)
+        - label: Structured Outputs (JSON Schema / Soft Schema)
+        - label: Embeddings (GetEmbeddings)
+        - label: Async Batch Processing (SubmitBatch / GetBatch)
+        - label: Vision & Multimodal Inputs
+        - label: Speech Synthesis (SynthesizeSpeech)
+        - label: Image Generation (GenerateImage)
+
+  - type: textarea
+    id: models_pricing
+    attributes:
+      label: Key Models & Pricing Tiers
+      description: List primary model IDs, recommended effort tiers (LOW/MEDIUM/HIGH), and input/output token pricing per 1M tokens.
+      placeholder: |
+        - model-id-1: LOW effort, $0.10/M in, $0.40/M out
+        - model-id-2: HIGH effort, $2.00/M in, $8.00/M out
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation_notes
+    attributes:
+      label: Implementation Notes / Special Considerations
+      description: Details on error status codes, rate limit headers (Retry-After), authentication schemes, or test mocks.

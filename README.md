@@ -1,7 +1,10 @@
 # llm-proxy
 
-[![Test](https://github.com/ai-process/llm-proxy/actions/workflows/test.yml/badge.svg)](https://github.com/ai-process/llm-proxy/actions/workflows/test.yml)
-[![Docker image](https://img.shields.io/docker/v/coyl/llm-proxy?label=docker%20hub&sort=semver)](https://hub.docker.com/r/coyl/llm-proxy)
+[![CI](https://github.com/ai-process/llm-proxy/actions/workflows/test.yml/badge.svg)](https://github.com/ai-process/llm-proxy/actions/workflows/test.yml)
+[![Buf](https://github.com/ai-process/llm-proxy/actions/workflows/buf.yml/badge.svg)](https://github.com/ai-process/llm-proxy/actions/workflows/buf.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ai-process/llm-proxy)](https://goreportcard.com/report/github.com/ai-process/llm-proxy)
+[![Release](https://img.shields.io/github/v/release/ai-process/llm-proxy?sort=semver)](https://github.com/ai-process/llm-proxy/releases)
+[![Docker Image](https://img.shields.io/docker/v/coyl/llm-proxy?label=docker%20hub&sort=semver)](https://hub.docker.com/r/coyl/llm-proxy)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A self-hosted LLM gateway. Your services talk to one gRPC endpoint; the proxy holds
