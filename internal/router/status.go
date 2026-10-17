@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/ai-process/llm-proxy/internal/audio"
+	"github.com/ai-process/llm-proxy/internal/circuitbreaker"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/spendlimit"
 )
@@ -64,6 +65,10 @@ func ToStatus(err error) error {
 		return status.Error(codes.FailedPrecondition, "output_truncated")
 	case errors.Is(err, audio.ErrFFmpegMissing):
 		return status.Error(codes.Unimplemented, "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/llm-proxy:audio' container image")
+	// Streaming mid-stream stalls cannot fall back once chunks have emitted,
+	// returning directly to the caller as Unavailable rather than ChainExhausted.
+	case errors.Is(err, circuitbreaker.ErrUpstreamTimeout):
+		return status.Error(codes.Unavailable, "vendors_unavailable")
 	}
 	var exhausted *ChainExhausted
 	if errors.As(err, &exhausted) {

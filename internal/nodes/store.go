@@ -16,8 +16,9 @@ type nodeCapacityError struct {
 	msg string
 }
 
-func (e *nodeCapacityError) Error() string         { return e.msg }
-func (e *nodeCapacityError) SkipToNextModel() bool { return true }
+func (e *nodeCapacityError) Error() string           { return e.msg }
+func (e *nodeCapacityError) SkipToNextModel() bool   { return true }
+func (e *nodeCapacityError) CapacityExhausted() bool { return true }
 
 var (
 	ErrNodeNotFound      = errors.New("nodes: node not found")

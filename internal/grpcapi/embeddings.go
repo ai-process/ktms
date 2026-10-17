@@ -69,18 +69,19 @@ func (s *ProxyServer) GetEmbeddings(ctx context.Context, req *pb.GetEmbeddingsRe
 
 	var out *llm.EmbeddingResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
-		Chain:          plan.chain,
-		KeyName:        plan.identity.Name,
-		UserID:         router.UserID(plan.attrs, plan.identity.Name),
-		Estimate:       int64(totalRunes/4 + 1),
-		CircuitBreaker: s.circuitBreaker,
-		Adapter:        plan.adapter,
-		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
+		Chain:           plan.chain,
+		KeyName:         plan.identity.Name,
+		UserID:          router.UserID(plan.attrs, plan.identity.Name),
+		Estimate:        int64(totalRunes/4 + 1),
+		CircuitBreaker:  s.circuitBreaker,
+		UpstreamTimeout: s.upstreamTimeout,
+		Adapter:         plan.adapter,
+		Call: func(callCtx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			embAdapter, ok := adapter.(llm.EmbeddingAdapter)
 			if !ok {
 				return llm.TokensUsage{}, llm.ErrEmbeddingUnsupported
 			}
-			res, err := embAdapter.CreateEmbeddings(ctx, embReq, router.UserID(plan.attrs, plan.identity.Name), plan.meta)
+			res, err := embAdapter.CreateEmbeddings(callCtx, embReq, router.UserID(plan.attrs, plan.identity.Name), plan.meta)
 			if err != nil {
 				return llm.TokensUsage{}, err
 			}
