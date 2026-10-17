@@ -226,6 +226,7 @@ message GenerateTextStreamRequest {
 // "batch not configured".
 // INVALID_ARGUMENT: "guardrail_violation" (PII or prompt injection detected),
 // "bad_request: <message>" (validation errors, empty batch, duplicate custom_id).
+// UNIMPLEMENTED: "ffmpeg_missing: <hint>" (Gemini speech synthesis without ffmpeg).
 // INTERNAL "vendor_error" = terminal vendor failure.
 service LLMProxyService {
   rpc GenerateText(GenerateTextRequest) returns (GenerateTextResponse);

@@ -13,10 +13,10 @@ import (
 // When error rate or consecutive errors trip the breaker, state transitions to CIRCUIT_BROKEN.
 // A probe request can attempt half-open recovery using Redis SET NX.
 type CircuitBreaker struct {
-	rdb         redis.UniversalClient
-	store       *Store
-	failThresh  int
-	cooldown    time.Duration
+	rdb        redis.UniversalClient
+	store      *Store
+	failThresh int
+	cooldown   time.Duration
 }
 
 func NewCircuitBreaker(rdb redis.UniversalClient, store *Store, failThresh int, cooldown time.Duration) *CircuitBreaker {

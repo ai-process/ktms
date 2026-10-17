@@ -28,7 +28,9 @@ services:
       - "127.0.0.1:6380:6379"
 
   llm-proxy:
-    build: .
+    build:
+      context: .
+      target: audio
     depends_on:
       db:
         condition: service_healthy

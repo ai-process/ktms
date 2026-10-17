@@ -181,14 +181,14 @@ func TestPoller_ProcessSucceededBatch(t *testing.T) {
 	}
 
 	model := &proxydb.Model{
-		ID:                  "gemini-flash",
-		Vendor:              registry.VendorGoogle,
-		Capabilities:        []string{registry.CapabilityBatch},
-		PriceInPerMtok:      1.0,
-		PriceOutPerMtok:     4.0,
-		PriceInBatchPerMtok: 0.5, // 50% discount
+		ID:                   "gemini-flash",
+		Vendor:               registry.VendorGoogle,
+		Capabilities:         []string{registry.CapabilityBatch},
+		PriceInPerMtok:       1.0,
+		PriceOutPerMtok:      4.0,
+		PriceInBatchPerMtok:  0.5, // 50% discount
 		PriceOutBatchPerMtok: 2.0,
-		Enabled:             true,
+		Enabled:              true,
 	}
 
 	snap := registry.NewSnapshotForTest([]*proxydb.Model{model}, nil, nil, nil)
@@ -315,12 +315,12 @@ func TestPoller_ProcessCancelledBatch_FetchesLateResults(t *testing.T) {
 		},
 	}
 	model := &proxydb.Model{
-		ID:                  "gemini-flash",
-		Vendor:              registry.VendorGoogle,
-		Capabilities:        []string{registry.CapabilityBatch},
-		PriceInBatchPerMtok: 0.5,
+		ID:                   "gemini-flash",
+		Vendor:               registry.VendorGoogle,
+		Capabilities:         []string{registry.CapabilityBatch},
+		PriceInBatchPerMtok:  0.5,
 		PriceOutBatchPerMtok: 2.0,
-		Enabled:             true,
+		Enabled:              true,
 	}
 
 	snap := registry.NewSnapshotForTest([]*proxydb.Model{model}, nil, nil, nil)
