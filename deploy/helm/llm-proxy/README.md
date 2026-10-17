@@ -57,7 +57,9 @@ helm install llm-proxy ./deploy/helm/llm-proxy \
 | `ingress.grpc.enabled` | Enable dedicated gRPC Ingress | `false` |
 | `autoscaling.enabled` | Enable HorizontalPodAutoscaler | `false` |
 | `podDisruptionBudget.enabled` | Enable PodDisruptionBudget | `false` |
-| `metrics.enabled` | Expose metrics port on Service and container | `true` |
+| `podDisruptionBudget.minAvailable` | Minimum available pods during disruptions (default `1` when enabled; overridden by `maxUnavailable`) | `1` |
+| `podDisruptionBudget.maxUnavailable` | Maximum unavailable pods during disruptions (e.g. `1` or `"25%"`) | `""` |
+| `metrics.enabled` | Expose metrics port on Service and container (listener runs on :9091) | `true` |
 | `metrics.serviceMonitor.enabled` | Enable Prometheus Operator ServiceMonitor | `false` |
 | `podSecurityContext` | Pod security context (non-root, seccomp RuntimeDefault) | `runAsNonRoot: true`, `runAsUser: 10001` |
 | `securityContext` | Container security context (drop ALL, read-only rootfs) | `readOnlyRootFilesystem: true` |
@@ -65,4 +67,4 @@ helm install llm-proxy ./deploy/helm/llm-proxy \
 | `lifecycle.preStop` | PreStop hook to drain traffic before shutdown | `sleep 5` |
 
 > [!NOTE]
-> The internal container ports (`:8080` HTTP, `:9090` gRPC, `:9091` metrics) are fixed and mapped via named Service targetPorts. Changing `service.httpPort` or `service.grpcPort` alters the external cluster port without breaking internal container probes.
+> The internal container ports (`:8080` HTTP, `:9090` gRPC, `:9091` metrics) are fixed and mapped via named Service targetPorts. Changing `service.httpPort`, `service.grpcPort`, or `service.metricsPort` alters the external cluster Service ports without breaking internal container probes. Do not override `HTTP_ADDR`, `GRPC_ADDR`, or `METRICS_ADDR` via `extraEnv` as doing so would desynchronize internal listener ports from container port bindings and health probes.
