@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -220,9 +221,13 @@ type recordingThrottle struct {
 	rpmDeny  map[string]bool
 	settled  []llm.TokensUsage
 	reserves int
+	rpmCalls int
 }
 
 func (r *recordingThrottle) AllowRPM(_ context.Context, _, _ string, m *proxydb.Model) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rpmCalls++
 	return !r.rpmDeny[m.ID]
 }
 
@@ -823,28 +828,28 @@ func TestExecuteStream_AzureContentFilter_Fallback(t *testing.T) {
 
 func TestResolveChain_WeightedRouting(t *testing.T) {
 	// 1. Nil rule, single model, or empty weights: return Use unchanged
-	if got := ResolveChain(nil); got != nil {
+	if got := ResolveChain(nil, ""); got != nil {
 		t.Errorf("expected nil for nil rule, got %v", got)
 	}
 	rSingle := &proxydb.Rule{Use: []string{"m1"}, Weights: []int32{100}}
-	if got := ResolveChain(rSingle); len(got) != 1 || got[0] != "m1" {
+	if got := ResolveChain(rSingle, ""); len(got) != 1 || got[0] != "m1" {
 		t.Errorf("expected [m1], got %v", got)
 	}
 	rNoWeights := &proxydb.Rule{Use: []string{"m1", "m2"}}
-	if got := ResolveChain(rNoWeights); len(got) != 2 || got[0] != "m1" || got[1] != "m2" {
+	if got := ResolveChain(rNoWeights, ""); len(got) != 2 || got[0] != "m1" || got[1] != "m2" {
 		t.Errorf("expected [m1, m2], got %v", got)
 	}
 
 	// 2. Mismatched weights length: fallback to Use unchanged
 	rMismatch := &proxydb.Rule{Use: []string{"m1", "m2"}, Weights: []int32{50}}
-	if got := ResolveChain(rMismatch); len(got) != 2 || got[0] != "m1" {
+	if got := ResolveChain(rMismatch, ""); len(got) != 2 || got[0] != "m1" {
 		t.Errorf("expected [m1, m2], got %v", got)
 	}
 
 	// 3. Fallback preservation test:
 	// With weights [0, 100, 0], m2 MUST always be chosen as primary, and m1, m3 must follow in order
 	rForcedM2 := &proxydb.Rule{Use: []string{"m1", "m2", "m3"}, Weights: []int32{0, 100, 0}}
-	gotForced := ResolveChain(rForcedM2)
+	gotForced := ResolveChain(rForcedM2, "")
 	if len(gotForced) != 3 || gotForced[0] != "m2" || gotForced[1] != "m1" || gotForced[2] != "m3" {
 		t.Errorf("expected [m2, m1, m3], got %v", gotForced)
 	}
@@ -854,7 +859,7 @@ func TestResolveChain_WeightedRouting(t *testing.T) {
 	const iterations = 10000
 	m1Count := 0
 	for i := 0; i < iterations; i++ {
-		chain := ResolveChain(rWeighted)
+		chain := ResolveChain(rWeighted, "")
 		if len(chain) != 2 {
 			t.Fatalf("unexpected chain length: %d", len(chain))
 		}
@@ -1531,7 +1536,7 @@ func TestExecute_ShadowCircuitOpenSkipped(t *testing.T) {
 	}
 }
 
-func TestExecute_ShadowSpendSettled(t *testing.T) {
+func TestExecute_ShadowNoSpendReservation(t *testing.T) {
 	mPrimary := model("primary-m", "openai")
 	mShadow := model("shadow-m", "deepseek")
 
@@ -1581,24 +1586,23 @@ func TestExecute_ShadowSpendSettled(t *testing.T) {
 
 	th.mu.Lock()
 	reserves := th.reserves
-	settledCount := len(th.settled)
 	settled := append([]llm.TokensUsage{}, th.settled...)
+	rpmCalls := th.rpmCalls
 	th.mu.Unlock()
 
-	if reserves != 2 {
-		t.Fatalf("reserves = %d, want 2", reserves)
+	// Only primary request reserves and settles caller spend limits.
+	if reserves != 1 {
+		t.Fatalf("reserves = %d, want 1 (shadow must not reserve caller spend)", reserves)
 	}
-	if settledCount != 2 {
-		t.Fatalf("settled count = %d, want 2", settledCount)
+	if len(settled) != 1 {
+		t.Fatalf("settled count = %d, want 1", len(settled))
 	}
-	foundShadowUsage := false
-	for _, u := range settled {
-		if u.Input == 15 && u.Output == 25 {
-			foundShadowUsage = true
-		}
+	if settled[0].Input != 10 || settled[0].Output != 20 {
+		t.Fatalf("settled usage = %+v, want primary usage (10, 20)", settled[0])
 	}
-	if !foundShadowUsage {
-		t.Fatalf("shadow usage (15, 25) not found in settled: %+v", settled)
+	// Both primary and shadow check RPM limits to safeguard upstreams.
+	if rpmCalls != 2 {
+		t.Fatalf("rpmCalls = %d, want 2", rpmCalls)
 	}
 }
 
@@ -2076,5 +2080,202 @@ func TestExecuteCapacityExhaustionDoesNotTripBreakerEvenWithTimeout(t *testing.T
 	// Deep model capacity exhaustion must NOT trip the circuit breaker
 	if cbMgr.State(mDeep.Vendor, mDeep.ID) != circuitbreaker.StateClosed {
 		t.Fatalf("capacity exhaustion must not trip breaker, got state %v", cbMgr.State(mDeep.Vendor, mDeep.ID))
+	}
+}
+
+func TestResolveChainWeightedCanaryDeterministic(t *testing.T) {
+	r := &proxydb.Rule{
+		Name:    "weighted-canary",
+		Use:     []string{"model-a", "model-b"},
+		Weights: []int32{80, 20},
+		Enabled: true,
+	}
+
+	key := "sticky-user-12345"
+	first := ResolveChain(r, key)
+	if len(first) != 2 {
+		t.Fatalf("chain len = %d, want 2", len(first))
+	}
+	for i := 0; i < 50; i++ {
+		repeat := ResolveChain(r, key)
+		if repeat[0] != first[0] {
+			t.Fatalf("inconsistent canary routing for key %s: got %s, want %s", key, repeat[0], first[0])
+		}
+	}
+
+	counts := map[string]int{}
+	total := 1000
+	for i := 0; i < total; i++ {
+		u := ResolveChain(r, fmt.Sprintf("user-%d", i))
+		counts[u[0]]++
+	}
+	if counts["model-a"] < 700 || counts["model-a"] > 900 {
+		t.Fatalf("unexpected distribution for model-a: got %d out of %d", counts["model-a"], total)
+	}
+}
+
+type stubAdapter struct {
+	resp *llm.Response
+	err  error
+}
+
+func (s *stubAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
+	return s.resp, s.err
+}
+
+func TestExecuteShadowEvaluation(t *testing.T) {
+	mPrimary := &proxydb.Model{ID: "primary-m", Vendor: "v-primary", Enabled: true}
+	mShadow := &proxydb.Model{ID: "shadow-m", Vendor: "v-shadow", Enabled: true}
+
+	primary := &stubAdapter{
+		resp: &llm.Response{
+			Choices: []*llm.Message{{Type: llm.MessageTypeBot, Text: "primary answer"}},
+			Usage:   llm.TokensUsage{Input: 10, Output: 20},
+		},
+	}
+	shadow := &stubAdapter{
+		resp: &llm.Response{
+			Choices: []*llm.Message{{Type: llm.MessageTypeBot, Text: "shadow answer"}},
+			Usage:   llm.TokensUsage{Input: 10, Output: 25},
+		},
+	}
+
+	evalCh := make(chan struct {
+		pModel, sModel *proxydb.Model
+		pText, sText   string
+	}, 1)
+
+	req := Request{
+		Chain:            []*proxydb.Model{mPrimary},
+		KeyName:          "test-key",
+		UserID:           "user-1",
+		Chat:             llm.NewChatContext(),
+		ShadowModel:      mShadow,
+		ShadowPercentage: 100,
+		ShadowEvaluator: func(ctx context.Context, pModel, sModel *proxydb.Model, pResp, sResp *llm.Response) {
+			evalCh <- struct {
+				pModel, sModel *proxydb.Model
+				pText, sText   string
+			}{
+				pModel: pModel,
+				sModel: sModel,
+				pText:  pResp.Choices[0].Text,
+				sText:  sResp.Choices[0].Text,
+			}
+		},
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "shadow-m" {
+				return shadow, nil
+			}
+			return primary, nil
+		},
+	}
+
+	resp, _, err := Execute(context.Background(), NoopThrottle{}, req)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if resp.Choices[0].Text != "primary answer" {
+		t.Fatalf("primary resp text = %q, want primary answer", resp.Choices[0].Text)
+	}
+
+	select {
+	case eval := <-evalCh:
+		if eval.pModel.ID != "primary-m" || eval.sModel.ID != "shadow-m" {
+			t.Fatalf("unexpected models: primary=%s shadow=%s", eval.pModel.ID, eval.sModel.ID)
+		}
+		if eval.pText != "primary answer" || eval.sText != "shadow answer" {
+			t.Fatalf("unexpected texts: primary=%q shadow=%q", eval.pText, eval.sText)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for shadow evaluator callback")
+	}
+}
+
+type stubStreamAdapter struct {
+	chunks []llm.StreamChunk
+}
+
+func (s *stubStreamAdapter) SupportsStreaming() bool { return true }
+
+func (s *stubStreamAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubStreamAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatContext, emit func(llm.StreamChunk) error) error {
+	for _, c := range s.chunks {
+		if err := emit(c); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func TestExecuteStreamShadowEvaluation(t *testing.T) {
+	mPrimary := &proxydb.Model{ID: "primary-stream", Vendor: "v-primary", Enabled: true}
+	mShadow := &proxydb.Model{ID: "shadow-m", Vendor: "v-shadow", Enabled: true}
+
+	primaryStream := &stubStreamAdapter{
+		chunks: []llm.StreamChunk{
+			{Delta: "streamed "},
+			{Delta: "response"},
+		},
+	}
+	shadow := &stubAdapter{
+		resp: &llm.Response{
+			Choices: []*llm.Message{{Type: llm.MessageTypeBot, Text: "shadow answer"}},
+			Usage:   llm.TokensUsage{Input: 10, Output: 25},
+		},
+	}
+
+	evalCh := make(chan struct {
+		pText, sText string
+	}, 1)
+
+	req := Request{
+		Chain:            []*proxydb.Model{mPrimary},
+		KeyName:          "test-key",
+		UserID:           "user-1",
+		Chat:             llm.NewChatContext(),
+		ShadowModel:      mShadow,
+		ShadowPercentage: 100,
+		ShadowEvaluator: func(ctx context.Context, pModel, sModel *proxydb.Model, pResp, sResp *llm.Response) {
+			evalCh <- struct {
+				pText, sText string
+			}{
+				pText: pResp.Choices[0].Text,
+				sText: sResp.Choices[0].Text,
+			}
+		},
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "shadow-m" {
+				return shadow, nil
+			}
+			return primaryStream, nil
+		},
+	}
+
+	var emitted strings.Builder
+	_, err := ExecuteStream(context.Background(), NoopThrottle{}, req, func(m *proxydb.Model, chunk llm.StreamChunk) error {
+		emitted.WriteString(chunk.Delta)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ExecuteStream failed: %v", err)
+	}
+	if emitted.String() != "streamed response" {
+		t.Fatalf("emitted = %q, want streamed response", emitted.String())
+	}
+
+	select {
+	case eval := <-evalCh:
+		if eval.pText != "streamed response" {
+			t.Fatalf("pText = %q, want streamed response", eval.pText)
+		}
+		if eval.sText != "shadow answer" {
+			t.Fatalf("sText = %q, want shadow answer", eval.sText)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for stream shadow evaluator callback")
 	}
 }

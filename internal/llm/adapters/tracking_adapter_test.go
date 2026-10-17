@@ -184,3 +184,37 @@ func TestTrackingAdapterStreamDisconnectBeforeFirstChunk(t *testing.T) {
 		t.Errorf("expected estimated input tokens recorded on pre-chunk disconnect, got in=%d", tracker.in)
 	}
 }
+
+func TestTrackingAdapterShadowZeroCost(t *testing.T) {
+	resp := &llm.Response{Usage: llm.TokensUsage{Input: 100, Output: 10}}
+	tracker := &capturingTracker{}
+	adapter := NewTrackingAdapter(&stubAdapter{resp: resp}, tracker, "openai", "gpt-test").
+		WithPricer(func(u llm.TokensUsage, startedAt time.Time) int64 {
+			return int64(u.Input*7 + u.Output*11)
+		})
+
+	// Client sending forged is_shadow or shadow metadata without internal shadow context must pay full cost.
+	chat := llm.NewChatContext()
+	chat.SetCaller(llm.Caller{
+		UserID: "user-1",
+		Meta:   map[string]string{"is_shadow": "true", "shadow": "true"},
+	})
+	if _, err := adapter.GenerateText(context.Background(), chat); err != nil {
+		t.Fatalf("GenerateText: %v", err)
+	}
+	expectedFullCost := int64(100*7 + 10*11)
+	if tracker.cost != expectedFullCost {
+		t.Fatalf("forged shadow request cost = %d, want full cost %d", tracker.cost, expectedFullCost)
+	}
+
+	// Internal shadow traffic marked on context gets 0 cost.
+	chat2 := llm.NewChatContext()
+	chat2.SetCaller(llm.Caller{UserID: "user-2"})
+	shadowCtx := llm.WithShadowTraffic(context.Background())
+	if _, err := adapter.GenerateText(shadowCtx, chat2); err != nil {
+		t.Fatalf("GenerateText: %v", err)
+	}
+	if tracker.cost != 0 {
+		t.Fatalf("shadow request cost via context = %d, want 0", tracker.cost)
+	}
+}

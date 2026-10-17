@@ -95,6 +95,7 @@ func (s *AdminServer) ReplaceRules(ctx context.Context, req *pb.ReplaceRulesRequ
 			Weights:          r.GetWeights(),
 			ShadowModel:      r.GetShadowModel(),
 			ShadowPercentage: r.GetShadowPercentage(),
+			ShadowEval:       r.GetShadowEval(),
 		})
 	}
 	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {

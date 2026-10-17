@@ -151,4 +151,25 @@ var (
 		},
 		[]string{"vendor", "model", "status"},
 	)
+
+	// ShadowJudgeEvaluationsTotal tracks automated quality evaluations comparing primary vs shadow.
+	ShadowJudgeEvaluationsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "llmproxy",
+			Name:      "shadow_judge_evaluations_total",
+			Help:      "Total automated quality evaluations by primary model, shadow model, and preference outcome.",
+		},
+		[]string{"primary_model", "shadow_model", "preference"},
+	)
+
+	// ShadowJudgeScores records quality scores assigned by Judge to candidates.
+	ShadowJudgeScores = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "llmproxy",
+			Name:      "shadow_judge_scores",
+			Help:      "Quality scores assigned by Judge to primary and shadow outputs.",
+			Buckets:   []float64{0.0, 0.25, 0.5, 0.75, 1.0},
+		},
+		[]string{"model", "role"},
+	)
 )

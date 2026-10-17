@@ -30,6 +30,7 @@ type routePlan struct {
 	judgeModel       string
 	shadowModel      *proxydb.Model
 	shadowPercentage float64
+	shadowEval       bool
 }
 
 // promptText extracts representative text from instructions and user messages for judge evaluation.
@@ -50,6 +51,38 @@ func promptText(req *pb.GenerateTextRequest) string {
 				if txt := p.GetText().GetText(); txt != "" {
 					b.WriteString("\n")
 					b.WriteString(txt)
+				}
+			}
+		}
+	}
+	runes := []rune(strings.TrimSpace(b.String()))
+	if len(runes) > 4000 {
+		return string(runes[:4000])
+	}
+	return string(runes)
+}
+
+// promptTextFromChat extracts representative text from ChatContext.
+// It ensures any sensitive data masked by guardrails remains masked for the judge.
+func promptTextFromChat(chat *llm.ChatContext) string {
+	if chat == nil {
+		return ""
+	}
+	var b strings.Builder
+	if ins := chat.PeekRequestInstruction(); ins != "" {
+		b.WriteString(ins)
+		b.WriteString("\n")
+	}
+	for _, m := range chat.GetMessages() {
+		if m.Type == llm.MessageTypeUser {
+			if b.Len() > 0 {
+				b.WriteString("\n")
+			}
+			b.WriteString(m.Text)
+			for _, p := range m.Parts {
+				if p.Type == llm.ContentPartTypeText && p.Text != "" {
+					b.WriteString("\n")
+					b.WriteString(p.Text)
 				}
 			}
 		}
@@ -224,7 +257,8 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 	if rule == nil {
 		return nil, router.ToStatus(router.ErrNotConfigured)
 	}
-	chain := router.ResolveChain(rule)
+	canaryKey := router.CanaryKey(req.GetAttributes())
+	chain := router.ResolveChain(rule, canaryKey)
 
 	reqCaps := requiredCapabilities(req)
 	models, err := router.FilterChain(snap, chain, id.KeyID, effort, req.GetEnableGoogleSearch(), reqCaps...)
@@ -242,6 +276,7 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 	var (
 		shadowModel *proxydb.Model
 		shadowPct   float64
+		shadowEval  bool
 	)
 	if rule.ShadowModel != "" && rule.ShadowPercentage > 0 {
 		shadowChain, sErr := router.FilterChain(snap, []string{rule.ShadowModel}, id.KeyID, effort, req.GetEnableGoogleSearch(), reqCaps...)
@@ -252,6 +287,7 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 			if sErr == nil && len(shadowChain) > 0 {
 				shadowModel = shadowChain[0]
 				shadowPct = rule.ShadowPercentage
+				shadowEval = rule.ShadowEval
 			}
 		}
 	}
@@ -266,5 +302,6 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 		judgeModel:       judgeModel,
 		shadowModel:      shadowModel,
 		shadowPercentage: shadowPct,
+		shadowEval:       shadowEval,
 	}, nil
 }

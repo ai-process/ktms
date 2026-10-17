@@ -189,5 +189,6 @@ func ruleToProto(r *proxydb.Rule) *pb.RuleSpec {
 		Weights:          r.Weights,
 		ShadowModel:      r.ShadowModel,
 		ShadowPercentage: r.ShadowPercentage,
+		ShadowEval:       r.ShadowEval,
 	}
 }

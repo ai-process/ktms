@@ -127,14 +127,25 @@ type Request struct {
 	ShadowModel *proxydb.Model
 	// ShadowPercentage is the traffic percentage (0.0 - 100.0) to mirror.
 	ShadowPercentage float64
+	// ShadowEvaluator is called asynchronously when both primary and shadow responses are ready.
+	ShadowEvaluator func(ctx context.Context, primaryModel, shadowModel *proxydb.Model, primaryResp, shadowResp *llm.Response)
+}
+
+type primaryResult struct {
+	Model    *proxydb.Model
+	Response *llm.Response
 }
 
 const (
-	defaultShadowTimeout = 30 * time.Second
-	maxConcurrentShadows = 512
+	defaultShadowTimeout          = 30 * time.Second
+	maxConcurrentShadows          = 512
+	maxConcurrentShadowEvaluation = 256
 )
 
-var shadowSem = make(chan struct{}, maxConcurrentShadows)
+var (
+	shadowSem     = make(chan struct{}, maxConcurrentShadows)
+	shadowEvalSem = make(chan struct{}, maxConcurrentShadowEvaluation)
+)
 
 func samplePercentage(pct float64) bool {
 	if pct <= 0 {
@@ -150,13 +161,11 @@ func samplePercentage(pct float64) bool {
 	return float64(n.Int64()) < pct*100
 }
 
-func (r *Request) dispatchShadow(ctx context.Context, th Throttle) {
-	if r.ShadowModel == nil || r.ShadowPercentage <= 0 {
-		return
-	}
-	if !samplePercentage(r.ShadowPercentage) {
-		return
-	}
+func (r *Request) shouldShadow() bool {
+	return r.ShadowModel != nil && r.ShadowPercentage > 0 && samplePercentage(r.ShadowPercentage)
+}
+
+func (r *Request) dispatchShadow(ctx context.Context, th Throttle, primaryCh <-chan *primaryResult) {
 	shadowModel := r.ShadowModel
 
 	select {
@@ -175,15 +184,13 @@ func (r *Request) dispatchShadow(ctx context.Context, th Throttle) {
 	adapterFn := r.Adapter
 	keyName := r.KeyName
 	userID := r.UserID
-	estimate := r.Estimate
-	maxOutput := r.maxOutput()
 
 	// Mirror traffic asynchronously without adding caller latency or failing user requests.
 	go func() {
 		defer func() { <-shadowSem }()
 		defer panicsafe.Guard("router: shadow dispatch")
 
-		shadowCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), defaultShadowTimeout)
+		shadowCtx, cancel := context.WithTimeout(llm.WithShadowTraffic(context.WithoutCancel(ctx)), defaultShadowTimeout)
 		defer cancel()
 
 		if cb != nil && !cb.IsClosed(shadowModel.Vendor, shadowModel.ID) {
@@ -191,25 +198,9 @@ func (r *Request) dispatchShadow(ctx context.Context, th Throttle) {
 			return
 		}
 
-		var res *Reservation
-		var settled bool
-		defer func() {
-			if th != nil && res != nil && !settled {
-				th.Settle(res, llm.TokensUsage{})
-			}
-		}()
-
-		if th != nil {
-			if !th.AllowRPM(shadowCtx, keyName, userID, shadowModel) {
-				observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "throttled").Inc()
-				return
-			}
-			var tripped string
-			res, tripped = th.Reserve(shadowCtx, shadowModel, keyName, userID, estimate, maxOutput)
-			if tripped != "" {
-				observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "budget_exceeded").Inc()
-				return
-			}
+		if th != nil && !th.AllowRPM(shadowCtx, keyName, userID, shadowModel) {
+			observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "throttled").Inc()
+			return
 		}
 
 		adapter, err := adapterFn(shadowModel)
@@ -226,18 +217,11 @@ func (r *Request) dispatchShadow(ctx context.Context, th Throttle) {
 				meta = make(map[string]string)
 			}
 			meta["is_shadow"] = "true"
+			meta["shadow"] = "true"
 			chat.SetMeta(meta)
 		}
 
 		resp, callErr := adapter.GenerateText(shadowCtx, chat)
-		if th != nil && res != nil {
-			var usage llm.TokensUsage
-			if callErr == nil && resp != nil {
-				usage = resp.Usage
-			}
-			settled = true
-			th.Settle(res, usage)
-		}
 
 		status := "success"
 		if callErr != nil {
@@ -246,6 +230,38 @@ func (r *Request) dispatchShadow(ctx context.Context, th Throttle) {
 				Msg("shadow execution failed")
 		}
 		observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, status).Inc()
+
+		if callErr == nil && resp != nil && r.ShadowEvaluator != nil && primaryCh != nil {
+			r.dispatchShadowEval(ctx, shadowModel, resp, primaryCh)
+		}
+	}()
+}
+
+func (r *Request) dispatchShadowEval(ctx context.Context, shadowModel *proxydb.Model, shadowResp *llm.Response, primaryCh <-chan *primaryResult) {
+	select {
+	case shadowEvalSem <- struct{}{}:
+	default:
+		log.Warn().Str("shadow_model", shadowModel.ID).Msg("shadow evaluation capacity exceeded, skipping evaluation")
+		return
+	}
+
+	evaluator := r.ShadowEvaluator
+	go func() {
+		defer func() { <-shadowEvalSem }()
+		defer panicsafe.Guard("router: shadow eval dispatch")
+
+		select {
+		case pres, ok := <-primaryCh:
+			if ok && pres != nil && pres.Response != nil {
+				evalCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), defaultShadowTimeout)
+				defer cancel()
+				evaluator(evalCtx, pres.Model, shadowModel, pres.Response, shadowResp)
+			}
+		case <-ctx.Done():
+			// Primary request cancelled or timed out before completion.
+		case <-time.After(5 * time.Minute):
+			log.Warn().Str("shadow_model", shadowModel.ID).Msg("shadow evaluation timed out waiting for primary response")
+		}
 	}()
 }
 
@@ -273,6 +289,13 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 		throttleKind     = "rpm"
 		shadowDispatched bool
 	)
+
+	var primaryCh chan *primaryResult
+	doShadow := r.shouldShadow()
+	if doShadow && r.ShadowEvaluator != nil {
+		primaryCh = make(chan *primaryResult, 1)
+		defer close(primaryCh)
+	}
 
 	for i, m := range r.Chain {
 		if r.CircuitBreaker != nil && !r.CircuitBreaker.Allow(m.Vendor, m.ID) {
@@ -323,9 +346,9 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 			continue
 		}
 
-		if !shadowDispatched {
+		if doShadow && !shadowDispatched {
 			shadowDispatched = true
-			r.dispatchShadow(ctx, th)
+			r.dispatchShadow(ctx, th, primaryCh)
 		}
 
 		resp, err := r.callAndCheck(ctx, adapter, m, th, res)
@@ -338,6 +361,9 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 			}
 		}
 		if err == nil {
+			if primaryCh != nil {
+				primaryCh <- &primaryResult{Model: m, Response: resp}
+			}
 			return resp, m, nil
 		}
 		lastErr = err
@@ -416,6 +442,13 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 		shadowDispatched bool
 	)
 
+	var primaryCh chan *primaryResult
+	doShadow := r.shouldShadow()
+	if doShadow && r.ShadowEvaluator != nil {
+		primaryCh = make(chan *primaryResult, 1)
+		defer close(primaryCh)
+	}
+
 	for i, m := range r.Chain {
 		if r.CircuitBreaker != nil && !r.CircuitBreaker.Allow(m.Vendor, m.ID) {
 			var nextModel string
@@ -487,9 +520,9 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			continue
 		}
 
-		if !shadowDispatched {
+		if doShadow && !shadowDispatched {
 			shadowDispatched = true
-			r.dispatchShadow(ctx, th)
+			r.dispatchShadow(ctx, th, primaryCh)
 		}
 
 		schema := r.Chat.GetResponseSchema()
@@ -501,6 +534,7 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			outChars       int
 			bufferedChunks []llm.StreamChunk
 			fullText       strings.Builder
+			streamFullText strings.Builder
 		)
 
 		streamErr := func() error {
@@ -548,6 +582,9 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 
 			streamStart := time.Now()
 			callErr := streamAdapter.GenerateTextStream(streamCtx, r.Chat, func(chunk llm.StreamChunk) error {
+				if primaryCh != nil && chunk.Delta != "" {
+					streamFullText.WriteString(chunk.Delta)
+				}
 				if !firstChunkSent {
 					firstChunkSent = true
 					observability.TimeToFirstToken.WithLabelValues(m.Vendor, m.ID).Observe(time.Since(streamStart).Seconds())
@@ -661,6 +698,20 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 		}
 
 		if err == nil {
+			if primaryCh != nil {
+				primaryCh <- &primaryResult{
+					Model: m,
+					Response: &llm.Response{
+						Choices: []*llm.Message{
+							{
+								Type: llm.MessageTypeBot,
+								Text: streamFullText.String(),
+							},
+						},
+						Usage: spent,
+					},
+				}
+			}
 			return m, nil
 		}
 
