@@ -168,9 +168,9 @@ startup overhead of Python-based gateways like LiteLLM Proxy.
 | Active load memory (1k RPS) | ~45–80 MiB | ~1.2–2.0 GiB (4 workers) | ~15–44x less memory under load |
 | Time to readiness (`/readyz` 200) | ~30–60 ms | 8–15 s (`/health/readiness`) | ~130–500x faster readiness |
 | Concurrency model | Native goroutines in 1 process | Multiple OS processes + asyncio | Single process uses all cores; no per-worker memory duplication |
-| Recommended container memory limit | 256 MiB | ≥2.5–3 GiB | ~10x lower memory reservation |
+| Recommended container memory limit | 256–512 MiB (Helm default limit 512 MiB) | ≥2.5–3 GiB | ~5–10x lower memory reservation |
 
-*Measurements from synthetic k6 benchmarks (October 2026, 1,000 RPS against a 10 ms mock upstream, 4 Uvicorn workers on `ghcr.io/berriai/litellm:main-latest`) on Linux x86_64, 4 vCPU, 8 GB RAM.*
+*Measurements from synthetic k6 benchmarks (October 2026, 1,000 RPS against a 10 ms mock upstream, 4 Uvicorn workers on `ghcr.io/berriai/litellm:main-latest`) on Linux x86_64, 4 vCPU, 8 GB RAM; readiness assumes warm DB with migrations applied.*
 
 ## Installation
 
