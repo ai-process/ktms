@@ -135,14 +135,6 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 			return nil, guardrailStatus(err)
 		}
 	}
-	var shadowModel *proxydb.Model
-	var shadowPct float64
-	if plan.rule != nil && plan.rule.ShadowModel != "" && plan.rule.ShadowPercentage > 0 {
-		if sm, ok := snap.Models[plan.rule.ShadowModel]; ok && sm.Enabled {
-			shadowModel = sm
-			shadowPct = plan.rule.ShadowPercentage
-		}
-	}
 	resp, model, err := router.Execute(ctx, s.throttle, router.Request{
 		Chain:            plan.models,
 		KeyName:          id.Name,
@@ -152,8 +144,8 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		CircuitBreaker:   s.circuitBreaker,
 		Adapter:          func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
 		SoftSchema:       registry.SoftSchema,
-		ShadowModel:      shadowModel,
-		ShadowPercentage: shadowPct,
+		ShadowModel:      plan.shadowModel,
+		ShadowPercentage: plan.shadowPercentage,
 	})
 	if err != nil {
 		return nil, router.ToStatus(err)
@@ -262,14 +254,6 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		streamModel     string
 		streamVendor    string
 	)
-	var shadowModel *proxydb.Model
-	var shadowPct float64
-	if plan.rule != nil && plan.rule.ShadowModel != "" && plan.rule.ShadowPercentage > 0 {
-		if sm, ok := snap.Models[plan.rule.ShadowModel]; ok && sm.Enabled {
-			shadowModel = sm
-			shadowPct = plan.rule.ShadowPercentage
-		}
-	}
 	_, err = router.ExecuteStream(stream.Context(), s.throttle, router.Request{
 		Chain:            plan.models,
 		KeyName:          id.Name,
@@ -279,8 +263,8 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		CircuitBreaker:   s.circuitBreaker,
 		Adapter:          func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
 		SoftSchema:       registry.SoftSchema,
-		ShadowModel:      shadowModel,
-		ShadowPercentage: shadowPct,
+		ShadowModel:      plan.shadowModel,
+		ShadowPercentage: plan.shadowPercentage,
 	}, func(m *proxydb.Model, chunk llm.StreamChunk) error {
 		streamModel = m.ID
 		streamVendor = m.Vendor

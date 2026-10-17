@@ -1129,6 +1129,7 @@ type shadowCaptureAdapter struct {
 	fakeAdapter
 	capturedChat *llm.ChatContext
 	called       chan struct{}
+	done         chan struct{}
 }
 
 func (s *shadowCaptureAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
@@ -1139,7 +1140,30 @@ func (s *shadowCaptureAdapter) GenerateText(ctx context.Context, chat *llm.ChatC
 		default:
 		}
 	}
+	defer func() {
+		if s.done != nil {
+			select {
+			case s.done <- struct{}{}:
+			default:
+			}
+		}
+	}()
 	return s.fakeAdapter.GenerateText(ctx, chat)
+}
+
+func TestSamplePercentage(t *testing.T) {
+	if samplePercentage(0) {
+		t.Error("samplePercentage(0) must be false")
+	}
+	if samplePercentage(-10) {
+		t.Error("samplePercentage(-10) must be false")
+	}
+	if !samplePercentage(100) {
+		t.Error("samplePercentage(100) must be true")
+	}
+	if !samplePercentage(150) {
+		t.Error("samplePercentage(150) must be true")
+	}
 }
 
 func TestExecute_ShadowRouting(t *testing.T) {
@@ -1150,6 +1174,7 @@ func TestExecute_ShadowRouting(t *testing.T) {
 	shadow := &shadowCaptureAdapter{
 		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){ok("shadow output")}},
 		called:      make(chan struct{}, 1),
+		done:        make(chan struct{}, 1),
 	}
 
 	adapters := map[string]llm.ClientAdapter{
@@ -1190,6 +1215,12 @@ func TestExecute_ShadowRouting(t *testing.T) {
 		t.Fatal("timed out waiting for shadow execution")
 	}
 
+	select {
+	case <-shadow.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for shadow completion")
+	}
+
 	if shadow.capturedChat == nil {
 		t.Fatal("shadow did not receive chat context")
 	}
@@ -1209,6 +1240,7 @@ func TestExecute_ShadowFailureIsolated(t *testing.T) {
 	shadow := &shadowCaptureAdapter{
 		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){fail(errors.New("shadow vendor failure"))}},
 		called:      make(chan struct{}, 1),
+		done:        make(chan struct{}, 1),
 	}
 
 	adapters := map[string]llm.ClientAdapter{
@@ -1240,6 +1272,12 @@ func TestExecute_ShadowFailureIsolated(t *testing.T) {
 	case <-shadow.called:
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for shadow execution")
+	}
+
+	select {
+	case <-shadow.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for shadow completion")
 	}
 }
 
@@ -1280,6 +1318,91 @@ func TestExecute_ShadowPercentageZero(t *testing.T) {
 	}
 }
 
+func TestExecute_ShadowDroppedOnCapacity(t *testing.T) {
+	for i := 0; i < maxConcurrentShadows; i++ {
+		shadowSem <- struct{}{}
+	}
+	defer func() {
+		for i := 0; i < maxConcurrentShadows; i++ {
+			<-shadowSem
+		}
+	}()
+
+	mPrimary := model("primary-m", "openai")
+	mShadow := model("shadow-m", "deepseek")
+
+	primary := &fakeAdapter{responses: []func() (*llm.Response, error){ok("primary output")}}
+	shadow := &shadowCaptureAdapter{
+		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){ok("shadow output")}},
+		called:      make(chan struct{}, 1),
+	}
+
+	req := Request{
+		Chain:            []*proxydb.Model{mPrimary},
+		KeyName:          "test-key",
+		UserID:           "user-1",
+		Chat:             llm.NewChatContext(),
+		ShadowModel:      mShadow,
+		ShadowPercentage: 100,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "shadow-m" {
+				return shadow, nil
+			}
+			return primary, nil
+		},
+	}
+
+	_, _, err := Execute(context.Background(), NoopThrottle{}, req)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+
+	select {
+	case <-shadow.called:
+		t.Fatal("shadow should be dropped when semaphore is full")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestExecute_ShadowThrottledRPM(t *testing.T) {
+	mPrimary := model("primary-m", "openai")
+	mShadow := model("shadow-m", "deepseek")
+
+	primary := &fakeAdapter{responses: []func() (*llm.Response, error){ok("primary output")}}
+	shadow := &shadowCaptureAdapter{
+		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){ok("shadow output")}},
+		called:      make(chan struct{}, 1),
+	}
+
+	th := &recordingThrottle{rpmDeny: map[string]bool{"shadow-m": true}}
+
+	req := Request{
+		Chain:            []*proxydb.Model{mPrimary},
+		KeyName:          "test-key",
+		UserID:           "user-1",
+		Chat:             llm.NewChatContext(),
+		ShadowModel:      mShadow,
+		ShadowPercentage: 100,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "shadow-m" {
+				return shadow, nil
+			}
+			return primary, nil
+		},
+	}
+
+	_, _, err := Execute(context.Background(), th, req)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+
+	select {
+	case <-shadow.called:
+		t.Fatal("shadow should be skipped when shadow model is rpm saturated")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
 func TestExecuteStream_ShadowRouting(t *testing.T) {
 	mPrimary := model("primary-stream", "openai")
 	mShadow := model("shadow-m", "deepseek")
@@ -1296,6 +1419,7 @@ func TestExecuteStream_ShadowRouting(t *testing.T) {
 	shadow := &shadowCaptureAdapter{
 		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){ok("shadow text")}},
 		called:      make(chan struct{}, 1),
+		done:        make(chan struct{}, 1),
 	}
 
 	adapters := map[string]llm.ClientAdapter{
@@ -1334,6 +1458,12 @@ func TestExecuteStream_ShadowRouting(t *testing.T) {
 	case <-shadow.called:
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for shadow execution")
+	}
+
+	select {
+	case <-shadow.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for shadow completion")
 	}
 
 	if shadow.capturedChat.GetMeta()["is_shadow"] != "true" {

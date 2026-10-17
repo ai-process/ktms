@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -125,7 +124,12 @@ type Request struct {
 	ShadowPercentage float64
 }
 
-const defaultShadowTimeout = 30 * time.Second
+const (
+	defaultShadowTimeout  = 30 * time.Second
+	maxConcurrentShadows = 512
+)
+
+var shadowSem = make(chan struct{}, maxConcurrentShadows)
 
 func samplePercentage(pct float64) bool {
 	if pct <= 0 {
@@ -141,7 +145,7 @@ func samplePercentage(pct float64) bool {
 	return float64(n.Int64()) < pct*100
 }
 
-func (r *Request) dispatchShadow(ctx context.Context) {
+func (r *Request) dispatchShadow(ctx context.Context, th Throttle) {
 	if r.ShadowModel == nil || r.ShadowPercentage <= 0 {
 		return
 	}
@@ -149,6 +153,25 @@ func (r *Request) dispatchShadow(ctx context.Context) {
 		return
 	}
 	shadowModel := r.ShadowModel
+	if th != nil {
+		if !th.AllowRPM(ctx, r.KeyName, r.UserID, shadowModel) {
+			observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "throttled").Inc()
+			return
+		}
+		if tripped := th.CheckDailyBudget(ctx, shadowModel, r.KeyName, r.UserID); tripped != "" {
+			observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "throttled").Inc()
+			return
+		}
+	}
+
+	select {
+	case shadowSem <- struct{}{}:
+	default:
+		observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "dropped").Inc()
+		log.Warn().Str("shadow_model", shadowModel.ID).Msg("shadow capacity exceeded, dropping mirror request")
+		return
+	}
+
 	var chat *llm.ChatContext
 	if r.Chat != nil {
 		chat = r.Chat.Clone()
@@ -158,6 +181,7 @@ func (r *Request) dispatchShadow(ctx context.Context) {
 
 	// Mirror traffic asynchronously without adding caller latency or failing user requests.
 	go func() {
+		defer func() { <-shadowSem }()
 		defer panicsafe.Guard("router: shadow dispatch")
 
 		shadowCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), defaultShadowTimeout)
@@ -167,12 +191,13 @@ func (r *Request) dispatchShadow(ctx context.Context) {
 			observability.CircuitBreakerRejectionsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID).Inc()
 			return
 		}
+		if cb != nil {
+			// Release any half-open probe lock so shadow traffic never steals probes from real requests.
+			cb.Release(shadowModel.Vendor, shadowModel.ID)
+		}
 
 		adapter, err := adapterFn(shadowModel)
 		if err != nil {
-			if cb != nil {
-				cb.Release(shadowModel.Vendor, shadowModel.ID)
-			}
 			observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "error").Inc()
 			log.Warn().Err(err).Str("shadow_model", shadowModel.ID).Msg("shadow adapter creation failed")
 			return
@@ -183,22 +208,12 @@ func (r *Request) dispatchShadow(ctx context.Context) {
 			meta := chat.GetMeta()
 			if meta == nil {
 				meta = make(map[string]string)
-			} else {
-				clonedMeta := make(map[string]string, len(meta)+1)
-				for k, v := range meta {
-					clonedMeta[k] = v
-				}
-				meta = clonedMeta
 			}
 			meta["is_shadow"] = "true"
 			chat.SetMeta(meta)
 		}
 
 		_, callErr := adapter.GenerateText(shadowCtx, chat)
-		if cb != nil {
-			cb.Report(shadowCtx, shadowModel.Vendor, shadowModel.ID, callErr)
-		}
-
 		status := "success"
 		if callErr != nil {
 			status = "error"
@@ -231,7 +246,7 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 		anyCircuitBroken = false
 		throttledCount   = 0
 		throttleKind     = "rpm"
-		shadowOnce       sync.Once
+		shadowDispatched bool
 	)
 
 	for i, m := range r.Chain {
@@ -283,9 +298,10 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 			continue
 		}
 
-		shadowOnce.Do(func() {
-			r.dispatchShadow(ctx)
-		})
+		if !shadowDispatched {
+			shadowDispatched = true
+			r.dispatchShadow(ctx, th)
+		}
 
 		resp, err := r.callAndCheck(ctx, adapter, m, th, res)
 		if r.CircuitBreaker != nil {
@@ -370,7 +386,7 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 		anyCircuitBroken = false
 		throttledCount   = 0
 		throttleKind     = "rpm"
-		shadowOnce       sync.Once
+		shadowDispatched bool
 	)
 
 	for i, m := range r.Chain {
@@ -444,9 +460,10 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			continue
 		}
 
-		shadowOnce.Do(func() {
-			r.dispatchShadow(ctx)
-		})
+		if !shadowDispatched {
+			shadowDispatched = true
+			r.dispatchShadow(ctx, th)
+		}
 
 		schema := r.Chat.GetResponseSchema()
 		soft := schema != nil && r.SoftSchema != nil && r.SoftSchema(m)

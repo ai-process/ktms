@@ -21,14 +21,16 @@ import (
 const judgeAutoTimeout = 250 * time.Millisecond
 
 type routePlan struct {
-	effort     string
-	models     []*proxydb.Model
-	rule       *proxydb.Rule
-	ruleName   string
-	routeMode  string
-	placement  string
-	judgeScore float64
-	judgeModel string
+	effort           string
+	models           []*proxydb.Model
+	rule             *proxydb.Rule
+	ruleName         string
+	routeMode        string
+	placement        string
+	judgeScore       float64
+	judgeModel       string
+	shadowModel      *proxydb.Model
+	shadowPercentage float64
 }
 
 // promptText extracts representative text from instructions and user messages for judge evaluation.
@@ -237,14 +239,33 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 		}
 	}
 
+	var (
+		shadowModel *proxydb.Model
+		shadowPct   float64
+	)
+	if rule.ShadowModel != "" && rule.ShadowPercentage > 0 {
+		shadowChain, sErr := router.FilterChain(snap, []string{rule.ShadowModel}, id.KeyID, effort, req.GetEnableGoogleSearch(), reqCaps...)
+		if sErr == nil && len(shadowChain) > 0 {
+			if placement != "" {
+				shadowChain, sErr = router.ApplyPlacement(shadowChain, placement)
+			}
+			if sErr == nil && len(shadowChain) > 0 {
+				shadowModel = shadowChain[0]
+				shadowPct = rule.ShadowPercentage
+			}
+		}
+	}
+
 	return &routePlan{
-		effort:     effort,
-		models:     models,
-		rule:       rule,
-		ruleName:   rule.Name,
-		routeMode:  routeMode,
-		placement:  placement,
-		judgeScore: judgeScore,
-		judgeModel: judgeModel,
+		effort:           effort,
+		models:           models,
+		rule:             rule,
+		ruleName:         rule.Name,
+		routeMode:        routeMode,
+		placement:        placement,
+		judgeScore:       judgeScore,
+		judgeModel:       judgeModel,
+		shadowModel:      shadowModel,
+		shadowPercentage: shadowPct,
 	}, nil
 }
