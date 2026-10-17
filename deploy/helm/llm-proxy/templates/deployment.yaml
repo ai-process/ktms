@@ -34,7 +34,7 @@ spec:
       {{- end }}
       serviceAccountName: {{ include "llm-proxy.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
-      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 60 }}
+      terminationGracePeriodSeconds: {{ hasKey .Values "terminationGracePeriodSeconds" | ternary .Values.terminationGracePeriodSeconds 60 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -45,14 +45,14 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.service.httpPort }}
+              containerPort: 8080
               protocol: TCP
             - name: grpc
-              containerPort: {{ .Values.service.grpcPort }}
+              containerPort: 9090
               protocol: TCP
             {{- if .Values.metrics.enabled }}
             - name: metrics
-              containerPort: {{ .Values.metrics.port }}
+              containerPort: 9091
               protocol: TCP
             {{- end }}
           {{- if .Values.probes.startup.enabled }}
@@ -122,13 +122,8 @@ spec:
               value: {{ .Values.config.spendLimitsFailMode | quote }}
             - name: BUDGET_GRACE_MARGIN
               value: {{ .Values.config.budgetGraceMargin | quote }}
-            {{- if .Values.metrics.enabled }}
             - name: METRICS_ADDR
-              value: ":{{ .Values.metrics.port }}"
-            {{- else }}
-            - name: METRICS_ADDR
-              value: ""
-            {{- end }}
+              value: ":9091"
             {{- if .Values.config.usageCollectorHost }}
             - name: USAGE_COLLECTOR_HOST
               value: {{ .Values.config.usageCollectorHost | quote }}

@@ -100,7 +100,7 @@ autoscaling:
   minReplicas: 2
   maxReplicas: 10
   targetCPUUtilizationPercentage: 80
-  targetMemoryUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
 
 podDisruptionBudget:
   enabled: false
@@ -162,7 +162,8 @@ config:
   circuitBreakerEnabled: true
   circuitBreakerFailThreshold: 5
   circuitBreakerCooldown: "30s"
-  # Spend limits fail mode: "closed" (fail-safe refusal if Redis unreachable) or "open" (unmetered bypass)
+  # Spend limits fail mode: "closed" (fail-safe refusal if Redis is unreachable) or "open" (unmetered bypass).
+  # Note: The standalone app defaults to "open"; the Helm chart defaults to "closed" for production fail-safety.
   spendLimitsFailMode: "closed"
   budgetGraceMargin: 0.05
   # Optional gRPC usage collector sink
@@ -174,6 +175,7 @@ config:
   extraEnvFrom: []
 
 metrics:
+  # Exposes container and Service port 9091 for Prometheus scraping
   enabled: true
   port: 9091
   # Prometheus Operator ServiceMonitor

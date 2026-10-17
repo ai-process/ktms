@@ -47,7 +47,7 @@ helm install llm-proxy ./deploy/helm/llm-proxy \
 | `secrets.existingSecret` | Name of existing Secret with `DATABASE_URL`, `LLMPROXY_ENCRYPTION_KEYS`, `BOOTSTRAP_ADMIN_KEY`, `REDIS_PASSWORD` | `""` |
 | `config.routingReloadSeconds` | Replicas config poll interval in seconds | `60` |
 | `config.redisAddr` | Optional Redis address for rate limiting | `""` |
-| `config.spendLimitsFailMode` | Spend limit fail mode (`closed` fails safe, `open` allows unmetered) | `closed` |
+| `config.spendLimitsFailMode` | Spend limit fail mode (`closed` fails safe, `open` allows unmetered; chart defaults to `closed` for production safety) | `closed` |
 | `config.logLevel` | Application log level (`debug`, `info`, `warn`, `error`) | `info` |
 | `probes.startup.enabled` | Startup probe to accommodate database schema migrations | `true` |
 | `ingress.enabled` | Enable HTTP/REST Ingress | `false` |
