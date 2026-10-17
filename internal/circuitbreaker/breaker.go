@@ -186,6 +186,7 @@ func (b *Breaker) transitionTo(to State) (State, bool) {
 	if to == StateOpen {
 		b.openedAt = b.now()
 	}
+	observability.CircuitBreakerState.WithLabelValues(b.vendor, b.model).Set(float64(to))
 	return from, true
 }
 
@@ -308,7 +309,6 @@ func (m *Manager) getOrCreateBreaker(vendor, model string) *Breaker {
 }
 
 func defaultStateChangeLoggerAndMetrics(vendor, model string, from, to State) {
-	observability.CircuitBreakerState.WithLabelValues(vendor, model).Set(float64(to))
 	if from != to {
 		observability.CircuitBreakerTransitionsTotal.WithLabelValues(vendor, model, from.String(), to.String()).Inc()
 		if to == StateClosed {
