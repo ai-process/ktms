@@ -314,9 +314,10 @@ func TestToStatusMapping(t *testing.T) {
 		ErrNoCapableModel:                      codes.FailedPrecondition,
 		ErrNoVendorKey:                         codes.FailedPrecondition,
 		llm.ErrOutputTruncated:                 codes.FailedPrecondition,
-		audio.ErrFFmpegMissing:                 codes.Unimplemented,
-		&ChainExhausted{Last: retryableErr}:    codes.Unavailable,
-		&ChainExhausted{Last: errors.New("x")}: codes.Internal,
+		audio.ErrFFmpegMissing:                                codes.Unimplemented,
+		&ChainExhausted{Last: audio.ErrFFmpegMissing}:         codes.Unimplemented,
+		&ChainExhausted{Last: retryableErr}:                   codes.Unavailable,
+		&ChainExhausted{Last: errors.New("x")}:                codes.Internal,
 	}
 	for err, want := range cases {
 		if got := status.Code(ToStatus(err)); got != want {
@@ -324,7 +325,7 @@ func TestToStatusMapping(t *testing.T) {
 		}
 	}
 	st := status.Convert(ToStatus(audio.ErrFFmpegMissing))
-	wantMsg := "ffmpeg is required for Gemini speech synthesis: please use the 'coyl/llm-proxy:audio' container image"
+	wantMsg := "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/llm-proxy:audio' container image"
 	if st.Message() != wantMsg {
 		t.Errorf("ToStatus(ErrFFmpegMissing) message = %q, want %q", st.Message(), wantMsg)
 	}

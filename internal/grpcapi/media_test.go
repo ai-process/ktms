@@ -59,7 +59,7 @@ func TestSynthesizeSpeech_ErrFFmpegMissing(t *testing.T) {
 	if st.Code() != codes.Unimplemented {
 		t.Errorf("code = %v, want Unimplemented", st.Code())
 	}
-	wantMsg := "ffmpeg is required for Gemini speech synthesis: please use the 'coyl/llm-proxy:audio' container image"
+	wantMsg := "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/llm-proxy:audio' container image"
 	if st.Message() != wantMsg {
 		t.Errorf("message = %q, want %q", st.Message(), wantMsg)
 	}

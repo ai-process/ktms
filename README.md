@@ -163,7 +163,7 @@ docker pull coyl/llm-proxy:latest      # default lightweight image (~65 MB)
 docker pull coyl/llm-proxy:audio       # with ffmpeg for Gemini speech synthesis
 ```
 
-If Gemini TTS is requested on the default slim image, the proxy returns gRPC `Codes.Unimplemented` / HTTP 501 Not Implemented: `ffmpeg is required for Gemini speech synthesis: please use the 'coyl/llm-proxy:audio' container image`. OpenAI TTS produces native Opus directly and works on both variants.
+If Gemini TTS is requested without ffmpeg available (e.g. on the default slim image), the proxy returns gRPC `Codes.Unimplemented` / HTTP 501 Not Implemented: `ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/llm-proxy:audio' container image`. OpenAI TTS produces native Opus directly and works on both variants without ffmpeg.
 
 The image runs as a non-root user (`appuser`, UID 10001), exposes `8080` (HTTP) and `9090` (gRPC), and is configured entirely through environment variables.
 
@@ -934,6 +934,7 @@ Errors use OpenAI's shape, `{"error": {"message", "type", "param", "code"}}`, an
 | 401 / 403 | `authentication_error` / `permission_error` | missing or invalid key, missing scope |
 | 429 | `rate_limit_error` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` (with `Retry-After`) |
 | 429 | `insufficient_quota` | `insufficient_quota`; the message names the cap, e.g. `throttled:spend_key_daily`. `Retry-After` is the seconds until the period resets (UTC midnight or month start). |
+| 501 | `server_error` | `ffmpeg_missing` (Gemini speech synthesis invoked without ffmpeg on PATH or in container) |
 | 502 | `server_error` | `vendor_error` |
 | 503 | `server_error` | `vendors_unavailable` (the only error worth retrying); `throttled:spend_unavailable` with `SPEND_LIMITS_FAIL_MODE=closed` |
 
@@ -1004,6 +1005,7 @@ lexical hash encoder that folds case, homoglyphs, zero-width and spaced-out lett
 | `FAILED_PRECONDITION` | `no_vendor_key` | The client key holds no credential for the chain's vendors. `local` models never cause this. |
 | `FAILED_PRECONDITION` | `not_configured` | No models/rules configured yet. |
 | `FAILED_PRECONDITION` | `batch not configured` | Batch processing is not enabled/configured on the proxy (no batch store). |
+| `UNIMPLEMENTED` | `ffmpeg_missing` | Gemini speech synthesis invoked without ffmpeg on PATH or running slim container. Install ffmpeg or switch to `:audio` image. |
 | `INTERNAL` | `vendor_error` | Terminal vendor failure. |
 | `UNAUTHENTICATED` / `PERMISSION_DENIED` | – | Missing/invalid key, or key lacks the scope. |
 

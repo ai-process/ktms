@@ -8,15 +8,29 @@ package audio
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os/exec"
 	"strconv"
 )
 
+type ffmpegMissingError struct{}
+
+func (ffmpegMissingError) Error() string {
+	return "ffmpeg binary not found on PATH"
+}
+
+// SkipToNextModel allows the router to fall back to alternatives (e.g. OpenAI TTS)
+// when ffmpeg is missing in the current environment.
+func (ffmpegMissingError) SkipToNextModel() bool {
+	return true
+}
+
+func (ffmpegMissingError) Is(target error) bool {
+	return target == ErrFFmpegMissing
+}
+
 // ErrFFmpegMissing is returned when the ffmpeg binary is not available on PATH.
-// It is not a retryable/transient error — the environment must provide ffmpeg.
-var ErrFFmpegMissing = errors.New("ffmpeg binary not found on PATH")
+var ErrFFmpegMissing error = ffmpegMissingError{}
 
 // MinClipMillis is the minimum clip duration: some chat platforms reject sub-~1s clips
 // as audio messages, so short clips are

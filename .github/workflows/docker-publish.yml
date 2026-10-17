@@ -1,6 +1,6 @@
 name: Publish Docker image
 
-# Every pushed tag becomes images on Docker Hub: coyl/llm-proxy:<tag> (server)
+# Every pushed tag becomes images on Docker Hub: coyl/llm-proxy:<tag> (server slim & audio)
 # and coyl/llm-proxy-node:<tag> (node agent).
 # Needs the repository secrets DOCKER_USERNAME and DOCKER_PASSWORD (an access token).
 on:
@@ -53,8 +53,8 @@ jobs:
             type=ref,event=tag,suffix=${{ matrix.tag_suffix }}
             type=semver,pattern={{version}},suffix=${{ matrix.tag_suffix }}
             type=semver,pattern={{major}}.{{minor}},suffix=${{ matrix.tag_suffix }}
-            type=raw,value=audio,enable=${{ matrix.target == 'audio' }}
-            type=raw,value=slim,enable=${{ matrix.target == 'slim' }}
+            type=raw,value=audio,enable=${{ matrix.target == 'audio' && !contains(github.ref_name, '-') }}
+            type=raw,value=slim,enable=${{ matrix.target == 'slim' && !contains(github.ref_name, '-') }}
             type=ref,event=tag,suffix=-slim,enable=${{ matrix.target == 'slim' }}
             type=semver,pattern={{version}},suffix=-slim,enable=${{ matrix.target == 'slim' }}
             type=semver,pattern={{major}}.{{minor}},suffix=-slim,enable=${{ matrix.target == 'slim' }}

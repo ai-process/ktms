@@ -63,7 +63,7 @@ func ToStatus(err error) error {
 	case errors.Is(err, llm.ErrOutputTruncated):
 		return status.Error(codes.FailedPrecondition, "output_truncated")
 	case errors.Is(err, audio.ErrFFmpegMissing):
-		return status.Error(codes.Unimplemented, "ffmpeg is required for Gemini speech synthesis: please use the 'coyl/llm-proxy:audio' container image")
+		return status.Error(codes.Unimplemented, "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/llm-proxy:audio' container image")
 	}
 	var exhausted *ChainExhausted
 	if errors.As(err, &exhausted) {
