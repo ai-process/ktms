@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/ai-process/llm-proxy/internal/audio"
 	"github.com/ai-process/llm-proxy/internal/circuitbreaker"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
@@ -313,6 +314,7 @@ func TestToStatusMapping(t *testing.T) {
 		ErrNoCapableModel:                      codes.FailedPrecondition,
 		ErrNoVendorKey:                         codes.FailedPrecondition,
 		llm.ErrOutputTruncated:                 codes.FailedPrecondition,
+		audio.ErrFFmpegMissing:                 codes.Unimplemented,
 		&ChainExhausted{Last: retryableErr}:    codes.Unavailable,
 		&ChainExhausted{Last: errors.New("x")}: codes.Internal,
 	}
@@ -320,6 +322,11 @@ func TestToStatusMapping(t *testing.T) {
 		if got := status.Code(ToStatus(err)); got != want {
 			t.Errorf("ToStatus(%v) = %v, want %v", err, got, want)
 		}
+	}
+	st := status.Convert(ToStatus(audio.ErrFFmpegMissing))
+	wantMsg := "ffmpeg is required for Gemini speech synthesis: please use the 'coyl/llm-proxy:audio' container image"
+	if st.Message() != wantMsg {
+		t.Errorf("ToStatus(ErrFFmpegMissing) message = %q, want %q", st.Message(), wantMsg)
 	}
 	if ToStatus(nil) != nil {
 		t.Error("ToStatus(nil) != nil")

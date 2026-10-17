@@ -16,8 +16,22 @@ jobs:
         include:
           - image: coyl/llm-proxy
             dockerfile: Dockerfile
+            target: slim
+            flavor_latest: auto
+            tag_suffix: ""
+            scope: coyl-llm-proxy-slim
+          - image: coyl/llm-proxy
+            dockerfile: Dockerfile
+            target: audio
+            flavor_latest: "false"
+            tag_suffix: "-audio"
+            scope: coyl-llm-proxy-audio
           - image: coyl/llm-proxy-node
             dockerfile: Dockerfile.node-agent
+            target: ""
+            flavor_latest: auto
+            tag_suffix: ""
+            scope: coyl-llm-proxy-node
     steps:
       - uses: actions/checkout@v4
 
@@ -36,22 +50,29 @@ jobs:
         with:
           images: ${{ matrix.image }}
           tags: |
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-          flavor: latest=auto
+            type=ref,event=tag,suffix=${{ matrix.tag_suffix }}
+            type=semver,pattern={{version}},suffix=${{ matrix.tag_suffix }}
+            type=semver,pattern={{major}}.{{minor}},suffix=${{ matrix.tag_suffix }}
+            type=raw,value=audio,enable=${{ matrix.target == 'audio' }}
+            type=raw,value=slim,enable=${{ matrix.target == 'slim' }}
+            type=ref,event=tag,suffix=-slim,enable=${{ matrix.target == 'slim' }}
+            type=semver,pattern={{version}},suffix=-slim,enable=${{ matrix.target == 'slim' }}
+            type=semver,pattern={{major}}.{{minor}},suffix=-slim,enable=${{ matrix.target == 'slim' }}
+          flavor: |
+            latest=${{ matrix.flavor_latest }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
           build-args: ${{ matrix.image == 'coyl/llm-proxy-node' && format('VERSION={0}', steps.meta.outputs.version) || '' }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          cache-from: type=gha,scope=${{ matrix.scope }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.scope }}
           provenance: false
           sbom: false

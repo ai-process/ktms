@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"github.com/ai-process/llm-proxy/internal/audio"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/spendlimit"
 )
@@ -61,6 +62,8 @@ func ToStatus(err error) error {
 		return status.Error(codes.FailedPrecondition, "no_vendor_key")
 	case errors.Is(err, llm.ErrOutputTruncated):
 		return status.Error(codes.FailedPrecondition, "output_truncated")
+	case errors.Is(err, audio.ErrFFmpegMissing):
+		return status.Error(codes.Unimplemented, "ffmpeg is required for Gemini speech synthesis: please use the 'coyl/llm-proxy:audio' container image")
 	}
 	var exhausted *ChainExhausted
 	if errors.As(err, &exhausted) {

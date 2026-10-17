@@ -153,15 +153,19 @@ Once real keys exist in production, unset `BOOTSTRAP_ADMIN_KEY`.
 
 ### Docker image
 
-Release images are published to Docker Hub for `linux/amd64` and `linux/arm64`:
+Release images are published to Docker Hub for `linux/amd64` and `linux/arm64` in two variants:
+
+- **`coyl/llm-proxy:latest`** (also tagged **`:slim`** or pinned `:<version>` / `:<version>-slim`): default lightweight image (~65 MB uncompressed, ~18 MB download). A clean Alpine container without `ffmpeg`, optimized for text generation, chat, reasoning, embeddings, and OpenAI TTS.
+- **`coyl/llm-proxy:audio`** (or pinned `:<version>-audio`): extended image (~166 MB uncompressed) with `ffmpeg` installed for Gemini speech synthesis (transcoding raw PCM into OGG/Opus voice messages).
 
 ```bash
-docker pull coyl/llm-proxy:latest      # or pin a release tag, e.g. coyl/llm-proxy:0.1.0
+docker pull coyl/llm-proxy:latest      # default lightweight image (~65 MB)
+docker pull coyl/llm-proxy:audio       # with ffmpeg for Gemini speech synthesis
 ```
 
-The image is a static Go binary on Alpine plus `ffmpeg` (needed to turn Gemini's raw
-PCM speech into OGG/Opus). It runs as a non-root user, exposes `8080` (HTTP) and
-`9090` (gRPC) and is configured entirely through environment variables.
+If Gemini TTS is requested on the default slim image, the proxy returns gRPC `Codes.Unimplemented` / HTTP 501 Not Implemented: `ffmpeg is required for Gemini speech synthesis: please use the 'coyl/llm-proxy:audio' container image`. OpenAI TTS produces native Opus directly and works on both variants.
+
+The image runs as a non-root user (`appuser`, UID 10001), exposes `8080` (HTTP) and `9090` (gRPC), and is configured entirely through environment variables.
 
 You need a Postgres database (required; 16 is what the compose file uses) and a Redis (optional, see below):
 
@@ -1055,8 +1059,9 @@ git tag v0.10.0 && git push origin v0.10.0
 - **GitHub Release** (GoReleaser, `.github/workflows/release.yml`): `llm-proxy-node` and
   `llm-proxy-server` archives for darwin and linux, amd64 and arm64, plus `checksums.txt`.
 - **Docker Hub** (`.github/workflows/docker-publish.yml`): multi-arch `coyl/llm-proxy:<tag>`
-  (server) and `coyl/llm-proxy-node:<tag>` (node agent), and `latest` for semver tags. The
-  repository needs the secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD` (an access token).
+  (`latest` and `slim`) and `coyl/llm-proxy:<tag>-audio` (`audio`), plus
+  `coyl/llm-proxy-node:<tag>` (node agent). The repository needs the secrets `DOCKER_USERNAME`
+  and `DOCKER_PASSWORD` (an access token).
 - **Optional, off until their secrets exist:** macOS signing and notarization
   (`MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_ISSUER_ID`, `MACOS_NOTARY_KEY_ID`,
   `MACOS_NOTARY_KEY`) and a Homebrew formula pushed to `ai-process/homebrew-tap`

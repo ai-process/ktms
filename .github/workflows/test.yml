@@ -31,13 +31,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Build server image (no push)
+      - name: Build server slim image (no push)
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: slim
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=server-slim
+          cache-to: type=gha,mode=max,scope=server-slim
+      - name: Build server audio image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: audio
+          push: false
+          cache-from: type=gha,scope=server-audio
+          cache-to: type=gha,mode=max,scope=server-audio
       - name: Build node-agent image (no push)
         uses: docker/build-push-action@v6
         with:
