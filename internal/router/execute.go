@@ -169,6 +169,10 @@ func (r *Request) dispatchShadow(ctx context.Context, th Throttle) {
 	}
 	cb := r.CircuitBreaker
 	adapterFn := r.Adapter
+	keyName := r.KeyName
+	userID := r.UserID
+	estimate := r.Estimate
+	maxOutput := r.maxOutput()
 
 	// Mirror traffic asynchronously without adding caller latency or failing user requests.
 	go func() {
@@ -184,13 +188,20 @@ func (r *Request) dispatchShadow(ctx context.Context, th Throttle) {
 		}
 
 		var res *Reservation
+		var settled bool
+		defer func() {
+			if th != nil && res != nil && !settled {
+				th.Settle(res, llm.TokensUsage{})
+			}
+		}()
+
 		if th != nil {
-			if !th.AllowRPM(shadowCtx, r.KeyName, r.UserID, shadowModel) {
+			if !th.AllowRPM(shadowCtx, keyName, userID, shadowModel) {
 				observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "throttled").Inc()
 				return
 			}
 			var tripped string
-			res, tripped = th.Reserve(shadowCtx, shadowModel, r.KeyName, r.UserID, r.Estimate, r.maxOutput())
+			res, tripped = th.Reserve(shadowCtx, shadowModel, keyName, userID, estimate, maxOutput)
 			if tripped != "" {
 				observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "budget_exceeded").Inc()
 				return
@@ -199,9 +210,6 @@ func (r *Request) dispatchShadow(ctx context.Context, th Throttle) {
 
 		adapter, err := adapterFn(shadowModel)
 		if err != nil {
-			if th != nil && res != nil {
-				th.Settle(res, llm.TokensUsage{})
-			}
 			observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "error").Inc()
 			log.Warn().Err(err).Str("shadow_model", shadowModel.ID).Msg("shadow adapter creation failed")
 			return
@@ -223,6 +231,7 @@ func (r *Request) dispatchShadow(ctx context.Context, th Throttle) {
 			if callErr == nil && resp != nil {
 				usage = resp.Usage
 			}
+			settled = true
 			th.Settle(res, usage)
 		}
 
