@@ -126,7 +126,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, keyring *crypto.Keyring, cfg C
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("lookup api key: %w", err)
-	} else {
+	} else if cfg.ClientKey != "" {
 		_, err = tx.Exec(ctx,
 			`UPDATE api_key SET key_lookup = $1, key_hash = $2, scopes = $3 WHERE id = $4`,
 			apiKeyRow.KeyLookup, apiKeyRow.KeyHash, apiKeyRow.Scopes, apiKeyID)
@@ -301,7 +301,10 @@ func syncVendorKeys(ctx context.Context, conn *pgxpool.Conn, keyring *crypto.Key
 			return false, fmt.Errorf("bump config version on vendor sync: %w", err)
 		}
 	}
-	return updated, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("commit vendor sync tx: %w", err)
+	}
+	return updated, nil
 }
 
 // DefaultModels returns standard model definitions across major providers.
@@ -368,7 +371,7 @@ func DefaultModels() []*proxydb.Model {
 			Efforts:        []string{registry.EffortLow, registry.EffortMedium, registry.EffortHigh},
 			Capabilities:   []string{registry.CapabilityEmbedding},
 			RPM:            1000,
-			PriceInPerMtok: 0.025,
+			PriceInPerMtok: 0.15,
 			Enabled:        true,
 		},
 		{

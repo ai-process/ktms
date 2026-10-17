@@ -83,7 +83,7 @@ curl -s http://localhost:8080/readyz     # {"status":"ready"}
 Alternatively, run `./scripts/quickstart.sh` for an interactive setup that generates master encryption and bootstrap keys, configures `.env`, and launches the stack.
 
 > [!NOTE]
-> With `AUTO_SEED=true` (enabled by default in Compose), the proxy automatically syncs vendor API keys from environment variables (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`) to the dev client key (`llm_dev_default_key`) on every startup.
+> With `AUTO_SEED=true` (enabled by default in Compose), the proxy automatically syncs vendor API keys from environment variables (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`) to the client key named `dev-default` (or `$SEED_CLIENT_NAME`) on every startup.
 
 ### 2. Make your first call
 
