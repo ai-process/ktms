@@ -35,6 +35,14 @@ type Config struct {
 	// replica holds the advisory lock during a rolling deploy.
 	MigrateTimeout time.Duration
 
+	// AutoSeed populates initial models, rules, and dev keys when unconfigured.
+	AutoSeed         bool
+	SeedClientKey    string
+	SeedClientName   string
+	SeedOpenAIKey    string
+	SeedGeminiKey    string
+	SeedAnthropicKey string
+
 	RedisAddr      string
 	RedisPassword  string
 	RedisDB        int
@@ -124,6 +132,12 @@ func Load() *Config {
 		RoutingReload:                   time.Duration(getIntEnv("ROUTING_RELOAD_SECONDS", 60)) * time.Second,
 		AutoMigrate:                     getBoolEnv("AUTO_MIGRATE", true),
 		MigrateTimeout:                  getDurationEnv("MIGRATE_TIMEOUT", 3*time.Minute),
+		AutoSeed:                        getBoolEnv("AUTO_SEED", false),
+		SeedClientKey:                   getEnv("SEED_CLIENT_KEY", ""),
+		SeedClientName:                  getEnv("SEED_CLIENT_NAME", "dev-default"),
+		SeedOpenAIKey:                   getEnv("SEED_OPENAI_KEY", getEnv("OPENAI_API_KEY", "")),
+		SeedGeminiKey:                   getEnv("SEED_GEMINI_KEY", getEnv("GEMINI_API_KEY", "")),
+		SeedAnthropicKey:                getEnv("SEED_ANTHROPIC_KEY", getEnv("ANTHROPIC_API_KEY", "")),
 		RedisAddr:                       getEnv("REDIS_ADDR", ""),
 		RedisPassword:                   getEnv("REDIS_PASSWORD", ""),
 		RedisDB:                         getIntEnv("REDIS_DB", 0),

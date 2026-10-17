@@ -1,9 +1,11 @@
 # Local stack: the proxy plus Postgres and Redis.
 #
-#   docker compose up --build
+#   docker compose up -d
 #
-# Bootstrap: grpcurl with the BOOTSTRAP_ADMIN_KEY below to mint keys, set
-# vendor keys and seed models/rules. gRPC: localhost:9090, health: :8080.
+# With AUTO_SEED enabled (default), the proxy automatically seeds default models,
+# rules, and the client key "llm_dev_default_key" (or $SEED_CLIENT_KEY) with
+# your OpenAI / Gemini / Anthropic API keys.
+# gRPC: localhost:9090, HTTP / OpenAI API: localhost:8080.
 
 services:
   db:
@@ -13,7 +15,7 @@ services:
       POSTGRES_PASSWORD: llmproxy
       POSTGRES_DB: llmproxy
     ports:
-      - "5435:5432"
+      - "127.0.0.1:5435:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U llmproxy -d llmproxy"]
       interval: 2s
@@ -23,9 +25,10 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
 
   llm-proxy:
+    image: ghcr.io/ai-process/llm-proxy:latest
     build: .
     depends_on:
       db:
@@ -38,6 +41,12 @@ services:
       BOOTSTRAP_ADMIN_KEY: dev-bootstrap
       REDIS_ADDR: redis:6379
       REDIS_KEY_PREFIX: dev
+      AUTO_SEED: "${AUTO_SEED:-true}"
+      SEED_CLIENT_KEY: "${SEED_CLIENT_KEY:-llm_dev_default_key}"
+      SEED_OPENAI_KEY: "${SEED_OPENAI_KEY:-${OPENAI_API_KEY:-}}"
+      SEED_GEMINI_KEY: "${SEED_GEMINI_KEY:-${GEMINI_API_KEY:-}}"
+      SEED_ANTHROPIC_KEY: "${SEED_ANTHROPIC_KEY:-${ANTHROPIC_API_KEY:-}}"
     ports:
-      - "8080:8080"
-      - "9090:9090"
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9090:9090"
+
