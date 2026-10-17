@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Values",
+  "type": "object",
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": { "type": "string" },
+        "pullPolicy": { "type": "string" },
+        "tag": { "type": "string" }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" },
+        "automount": { "type": "boolean" },
+        "name": { "type": "string" }
+      }
+    },
+    "podSecurityContext": {
+      "type": "object"
+    },
+    "securityContext": {
+      "type": "object"
+    },
+    "terminationGracePeriodSeconds": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "httpPort": { "type": "integer" },
+        "grpcPort": { "type": "integer" },
+        "metricsPort": { "type": "integer" }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "properties": {
+        "existingSecret": { "type": "string" },
+        "databaseUrl": { "type": "string" },
+        "encryptionKeys": { "type": "string" },
+        "bootstrapAdminKey": { "type": "string" },
+        "redisPassword": { "type": "string" }
+      }
+    },
+    "config": {
+      "type": "object",
+      "properties": {
+        "httpApiEnabled": { "type": "boolean" },
+        "logLevel": { "type": "string" },
+        "autoMigrate": { "type": "boolean" },
+        "autoSeed": { "type": "boolean" },
+        "routingReloadSeconds": { "type": "integer", "minimum": 1 },
+        "redisAddr": { "type": "string" },
+        "redisKeyPrefix": { "type": "string" },
+        "circuitBreakerEnabled": { "type": "boolean" },
+        "circuitBreakerFailThreshold": { "type": "integer", "minimum": 1 },
+        "circuitBreakerCooldown": { "type": "string" },
+        "spendLimitsFailMode": { "type": "string", "enum": ["open", "closed"] },
+        "budgetGraceMargin": { "type": "number", "minimum": 0 },
+        "usageCollectorHost": { "type": "string" },
+        "usageCollectorTLS": { "type": "boolean" },
+        "usageProjectID": { "type": "string" }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "serviceMonitor": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "interval": { "type": "string" },
+            "scrapeTimeout": { "type": "string" }
+          }
+        }
+      }
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minAvailable": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "string", "pattern": "^[0-9]+%?$" }
+          ]
+        },
+        "maxUnavailable": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "string", "pattern": "^[0-9]+%?$" }
+          ]
+        }
+      }
+    }
+  }
+}
