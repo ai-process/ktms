@@ -262,6 +262,11 @@ func (m *Manager) State(vendor, model string) State {
 	return b.State()
 }
 
+// IsClosed reports whether the model breaker is in CLOSED state.
+func (m *Manager) IsClosed(vendor, model string) bool {
+	return m.State(vendor, model) == StateClosed
+}
+
 // SetNowFunc overrides the clock source for deterministic testing.
 func (m *Manager) SetNowFunc(fn func() time.Time) {
 	m.mu.Lock()

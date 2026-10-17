@@ -962,4 +962,123 @@ func TestGuardrailsPIIRedactStream(t *testing.T) {
 	}
 }
 
+func TestGenerateText_ShadowRouting(t *testing.T) {
+	vendor := &fakeVendor{reply: "bonjour"}
+	srv := httptest.NewServer(http.HandlerFunc(vendor.handler))
+	defer srv.Close()
 
+	tracker := &fakeTracker{}
+	models := []*proxydb.Model{
+		testModel("m1", registry.VendorOpenAI, srv.URL, registry.EffortLow, registry.EffortMedium, registry.EffortHigh),
+		testModel("m2", registry.VendorDeepSeek, srv.URL, registry.EffortLow, registry.EffortMedium, registry.EffortHigh),
+	}
+	rules := []*proxydb.Rule{{
+		Name:             "any-default",
+		Priority:         0,
+		Effort:           "",
+		Enabled:          true,
+		Use:              []string{"m1"},
+		ShadowModel:      "m2",
+		ShadowPercentage: 100,
+	}}
+	s := newTestServer(t, models, rules, tracker)
+
+	resp, err := s.GenerateText(testIdentity(), &pb.GenerateTextRequest{
+		Effort:     pb.Effort_EFFORT_LOW,
+		Attributes: map[string]string{"subject": "french", "user_id": "u-42"},
+		Messages:   []*pb.ChatMessage{{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: "say hi"}},
+		ActionId:   "test.hi",
+	})
+	if err != nil {
+		t.Fatalf("GenerateText: %v", err)
+	}
+	if resp.ResolvedModel != "m1" {
+		t.Fatalf("primary resolved model = %s, want m1", resp.ResolvedModel)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	var events []trackedEvent
+	for time.Now().Before(deadline) {
+		events = tracker.list()
+		if len(events) >= 2 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if len(events) != 2 {
+		t.Fatalf("tracked %d events, want 2 (primary + shadow)", len(events))
+	}
+
+	var hasPrimary, hasShadow bool
+	for _, e := range events {
+		if e.model == "m1" && e.meta["is_shadow"] != "true" {
+			hasPrimary = true
+		}
+		if e.model == "m2" && e.meta["is_shadow"] == "true" {
+			hasShadow = true
+		}
+	}
+	if !hasPrimary || !hasShadow {
+		t.Fatalf("expected both primary (m1) and shadow (m2 with is_shadow=true), got events: %+v", events)
+	}
+}
+
+func TestGenerateTextStream_ShadowRouting(t *testing.T) {
+	vendor := &fakeVendor{reply: "bonjour stream"}
+	srv := httptest.NewServer(http.HandlerFunc(vendor.handler))
+	defer srv.Close()
+
+	tracker := &fakeTracker{}
+	models := []*proxydb.Model{
+		testModel("m1", registry.VendorOpenAI, srv.URL, registry.EffortLow, registry.EffortMedium, registry.EffortHigh),
+		testModel("m2", registry.VendorDeepSeek, srv.URL, registry.EffortLow, registry.EffortMedium, registry.EffortHigh),
+	}
+	rules := []*proxydb.Rule{{
+		Name:             "any-default",
+		Priority:         0,
+		Effort:           "",
+		Enabled:          true,
+		Use:              []string{"m1"},
+		ShadowModel:      "m2",
+		ShadowPercentage: 100,
+	}}
+	s := newTestServer(t, models, rules, tracker)
+
+	stream := &mockStreamServer{ctx: testIdentity()}
+	err := s.GenerateTextStream(&pb.GenerateTextStreamRequest{
+		Request: &pb.GenerateTextRequest{
+			Effort: pb.Effort_EFFORT_LOW,
+			Messages: []*pb.ChatMessage{
+				{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: "say hi stream"},
+			},
+		},
+	}, stream)
+	if err != nil {
+		t.Fatalf("GenerateTextStream: %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	var events []trackedEvent
+	for time.Now().Before(deadline) {
+		events = tracker.list()
+		if len(events) >= 2 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if len(events) != 2 {
+		t.Fatalf("tracked %d events, want 2 (primary + shadow)", len(events))
+	}
+
+	var hasShadow bool
+	for _, e := range events {
+		if e.model == "m2" && e.meta["is_shadow"] == "true" {
+			hasShadow = true
+		}
+	}
+	if !hasShadow {
+		t.Fatalf("expected shadow event with is_shadow=true, got: %+v", events)
+	}
+}

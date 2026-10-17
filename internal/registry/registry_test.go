@@ -52,6 +52,15 @@ func TestValidateAcceptsWeightedRules(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsShadowRules(t *testing.T) {
+	models, rules := baseConfig()
+	rules[0].ShadowModel = "mid"
+	rules[0].ShadowPercentage = 25.5
+	if err := Validate(models, rules); err != nil {
+		t.Fatalf("Validate with shadow routing: %v", err)
+	}
+}
+
 func TestValidateRejections(t *testing.T) {
 	cases := map[string]struct {
 		mutate  func(models []*proxydb.Model, rules []*proxydb.Rule) ([]*proxydb.Model, []*proxydb.Rule)
@@ -142,6 +151,30 @@ func TestValidateRejections(t *testing.T) {
 				r[0].Weights = []int32{0}
 				return m, r
 			}, "must be > 0"},
+		"unknown shadow model": {
+			func(m []*proxydb.Model, r []*proxydb.Rule) ([]*proxydb.Model, []*proxydb.Rule) {
+				r[0].ShadowModel = "nonexistent"
+				r[0].ShadowPercentage = 50
+				return m, r
+			}, "unknown shadow model"},
+		"negative shadow percentage": {
+			func(m []*proxydb.Model, r []*proxydb.Rule) ([]*proxydb.Model, []*proxydb.Rule) {
+				r[0].ShadowModel = "cheap"
+				r[0].ShadowPercentage = -5
+				return m, r
+			}, "shadow percentage must be between 0 and 100"},
+		"excessive shadow percentage": {
+			func(m []*proxydb.Model, r []*proxydb.Rule) ([]*proxydb.Model, []*proxydb.Rule) {
+				r[0].ShadowModel = "cheap"
+				r[0].ShadowPercentage = 105
+				return m, r
+			}, "shadow percentage must be between 0 and 100"},
+		"shadow percentage without model": {
+			func(m []*proxydb.Model, r []*proxydb.Rule) ([]*proxydb.Model, []*proxydb.Rule) {
+				r[0].ShadowModel = ""
+				r[0].ShadowPercentage = 50
+				return m, r
+			}, "shadow percentage requires shadow model"},
 	}
 
 	for name, tc := range cases {
@@ -458,7 +491,6 @@ func TestBuildAdapter_Bedrock(t *testing.T) {
 		})
 	}
 }
-
 
 func TestSnapshotClientModelsIncludesLocalWithoutKey(t *testing.T) {
 	snap := &Snapshot{

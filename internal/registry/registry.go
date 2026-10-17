@@ -191,6 +191,16 @@ func Validate(models []*proxydb.Model, rules []*proxydb.Rule) error {
 				}
 			}
 		}
+		if r.ShadowPercentage < 0 || r.ShadowPercentage > 100 {
+			return fmt.Errorf("rule %s: shadow percentage must be between 0 and 100", r.Name)
+		}
+		if r.ShadowModel != "" {
+			if _, ok := byID[r.ShadowModel]; !ok {
+				return fmt.Errorf("rule %s: unknown shadow model %s", r.Name, r.ShadowModel)
+			}
+		} else if r.ShadowPercentage > 0 {
+			return fmt.Errorf("rule %s: shadow percentage requires shadow model", r.Name)
+		}
 
 		seen := map[string]bool{}
 		var enabledChain []*proxydb.Model

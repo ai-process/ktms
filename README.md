@@ -453,6 +453,7 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"rules":[
 - `use` is the ordered **fallback chain**, cheaper-first by convention. If the first model
   is throttled or its vendor is unavailable, the next is tried.
 - `weights` (optional) enables **weighted traffic routing** (e.g. Canary or A/B testing). If specified, `weights` must contain exactly one positive integer per model in `use` (e.g. `[90, 10]`). The proxy selects the primary candidate using weighted random selection, while preserving remaining models in their original order as fallbacks. When omitted, routing is strictly deterministic (100% traffic on `use[0]`).
+- `shadow_model` and `shadow_percentage` (optional) enable **Shadow Routing (Request Mirroring)**: asynchronously duplicates a sample (0.0–100.0%) of incoming traffic to a candidate shadow model in the background without affecting caller latency or responses. Shadow calls carry `is_shadow: "true"` metadata in analytics, share caller RPM and spend limits, and never trip circuit breakers for primary traffic.
 - Validation requires a **catch-all** (no attribute predicates) for every effort, so no
   request can ever fall through. `anything-else` above covers all three at once.
 - `ReplaceRules` swaps the whole set atomically; there is no per-rule CRUD.

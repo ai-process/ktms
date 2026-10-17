@@ -136,14 +136,16 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		}
 	}
 	resp, model, err := router.Execute(ctx, s.throttle, router.Request{
-		Chain:          plan.models,
-		KeyName:        id.Name,
-		UserID:         router.UserID(req.GetAttributes(), id.Name),
-		Estimate:       estimateTokens(req),
-		Chat:           chat,
-		CircuitBreaker: s.circuitBreaker,
-		Adapter:        func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
-		SoftSchema:     registry.SoftSchema,
+		Chain:            plan.models,
+		KeyName:          id.Name,
+		UserID:           router.UserID(req.GetAttributes(), id.Name),
+		Estimate:         estimateTokens(req),
+		Chat:             chat,
+		CircuitBreaker:   s.circuitBreaker,
+		Adapter:          func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
+		SoftSchema:       registry.SoftSchema,
+		ShadowModel:      plan.shadowModel,
+		ShadowPercentage: plan.shadowPercentage,
 	})
 	if err != nil {
 		return nil, router.ToStatus(err)
@@ -253,14 +255,16 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		streamVendor    string
 	)
 	_, err = router.ExecuteStream(stream.Context(), s.throttle, router.Request{
-		Chain:          plan.models,
-		KeyName:        id.Name,
-		UserID:         router.UserID(inner.GetAttributes(), id.Name),
-		Estimate:       estimateTokens(inner),
-		Chat:           chat,
-		CircuitBreaker: s.circuitBreaker,
-		Adapter:        func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
-		SoftSchema:     registry.SoftSchema,
+		Chain:            plan.models,
+		KeyName:          id.Name,
+		UserID:           router.UserID(inner.GetAttributes(), id.Name),
+		Estimate:         estimateTokens(inner),
+		Chat:             chat,
+		CircuitBreaker:   s.circuitBreaker,
+		Adapter:          func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
+		SoftSchema:       registry.SoftSchema,
+		ShadowModel:      plan.shadowModel,
+		ShadowPercentage: plan.shadowPercentage,
 	}, func(m *proxydb.Model, chunk llm.StreamChunk) error {
 		streamModel = m.ID
 		streamVendor = m.Vendor

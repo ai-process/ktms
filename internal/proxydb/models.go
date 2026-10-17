@@ -152,14 +152,16 @@ type BatchItem struct {
 }
 
 type Rule struct {
-	ID         string
-	Name       string
-	Priority   int32
-	Effort     string // "" = any
-	Attributes map[string]string
-	Enabled    bool
-	Use        []string // ordered model ids
-	Weights    []int32  // optional traffic weights per model in Use
+	ID               string
+	Name             string
+	Priority         int32
+	Effort           string // "" = any
+	Attributes       map[string]string
+	Enabled          bool
+	Use              []string // ordered model ids
+	Weights          []int32  // optional traffic weights per model in Use
+	ShadowModel      string   // optional shadow model for async traffic mirroring
+	ShadowPercentage float64  // 0.0 to 100.0 percent of traffic mirrored to ShadowModel
 }
 
 type VendorKey struct {

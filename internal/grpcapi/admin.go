@@ -85,14 +85,16 @@ func (s *AdminServer) ReplaceRules(ctx context.Context, req *pb.ReplaceRulesRequ
 			attrs = map[string]string{}
 		}
 		rules = append(rules, &proxydb.Rule{
-			ID:         uuid.NewString(),
-			Name:       r.GetName(),
-			Priority:   r.GetPriority(),
-			Effort:     effortToString(r.GetEffort()),
-			Attributes: attrs,
-			Enabled:    r.GetEnabled(),
-			Use:        r.GetUse(),
-			Weights:    r.GetWeights(),
+			ID:               uuid.NewString(),
+			Name:             r.GetName(),
+			Priority:         r.GetPriority(),
+			Effort:           effortToString(r.GetEffort()),
+			Attributes:       attrs,
+			Enabled:          r.GetEnabled(),
+			Use:              r.GetUse(),
+			Weights:          r.GetWeights(),
+			ShadowModel:      r.GetShadowModel(),
+			ShadowPercentage: r.GetShadowPercentage(),
 		})
 	}
 	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {
