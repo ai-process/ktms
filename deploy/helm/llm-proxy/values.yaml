@@ -175,9 +175,8 @@ config:
   extraEnvFrom: []
 
 metrics:
-  # Exposes container and Service port 9091 for Prometheus scraping
+  # Exposes metrics port on Service (service.metricsPort) and container for Prometheus scraping
   enabled: true
-  port: 9091
   # Prometheus Operator ServiceMonitor
   serviceMonitor:
     enabled: false

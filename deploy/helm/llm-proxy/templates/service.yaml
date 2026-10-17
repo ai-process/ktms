@@ -22,7 +22,7 @@ spec:
       name: grpc
       appProtocol: grpc
     {{- if .Values.metrics.enabled }}
-    - port: {{ .Values.service.metricsPort | default .Values.metrics.port }}
+    - port: {{ .Values.service.metricsPort }}
       targetPort: metrics
       protocol: TCP
       name: metrics

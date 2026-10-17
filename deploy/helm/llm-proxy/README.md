@@ -50,14 +50,19 @@ helm install llm-proxy ./deploy/helm/llm-proxy \
 | `config.spendLimitsFailMode` | Spend limit fail mode (`closed` fails safe, `open` allows unmetered; chart defaults to `closed` for production safety) | `closed` |
 | `config.logLevel` | Application log level (`debug`, `info`, `warn`, `error`) | `info` |
 | `probes.startup.enabled` | Startup probe to accommodate database schema migrations | `true` |
+| `service.httpPort` | Kubernetes Service HTTP port (mapped to container :8080) | `8080` |
+| `service.grpcPort` | Kubernetes Service gRPC port (mapped to container :9090) | `9090` |
+| `service.metricsPort` | Kubernetes Service metrics port (mapped to container :9091) | `9091` |
 | `ingress.enabled` | Enable HTTP/REST Ingress | `false` |
 | `ingress.grpc.enabled` | Enable dedicated gRPC Ingress | `false` |
 | `autoscaling.enabled` | Enable HorizontalPodAutoscaler | `false` |
 | `podDisruptionBudget.enabled` | Enable PodDisruptionBudget | `false` |
-| `metrics.enabled` | Expose dedicated Prometheus metrics listener | `true` |
-| `metrics.port` | Metrics listener port | `9091` |
+| `metrics.enabled` | Expose metrics port on Service and container | `true` |
 | `metrics.serviceMonitor.enabled` | Enable Prometheus Operator ServiceMonitor | `false` |
 | `podSecurityContext` | Pod security context (non-root, seccomp RuntimeDefault) | `runAsNonRoot: true`, `runAsUser: 10001` |
 | `securityContext` | Container security context (drop ALL, read-only rootfs) | `readOnlyRootFilesystem: true` |
 | `terminationGracePeriodSeconds` | Pod termination grace period in seconds | `60` |
 | `lifecycle.preStop` | PreStop hook to drain traffic before shutdown | `sleep 5` |
+
+> [!NOTE]
+> The internal container ports (`:8080` HTTP, `:9090` gRPC, `:9091` metrics) are fixed and mapped via named Service targetPorts. Changing `service.httpPort` or `service.grpcPort` alters the external cluster port without breaking internal container probes.
