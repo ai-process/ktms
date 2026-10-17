@@ -31,3 +31,7 @@ Guidelines and invariants for AI agents working in this codebase, synthesized fr
 - **No AI attribution:** Never add `Co-Authored-By` trailers or AI attribution lines to git commits or PR descriptions, and never name branches after a model or tool (no `claude/...`); use a plain `fix/...` or `feat/...` name.
 - **Account separation:** Never post PR comments using `gh` under a user's personal account credentials.
 - **Verification:** Always run `go vet ./...` and `go test ./... -race` before committing.
+
+## 7. Tasks & Issue Tracking
+- **Centralized Issue Tracking:** All tasks, issues, and feature requests for all repositories must be created exclusively in the private repository `docs` (`ai-process/docs`). Never open tasks or issues in public service repositories (`llm-proxy`, `light-tokenmeter`, `blog`, etc.).
+
