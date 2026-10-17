@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "llm-proxy.fullname" . }}
+  labels:
+    {{- include "llm-proxy.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "llm-proxy.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "llm-proxy.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "llm-proxy.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.httpPort }}
+              protocol: TCP
+            - name: grpc
+              containerPort: {{ .Values.service.grpcPort }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.secretName" . }}
+                  key: DATABASE_URL
+            - name: LLMPROXY_ENCRYPTION_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.secretName" . }}
+                  key: LLMPROXY_ENCRYPTION_KEYS
+            - name: BOOTSTRAP_ADMIN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.secretName" . }}
+                  key: BOOTSTRAP_ADMIN_KEY
+                  optional: true
+            - name: HTTP_API_ENABLED
+              value: {{ .Values.config.httpApiEnabled | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.config.logLevel | quote }}
+            - name: AUTO_MIGRATE
+              value: {{ .Values.config.autoMigrate | quote }}
+            - name: AUTO_SEED
+              value: {{ .Values.config.autoSeed | quote }}
+            - name: ROUTING_RELOAD
+              value: {{ .Values.config.routingReload | quote }}
+            {{- if .Values.config.redisAddr }}
+            - name: REDIS_ADDR
+              value: {{ .Values.config.redisAddr | quote }}
+            {{- end }}
+            {{- if .Values.config.redisKeyPrefix }}
+            - name: REDIS_KEY_PREFIX
+              value: {{ .Values.config.redisKeyPrefix | quote }}
+            {{- end }}
+            - name: CIRCUIT_BREAKER_ENABLED
+              value: {{ .Values.config.circuitBreakerEnabled | quote }}
+            - name: CIRCUIT_BREAKER_FAIL_THRESHOLD
+              value: {{ .Values.config.circuitBreakerFailThreshold | quote }}
+            - name: CIRCUIT_BREAKER_COOLDOWN
+              value: {{ .Values.config.circuitBreakerCooldown | quote }}
+            - name: SPEND_LIMITS_FAIL_MODE
+              value: {{ .Values.config.spendLimitsFailMode | quote }}
+            - name: BUDGET_GRACE_MARGIN
+              value: {{ .Values.config.budgetGraceMargin | quote }}
+            {{- if .Values.config.usageCollectorHost }}
+            - name: USAGE_COLLECTOR_HOST
+              value: {{ .Values.config.usageCollectorHost | quote }}
+            - name: USAGE_COLLECTOR_TLS
+              value: {{ .Values.config.usageCollectorTLS | quote }}
+            {{- end }}
+            {{- if .Values.config.usageProjectID }}
+            - name: USAGE_PROJECT_ID
+              value: {{ .Values.config.usageProjectID | quote }}
+            {{- end }}
+            {{- with .Values.config.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.config.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

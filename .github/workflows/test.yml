@@ -46,3 +46,21 @@ jobs:
           push: false
           cache-from: type=gha,scope=node-agent
           cache-to: type=gha,mode=max,scope=node-agent
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Lint Helm chart
+        run: helm lint deploy/helm/llm-proxy
+      - name: Dry-run Helm template (default values)
+        run: helm template test deploy/helm/llm-proxy
+      - name: Dry-run Helm template (all features enabled)
+        run: >
+          helm template test deploy/helm/llm-proxy
+          --set ingress.enabled=true
+          --set ingress.grpc.enabled=true
+          --set autoscaling.enabled=true
+          --set metrics.serviceMonitor.enabled=true
+          --set secrets.existingSecret=my-secret

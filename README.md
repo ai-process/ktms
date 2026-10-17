@@ -31,6 +31,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 - [Quick start (Docker Compose)](#quick-start-docker-compose)
 - [Installation](#installation)
   - [Docker image](#docker-image)
+  - [Helm chart (Kubernetes)](#helm-chart-kubernetes)
   - [Building from source](#building-from-source)
   - [Node agent](#node-agent)
   - [Production checklist](#production-checklist)
@@ -201,6 +202,28 @@ services:
 On Kubernetes, point the liveness probe at `GET :8080/healthz` and the readiness probe
 at `GET :8080/readyz` (checks the database). Run as many replicas as you like; they share
 Postgres and Redis and pick up configuration changes within `ROUTING_RELOAD_SECONDS`.
+
+### Helm chart (Kubernetes)
+
+An official Helm v3 chart is provided under [`deploy/helm/llm-proxy`](deploy/helm/llm-proxy):
+
+```bash
+# 1. Create a secret with your database URL and encryption keys
+kubectl create secret generic llm-proxy-secrets \
+  --from-literal=DATABASE_URL='postgres://llmproxy:pass@db:5432/llmproxy?sslmode=require' \
+  --from-literal=LLMPROXY_ENCRYPTION_KEYS="1:$(head -c 32 /dev/urandom | base64)" \
+  --from-literal=BOOTSTRAP_ADMIN_KEY="$(head -c 24 /dev/urandom | base64 | tr -d '/+=')"
+
+# 2. Install the release
+helm install llm-proxy ./deploy/helm/llm-proxy \
+  --set secrets.existingSecret=llm-proxy-secrets \
+  --set ingress.enabled=true \
+  --set ingress.hosts[0].host=proxy.example.com \
+  --set ingress.hosts[0].paths[0].path=/ \
+  --set ingress.hosts[0].paths[0].pathType=Prefix
+```
+
+The chart supports non-root security context (`appuser:10001`), HorizontalPodAutoscaler, Prometheus Operator `ServiceMonitor`, and separate gRPC Ingress configuration. See [`deploy/helm/llm-proxy/README.md`](deploy/helm/llm-proxy/README.md) for full configuration parameters.
 
 ### Building from source
 
