@@ -23,14 +23,14 @@ vendor is down, enforces rate and spend limits, and records usage.
 - **OpenAI-compatible HTTP API.** Point any OpenAI SDK or tool at `http://host:8080/v1`
   and get routing, fallbacks and limits for free.
 - **Usage reporting.** Optionally forwards one event per call to a gRPC usage sink.
-- **Ultra-low footprint.** Compiled Go binary (~65 MB container image, ~25 MiB idle RAM) ready for sub-60ms readiness and scale-to-zero workloads.
+- **Small footprint.** Single Go binary: ~64 MB image, ~25–35 MiB idle RAM, ready in under 60 ms.
 - **Web console.** [llm-proxy-admin](#web-console) manages models, rules and keys in the browser.
 
 ## Contents
 
 - [How it works](#how-it-works)
-- [Why llm-proxy? (Resource Footprint)](#why-llm-proxy-resource-footprint)
 - [Quick start (Docker Compose)](#quick-start-docker-compose)
+- [Resource footprint](#resource-footprint)
 - [Installation](#installation)
   - [Docker image](#docker-image)
   - [Helm chart (Kubernetes)](#helm-chart-kubernetes)
@@ -68,22 +68,6 @@ Two gRPC services share port `9090`:
 Port `8080` serves the health probes (`/healthz`, `/readyz`) and the
 [OpenAI-compatible HTTP API](#openai-compatible-http-api) under `/v1`. gRPC server
 reflection is on, so `grpcurl` works without the `.proto` files.
-
-## Why llm-proxy? (Resource Footprint)
-
-Compiled as a single Go binary without a runtime interpreter, `llm-proxy` delivers high-throughput LLM gateway capabilities at a fraction of the memory, disk, and startup overhead of Python-based gateways like LiteLLM Proxy.
-
-| Metric | `llm-proxy` (Go) | LiteLLM Proxy (Python) | Difference |
-|---|---|---|---|
-| **Docker image size (uncompressed)** | ~65 MB (slim) / ~166 MB (audio) | ~2.2 GB | ~92–97% smaller disk footprint |
-| **Idle memory (cgroup memory.current)** | ~25–35 MiB | ~400–600 MiB | ~11–24x less idle memory |
-| **Active load memory (1k RPS)** | ~45–80 MiB | ~1.2–2.0 GiB (4 workers) | ~15–46x less memory under load |
-| **Time to readiness (`/readyz` 200)** | ~30–60 ms | 8–15 s (`/health/readiness`) | ~130–500x faster readiness |
-| **Concurrency model** | Native goroutines in 1 process | Multiple OS processes + asyncio | Single process uses all cores; no per-worker memory duplication |
-| **Recommended container memory limit** | 256 MiB (`GOMEMLIMIT=200MiB`) | ≥2.5–3 GiB | ~10x lower memory reservation |
-
-*Measurements based on synthetic k6 benchmarks (1,000 RPS against mock upstream) on Linux x86_64, 4 vCPU, 8 GB RAM. For complete benchmark details and serverless cold start analysis, see the [central architecture documentation](https://github.com/ai-process/docs/blob/main/en/architecture.md#resource-footprint--comparison-with-python-gateways).*
-
 
 ## Quick start (Docker Compose)
 
@@ -170,6 +154,23 @@ $G "authorization: Bearer llm_<your key>" -d '{
 ```
 
 Once real keys exist in production, unset `BOOTSTRAP_ADMIN_KEY`.
+
+## Resource footprint
+
+Compiled as a single Go binary without a runtime interpreter, `llm-proxy` delivers
+high-throughput LLM gateway capabilities at a fraction of the memory, disk, and
+startup overhead of Python-based gateways like LiteLLM Proxy.
+
+| Metric | `llm-proxy` (Go) | LiteLLM Proxy (Python) | Difference |
+|---|---|---|---|
+| Docker image size (uncompressed) | ~64 MB (slim) / ~172 MB (audio) | ~2.2 GB | ~92–97% smaller disk footprint |
+| Idle memory (cgroup memory.current) | ~25–35 MiB | ~400–600 MiB | ~11–24x less idle memory |
+| Active load memory (1k RPS) | ~45–80 MiB | ~1.2–2.0 GiB (4 workers) | ~15–44x less memory under load |
+| Time to readiness (`/readyz` 200) | ~30–60 ms | 8–15 s (`/health/readiness`) | ~130–500x faster readiness |
+| Concurrency model | Native goroutines in 1 process | Multiple OS processes + asyncio | Single process uses all cores; no per-worker memory duplication |
+| Recommended container memory limit | 256 MiB | ≥2.5–3 GiB | ~10x lower memory reservation |
+
+*Measurements from synthetic k6 benchmarks (October 2026, 1,000 RPS against a 10 ms mock upstream, 4 Uvicorn workers on `ghcr.io/berriai/litellm:main-latest`) on Linux x86_64, 4 vCPU, 8 GB RAM.*
 
 ## Installation
 
