@@ -36,6 +36,19 @@ func TestDefaultModelsAndRulesValidation(t *testing.T) {
 	}
 }
 
+func TestEmbeddingModelsExcludedFromGenerationRules(t *testing.T) {
+	models := DefaultModels()
+	rules := DefaultRules(models, []string{registry.VendorOpenAI, registry.VendorGoogle})
+
+	for _, r := range rules {
+		for _, modelID := range r.Use {
+			if modelID == "text-embedding-3-small" || modelID == "text-embedding-004" {
+				t.Errorf("rule %s unexpectedly includes embedding model %s", r.Name, modelID)
+			}
+		}
+	}
+}
+
 func TestDefaultRulesChainOrder(t *testing.T) {
 	models := DefaultModels()
 

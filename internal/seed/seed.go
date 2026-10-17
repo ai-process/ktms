@@ -2,10 +2,12 @@ package seed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 
@@ -57,18 +59,27 @@ func Run(ctx context.Context, pool *pgxpool.Pool, keyring *crypto.Keyring, cfg C
 		}
 	}()
 
+	clientName := strings.TrimSpace(cfg.ClientName)
+	if clientName == "" {
+		clientName = "dev-default"
+	}
+
 	var hasModels bool
 	if err := conn.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM model LIMIT 1)").Scan(&hasModels); err != nil {
 		return nil, fmt.Errorf("check existing models: %w", err)
 	}
 	if hasModels {
+		// Sync any newly provided vendor keys to the existing dev key without wiping the volume.
+		updated, err := syncVendorKeys(ctx, conn, keyring, clientName, cfg)
+		if err != nil {
+			return nil, err
+		}
+		if updated {
+			log.Info().Msg("auto-seed: updated vendor credentials on existing client key")
+			return &Result{Seeded: true}, nil
+		}
 		log.Info().Msg("auto-seed: database already contains models, skipping")
 		return &Result{Seeded: false}, nil
-	}
-
-	clientName := strings.TrimSpace(cfg.ClientName)
-	if clientName == "" {
-		clientName = "dev-default"
 	}
 
 	plainKey := strings.TrimSpace(cfg.ClientKey)
@@ -82,14 +93,18 @@ func Run(ctx context.Context, pool *pgxpool.Pool, keyring *crypto.Keyring, cfg C
 			Name:      clientName,
 			KeyLookup: apikeys.LookupHash(plainKey),
 			KeyHash:   apikeys.VerifyHash(plainKey),
-			Scopes:    []string{apikeys.ScopeGenerate, apikeys.ScopeAdmin},
+			Scopes:    []string{apikeys.ScopeGenerate},
 		}
 	} else {
 		var err error
-		plainKey, apiKeyRow, err = apikeys.Generate(clientName, []string{apikeys.ScopeGenerate, apikeys.ScopeAdmin})
+		plainKey, apiKeyRow, err = apikeys.Generate(clientName, []string{apikeys.ScopeGenerate})
 		if err != nil {
 			return nil, fmt.Errorf("generate api key: %w", err)
 		}
+	}
+
+	if plainKey == "llm_dev_default_key" {
+		log.Warn().Msg("auto-seed: using default dev client key (llm_dev_default_key); generate a unique key for non-dev environments")
 	}
 
 	tx, err := conn.Begin(ctx)
@@ -99,14 +114,18 @@ func Run(ctx context.Context, pool *pgxpool.Pool, keyring *crypto.Keyring, cfg C
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var apiKeyID string
-	err = tx.QueryRow(ctx,
-		`INSERT INTO api_key (id, name, key_lookup, key_hash, scopes)
-		 VALUES ($1, $2, $3, $4, $5)
-		 ON CONFLICT (name) DO UPDATE SET key_lookup = EXCLUDED.key_lookup, key_hash = EXCLUDED.key_hash
-		 RETURNING id`,
-		apiKeyRow.ID, apiKeyRow.Name, apiKeyRow.KeyLookup, apiKeyRow.KeyHash, apiKeyRow.Scopes).Scan(&apiKeyID)
-	if err != nil {
-		return nil, fmt.Errorf("insert api key: %w", err)
+	err = tx.QueryRow(ctx, `SELECT id FROM api_key WHERE name = $1`, clientName).Scan(&apiKeyID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = tx.QueryRow(ctx,
+			`INSERT INTO api_key (id, name, key_lookup, key_hash, scopes)
+			 VALUES ($1, $2, $3, $4, $5)
+			 RETURNING id`,
+			apiKeyRow.ID, apiKeyRow.Name, apiKeyRow.KeyLookup, apiKeyRow.KeyHash, apiKeyRow.Scopes).Scan(&apiKeyID)
+		if err != nil {
+			return nil, fmt.Errorf("insert api key: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("lookup api key: %w", err)
 	}
 
 	var seededVendors []string
@@ -173,7 +192,6 @@ func Run(ctx context.Context, pool *pgxpool.Pool, keyring *crypto.Keyring, cfg C
 		return nil, fmt.Errorf("replace seed rules: %w", err)
 	}
 
-	// Validate config state matches proxy constraints
 	if err := registry.Validate(models, rules); err != nil {
 		return nil, fmt.Errorf("seeded config invalid: %w", err)
 	}
@@ -202,98 +220,171 @@ func Run(ctx context.Context, pool *pgxpool.Pool, keyring *crypto.Keyring, cfg C
 	}, nil
 }
 
+func syncVendorKeys(ctx context.Context, conn *pgxpool.Conn, keyring *crypto.Keyring, clientName string, cfg Config) (bool, error) {
+	if cfg.OpenAIKey == "" && cfg.GeminiKey == "" && cfg.AnthropicKey == "" {
+		return false, nil
+	}
+	var apiKeyID string
+	err := conn.QueryRow(ctx, `SELECT id FROM api_key WHERE name = $1`, clientName).Scan(&apiKeyID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("lookup api key for vendor sync: %w", err)
+	}
+
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin vendor sync tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var updated bool
+	if cfg.OpenAIKey != "" {
+		ct, v, err := keyring.Encrypt(cfg.OpenAIKey)
+		if err != nil {
+			return false, err
+		}
+		if err := proxydb.SetVendorKey(ctx, tx, &proxydb.VendorKey{
+			ID:            uuid.NewString(),
+			APIKeyID:      apiKeyID,
+			Vendor:        registry.VendorOpenAI,
+			KeyCiphertext: ct,
+			KeyVersion:    int32(v),
+		}); err != nil {
+			return false, err
+		}
+		updated = true
+	}
+	if cfg.GeminiKey != "" {
+		ct, v, err := keyring.Encrypt(cfg.GeminiKey)
+		if err != nil {
+			return false, err
+		}
+		if err := proxydb.SetVendorKey(ctx, tx, &proxydb.VendorKey{
+			ID:            uuid.NewString(),
+			APIKeyID:      apiKeyID,
+			Vendor:        registry.VendorGoogle,
+			KeyCiphertext: ct,
+			KeyVersion:    int32(v),
+		}); err != nil {
+			return false, err
+		}
+		updated = true
+	}
+	if cfg.AnthropicKey != "" {
+		ct, v, err := keyring.Encrypt(cfg.AnthropicKey)
+		if err != nil {
+			return false, err
+		}
+		if err := proxydb.SetVendorKey(ctx, tx, &proxydb.VendorKey{
+			ID:            uuid.NewString(),
+			APIKeyID:      apiKeyID,
+			Vendor:        registry.VendorAnthropic,
+			KeyCiphertext: ct,
+			KeyVersion:    int32(v),
+		}); err != nil {
+			return false, err
+		}
+		updated = true
+	}
+
+	if updated {
+		if _, err := tx.Exec(ctx, `UPDATE config_state SET version = version + 1, updated_at = NOW() WHERE id = 1`); err != nil {
+			return false, fmt.Errorf("bump config version on vendor sync: %w", err)
+		}
+	}
+	return updated, tx.Commit(ctx)
+}
+
 // DefaultModels returns standard model definitions across major providers.
 func DefaultModels() []*proxydb.Model {
 	return []*proxydb.Model{
 		{
-			ID:                  "gpt-4o-mini",
-			Vendor:              registry.VendorOpenAI,
-			Efforts:             []string{registry.EffortLow, registry.EffortMedium, registry.EffortHigh},
-			Capabilities:        []string{"tools", "json_schema"},
-			RPM:                 1000,
-			PriceInPerMtok:      0.15,
-			PriceOutPerMtok:     0.60,
-			PriceInBatchPerMtok: 0.075,
+			ID:                   "gpt-4o-mini",
+			Vendor:               registry.VendorOpenAI,
+			Efforts:              []string{registry.EffortLow, registry.EffortMedium, registry.EffortHigh},
+			RPM:                  1000,
+			PriceInPerMtok:       0.15,
+			PriceOutPerMtok:      0.60,
+			PriceInBatchPerMtok:  0.075,
 			PriceOutBatchPerMtok: 0.30,
-			Enabled:             true,
+			Enabled:              true,
 		},
 		{
-			ID:                  "gpt-4o",
-			Vendor:              registry.VendorOpenAI,
-			Efforts:             []string{registry.EffortMedium, registry.EffortHigh},
-			Capabilities:        []string{"tools", "json_schema"},
-			RPM:                 500,
-			PriceInPerMtok:      2.50,
-			PriceOutPerMtok:     10.00,
-			PriceInBatchPerMtok: 1.25,
+			ID:                   "gpt-4o",
+			Vendor:               registry.VendorOpenAI,
+			Efforts:              []string{registry.EffortMedium, registry.EffortHigh},
+			RPM:                  500,
+			PriceInPerMtok:       2.50,
+			PriceOutPerMtok:      10.00,
+			PriceInBatchPerMtok:  1.25,
 			PriceOutBatchPerMtok: 5.00,
-			Enabled:             true,
+			Enabled:              true,
 		},
 		{
 			ID:             "text-embedding-3-small",
 			Vendor:         registry.VendorOpenAI,
 			Efforts:        []string{registry.EffortLow, registry.EffortMedium, registry.EffortHigh},
-			Capabilities:   []string{"embeddings"},
+			Capabilities:   []string{registry.CapabilityEmbedding},
 			RPM:            1000,
 			PriceInPerMtok: 0.02,
 			Enabled:        true,
 		},
 		{
-			ID:                  "gemini-2.5-flash",
-			Vendor:              registry.VendorGoogle,
-			Efforts:             []string{registry.EffortLow, registry.EffortMedium, registry.EffortHigh},
-			Capabilities:        []string{"tools", "json_schema", "batch", "google_search"},
-			RPM:                 1000,
-			PriceInPerMtok:      0.15,
-			PriceOutPerMtok:     0.60,
-			PriceInBatchPerMtok: 0.075,
-			PriceOutBatchPerMtok: 0.30,
-			Enabled:             true,
+			ID:                   "gemini-2.5-flash",
+			Vendor:               registry.VendorGoogle,
+			Efforts:              []string{registry.EffortLow, registry.EffortMedium, registry.EffortHigh},
+			Capabilities:         []string{registry.CapabilityBatch, registry.CapabilityGoogleSearch},
+			RPM:                  1000,
+			PriceInPerMtok:       0.30,
+			PriceOutPerMtok:      2.50,
+			PriceInBatchPerMtok:  0.15,
+			PriceOutBatchPerMtok: 1.25,
+			Enabled:              true,
 		},
 		{
-			ID:                  "gemini-2.5-pro",
-			Vendor:              registry.VendorGoogle,
-			Efforts:             []string{registry.EffortHigh},
-			Capabilities:        []string{"tools", "json_schema", "batch", "google_search"},
-			RPM:                 300,
-			PriceInPerMtok:      1.25,
-			PriceOutPerMtok:     5.00,
-			PriceInBatchPerMtok: 0.625,
-			PriceOutBatchPerMtok: 2.50,
-			Enabled:             true,
+			ID:                   "gemini-2.5-pro",
+			Vendor:               registry.VendorGoogle,
+			Efforts:              []string{registry.EffortHigh},
+			Capabilities:         []string{registry.CapabilityBatch, registry.CapabilityGoogleSearch},
+			RPM:                  300,
+			PriceInPerMtok:       1.25,
+			PriceOutPerMtok:      10.00,
+			PriceInBatchPerMtok:  0.625,
+			PriceOutBatchPerMtok: 5.00,
+			Enabled:              true,
 		},
 		{
 			ID:             "text-embedding-004",
 			Vendor:         registry.VendorGoogle,
 			Efforts:        []string{registry.EffortLow, registry.EffortMedium, registry.EffortHigh},
-			Capabilities:   []string{"embeddings"},
+			Capabilities:   []string{registry.CapabilityEmbedding},
 			RPM:            1000,
 			PriceInPerMtok: 0.025,
 			Enabled:        true,
 		},
 		{
-			ID:                  "claude-3-5-haiku-latest",
-			Vendor:              registry.VendorAnthropic,
-			Efforts:             []string{registry.EffortLow, registry.EffortMedium, registry.EffortHigh},
-			Capabilities:        []string{"tools", "json_schema"},
-			RPM:                 1000,
-			PriceInPerMtok:      0.80,
-			PriceOutPerMtok:     4.00,
-			PriceInBatchPerMtok: 0.40,
+			ID:                   "claude-3-5-haiku-latest",
+			Vendor:               registry.VendorAnthropic,
+			Efforts:              []string{registry.EffortLow, registry.EffortMedium, registry.EffortHigh},
+			RPM:                  1000,
+			PriceInPerMtok:       0.80,
+			PriceOutPerMtok:      4.00,
+			PriceInBatchPerMtok:  0.40,
 			PriceOutBatchPerMtok: 2.00,
-			Enabled:             true,
+			Enabled:              true,
 		},
 		{
-			ID:                  "claude-3-7-sonnet-latest",
-			Vendor:              registry.VendorAnthropic,
-			Efforts:             []string{registry.EffortHigh},
-			Capabilities:        []string{"tools", "json_schema"},
-			RPM:                 300,
-			PriceInPerMtok:      3.00,
-			PriceOutPerMtok:     15.00,
-			PriceInBatchPerMtok: 1.50,
+			ID:                   "claude-3-7-sonnet-latest",
+			Vendor:               registry.VendorAnthropic,
+			Efforts:              []string{registry.EffortHigh},
+			RPM:                  300,
+			PriceInPerMtok:       3.00,
+			PriceOutPerMtok:      15.00,
+			PriceInBatchPerMtok:  1.50,
 			PriceOutBatchPerMtok: 7.50,
-			Enabled:             true,
+			Enabled:              true,
 		},
 	}
 }
@@ -377,10 +468,8 @@ func DefaultRules(models []*proxydb.Model, activeVendors []string) []*proxydb.Ru
 }
 
 func serves(m *proxydb.Model, effort string) bool {
-	for _, c := range m.Capabilities {
-		if c == "embeddings" {
-			return false
-		}
+	if registry.HasCapability(m, registry.CapabilityEmbedding) {
+		return false
 	}
 	for _, e := range m.Efforts {
 		if e == effort {
