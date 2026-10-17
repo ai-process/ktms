@@ -1,7 +1,7 @@
 name: Model Provider / Vendor Adapter
 description: Propose or contribute support for a new LLM provider or self-hosted engine
 title: "feat(vendor): add support for "
-labels: ["enhancement", "vendor-adapter"]
+labels: ["enhancement"]
 body:
   - type: markdown
     attributes:

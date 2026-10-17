@@ -10,7 +10,7 @@ We welcome bug reports, documentation enhancements, feature proposals, and code 
 
 ### Prerequisites
 
-- **Go:** `1.24+` installed locally.
+- **Go:** `1.26+` installed locally.
 - **Docker & Docker Compose:** for local PostgreSQL and Redis dependencies.
 - **Buf CLI:** for building and linting Protobuf contracts (`brew install bufbuild/buf/buf` or via official installer).
 
@@ -24,18 +24,22 @@ We welcome bug reports, documentation enhancements, feature proposals, and code 
 
 2. **Start backing dependencies (PostgreSQL & Redis):**
    ```bash
-   docker compose up -d postgres redis
+   # Starts PostgreSQL on localhost:5435 and Redis on localhost:6380
+   docker compose up -d db redis
    ```
 
 3. **Run database migrations and verify connectivity:**
    ```bash
-   # Quickstart auto-seed verifies migrations and seeds default models
+   export DATABASE_URL="postgres://llmproxy:llmproxy@localhost:5435/llmproxy?sslmode=disable"
+   export LLMPROXY_ENCRYPTION_KEYS="1:LS1kZXYtb25seS1rZXktLWRldi1vbmx5LWtleS0tISE="
+   export REDIS_ADDR="localhost:6380"
    AUTO_SEED=true go run cmd/server/main.go
    ```
 
 4. **Run tests with the race detector:**
    ```bash
-   go test ./... -race
+   # Provide DATABASE_URL so postgres-backed integration tests execute rather than skip
+   DATABASE_URL="postgres://llmproxy:llmproxy@localhost:5435/llmproxy?sslmode=disable" go test ./... -race
    ```
 
 5. **Run static analysis:**
@@ -67,6 +71,7 @@ Every pull request is expected to adhere to our core engineering invariants:
 - **Prune dead code:** When changing architecture or state transitions, remove unused methods from store implementations, worker interfaces, RPC handler interfaces, test fakes, and tests.
 - **Structured vendor errors:** Inspect SDK error types (e.g. `errors.As(err, &genai.APIError{})` with status codes) for idempotency or terminal checks instead of brittle string matching on error text.
 - **Lockstep documentation:** Keep documentation in lockstep with behavioral changes. Any change in runtime behavior (e.g. identity fallback affecting quotas) must update proto comments, generated code, README tables, and PR descriptions.
+- **Concise communication:** Keep communication, explanations, and PR descriptions concise and direct (no walls of text).
 - **No AI attribution:** Never add `Co-Authored-By` trailers or AI attribution lines to git commits or PR descriptions, and never name branches after a model or tool.
 - **Generated code sync:** `gen/` is committed; regenerate with `make proto` after editing `proto/`.
 - **Pre-commit verification:** Always run `go vet ./...` and `go test ./... -race` before committing.

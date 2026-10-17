@@ -54,4 +54,4 @@ To help us triage and resolve the issue quickly, please provide:
    Client credentials and vendor allocations are looked up internally by immutable UUIDs (`APIKeyID`), never by human-readable names or unhashed credentials.
 
 4. **Non-Root & Network Isolation:**  
-   Official Docker images run as an unprivileged non-root user (`nonroot:nonroot` or `uid 10001`). Quickstart Docker Compose configurations bind all service ports to `127.0.0.1` by default to prevent unintentional network exposure.
+   Official Docker images run as an unprivileged non-root user (`appuser`, uid 10001). Quickstart Docker Compose configurations bind all service ports to `127.0.0.1` by default to prevent unintentional network exposure.

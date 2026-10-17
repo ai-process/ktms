@@ -3,6 +3,3 @@ contact_links:
   - name: Security Vulnerability Reporting
     url: https://github.com/ai-process/llm-proxy/security/policy
     about: Please report security vulnerabilities privately according to our security policy.
-  - name: Centralized Task Backlog (Docs)
-    url: https://github.com/ai-process/docs/issues
-    about: Internal ecosystem tasks and multi-repository roadmap tracking.
