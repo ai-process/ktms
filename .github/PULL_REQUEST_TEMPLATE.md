@@ -4,7 +4,7 @@
 
 ### Related Issues
 
-<!-- E.g., Fixes #123 or Fixes ai-process/docs#45 -->
+<!-- E.g., Fixes #123 -->
 
 ### Type of Change
 
