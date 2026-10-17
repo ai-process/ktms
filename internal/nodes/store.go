@@ -16,7 +16,7 @@ type nodeCapacityError struct {
 	msg string
 }
 
-func (e *nodeCapacityError) Error() string { return e.msg }
+func (e *nodeCapacityError) Error() string         { return e.msg }
 func (e *nodeCapacityError) SkipToNextModel() bool { return true }
 
 var (

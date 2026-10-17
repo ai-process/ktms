@@ -639,4 +639,3 @@ func TestBatchRPCs_BatchNotConfigured(t *testing.T) {
 		t.Fatalf("CancelBatch: expected FailedPrecondition (batch not configured), got %v", err)
 	}
 }
-

@@ -245,9 +245,9 @@ func TestEvaluateRollouts_Multimodal(t *testing.T) {
 
 	model := &proxydb.Model{
 		ID: "multimodal-judge", Vendor: registry.VendorOpenAI, Endpoint: srv.URL,
-		Efforts:       []string{registry.EffortLow},
-		Capabilities:  []string{registry.CapabilityJudge, registry.CapabilityVision},
-		Enabled:       true,
+		Efforts:      []string{registry.EffortLow},
+		Capabilities: []string{registry.CapabilityJudge, registry.CapabilityVision},
+		Enabled:      true,
 	}
 	s := newJudgeServer(t,
 		[]*proxydb.Model{model},
@@ -313,11 +313,11 @@ func TestEvaluateRollouts_Guardrails(t *testing.T) {
 }
 
 type mockBidiStreamServer struct {
-	ctx      context.Context
-	in       chan *pb.JudgeRequest
-	out      chan *pb.JudgeResponse
-	closed   bool
-	mu       sync.Mutex
+	ctx    context.Context
+	in     chan *pb.JudgeRequest
+	out    chan *pb.JudgeResponse
+	closed bool
+	mu     sync.Mutex
 }
 
 func newMockBidiStream(ctx context.Context) *mockBidiStreamServer {
@@ -352,7 +352,7 @@ func (m *mockBidiStreamServer) Send(resp *pb.JudgeResponse) error {
 
 func (m *mockBidiStreamServer) SetHeader(metadata.MD) error  { return nil }
 func (m *mockBidiStreamServer) SendHeader(metadata.MD) error { return nil }
-func (m *mockBidiStreamServer) SetTrailer(metadata.MD)        {}
+func (m *mockBidiStreamServer) SetTrailer(metadata.MD)       {}
 func (m *mockBidiStreamServer) SendMsg(any) error            { return nil }
 func (m *mockBidiStreamServer) RecvMsg(any) error            { return nil }
 
@@ -503,4 +503,3 @@ func TestParallelRollouts_ConcurrentMetaSafety(t *testing.T) {
 		t.Errorf("got %d evals, want 4", len(res.Evaluations))
 	}
 }
-

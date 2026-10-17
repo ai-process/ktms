@@ -784,7 +784,7 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 		lastErr = err
 		if llm.ShouldSkipToNextModel(err) {
 			log.Warn().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).
-				Msg("model capacity exhausted, trying next in chain")
+				Msg("skipping to next model in chain")
 			continue
 		}
 		if !llm.IsRetryableError(err) {

@@ -168,10 +168,10 @@ func (vi *VLLMInspector) Inspect(ctx context.Context, endpoint, authToken string
 type TGIInspector struct{}
 
 type tgiInfoResponse struct {
-	ModelID             string `json:"model_id"`
-	MaxTotalTokens      uint32 `json:"max_total_tokens"`
-	MaxInputTokens      uint32 `json:"max_input_length"`
-	ModelSha            string `json:"model_sha"`
+	ModelID        string `json:"model_id"`
+	MaxTotalTokens uint32 `json:"max_total_tokens"`
+	MaxInputTokens uint32 `json:"max_input_length"`
+	ModelSha       string `json:"model_sha"`
 }
 
 func (ti *TGIInspector) Inspect(ctx context.Context, endpoint, authToken string) ([]*pb.NodeModelSpec, error) {

@@ -93,10 +93,10 @@ func TestBatchStorageAndIdempotency(t *testing.T) {
 			ResponseSchema: []byte(`{"type":"object"}`),
 		},
 		{
-			BatchID:        batchID,
-			CustomID:       "cust-2",
-			Position:       1,
-			Status:         "PENDING",
+			BatchID:  batchID,
+			CustomID: "cust-2",
+			Position: 1,
+			Status:   "PENDING",
 		},
 	}
 

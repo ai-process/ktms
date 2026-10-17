@@ -60,11 +60,11 @@ func (m *Manager) Stop() {
 	m.wg.Wait()
 }
 
-func (m *Manager) Store() *Store { return m.store }
-func (m *Manager) Slots() *LeaseManager { return m.slots }
-func (m *Manager) Circuit() *CircuitBreaker { return m.circuit }
+func (m *Manager) Store() *Store                { return m.store }
+func (m *Manager) Slots() *LeaseManager         { return m.slots }
+func (m *Manager) Circuit() *CircuitBreaker     { return m.circuit }
 func (m *Manager) Telemetry() *TelemetryTracker { return m.telemetry }
-func (m *Manager) Config() Config { return m.cfg }
+func (m *Manager) Config() Config               { return m.cfg }
 
 // Register handles node self-registration.
 func (m *Manager) Register(ctx context.Context, meta *NodeMeta) error {

@@ -267,4 +267,3 @@ func hasCapability(caps []string, target string) bool {
 func isJudgeOnly(caps []string) bool {
 	return len(caps) == 1 && caps[0] == registry.CapabilityJudge
 }
-

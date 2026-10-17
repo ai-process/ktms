@@ -75,4 +75,3 @@ func (k Keys) NodeDrain(nodeID string) string {
 func (k Keys) NodesSet() string {
 	return fmt.Sprintf("%snodes:all", k.prefix)
 }
-

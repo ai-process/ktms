@@ -25,10 +25,6 @@ func (ffmpegMissingError) SkipToNextModel() bool {
 	return true
 }
 
-func (ffmpegMissingError) Is(target error) bool {
-	return target == ErrFFmpegMissing
-}
-
 // ErrFFmpegMissing is returned when the ffmpeg binary is not available on PATH.
 var ErrFFmpegMissing error = ffmpegMissingError{}
 

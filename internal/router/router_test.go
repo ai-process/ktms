@@ -310,14 +310,14 @@ func TestExecuteAllThrottled(t *testing.T) {
 
 func TestToStatusMapping(t *testing.T) {
 	cases := map[error]codes.Code{
-		ErrNotConfigured:                       codes.FailedPrecondition,
-		ErrNoCapableModel:                      codes.FailedPrecondition,
-		ErrNoVendorKey:                         codes.FailedPrecondition,
-		llm.ErrOutputTruncated:                 codes.FailedPrecondition,
-		audio.ErrFFmpegMissing:                                codes.Unimplemented,
-		&ChainExhausted{Last: audio.ErrFFmpegMissing}:         codes.Unimplemented,
-		&ChainExhausted{Last: retryableErr}:                   codes.Unavailable,
-		&ChainExhausted{Last: errors.New("x")}:                codes.Internal,
+		ErrNotConfigured:       codes.FailedPrecondition,
+		ErrNoCapableModel:      codes.FailedPrecondition,
+		ErrNoVendorKey:         codes.FailedPrecondition,
+		llm.ErrOutputTruncated: codes.FailedPrecondition,
+		audio.ErrFFmpegMissing: codes.Unimplemented,
+		&ChainExhausted{Last: audio.ErrFFmpegMissing}: codes.Unimplemented,
+		&ChainExhausted{Last: retryableErr}:           codes.Unavailable,
+		&ChainExhausted{Last: errors.New("x")}:        codes.Internal,
 	}
 	for err, want := range cases {
 		if got := status.Code(ToStatus(err)); got != want {
