@@ -500,7 +500,7 @@ func printBanner(clientKey, keyName string, vendors []string) {
 	keyDisplay := clientKey
 	authHeader := clientKey
 	if clientKey == "" {
-		keyDisplay = fmt.Sprintf("(existing %s key preserved)", keyName)
+		keyDisplay = "(existing key preserved)"
 		authHeader = "<your-client-key>"
 	}
 	banner := fmt.Sprintf(`
