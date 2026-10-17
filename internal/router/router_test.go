@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 
 	"google.golang.org/genai"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/ai-process/llm-proxy/internal/circuitbreaker"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/registry"
@@ -859,5 +861,266 @@ func TestResolveChain_WeightedRouting(t *testing.T) {
 	// Expected ~0.80, allow deviation up to 1.5% (i.e. [0.785, 0.815])
 	if ratio < 0.785 || ratio > 0.815 {
 		t.Errorf("expected ratio ~0.80 with +/- 1.5%% deviation, got %.4f (count=%d)", ratio, m1Count)
+	}
+}
+
+func TestExecuteCircuitBreakerFailFast(t *testing.T) {
+	currentTime := time.Now()
+	nowMock := func() time.Time { return currentTime }
+
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 2,
+		Cooldown:      10 * time.Second,
+	})
+	cbMgr.SetNowFunc(nowMock)
+	snap := snapshot()
+	mDeep := snap.Models["deep"] // VendorDeepSeek
+	mBig := snap.Models["big"]   // VendorOpenAI
+	chain := []*proxydb.Model{mDeep, mBig}
+
+	brokenCalls := 0
+	broken := &fakeAdapter{responses: []func() (*llm.Response, error){
+		func() (*llm.Response, error) {
+			brokenCalls++
+			return nil, retryableErr
+		},
+	}}
+	healthyCalls := 0
+	healthy := &fakeAdapter{responses: []func() (*llm.Response, error){
+		func() (*llm.Response, error) {
+			healthyCalls++
+			return ok("from healthy fallback")()
+		},
+	}}
+	adapters := map[string]llm.ClientAdapter{"deep": broken, "big": healthy}
+
+	req := Request{
+		Chain:          chain,
+		KeyName:        "test-key",
+		UserID:         "user-1",
+		Chat:           llm.NewChatContext(),
+		CircuitBreaker: cbMgr,
+		Adapter:        func(m *proxydb.Model) (llm.ClientAdapter, error) { return adapters[m.ID], nil },
+	}
+
+	// 1st request: deep fails, falls back to big
+	resp, m, err := Execute(context.Background(), NoopThrottle{}, req)
+	if err != nil || m.ID != "big" || resp.Choices[0].Text != "from healthy fallback" {
+		t.Fatalf("call 1 failed: resp=%v, m=%v, err=%v", resp, m, err)
+	}
+	if cbMgr.State(mDeep.Vendor, mDeep.ID) != circuitbreaker.StateClosed {
+		t.Fatalf("expected deep to still be CLOSED, got %v", cbMgr.State(mDeep.Vendor, mDeep.ID))
+	}
+
+	// 2nd request: deep fails again -> trips to OPEN!
+	resp, m, err = Execute(context.Background(), NoopThrottle{}, req)
+	if err != nil || m.ID != "big" || resp.Choices[0].Text != "from healthy fallback" {
+		t.Fatalf("call 2 failed: resp=%v, m=%v, err=%v", resp, m, err)
+	}
+	if cbMgr.State(mDeep.Vendor, mDeep.ID) != circuitbreaker.StateOpen {
+		t.Fatalf("expected deep to trip to OPEN, got %v", cbMgr.State(mDeep.Vendor, mDeep.ID))
+	}
+
+	callsBefore := brokenCalls
+	// 3rd request: deep is OPEN, must fail-fast without calling broken adapter
+	resp, m, err = Execute(context.Background(), NoopThrottle{}, req)
+	if err != nil || m.ID != "big" || resp.Choices[0].Text != "from healthy fallback" {
+		t.Fatalf("call 3 failed: resp=%v, m=%v, err=%v", resp, m, err)
+	}
+	if brokenCalls != callsBefore {
+		t.Fatalf("expected zero calls to broken adapter while OPEN, got %d calls", brokenCalls-callsBefore)
+	}
+
+	// 4th request: advance time past cooldown; deep recovers and answers successfully
+	currentTime = currentTime.Add(11 * time.Second)
+	adapters["deep"] = &fakeAdapter{responses: []func() (*llm.Response, error){ok("deep recovered")}}
+	resp, m, err = Execute(context.Background(), NoopThrottle{}, req)
+	if err != nil || m.ID != "deep" || resp.Choices[0].Text != "deep recovered" {
+		t.Fatalf("call 4 failed: resp=%v, m=%v, err=%v", resp, m, err)
+	}
+	if cbMgr.State(mDeep.Vendor, mDeep.ID) != circuitbreaker.StateClosed {
+		t.Fatalf("expected deep to recover to CLOSED, got %v", cbMgr.State(mDeep.Vendor, mDeep.ID))
+	}
+}
+
+func TestExecuteCircuitBreakerAllBroken(t *testing.T) {
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 1,
+		Cooldown:      10 * time.Second,
+	})
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	mBig := snap.Models["big"]
+	chain := []*proxydb.Model{mDeep, mBig}
+
+	// Trip both models
+	cbMgr.Report(context.Background(), mDeep.Vendor, mDeep.ID, retryableErr)
+	cbMgr.Report(context.Background(), mBig.Vendor, mBig.ID, retryableErr)
+
+	if cbMgr.State(mDeep.Vendor, mDeep.ID) != circuitbreaker.StateOpen ||
+		cbMgr.State(mBig.Vendor, mBig.ID) != circuitbreaker.StateOpen {
+		t.Fatal("expected both models to be OPEN")
+	}
+
+	req := Request{
+		Chain:          chain,
+		KeyName:        "test-key",
+		UserID:         "user-1",
+		Chat:           llm.NewChatContext(),
+		CircuitBreaker: cbMgr,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			t.Fatal("adapter should not be called when all models are circuit-broken")
+			return nil, nil
+		},
+	}
+
+	_, _, err := Execute(context.Background(), NoopThrottle{}, req)
+	if err == nil {
+		t.Fatal("expected error when all models are circuit-broken")
+	}
+
+	var exhausted *ChainExhausted
+	if !errors.As(err, &exhausted) || !exhausted.AllCircuitBroken {
+		t.Fatalf("expected ChainExhausted with AllCircuitBroken=true, got %v", err)
+	}
+
+	st := ToStatus(err)
+	if status.Code(st) != codes.Unavailable {
+		t.Fatalf("expected codes.Unavailable, got %v", status.Code(st))
+	}
+}
+
+func TestExecuteCircuitBreakerAndThrottled(t *testing.T) {
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 1,
+		Cooldown:      10 * time.Second,
+	})
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	mBig := snap.Models["big"]
+	chain := []*proxydb.Model{mDeep, mBig}
+
+	// Trip deep model's circuit breaker
+	cbMgr.Report(context.Background(), mDeep.Vendor, mDeep.ID, retryableErr)
+
+	// Throttler that refuses big model for RPM
+	th := &recordingThrottle{rpmDeny: map[string]bool{"big": true}}
+
+	req := Request{
+		Chain:          chain,
+		KeyName:        "test-key",
+		UserID:         "user-1",
+		Chat:           llm.NewChatContext(),
+		CircuitBreaker: cbMgr,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			t.Fatal("adapter should not be called when candidates are broken or throttled")
+			return nil, nil
+		},
+	}
+
+	_, _, err := Execute(context.Background(), th, req)
+	if err == nil {
+		t.Fatal("expected error when all models are broken or throttled")
+	}
+
+	var exhausted *ChainExhausted
+	if !errors.As(err, &exhausted) {
+		t.Fatalf("expected ChainExhausted, got %v", err)
+	}
+	if !exhausted.AllThrottled || !exhausted.AnyCircuitBroken {
+		t.Fatalf("expected AllThrottled=true and AnyCircuitBroken=true, got %+v", exhausted)
+	}
+
+	st := ToStatus(err)
+	if status.Code(st) != codes.ResourceExhausted {
+		t.Fatalf("expected codes.ResourceExhausted, got %v (%v)", status.Code(st), st)
+	}
+}
+
+func TestExecuteStreamCircuitBreakerAndThrottled(t *testing.T) {
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 1,
+		Cooldown:      10 * time.Second,
+	})
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	mBig := snap.Models["big"]
+	chain := []*proxydb.Model{mDeep, mBig}
+
+	cbMgr.Report(context.Background(), mDeep.Vendor, mDeep.ID, retryableErr)
+	th := &recordingThrottle{rpmDeny: map[string]bool{"big": true}}
+
+	req := Request{
+		Chain:          chain,
+		KeyName:        "test-key",
+		UserID:         "user-1",
+		Chat:           llm.NewChatContext(),
+		CircuitBreaker: cbMgr,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			t.Fatal("adapter should not be called")
+			return nil, nil
+		},
+	}
+
+	_, err := ExecuteStream(context.Background(), th, req, func(_ *proxydb.Model, _ llm.StreamChunk) error {
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var exhausted *ChainExhausted
+	if !errors.As(err, &exhausted) || !exhausted.AllThrottled || !exhausted.AnyCircuitBroken {
+		t.Fatalf("expected AllThrottled=true and AnyCircuitBroken=true, got %+v", exhausted)
+	}
+	if st := ToStatus(err); status.Code(st) != codes.ResourceExhausted {
+		t.Fatalf("expected ResourceExhausted, got %v", status.Code(st))
+	}
+}
+
+func TestExecuteMediaCircuitBreakerAndThrottled(t *testing.T) {
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 1,
+		Cooldown:      10 * time.Second,
+	})
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	mBig := snap.Models["big"]
+	chain := []*proxydb.Model{mDeep, mBig}
+
+	cbMgr.Report(context.Background(), mDeep.Vendor, mDeep.ID, retryableErr)
+	th := &recordingThrottle{rpmDeny: map[string]bool{"big": true}}
+
+	req := MediaRequest{
+		Chain:          chain,
+		KeyName:        "test-key",
+		UserID:         "user-1",
+		CircuitBreaker: cbMgr,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			t.Fatal("adapter should not be called")
+			return nil, nil
+		},
+		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
+			t.Fatal("call should not be invoked")
+			return llm.TokensUsage{}, nil
+		},
+	}
+
+	_, err := ExecuteMedia(context.Background(), th, req)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var exhausted *ChainExhausted
+	if !errors.As(err, &exhausted) || !exhausted.AllThrottled || !exhausted.AnyCircuitBroken {
+		t.Fatalf("expected AllThrottled=true and AnyCircuitBroken=true, got %+v", exhausted)
+	}
+	if st := ToStatus(err); status.Code(st) != codes.ResourceExhausted {
+		t.Fatalf("expected ResourceExhausted, got %v", status.Code(st))
 	}
 }

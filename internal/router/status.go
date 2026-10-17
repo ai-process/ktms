@@ -27,12 +27,17 @@ var (
 
 // ChainExhausted reports a chain walked to the end without a response.
 type ChainExhausted struct {
-	Last         error  // last vendor error, nil when every model was skipped
-	AllThrottled bool   // every model skipped by a throttle
-	ThrottleKind string // "rpm" | "budget_key" | "budget_user" | spendlimit reasons
+	Last             error  // last vendor error, nil when every model was skipped
+	AllThrottled     bool   // every model skipped by a throttle
+	ThrottleKind     string // "rpm" | "budget_key" | "budget_user" | spendlimit reasons
+	AllCircuitBroken bool   // every model skipped because circuit breaker is open
+	AnyCircuitBroken bool   // observed at least one open circuit in chain; retained for telemetry and tests
 }
 
 func (e *ChainExhausted) Error() string {
+	if e.AllCircuitBroken {
+		return "chain exhausted: circuit_broken: all upstream models temporarily unavailable"
+	}
 	if e.AllThrottled {
 		return "chain exhausted: throttled:" + e.ThrottleKind
 	}
@@ -59,6 +64,9 @@ func ToStatus(err error) error {
 	}
 	var exhausted *ChainExhausted
 	if errors.As(err, &exhausted) {
+		if exhausted.AllCircuitBroken {
+			return status.Error(codes.Unavailable, "vendors_unavailable")
+		}
 		if exhausted.AllThrottled {
 			return throttledStatus(exhausted.ThrottleKind, time.Now())
 		}

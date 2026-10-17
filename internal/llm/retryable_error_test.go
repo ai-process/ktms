@@ -111,7 +111,7 @@ type mockHTTPStatusError struct {
 	code int
 }
 
-func (m mockHTTPStatusError) Error() string        { return fmt.Sprintf("status %d", m.code) }
+func (m mockHTTPStatusError) Error() string       { return fmt.Sprintf("status %d", m.code) }
 func (m mockHTTPStatusError) HTTPStatusCode() int { return m.code }
 
 func TestIsRetryableError_Bedrock(t *testing.T) {
@@ -160,4 +160,23 @@ func TestIsContentFilterError(t *testing.T) {
 	}
 }
 
-
+func TestExtractHTTPStatusCode(t *testing.T) {
+	cases := []struct {
+		err      error
+		wantCode int
+		wantOk   bool
+	}{
+		{nil, 0, false},
+		{errors.New("plain error"), 0, false},
+		{mockHTTPStatusError{code: 429}, 429, true},
+		{mockHTTPStatusError{code: 503}, 503, true},
+		{&openai.Error{StatusCode: 500}, 500, true},
+		{&anthropic.Error{StatusCode: 529}, 529, true},
+	}
+	for _, c := range cases {
+		code, ok := ExtractHTTPStatusCode(c.err)
+		if ok != c.wantOk || code != c.wantCode {
+			t.Errorf("ExtractHTTPStatusCode(%v) = (%d, %v), want (%d, %v)", c.err, code, ok, c.wantCode, c.wantOk)
+		}
+	}
+}

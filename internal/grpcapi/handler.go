@@ -34,13 +34,20 @@ type TextCache interface {
 // ProxyServer implements the data-plane LLMProxyService.
 type ProxyServer struct {
 	pb.UnimplementedLLMProxyServiceServer
-	snapshots     SnapshotProvider
-	throttle      router.Throttle
-	cache         TextCache
-	semantic      SemanticCache
-	guardrails    *guardrails.Guardrails
-	batchStore    BatchStore
-	batchMaxItems int
+	snapshots      SnapshotProvider
+	throttle       router.Throttle
+	circuitBreaker router.CircuitBreaker
+	cache          TextCache
+	semantic       SemanticCache
+	guardrails     *guardrails.Guardrails
+	batchStore     BatchStore
+	batchMaxItems  int
+}
+
+// WithCircuitBreaker configures upstream circuit breaking on the server.
+func (s *ProxyServer) WithCircuitBreaker(cb router.CircuitBreaker) *ProxyServer {
+	s.circuitBreaker = cb
+	return s
 }
 
 // WithCache configures response caching on the server.
@@ -86,7 +93,10 @@ func NewProxyServer(snapshots SnapshotProvider, throttle router.Throttle) *Proxy
 	if throttle == nil {
 		throttle = router.NoopThrottle{}
 	}
-	return &ProxyServer{snapshots: snapshots, throttle: throttle}
+	return &ProxyServer{
+		snapshots: snapshots,
+		throttle:  throttle,
+	}
 }
 
 func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequest) (*pb.GenerateTextResponse, error) {
@@ -126,13 +136,14 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		}
 	}
 	resp, model, err := router.Execute(ctx, s.throttle, router.Request{
-		Chain:      plan.models,
-		KeyName:    id.Name,
-		UserID:     router.UserID(req.GetAttributes(), id.Name),
-		Estimate:   estimateTokens(req),
-		Chat:       chat,
-		Adapter:    func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
-		SoftSchema: registry.SoftSchema,
+		Chain:          plan.models,
+		KeyName:        id.Name,
+		UserID:         router.UserID(req.GetAttributes(), id.Name),
+		Estimate:       estimateTokens(req),
+		Chat:           chat,
+		CircuitBreaker: s.circuitBreaker,
+		Adapter:        func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
+		SoftSchema:     registry.SoftSchema,
 	})
 	if err != nil {
 		return nil, router.ToStatus(err)
@@ -242,13 +253,14 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		streamVendor    string
 	)
 	_, err = router.ExecuteStream(stream.Context(), s.throttle, router.Request{
-		Chain:      plan.models,
-		KeyName:    id.Name,
-		UserID:     router.UserID(inner.GetAttributes(), id.Name),
-		Estimate:   estimateTokens(inner),
-		Chat:       chat,
-		Adapter:    func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
-		SoftSchema: registry.SoftSchema,
+		Chain:          plan.models,
+		KeyName:        id.Name,
+		UserID:         router.UserID(inner.GetAttributes(), id.Name),
+		Estimate:       estimateTokens(inner),
+		Chat:           chat,
+		CircuitBreaker: s.circuitBreaker,
+		Adapter:        func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
+		SoftSchema:     registry.SoftSchema,
 	}, func(m *proxydb.Model, chunk llm.StreamChunk) error {
 		streamModel = m.ID
 		streamVendor = m.Vendor

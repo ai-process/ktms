@@ -97,11 +97,12 @@ func (s *ProxyServer) judgeEffort(ctx context.Context, attrs map[string]string, 
 
 	var out *llm.JudgeResult
 	_, err = router.ExecuteMedia(judgeCtx, s.throttle, router.MediaRequest{
-		Chain:    plan.chain,
-		KeyName:  plan.identity.Name,
-		UserID:   router.UserID(plan.attrs, plan.identity.Name),
-		Estimate: 50,
-		Adapter:  plan.adapter,
+		Chain:          plan.chain,
+		KeyName:        plan.identity.Name,
+		UserID:         router.UserID(plan.attrs, plan.identity.Name),
+		Estimate:       50,
+		CircuitBreaker: s.circuitBreaker,
+		Adapter:        plan.adapter,
 		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			judge, ok := adapter.(llm.Judge)
 			if !ok {

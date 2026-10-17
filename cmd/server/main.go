@@ -17,6 +17,7 @@ import (
 	"github.com/ai-process/llm-proxy/internal/apikeys"
 	"github.com/ai-process/llm-proxy/internal/batch"
 	"github.com/ai-process/llm-proxy/internal/cache"
+	"github.com/ai-process/llm-proxy/internal/circuitbreaker"
 	"github.com/ai-process/llm-proxy/internal/config"
 	"github.com/ai-process/llm-proxy/internal/crypto"
 	"github.com/ai-process/llm-proxy/internal/grpcapi"
@@ -207,7 +208,12 @@ func main() {
 	if nodeMgr != nil {
 		adminSrv.SetNodeManager(nodeMgr)
 	}
-	proxySrv := grpcapi.NewProxyServer(loader, limiter).WithBatch(db, cfg.BatchMaxItems)
+	cb := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       cfg.CircuitBreakerEnabled,
+		FailThreshold: cfg.CircuitBreakerFailThreshold,
+		Cooldown:      cfg.CircuitBreakerCooldown,
+	})
+	proxySrv := grpcapi.NewProxyServer(loader, limiter).WithCircuitBreaker(cb).WithBatch(db, cfg.BatchMaxItems)
 	if cfg.CacheEnabled && redisClient != nil {
 		c := cache.New(redisClient, keyring, cfg.CacheTTL, cfg.CacheMaxBytes, cfg.RedisKeyPrefix)
 		proxySrv.WithCache(c)
