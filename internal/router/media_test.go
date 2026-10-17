@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ai-process/llm-proxy/internal/audio"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/registry"
@@ -51,6 +52,30 @@ func TestExecuteMediaAdvancesOnRetryableFailure(t *testing.T) {
 	}
 	if m.ID != "openai-tts" {
 		t.Errorf("served by %q, want the second model", m.ID)
+	}
+	if len(tried) != 2 {
+		t.Errorf("tried %v, want both models", tried)
+	}
+}
+
+// When ffmpeg is missing on the host or slim container, Gemini TTS must not fail
+// the entire chain if an alternative model (e.g. OpenAI TTS) is available.
+func TestExecuteMediaAdvancesOnFFmpegMissing(t *testing.T) {
+	var tried []string
+	m, err := ExecuteMedia(context.Background(), noThrottle{}, mediaReq(
+		mediaModels("gemini-tts", "openai-tts"),
+		func(m *proxydb.Model, _ llm.ClientAdapter) (llm.TokensUsage, error) {
+			tried = append(tried, m.ID)
+			if m.ID == "gemini-tts" {
+				return llm.TokensUsage{}, audio.ErrFFmpegMissing
+			}
+			return llm.TokensUsage{Output: 5}, nil
+		}))
+	if err != nil {
+		t.Fatalf("ExecuteMedia: %v", err)
+	}
+	if m.ID != "openai-tts" {
+		t.Errorf("served by %q, want second model", m.ID)
 	}
 	if len(tried) != 2 {
 		t.Errorf("tried %v, want both models", tried)

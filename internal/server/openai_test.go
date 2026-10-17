@@ -18,6 +18,7 @@ import (
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 	"github.com/ai-process/llm-proxy/internal/apikeys"
+	"github.com/ai-process/llm-proxy/internal/audio"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/router"
 )
@@ -35,6 +36,7 @@ type fakeProxy struct {
 	streamChunks   []*pb.GenerateTextChunk
 	emptyStream    bool
 	media          map[string]string
+	speechErr      error
 	judgeReq       *pb.JudgeRequest
 	embedReq       *pb.GetEmbeddingsRequest
 	embedResp      *pb.GetEmbeddingsResponse
@@ -106,6 +108,9 @@ func (f *fakeProxy) ListModels(context.Context, *pb.ListModelsRequest) (*pb.List
 }
 
 func (f *fakeProxy) SynthesizeSpeech(_ context.Context, r *pb.SynthesizeSpeechRequest) (*pb.SynthesizeSpeechResponse, error) {
+	if f.speechErr != nil {
+		return nil, f.speechErr
+	}
 	f.media = map[string]string{"text": r.Text, "language": r.Language, "override": r.ModelOverride}
 	return &pb.SynthesizeSpeechResponse{Audio: []byte("OggS"), MimeType: "audio/ogg", ResolvedModel: "tts1"}, nil
 }
@@ -462,6 +467,7 @@ func TestErrorMapping(t *testing.T) {
 		{status.Error(codes.Unavailable, "vendors_unavailable"), 503, "vendors_unavailable"},
 		{status.Error(codes.FailedPrecondition, "output_truncated"), 400, "output_truncated"},
 		{status.Error(codes.InvalidArgument, "guardrail_violation: PII detected (email)"), 400, "guardrail_violation"},
+		{status.Error(codes.Unimplemented, "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/llm-proxy:audio' container image"), 501, "ffmpeg_missing"},
 		{status.Error(codes.Internal, "vendor_error"), 502, "vendor_error"},
 		{status.Error(codes.Internal, "pq: password for user x"), 500, ""},
 	}
@@ -634,6 +640,29 @@ func TestSpeechAndImage(t *testing.T) {
 	if rec := do(h, "POST", "/v1/audio/speech", key, `{"model":"auto"}`); rec.Code != 400 {
 		t.Errorf("speech without input = %d", rec.Code)
 	}
+
+	fp.speechErr = router.ToStatus(audio.ErrFFmpegMissing)
+	rec = do(h, "POST", "/v1/audio/speech", key, `{"model":"gemini-flash","input":"speak this"}`)
+	if rec.Code != http.StatusNotImplemented {
+		t.Errorf("speech without ffmpeg code = %d, want 501", rec.Code)
+	}
+	var errResp struct {
+		Error struct {
+			Message string `json:"message"`
+			Code    string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("unmarshal error resp: %v", err)
+	}
+	wantMsg := "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/llm-proxy:audio' container image"
+	if errResp.Error.Message != wantMsg {
+		t.Errorf("speech error message = %q, want %q", errResp.Error.Message, wantMsg)
+	}
+	if errResp.Error.Code != "ffmpeg_missing" {
+		t.Errorf("speech error code = %q, want ffmpeg_missing", errResp.Error.Code)
+	}
+	fp.speechErr = nil
 
 	rec = do(h, "POST", "/v1/images/generations", key, `{"prompt":"a cat","n":1}`)
 	var img struct {

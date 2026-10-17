@@ -11,11 +11,11 @@ import (
 func TestLuhnAlgorithm(t *testing.T) {
 	// Valid card numbers
 	validCards := []string{
-		"4532015112830366",       // Visa
-		"5425233430109903",       // Mastercard
-		"2200241234567893",       // Mir
-		"4532-0151-1283-0366",    // Visa formatted
-		"5425 2334 3010 9903",    // Mastercard formatted
+		"4532015112830366",    // Visa
+		"5425233430109903",    // Mastercard
+		"2200241234567893",    // Mir
+		"4532-0151-1283-0366", // Visa formatted
+		"5425 2334 3010 9903", // Mastercard formatted
 	}
 	for _, card := range validCards {
 		if !IsValidLuhn(card) {
@@ -25,9 +25,9 @@ func TestLuhnAlgorithm(t *testing.T) {
 
 	// Invalid card numbers
 	invalidCards := []string{
-		"4532015112830367",       // Last digit mutated
-		"1234567812345679",       // Invalid checksum
-		"12345",                  // Too short
+		"4532015112830367", // Last digit mutated
+		"1234567812345679", // Invalid checksum
+		"12345",            // Too short
 		"abcdefghijklmnop",
 	}
 	for _, card := range invalidCards {

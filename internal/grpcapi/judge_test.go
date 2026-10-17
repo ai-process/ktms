@@ -569,4 +569,3 @@ func TestJudgeGuardrailsRedact(t *testing.T) {
 		t.Errorf("vendor expected [EMAIL_1] in state: %s", body)
 	}
 }
-

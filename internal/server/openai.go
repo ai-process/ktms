@@ -1914,6 +1914,8 @@ func writeAPIError(w http.ResponseWriter, err error) {
 		errCode = msg
 	} else if strings.HasPrefix(msg, "guardrail_violation") {
 		errCode = "guardrail_violation"
+	} else if strings.HasPrefix(msg, "ffmpeg_missing") {
+		errCode = "ffmpeg_missing"
 	}
 	if st.Code() == codes.Internal && errCode == nil {
 		msg = "internal error"

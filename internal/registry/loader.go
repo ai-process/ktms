@@ -17,11 +17,11 @@ import (
 // Loader keeps the active Snapshot fresh: it polls config_state and rebuilds
 // on version change. A failed rebuild keeps the last good snapshot serving.
 type Loader struct {
-	db      *proxydb.DB
-	keyring *crypto.Keyring
-	tracker llm.UsageTracker
+	db       *proxydb.DB
+	keyring  *crypto.Keyring
+	tracker  llm.UsageTracker
 	nodePool NodePoolResolver
-	current atomic.Pointer[Snapshot]
+	current  atomic.Pointer[Snapshot]
 	// refreshCh coalesces manual refresh requests from admin mutations.
 	refreshCh chan struct{}
 }

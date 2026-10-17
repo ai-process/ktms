@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/ai-process/llm-proxy/internal/audio"
 	"github.com/ai-process/llm-proxy/internal/circuitbreaker"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
@@ -309,17 +310,24 @@ func TestExecuteAllThrottled(t *testing.T) {
 
 func TestToStatusMapping(t *testing.T) {
 	cases := map[error]codes.Code{
-		ErrNotConfigured:                       codes.FailedPrecondition,
-		ErrNoCapableModel:                      codes.FailedPrecondition,
-		ErrNoVendorKey:                         codes.FailedPrecondition,
-		llm.ErrOutputTruncated:                 codes.FailedPrecondition,
-		&ChainExhausted{Last: retryableErr}:    codes.Unavailable,
-		&ChainExhausted{Last: errors.New("x")}: codes.Internal,
+		ErrNotConfigured:       codes.FailedPrecondition,
+		ErrNoCapableModel:      codes.FailedPrecondition,
+		ErrNoVendorKey:         codes.FailedPrecondition,
+		llm.ErrOutputTruncated: codes.FailedPrecondition,
+		audio.ErrFFmpegMissing: codes.Unimplemented,
+		&ChainExhausted{Last: audio.ErrFFmpegMissing}: codes.Unimplemented,
+		&ChainExhausted{Last: retryableErr}:           codes.Unavailable,
+		&ChainExhausted{Last: errors.New("x")}:        codes.Internal,
 	}
 	for err, want := range cases {
 		if got := status.Code(ToStatus(err)); got != want {
 			t.Errorf("ToStatus(%v) = %v, want %v", err, got, want)
 		}
+	}
+	st := status.Convert(ToStatus(audio.ErrFFmpegMissing))
+	wantMsg := "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/llm-proxy:audio' container image"
+	if st.Message() != wantMsg {
+		t.Errorf("ToStatus(ErrFFmpegMissing) message = %q, want %q", st.Message(), wantMsg)
 	}
 	if ToStatus(nil) != nil {
 		t.Error("ToStatus(nil) != nil")

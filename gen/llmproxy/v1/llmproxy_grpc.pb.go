@@ -49,6 +49,7 @@ const (
 // "batch not configured".
 // INVALID_ARGUMENT: "guardrail_violation" (PII or prompt injection detected),
 // "bad_request: <message>" (validation errors, empty batch, duplicate custom_id).
+// UNIMPLEMENTED: "ffmpeg_missing: <hint>" (Gemini speech synthesis without ffmpeg).
 // INTERNAL "vendor_error" = terminal vendor failure.
 type LLMProxyServiceClient interface {
 	GenerateText(ctx context.Context, in *GenerateTextRequest, opts ...grpc.CallOption) (*GenerateTextResponse, error)
@@ -248,6 +249,7 @@ func (c *lLMProxyServiceClient) CancelBatch(ctx context.Context, in *CancelBatch
 // "batch not configured".
 // INVALID_ARGUMENT: "guardrail_violation" (PII or prompt injection detected),
 // "bad_request: <message>" (validation errors, empty batch, duplicate custom_id).
+// UNIMPLEMENTED: "ffmpeg_missing: <hint>" (Gemini speech synthesis without ffmpeg).
 // INTERNAL "vendor_error" = terminal vendor failure.
 type LLMProxyServiceServer interface {
 	GenerateText(context.Context, *GenerateTextRequest) (*GenerateTextResponse, error)
