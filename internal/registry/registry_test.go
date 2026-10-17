@@ -492,7 +492,6 @@ func TestBuildAdapter_Bedrock(t *testing.T) {
 	}
 }
 
-
 func TestSnapshotClientModelsIncludesLocalWithoutKey(t *testing.T) {
 	snap := &Snapshot{
 		Models: map[string]*proxydb.Model{

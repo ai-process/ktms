@@ -23,7 +23,6 @@ const judgeAutoTimeout = 250 * time.Millisecond
 type routePlan struct {
 	effort           string
 	models           []*proxydb.Model
-	rule             *proxydb.Rule
 	ruleName         string
 	routeMode        string
 	placement        string
@@ -259,7 +258,6 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 	return &routePlan{
 		effort:           effort,
 		models:           models,
-		rule:             rule,
 		ruleName:         rule.Name,
 		routeMode:        routeMode,
 		placement:        placement,

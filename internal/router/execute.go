@@ -49,6 +49,7 @@ type CircuitBreaker interface {
 	Allow(vendor, model string) bool
 	Report(ctx context.Context, vendor, model string, err error)
 	Release(vendor, model string)
+	IsClosed(vendor, model string) bool
 }
 
 // Reservation is the throttle's bookkeeping handle for one admitted call.
@@ -125,7 +126,7 @@ type Request struct {
 }
 
 const (
-	defaultShadowTimeout  = 30 * time.Second
+	defaultShadowTimeout = 30 * time.Second
 	maxConcurrentShadows = 512
 )
 
@@ -153,16 +154,6 @@ func (r *Request) dispatchShadow(ctx context.Context, th Throttle) {
 		return
 	}
 	shadowModel := r.ShadowModel
-	if th != nil {
-		if !th.AllowRPM(ctx, r.KeyName, r.UserID, shadowModel) {
-			observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "throttled").Inc()
-			return
-		}
-		if tripped := th.CheckDailyBudget(ctx, shadowModel, r.KeyName, r.UserID); tripped != "" {
-			observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "throttled").Inc()
-			return
-		}
-	}
 
 	select {
 	case shadowSem <- struct{}{}:
@@ -187,17 +178,30 @@ func (r *Request) dispatchShadow(ctx context.Context, th Throttle) {
 		shadowCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), defaultShadowTimeout)
 		defer cancel()
 
-		if cb != nil && !cb.Allow(shadowModel.Vendor, shadowModel.ID) {
-			observability.CircuitBreakerRejectionsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID).Inc()
+		if cb != nil && !cb.IsClosed(shadowModel.Vendor, shadowModel.ID) {
+			observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "circuit_open").Inc()
 			return
 		}
-		if cb != nil {
-			// Release any half-open probe lock so shadow traffic never steals probes from real requests.
-			cb.Release(shadowModel.Vendor, shadowModel.ID)
+
+		var res *Reservation
+		if th != nil {
+			if !th.AllowRPM(shadowCtx, r.KeyName, r.UserID, shadowModel) {
+				observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "throttled").Inc()
+				return
+			}
+			var tripped string
+			res, tripped = th.Reserve(shadowCtx, shadowModel, r.KeyName, r.UserID, r.Estimate, r.maxOutput())
+			if tripped != "" {
+				observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "budget_exceeded").Inc()
+				return
+			}
 		}
 
 		adapter, err := adapterFn(shadowModel)
 		if err != nil {
+			if th != nil && res != nil {
+				th.Settle(res, llm.TokensUsage{})
+			}
 			observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "error").Inc()
 			log.Warn().Err(err).Str("shadow_model", shadowModel.ID).Msg("shadow adapter creation failed")
 			return
@@ -213,7 +217,15 @@ func (r *Request) dispatchShadow(ctx context.Context, th Throttle) {
 			chat.SetMeta(meta)
 		}
 
-		_, callErr := adapter.GenerateText(shadowCtx, chat)
+		resp, callErr := adapter.GenerateText(shadowCtx, chat)
+		if th != nil && res != nil {
+			var usage llm.TokensUsage
+			if callErr == nil && resp != nil {
+				usage = resp.Usage
+			}
+			th.Settle(res, usage)
+		}
+
 		status := "success"
 		if callErr != nil {
 			status = "error"

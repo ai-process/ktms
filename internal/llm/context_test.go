@@ -99,5 +99,3 @@ func TestChatContext_Clone(t *testing.T) {
 		t.Errorf("clone messages len = %d, want 2", len(clone.GetMessages()))
 	}
 }
-
-

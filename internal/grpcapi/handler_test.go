@@ -1082,6 +1082,3 @@ func TestGenerateTextStream_ShadowRouting(t *testing.T) {
 		t.Fatalf("expected shadow event with is_shadow=true, got: %+v", events)
 	}
 }
-
-
-

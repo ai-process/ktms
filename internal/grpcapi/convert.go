@@ -51,14 +51,14 @@ func effortsToProto(in []string) []pb.Effort {
 
 func modelFromProto(m *pb.ModelSpec) *proxydb.Model {
 	return &proxydb.Model{
-		ID:                  m.GetId(),
-		Vendor:              m.GetVendor(),
-		Endpoint:            m.GetEndpoint(),
-		Efforts:             effortsToStrings(m.GetEfforts()),
-		Capabilities:        m.GetCapabilities(),
-		RPM:                 m.GetRpm(),
-		PriceInPerMtok:      m.GetPriceInPerMtok(),
-		PriceOutPerMtok:     m.GetPriceOutPerMtok(),
+		ID:                   m.GetId(),
+		Vendor:               m.GetVendor(),
+		Endpoint:             m.GetEndpoint(),
+		Efforts:              effortsToStrings(m.GetEfforts()),
+		Capabilities:         m.GetCapabilities(),
+		RPM:                  m.GetRpm(),
+		PriceInPerMtok:       m.GetPriceInPerMtok(),
+		PriceOutPerMtok:      m.GetPriceOutPerMtok(),
 		PriceInPeakPerMtok:   m.GetPriceInPeakPerMtok(),
 		PriceOutPeakPerMtok:  m.GetPriceOutPeakPerMtok(),
 		PriceInBatchPerMtok:  m.GetPriceInBatchPerMtok(),

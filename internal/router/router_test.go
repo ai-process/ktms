@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -213,6 +214,7 @@ func fail(err error) func() (*llm.Response, error) {
 // recordingThrottle logs reserve/settle pairs.
 type recordingThrottle struct {
 	NoopThrottle
+	mu       sync.Mutex
 	rpmDeny  map[string]bool
 	settled  []llm.TokensUsage
 	reserves int
@@ -223,11 +225,15 @@ func (r *recordingThrottle) AllowRPM(_ context.Context, _, _ string, m *proxydb.
 }
 
 func (r *recordingThrottle) Reserve(context.Context, *proxydb.Model, string, string, int64, int64) (*Reservation, string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.reserves++
 	return &Reservation{Estimate: 1}, ""
 }
 
 func (r *recordingThrottle) Settle(_ *Reservation, usage llm.TokensUsage) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.settled = append(r.settled, usage)
 }
 
@@ -1471,3 +1477,118 @@ func TestExecuteStream_ShadowRouting(t *testing.T) {
 	}
 }
 
+func TestExecute_ShadowCircuitOpenSkipped(t *testing.T) {
+	mPrimary := model("primary-m", "openai")
+	mShadow := model("shadow-m", "deepseek")
+
+	primary := &fakeAdapter{responses: []func() (*llm.Response, error){ok("primary output")}}
+	shadow := &shadowCaptureAdapter{
+		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){ok("shadow output")}},
+		called:      make(chan struct{}, 1),
+	}
+
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{Enabled: true, FailThreshold: 1, Cooldown: 10 * time.Minute})
+	cbMgr.Report(context.Background(), mShadow.Vendor, mShadow.ID, retryableErr)
+
+	if cbMgr.IsClosed(mShadow.Vendor, mShadow.ID) {
+		t.Fatal("expected shadow breaker to be open")
+	}
+
+	req := Request{
+		Chain:            []*proxydb.Model{mPrimary},
+		KeyName:          "test-key",
+		UserID:           "user-1",
+		Chat:             llm.NewChatContext(),
+		ShadowModel:      mShadow,
+		ShadowPercentage: 100,
+		CircuitBreaker:   cbMgr,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "shadow-m" {
+				return shadow, nil
+			}
+			return primary, nil
+		},
+	}
+
+	_, _, err := Execute(context.Background(), NoopThrottle{}, req)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+
+	select {
+	case <-shadow.called:
+		t.Fatal("shadow should not be called when circuit breaker is open")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestExecute_ShadowSpendSettled(t *testing.T) {
+	mPrimary := model("primary-m", "openai")
+	mShadow := model("shadow-m", "deepseek")
+
+	primaryResp := &llm.Response{
+		Choices: []*llm.Message{{Text: "primary", Type: llm.MessageTypeBot}},
+		Usage:   llm.TokensUsage{Input: 10, Output: 20},
+	}
+	shadowResp := &llm.Response{
+		Choices: []*llm.Message{{Text: "shadow", Type: llm.MessageTypeBot}},
+		Usage:   llm.TokensUsage{Input: 15, Output: 25},
+	}
+
+	primary := &fakeAdapter{responses: []func() (*llm.Response, error){func() (*llm.Response, error) { return primaryResp, nil }}}
+	shadow := &shadowCaptureAdapter{
+		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){func() (*llm.Response, error) { return shadowResp, nil }}},
+		called:      make(chan struct{}, 1),
+		done:        make(chan struct{}, 1),
+	}
+
+	th := &recordingThrottle{}
+
+	req := Request{
+		Chain:            []*proxydb.Model{mPrimary},
+		KeyName:          "test-key",
+		UserID:           "user-1",
+		Chat:             llm.NewChatContext(),
+		ShadowModel:      mShadow,
+		ShadowPercentage: 100,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "shadow-m" {
+				return shadow, nil
+			}
+			return primary, nil
+		},
+	}
+
+	_, _, err := Execute(context.Background(), th, req)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+
+	select {
+	case <-shadow.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for shadow completion")
+	}
+
+	th.mu.Lock()
+	reserves := th.reserves
+	settledCount := len(th.settled)
+	settled := append([]llm.TokensUsage{}, th.settled...)
+	th.mu.Unlock()
+
+	if reserves != 2 {
+		t.Fatalf("reserves = %d, want 2", reserves)
+	}
+	if settledCount != 2 {
+		t.Fatalf("settled count = %d, want 2", settledCount)
+	}
+	foundShadowUsage := false
+	for _, u := range settled {
+		if u.Input == 15 && u.Output == 25 {
+			foundShadowUsage = true
+		}
+	}
+	if !foundShadowUsage {
+		t.Fatalf("shadow usage (15, 25) not found in settled: %+v", settled)
+	}
+}

@@ -437,3 +437,15 @@ func TestConcurrentBreakerAccess(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestManagerIsClosed(t *testing.T) {
+	cfg := Config{Enabled: true, FailThreshold: 1, Cooldown: 10 * time.Second}
+	mgr := NewManager(cfg)
+	if !mgr.IsClosed("openai", "gpt-4o") {
+		t.Fatal("expected IsClosed to be true initially")
+	}
+	mgr.Report(context.Background(), "openai", "gpt-4o", customHTTPStatusError{status: 500})
+	if mgr.IsClosed("openai", "gpt-4o") {
+		t.Fatal("expected IsClosed to be false after error")
+	}
+}
