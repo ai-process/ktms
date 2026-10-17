@@ -104,7 +104,7 @@ func (s *ProxyServer) judgeEffort(ctx context.Context, attrs map[string]string, 
 		UserID:          router.UserID(plan.attrs, plan.identity.Name),
 		Estimate:        50,
 		CircuitBreaker:  s.circuitBreaker,
-		UpstreamTimeout: s.effectiveUpstreamTimeout(nil),
+		UpstreamTimeout: s.upstreamTimeout,
 		Adapter:         plan.adapter,
 		Call: func(callCtx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			judge, ok := adapter.(llm.Judge)

@@ -74,7 +74,7 @@ func (s *ProxyServer) GetEmbeddings(ctx context.Context, req *pb.GetEmbeddingsRe
 		UserID:          router.UserID(plan.attrs, plan.identity.Name),
 		Estimate:        int64(totalRunes/4 + 1),
 		CircuitBreaker:  s.circuitBreaker,
-		UpstreamTimeout: s.effectiveUpstreamTimeout(req.GetAttributes()),
+		UpstreamTimeout: s.upstreamTimeout,
 		Adapter:         plan.adapter,
 		Call: func(callCtx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			embAdapter, ok := adapter.(llm.EmbeddingAdapter)

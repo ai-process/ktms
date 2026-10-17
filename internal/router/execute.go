@@ -503,76 +503,92 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			fullText       strings.Builder
 		)
 
-		streamCtx := ctx
-		var stopWatchdog func()
-		var touchWatchdog func()
-		if r.UpstreamTimeout > 0 {
-			var cancel context.CancelCauseFunc
-			streamCtx, cancel = context.WithCancelCause(ctx)
-			var mu sync.Mutex
-			timer := time.AfterFunc(r.UpstreamTimeout, func() {
-				cancel(circuitbreaker.ErrUpstreamTimeout)
-			})
-			touchWatchdog = func() {
-				mu.Lock()
-				defer mu.Unlock()
-				if timer != nil {
-					timer.Reset(r.UpstreamTimeout)
+		streamErr := func() error {
+			streamCtx := ctx
+			var stopWatchdog func()
+			var pauseWatchdog func()
+			var resumeWatchdog func()
+			if r.UpstreamTimeout > 0 {
+				var cancel context.CancelCauseFunc
+				streamCtx, cancel = context.WithCancelCause(ctx)
+				var mu sync.Mutex
+				timer := time.AfterFunc(r.UpstreamTimeout, func() {
+					cancel(circuitbreaker.ErrUpstreamTimeout)
+				})
+				pauseWatchdog = func() {
+					mu.Lock()
+					defer mu.Unlock()
+					if timer != nil {
+						timer.Stop()
+					}
 				}
-			}
-			stopWatchdog = func() {
-				mu.Lock()
-				defer mu.Unlock()
-				if timer != nil {
-					timer.Stop()
-					timer = nil
+				resumeWatchdog = func() {
+					mu.Lock()
+					defer mu.Unlock()
+					if timer != nil {
+						timer.Reset(r.UpstreamTimeout)
+					}
 				}
-				cancel(nil)
+				stopWatchdog = func() {
+					mu.Lock()
+					defer mu.Unlock()
+					if timer != nil {
+						timer.Stop()
+						timer = nil
+					}
+					cancel(nil)
+				}
+				defer stopWatchdog()
 			}
-			defer stopWatchdog()
-		}
 
-		if r.Chat != nil {
-			r.Chat.WithContext(streamCtx)
-		}
+			if r.Chat != nil {
+				r.Chat.WithContext(streamCtx)
+				defer r.Chat.WithContext(ctx)
+			}
 
-		streamStart := time.Now()
-		err = streamAdapter.GenerateTextStream(streamCtx, r.Chat, func(chunk llm.StreamChunk) error {
-			if touchWatchdog != nil {
-				touchWatchdog()
-			}
-			if !firstChunkSent {
-				firstChunkSent = true
-				observability.TimeToFirstToken.WithLabelValues(m.Vendor, m.ID).Observe(time.Since(streamStart).Seconds())
-			}
-			if soft {
-				bufferedChunks = append(bufferedChunks, chunk)
-				fullText.WriteString(chunk.Delta)
+			streamStart := time.Now()
+			callErr := streamAdapter.GenerateTextStream(streamCtx, r.Chat, func(chunk llm.StreamChunk) error {
+				if !firstChunkSent {
+					firstChunkSent = true
+					observability.TimeToFirstToken.WithLabelValues(m.Vendor, m.ID).Observe(time.Since(streamStart).Seconds())
+				}
+				if soft {
+					bufferedChunks = append(bufferedChunks, chunk)
+					fullText.WriteString(chunk.Delta)
+					if chunk.Usage != nil {
+						spent.Input = chunk.Usage.Input
+						spent.Output = chunk.Usage.Output
+					}
+					if resumeWatchdog != nil {
+						resumeWatchdog()
+					}
+					return nil
+				}
+				outChars += len([]rune(chunk.Delta))
+				for _, tc := range chunk.ToolCallChunks {
+					outChars += len([]rune(tc.ArgumentsDelta)) + len([]rune(tc.Name))
+				}
 				if chunk.Usage != nil {
 					spent.Input = chunk.Usage.Input
 					spent.Output = chunk.Usage.Output
 				}
-				return nil
+				if pauseWatchdog != nil {
+					pauseWatchdog()
+				}
+				chunkErr := onChunk(m, chunk)
+				if chunkErr == nil && resumeWatchdog != nil {
+					resumeWatchdog()
+				}
+				return chunkErr
+			})
+			if callErr != nil && r.UpstreamTimeout > 0 && errors.Is(context.Cause(streamCtx), circuitbreaker.ErrUpstreamTimeout) {
+				if !llm.IsCapacityExhausted(callErr) {
+					callErr = circuitbreaker.NewUpstreamTimeoutError(r.UpstreamTimeout, callErr)
+				}
 			}
-			outChars += len([]rune(chunk.Delta))
-			for _, tc := range chunk.ToolCallChunks {
-				outChars += len([]rune(tc.ArgumentsDelta)) + len([]rune(tc.Name))
-			}
-			if chunk.Usage != nil {
-				spent.Input = chunk.Usage.Input
-				spent.Output = chunk.Usage.Output
-			}
-			return onChunk(m, chunk)
-		})
-		if stopWatchdog != nil {
-			stopWatchdog()
-		}
-		if r.Chat != nil {
-			r.Chat.WithContext(ctx)
-		}
-		if r.UpstreamTimeout > 0 && errors.Is(context.Cause(streamCtx), circuitbreaker.ErrUpstreamTimeout) {
-			err = circuitbreaker.NewUpstreamTimeoutError(r.UpstreamTimeout, err)
-		}
+			return callErr
+		}()
+		err = streamErr
 
 		if soft && err == nil {
 			if checkErr := llm.CheckResponseSchema(fullText.String(), schema); checkErr != nil {
@@ -737,26 +753,26 @@ func callWithRetries(ctx context.Context, adapter llm.ClientAdapter, chat *llm.C
 			}
 		}
 
-		attemptCtx := ctx
-		var cancel context.CancelFunc
-		if upstreamTimeout > 0 {
-			attemptCtx, cancel = context.WithTimeoutCause(ctx, upstreamTimeout, circuitbreaker.ErrUpstreamTimeout)
-		}
-		if chat != nil {
-			chat.WithContext(attemptCtx)
-		}
+		resp, err := func() (*llm.Response, error) {
+			attemptCtx := ctx
+			if upstreamTimeout > 0 {
+				var cancel context.CancelFunc
+				attemptCtx, cancel = context.WithTimeoutCause(ctx, upstreamTimeout, circuitbreaker.ErrUpstreamTimeout)
+				defer cancel()
+			}
+			if chat != nil {
+				chat.WithContext(attemptCtx)
+				defer chat.WithContext(ctx)
+			}
 
-		resp, err := adapter.GenerateText(attemptCtx, chat)
-		if cancel != nil {
-			cancel()
-		}
-		if chat != nil {
-			chat.WithContext(ctx)
-		}
-
-		if upstreamTimeout > 0 && errors.Is(context.Cause(attemptCtx), circuitbreaker.ErrUpstreamTimeout) {
-			err = circuitbreaker.NewUpstreamTimeoutError(upstreamTimeout, err)
-		}
+			r, callErr := adapter.GenerateText(attemptCtx, chat)
+			if callErr != nil && upstreamTimeout > 0 && errors.Is(context.Cause(attemptCtx), circuitbreaker.ErrUpstreamTimeout) {
+				if !llm.IsCapacityExhausted(callErr) {
+					callErr = circuitbreaker.NewUpstreamTimeoutError(upstreamTimeout, callErr)
+				}
+			}
+			return r, callErr
+		}()
 
 		if err == nil {
 			return resp, nil
@@ -849,18 +865,21 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 			continue
 		}
 
-		attemptCtx := ctx
-		var cancel context.CancelFunc
-		if r.UpstreamTimeout > 0 {
-			attemptCtx, cancel = context.WithTimeoutCause(ctx, r.UpstreamTimeout, circuitbreaker.ErrUpstreamTimeout)
-		}
-		spent, err := r.Call(attemptCtx, m, adapter)
-		if cancel != nil {
-			cancel()
-		}
-		if r.UpstreamTimeout > 0 && errors.Is(context.Cause(attemptCtx), circuitbreaker.ErrUpstreamTimeout) {
-			err = circuitbreaker.NewUpstreamTimeoutError(r.UpstreamTimeout, err)
-		}
+		spent, err := func() (llm.TokensUsage, error) {
+			attemptCtx := ctx
+			if r.UpstreamTimeout > 0 {
+				var cancel context.CancelFunc
+				attemptCtx, cancel = context.WithTimeoutCause(ctx, r.UpstreamTimeout, circuitbreaker.ErrUpstreamTimeout)
+				defer cancel()
+			}
+			sp, callErr := r.Call(attemptCtx, m, adapter)
+			if callErr != nil && r.UpstreamTimeout > 0 && errors.Is(context.Cause(attemptCtx), circuitbreaker.ErrUpstreamTimeout) {
+				if !llm.IsCapacityExhausted(callErr) {
+					callErr = circuitbreaker.NewUpstreamTimeoutError(r.UpstreamTimeout, callErr)
+				}
+			}
+			return sp, callErr
+		}()
 		th.Settle(res, spent)
 		if r.CircuitBreaker != nil {
 			r.CircuitBreaker.Report(ctx, m.Vendor, m.ID, err)

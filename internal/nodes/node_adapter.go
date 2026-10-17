@@ -426,6 +426,9 @@ func (pa *PoolAdapter) acquireSlot(ctx context.Context, userID string, estTokens
 
 		select {
 		case <-ctx.Done():
+			if errors.Is(context.Cause(ctx), circuitbreaker.ErrUpstreamTimeout) {
+				return nil, "", ErrNodeSlotExhausted
+			}
 			return nil, "", ctx.Err()
 		case <-time.After(sleepDur):
 		}

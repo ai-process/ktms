@@ -73,6 +73,9 @@ func IsTrippingError(ctx context.Context, err error) bool {
 	if IsClientCancellation(ctx, err) {
 		return false
 	}
+	if llm.IsCapacityExhausted(err) {
+		return false
+	}
 	if errors.Is(err, ErrUpstreamTimeout) {
 		return true
 	}

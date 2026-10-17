@@ -58,17 +58,6 @@ func (s *ProxyServer) WithUpstreamTimeout(d time.Duration) *ProxyServer {
 	return s
 }
 
-func (s *ProxyServer) effectiveUpstreamTimeout(attrs map[string]string) time.Duration {
-	if attrs != nil {
-		if raw := attrs["upstream_timeout"]; raw != "" {
-			if d, err := time.ParseDuration(raw); err == nil && d > 0 {
-				return d
-			}
-		}
-	}
-	return s.upstreamTimeout
-}
-
 // WithCache configures response caching on the server.
 func (s *ProxyServer) WithCache(c TextCache) *ProxyServer {
 	s.cache = c
@@ -161,7 +150,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		Estimate:         estimateTokens(req),
 		Chat:             chat,
 		CircuitBreaker:   s.circuitBreaker,
-		UpstreamTimeout:  s.effectiveUpstreamTimeout(req.GetAttributes()),
+		UpstreamTimeout:  s.upstreamTimeout,
 		Adapter:          func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
 		SoftSchema:       registry.SoftSchema,
 		ShadowModel:      plan.shadowModel,
@@ -281,7 +270,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		Estimate:         estimateTokens(inner),
 		Chat:             chat,
 		CircuitBreaker:   s.circuitBreaker,
-		UpstreamTimeout:  s.effectiveUpstreamTimeout(inner.GetAttributes()),
+		UpstreamTimeout:  s.upstreamTimeout,
 		Adapter:          func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
 		SoftSchema:       registry.SoftSchema,
 		ShadowModel:      plan.shadowModel,

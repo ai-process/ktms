@@ -34,6 +34,11 @@ func (m mockBedrockError) Error() string       { return m.code }
 func (m mockBedrockError) ErrorCode() string   { return m.code }
 func (m mockBedrockError) HTTPStatusCode() int { return m.status }
 
+type mockCapacityError struct{}
+
+func (mockCapacityError) Error() string           { return "capacity exhausted" }
+func (mockCapacityError) CapacityExhausted() bool { return true }
+
 func TestCircuitBreakerStateTransitions(t *testing.T) {
 	currentTime := time.Now()
 	nowMock := func() time.Time { return currentTime }
@@ -332,6 +337,7 @@ func TestTrippingErrorClassification(t *testing.T) {
 		{"Bedrock ValidationException 400", mockBedrockError{code: "ValidationException", status: 400}, false},
 		{"ErrUpstreamTimeout sentinel", ErrUpstreamTimeout, true},
 		{"UpstreamTimeoutError struct", NewUpstreamTimeoutError(5*time.Second, context.DeadlineExceeded), true},
+		{"Capacity exhausted", mockCapacityError{}, false},
 	}
 
 	for _, tc := range cases {

@@ -1882,3 +1882,199 @@ func TestExecuteClientCancellationDoesNotTripBreakerEvenWithUpstreamTimeoutConfi
 		t.Fatalf("caller cancellation must not trip breaker, got state %v", cbMgr.State(mDeep.Vendor, mDeep.ID))
 	}
 }
+
+func TestExecuteStreamSlowOnChunkDoesNotTripBreaker(t *testing.T) {
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 1,
+		Cooldown:      10 * time.Second,
+	})
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	chain := []*proxydb.Model{mDeep}
+
+	req := Request{
+		Chain:           chain,
+		KeyName:         "test-key",
+		UserID:          "user-1",
+		Chat:            llm.NewChatContext(),
+		CircuitBreaker:  cbMgr,
+		UpstreamTimeout: 40 * time.Millisecond,
+		Adapter: func(_ *proxydb.Model) (llm.ClientAdapter, error) {
+			return &hangingStreamAdapter{chunks: []string{"part1", "part2"}}, nil
+		},
+	}
+
+	var chunks []string
+	m, err := ExecuteStream(context.Background(), NoopThrottle{}, req, func(_ *proxydb.Model, c llm.StreamChunk) error {
+		// Client takes 70ms to process/consume chunk (exceeding 40ms upstream timeout)
+		time.Sleep(70 * time.Millisecond)
+		chunks = append(chunks, c.Delta)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("expected stream with slow client to succeed, got %v", err)
+	}
+	if m == nil || m.ID != "deep" {
+		t.Fatalf("expected model deep, got %v", m)
+	}
+	if strings.Join(chunks, "") != "part1part2" {
+		t.Fatalf("expected 'part1part2', got %v", strings.Join(chunks, ""))
+	}
+	if cbMgr.State(mDeep.Vendor, mDeep.ID) != circuitbreaker.StateClosed {
+		t.Fatalf("expected breaker to remain CLOSED, got %v", cbMgr.State(mDeep.Vendor, mDeep.ID))
+	}
+}
+
+type successNearDeadlineAdapter struct {
+	delay time.Duration
+}
+
+func (s *successNearDeadlineAdapter) SupportsStreaming() bool { return false }
+func (s *successNearDeadlineAdapter) GenerateText(ctx context.Context, _ *llm.ChatContext) (*llm.Response, error) {
+	select {
+	case <-time.After(s.delay):
+		r := &llm.Response{Usage: llm.TokensUsage{Input: 10, Output: 5}}
+		r.AddMessage(&llm.Message{Text: "success response", Type: llm.MessageTypeBot})
+		return r, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func TestExecuteSuccessAtDeadlineReturnsResponse(t *testing.T) {
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	chain := []*proxydb.Model{mDeep}
+
+	// Adapter finishes within 20ms, upstream timeout is 35ms.
+	req := Request{
+		Chain:           chain,
+		KeyName:         "test-key",
+		UserID:          "user-1",
+		Chat:            llm.NewChatContext(),
+		UpstreamTimeout: 35 * time.Millisecond,
+		Adapter: func(_ *proxydb.Model) (llm.ClientAdapter, error) {
+			return &successNearDeadlineAdapter{delay: 20 * time.Millisecond}, nil
+		},
+	}
+
+	resp, m, err := Execute(context.Background(), NoopThrottle{}, req)
+	if err != nil {
+		t.Fatalf("expected successful response, got error %v", err)
+	}
+	if m == nil || m.ID != "deep" {
+		t.Fatalf("expected model deep, got %v", m)
+	}
+	if resp.Choices[0].Text != "success response" {
+		t.Fatalf("expected 'success response', got %v", resp.Choices[0].Text)
+	}
+}
+
+func TestExecuteMediaUpstreamTimeoutFallsBack(t *testing.T) {
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 1,
+		Cooldown:      10 * time.Second,
+	})
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	mBig := snap.Models["big"]
+	chain := []*proxydb.Model{mDeep, mBig}
+
+	req := MediaRequest{
+		Chain:           chain,
+		KeyName:         "test-key",
+		UserID:          "user-1",
+		CircuitBreaker:  cbMgr,
+		UpstreamTimeout: 30 * time.Millisecond,
+		Adapter: func(_ *proxydb.Model) (llm.ClientAdapter, error) {
+			return &fakeAdapter{}, nil
+		},
+		Call: func(ctx context.Context, m *proxydb.Model, _ llm.ClientAdapter) (llm.TokensUsage, error) {
+			if m.ID == "deep" {
+				select {
+				case <-ctx.Done():
+					return llm.TokensUsage{}, ctx.Err()
+				case <-time.After(1 * time.Second):
+					return llm.TokensUsage{Input: 10, Output: 5}, nil
+				}
+			}
+			return llm.TokensUsage{Input: 10, Output: 5}, nil
+		},
+	}
+
+	m, err := ExecuteMedia(context.Background(), NoopThrottle{}, req)
+	if err != nil {
+		t.Fatalf("expected ExecuteMedia fallback to succeed, got %v", err)
+	}
+	if m == nil || m.ID != "big" {
+		t.Fatalf("expected fallback to big, got %v", m)
+	}
+	if cbMgr.State(mDeep.Vendor, mDeep.ID) != circuitbreaker.StateOpen {
+		t.Fatalf("expected deep breaker to be OPEN, got %v", cbMgr.State(mDeep.Vendor, mDeep.ID))
+	}
+	if cbMgr.State(mBig.Vendor, mBig.ID) != circuitbreaker.StateClosed {
+		t.Fatalf("expected big breaker to remain CLOSED, got %v", cbMgr.State(mBig.Vendor, mBig.ID))
+	}
+}
+
+type capacityErrorStub struct{}
+
+func (capacityErrorStub) Error() string           { return "pool saturated" }
+func (capacityErrorStub) SkipToNextModel() bool   { return true }
+func (capacityErrorStub) CapacityExhausted() bool { return true }
+
+type capacityAdapter struct{}
+
+func (capacityAdapter) SupportsStreaming() bool { return false }
+func (capacityAdapter) GenerateText(ctx context.Context, _ *llm.ChatContext) (*llm.Response, error) {
+	select {
+	case <-ctx.Done():
+	case <-time.After(50 * time.Millisecond):
+	}
+	return nil, capacityErrorStub{}
+}
+
+func TestExecuteCapacityExhaustionDoesNotTripBreakerEvenWithTimeout(t *testing.T) {
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 1,
+		Cooldown:      10 * time.Second,
+	})
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	mBig := snap.Models["big"]
+	chain := []*proxydb.Model{mDeep, mBig}
+
+	req := Request{
+		Chain:           chain,
+		KeyName:         "test-key",
+		UserID:          "user-1",
+		Chat:            llm.NewChatContext(),
+		CircuitBreaker:  cbMgr,
+		UpstreamTimeout: 20 * time.Millisecond,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "deep" {
+				return &capacityAdapter{}, nil
+			}
+			return &fakeAdapter{responses: []func() (*llm.Response, error){ok("big recovered")}}, nil
+		},
+	}
+
+	resp, m, err := Execute(context.Background(), NoopThrottle{}, req)
+	if err != nil {
+		t.Fatalf("expected fallback to big, got %v", err)
+	}
+	if m == nil || m.ID != "big" {
+		t.Fatalf("expected model big, got %v", m)
+	}
+	if resp.Choices[0].Text != "big recovered" {
+		t.Fatalf("expected big recovered text, got %v", resp.Choices[0].Text)
+	}
+
+	// Deep model capacity exhaustion must NOT trip the circuit breaker
+	if cbMgr.State(mDeep.Vendor, mDeep.ID) != circuitbreaker.StateClosed {
+		t.Fatalf("capacity exhaustion must not trip breaker, got state %v", cbMgr.State(mDeep.Vendor, mDeep.ID))
+	}
+}

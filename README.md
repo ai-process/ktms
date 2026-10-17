@@ -320,7 +320,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `CIRCUIT_BREAKER_ENABLED` | `true` | Enable upstream Circuit Breaker to fail-fast during provider outages without network IO. |
 | `CIRCUIT_BREAKER_FAIL_THRESHOLD` | `5` | Consecutive upstream failures (5xx, network timeouts) before tripping circuit to Open. |
 | `CIRCUIT_BREAKER_COOLDOWN` | `30s` | Cooldown period before allowing a single probe request in Half-Open state. |
-| `UPSTREAM_REQUEST_TIMEOUT` | `0` (disabled) | Per-attempt upstream timeout bounding vendor calls. Stalls trip the circuit breaker and advance fallback chains. |
+| `UPSTREAM_REQUEST_TIMEOUT` | `0` (disabled) | Upstream vendor timeout (total per-attempt deadline for unary/media; per-chunk idle watchdog for streaming). Stalls trip breaker and advance fallback chains. |
 | `BATCH_POLL_SECONDS` | `60` | Background polling interval in seconds for checking unfinished batch jobs. |
 | `BATCH_MAX_ITEMS` | `10000` | Maximum number of items allowed in a single batch submission. |
 | `RESULTS_RETENTION_DAYS` | `7` | Retention period for completed batch results before cleanup (accepts integer days, e.g. `7`, or Go duration string, e.g. `168h`). |
@@ -959,7 +959,7 @@ purpose travels in free-form attributes, so the proxy knows nothing about your p
 - A throttled model is skipped in the fallback chain; if none of the chain is available the caller gets `RESOURCE_EXHAUSTED`.
 
 **Upstream Circuit Breaker:**
-- Monitors consecutive upstream failures (5xx server errors, network connection drops, connect/TLS handshake timeouts, and per-attempt timeouts via `UPSTREAM_REQUEST_TIMEOUT`) per `(vendor, model)`. Caller client aborts and overall client deadline cancellations do not trip the circuit breaker, but vendor stalls beyond `UPSTREAM_REQUEST_TIMEOUT` reliably trip it and trigger immediate fallback to the next candidate model.
+- Monitors consecutive upstream failures (5xx server errors, network connection drops, connect/TLS handshake timeouts, and upstream timeouts via `UPSTREAM_REQUEST_TIMEOUT`) per `(vendor, model)`. Caller client aborts and overall client deadline cancellations do not trip the circuit breaker, but vendor stalls beyond `UPSTREAM_REQUEST_TIMEOUT` (total duration for unary/media, per-chunk idle watchdog for streaming) reliably trip it and trigger immediate fallback to the next candidate model.
 - When consecutive failures reach `CIRCUIT_BREAKER_FAIL_THRESHOLD` (default 5), the circuit trips to `OPEN`.
 - Requests skip degraded upstream models immediately (<1ms) without network latency.
 - After `CIRCUIT_BREAKER_COOLDOWN` (default 30s), transitions to `HALF_OPEN` and admits a single probe request. Success restores `CLOSED`; failure re-opens the circuit.

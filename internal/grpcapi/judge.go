@@ -91,7 +91,7 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 		UserID:          router.UserID(plan.attrs, plan.identity.Name),
 		Estimate:        judgeEstimate(judgeReq),
 		CircuitBreaker:  s.circuitBreaker,
-		UpstreamTimeout: s.effectiveUpstreamTimeout(req.GetAttributes()),
+		UpstreamTimeout: s.upstreamTimeout,
 		Adapter:         plan.adapter,
 		Call: func(callCtx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			judge, ok := adapter.(llm.Judge)
@@ -495,7 +495,7 @@ func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRoll
 		UserID:          userID,
 		Estimate:        rolloutEstimate(rolloutReq),
 		CircuitBreaker:  s.circuitBreaker,
-		UpstreamTimeout: s.effectiveUpstreamTimeout(req.GetAttributes()),
+		UpstreamTimeout: s.upstreamTimeout,
 		Adapter:         plan.adapter,
 		Call: func(callCtx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			if rj, ok := adapter.(llm.RolloutJudge); ok {

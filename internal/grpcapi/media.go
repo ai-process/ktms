@@ -60,7 +60,7 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 		// billed, which for speech is audio tokens and far larger.
 		Estimate:        int64(len([]rune(speechText))/4 + 1),
 		CircuitBreaker:  s.circuitBreaker,
-		UpstreamTimeout: s.effectiveUpstreamTimeout(req.GetAttributes()),
+		UpstreamTimeout: s.upstreamTimeout,
 		Adapter:         plan.adapter,
 		Call: func(callCtx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			synth, ok := adapter.(llm.SpeechSynthesizer)
@@ -123,7 +123,7 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 		// what makes the budget accounting true.
 		Estimate:        int64(len([]rune(prompt))/4 + 1),
 		CircuitBreaker:  s.circuitBreaker,
-		UpstreamTimeout: s.effectiveUpstreamTimeout(req.GetAttributes()),
+		UpstreamTimeout: s.upstreamTimeout,
 		Adapter:         plan.adapter,
 		Call: func(callCtx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			gen, ok := adapter.(llm.ImageGenerator)
