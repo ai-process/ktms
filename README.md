@@ -949,7 +949,7 @@ purpose travels in free-form attributes, so the proxy knows nothing about your p
 - A throttled model is skipped in the fallback chain; if none of the chain is available the caller gets `RESOURCE_EXHAUSTED`.
 
 **Upstream Circuit Breaker:**
-- Monitors consecutive upstream failures (5xx, network drops, and connection timeouts) per `(vendor, model)`.
+- Monitors consecutive upstream failures (5xx server errors, network connection drops, and connect/TLS handshake timeouts) per `(vendor, model)`. Caller client aborts and overall gRPC deadline timeouts do not trip the circuit breaker.
 - When consecutive failures reach `CIRCUIT_BREAKER_FAIL_THRESHOLD` (default 5), the circuit trips to `OPEN`.
 - Requests skip degraded upstream models immediately (<1ms) without network latency.
 - After `CIRCUIT_BREAKER_COOLDOWN` (default 30s), transitions to `HALF_OPEN` and admits a single probe request. Success restores `CLOSED`; failure re-opens the circuit.
