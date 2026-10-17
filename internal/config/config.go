@@ -76,6 +76,11 @@ type Config struct {
 	// reservation when the call sets no max tokens.
 	SpendDefaultOutputReserve int
 
+	// Upstream vendor Circuit Breaker settings
+	CircuitBreakerEnabled       bool
+	CircuitBreakerFailThreshold int
+	CircuitBreakerCooldown      time.Duration
+
 	MetricsAddr              string
 	OTELServiceName          string
 	OTELExporterOTLPEndpoint string
@@ -156,6 +161,9 @@ func Load() *Config {
 		BudgetGraceMargin:               getFloatEnv("BUDGET_GRACE_MARGIN", 0.05),
 		SpendLimitsFailMode:             getEnv("SPEND_LIMITS_FAIL_MODE", "open"),
 		SpendDefaultOutputReserve:       getIntEnv("SPEND_DEFAULT_OUTPUT_RESERVE_TOKENS", 4096),
+		CircuitBreakerEnabled:           getBoolEnv("CIRCUIT_BREAKER_ENABLED", true),
+		CircuitBreakerFailThreshold:     getIntEnv("CIRCUIT_BREAKER_FAIL_THRESHOLD", 5),
+		CircuitBreakerCooldown:          getDurationEnv("CIRCUIT_BREAKER_COOLDOWN", 30*time.Second),
 		MetricsAddr:                     getEnv("METRICS_ADDR", ":9091"),
 		OTELServiceName:                 getEnv("OTEL_SERVICE_NAME", "llm-proxy"),
 		OTELExporterOTLPEndpoint:        getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
