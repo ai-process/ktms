@@ -126,6 +126,13 @@ func Run(ctx context.Context, pool *pgxpool.Pool, keyring *crypto.Keyring, cfg C
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("lookup api key: %w", err)
+	} else {
+		_, err = tx.Exec(ctx,
+			`UPDATE api_key SET key_lookup = $1, key_hash = $2, scopes = $3 WHERE id = $4`,
+			apiKeyRow.KeyLookup, apiKeyRow.KeyHash, apiKeyRow.Scopes, apiKeyID)
+		if err != nil {
+			return nil, fmt.Errorf("update api key: %w", err)
+		}
 	}
 
 	var seededVendors []string
@@ -243,7 +250,7 @@ func syncVendorKeys(ctx context.Context, conn *pgxpool.Conn, keyring *crypto.Key
 	if cfg.OpenAIKey != "" {
 		ct, v, err := keyring.Encrypt(cfg.OpenAIKey)
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("encrypt openai key: %w", err)
 		}
 		if err := proxydb.SetVendorKey(ctx, tx, &proxydb.VendorKey{
 			ID:            uuid.NewString(),
@@ -252,14 +259,14 @@ func syncVendorKeys(ctx context.Context, conn *pgxpool.Conn, keyring *crypto.Key
 			KeyCiphertext: ct,
 			KeyVersion:    int32(v),
 		}); err != nil {
-			return false, err
+			return false, fmt.Errorf("set openai vendor key: %w", err)
 		}
 		updated = true
 	}
 	if cfg.GeminiKey != "" {
 		ct, v, err := keyring.Encrypt(cfg.GeminiKey)
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("encrypt gemini key: %w", err)
 		}
 		if err := proxydb.SetVendorKey(ctx, tx, &proxydb.VendorKey{
 			ID:            uuid.NewString(),
@@ -268,14 +275,14 @@ func syncVendorKeys(ctx context.Context, conn *pgxpool.Conn, keyring *crypto.Key
 			KeyCiphertext: ct,
 			KeyVersion:    int32(v),
 		}); err != nil {
-			return false, err
+			return false, fmt.Errorf("set gemini vendor key: %w", err)
 		}
 		updated = true
 	}
 	if cfg.AnthropicKey != "" {
 		ct, v, err := keyring.Encrypt(cfg.AnthropicKey)
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("encrypt anthropic key: %w", err)
 		}
 		if err := proxydb.SetVendorKey(ctx, tx, &proxydb.VendorKey{
 			ID:            uuid.NewString(),
@@ -284,7 +291,7 @@ func syncVendorKeys(ctx context.Context, conn *pgxpool.Conn, keyring *crypto.Key
 			KeyCiphertext: ct,
 			KeyVersion:    int32(v),
 		}); err != nil {
-			return false, err
+			return false, fmt.Errorf("set anthropic vendor key: %w", err)
 		}
 		updated = true
 	}
@@ -356,7 +363,7 @@ func DefaultModels() []*proxydb.Model {
 			Enabled:              true,
 		},
 		{
-			ID:             "text-embedding-004",
+			ID:             "gemini-embedding-001",
 			Vendor:         registry.VendorGoogle,
 			Efforts:        []string{registry.EffortLow, registry.EffortMedium, registry.EffortHigh},
 			Capabilities:   []string{registry.CapabilityEmbedding},
@@ -365,25 +372,25 @@ func DefaultModels() []*proxydb.Model {
 			Enabled:        true,
 		},
 		{
-			ID:                   "claude-3-5-haiku-latest",
+			ID:                   "claude-haiku-4-5-20251001",
 			Vendor:               registry.VendorAnthropic,
 			Efforts:              []string{registry.EffortLow, registry.EffortMedium, registry.EffortHigh},
 			RPM:                  1000,
-			PriceInPerMtok:       0.80,
-			PriceOutPerMtok:      4.00,
-			PriceInBatchPerMtok:  0.40,
-			PriceOutBatchPerMtok: 2.00,
+			PriceInPerMtok:       1.00,
+			PriceOutPerMtok:      5.00,
+			PriceInBatchPerMtok:  0.50,
+			PriceOutBatchPerMtok: 2.50,
 			Enabled:              true,
 		},
 		{
-			ID:                   "claude-3-7-sonnet-latest",
+			ID:                   "claude-sonnet-5-5",
 			Vendor:               registry.VendorAnthropic,
 			Efforts:              []string{registry.EffortHigh},
 			RPM:                  300,
-			PriceInPerMtok:       3.00,
-			PriceOutPerMtok:      15.00,
-			PriceInBatchPerMtok:  1.50,
-			PriceOutBatchPerMtok: 7.50,
+			PriceInPerMtok:       2.00,
+			PriceOutPerMtok:      10.00,
+			PriceInBatchPerMtok:  1.00,
+			PriceOutBatchPerMtok: 5.00,
 			Enabled:              true,
 		},
 	}

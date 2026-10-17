@@ -42,7 +42,7 @@ func TestEmbeddingModelsExcludedFromGenerationRules(t *testing.T) {
 
 	for _, r := range rules {
 		for _, modelID := range r.Use {
-			if modelID == "text-embedding-3-small" || modelID == "text-embedding-004" {
+			if modelID == "text-embedding-3-small" || modelID == "gemini-embedding-001" {
 				t.Errorf("rule %s unexpectedly includes embedding model %s", r.Name, modelID)
 			}
 		}

@@ -74,13 +74,16 @@ git clone https://github.com/ai-process/llm-proxy.git
 cd llm-proxy
 
 # Pass your vendor API key (OpenAI, Gemini, or Anthropic)
-OPENAI_API_KEY=sk-... docker compose up -d
+OPENAI_API_KEY=sk-... docker compose up -d --build
 
 # Verify readiness
 curl -s http://localhost:8080/readyz     # {"status":"ready"}
 ```
 
-Alternatively, run `./scripts/quickstart.sh` for an interactive setup that generates unique keys.
+Alternatively, run `./scripts/quickstart.sh` for an interactive setup that generates master encryption and bootstrap keys, configures `.env`, and launches the stack.
+
+> [!NOTE]
+> With `AUTO_SEED=true` (enabled by default in Compose), the proxy automatically syncs vendor API keys from environment variables (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`) to the dev client key (`llm_dev_default_key`) on every startup.
 
 ### 2. Make your first call
 
