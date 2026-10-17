@@ -73,3 +73,31 @@ func TestNoPIIInLogs(t *testing.T) {
 	}
 }
 
+func TestChatContext_Clone(t *testing.T) {
+	orig := NewChatContext()
+	orig.SetMeta(map[string]string{"foo": "bar"})
+	orig.AddUserMessage("hello")
+	orig.SetActionID("act-1")
+
+	clone := orig.Clone()
+	if clone == nil {
+		t.Fatal("expected non-nil clone")
+	}
+
+	cloneMeta := clone.GetMeta()
+	cloneMeta["is_shadow"] = "true"
+	clone.SetMeta(cloneMeta)
+	clone.AddAssistantMessage("world")
+
+	if orig.GetMeta()["is_shadow"] != "" {
+		t.Errorf("mutation of clone meta leaked to orig: %v", orig.GetMeta())
+	}
+	if len(orig.GetMessages()) != 1 {
+		t.Errorf("mutation of clone messages affected orig: len = %d", len(orig.GetMessages()))
+	}
+	if len(clone.GetMessages()) != 2 {
+		t.Errorf("clone messages len = %d, want 2", len(clone.GetMessages()))
+	}
+}
+
+

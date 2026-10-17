@@ -207,16 +207,18 @@ func (x *ModelSpec) GetBudgetGraceMargin() float64 {
 }
 
 type RuleSpec struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                                                                       // unique, logged and put in usage meta
-	Priority      int32                  `protobuf:"varint,2,opt,name=priority,proto3" json:"priority,omitempty"`                                                                              // unique; higher wins, first match takes the request
-	Effort        Effort                 `protobuf:"varint,3,opt,name=effort,proto3,enum=llmproxy.v1.Effort" json:"effort,omitempty"`                                                          // EFFORT_UNSPECIFIED = matches any effort
-	Attributes    map[string]string      `protobuf:"bytes,4,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // equality predicates over request attributes
-	Use           []string               `protobuf:"bytes,5,rep,name=use,proto3" json:"use,omitempty"`                                                                                         // ordered fallback chain of model ids, cheaper-first
-	Enabled       bool                   `protobuf:"varint,6,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	Weights       []int32                `protobuf:"varint,7,rep,packed,name=weights,proto3" json:"weights,omitempty"` // traffic weights per model in use; empty means deterministic (100% on use[0])
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Name             string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                                                                       // unique, logged and put in usage meta
+	Priority         int32                  `protobuf:"varint,2,opt,name=priority,proto3" json:"priority,omitempty"`                                                                              // unique; higher wins, first match takes the request
+	Effort           Effort                 `protobuf:"varint,3,opt,name=effort,proto3,enum=llmproxy.v1.Effort" json:"effort,omitempty"`                                                          // EFFORT_UNSPECIFIED = matches any effort
+	Attributes       map[string]string      `protobuf:"bytes,4,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // equality predicates over request attributes
+	Use              []string               `protobuf:"bytes,5,rep,name=use,proto3" json:"use,omitempty"`                                                                                         // ordered fallback chain of model ids, cheaper-first
+	Enabled          bool                   `protobuf:"varint,6,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Weights          []int32                `protobuf:"varint,7,rep,packed,name=weights,proto3" json:"weights,omitempty"`                                     // traffic weights per model in use; empty means deterministic (100% on use[0])
+	ShadowModel      string                 `protobuf:"bytes,8,opt,name=shadow_model,json=shadowModel,proto3" json:"shadow_model,omitempty"`                  // optional model id for async traffic mirroring
+	ShadowPercentage float64                `protobuf:"fixed64,9,opt,name=shadow_percentage,json=shadowPercentage,proto3" json:"shadow_percentage,omitempty"` // percentage of requests to mirror (0.0 - 100.0)
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *RuleSpec) Reset() {
@@ -296,6 +298,20 @@ func (x *RuleSpec) GetWeights() []int32 {
 		return x.Weights
 	}
 	return nil
+}
+
+func (x *RuleSpec) GetShadowModel() string {
+	if x != nil {
+		return x.ShadowModel
+	}
+	return ""
+}
+
+func (x *RuleSpec) GetShadowPercentage() float64 {
+	if x != nil {
+		return x.ShadowPercentage
+	}
+	return 0
 }
 
 type UpsertModelRequest struct {
@@ -2768,7 +2784,7 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"\aenabled\x18\v \x01(\bR\aenabled\x12\x1b\n" +
 	"\trpm_burst\x18\x10 \x01(\x05R\brpmBurst\x12(\n" +
 	"\x10queue_timeout_ms\x18\x11 \x01(\x05R\x0equeueTimeoutMs\x12.\n" +
-	"\x13budget_grace_margin\x18\x12 \x01(\x01R\x11budgetGraceMargin\"\xb3\x02\n" +
+	"\x13budget_grace_margin\x18\x12 \x01(\x01R\x11budgetGraceMargin\"\x83\x03\n" +
 	"\bRuleSpec\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
 	"\bpriority\x18\x02 \x01(\x05R\bpriority\x12+\n" +
@@ -2778,7 +2794,9 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"attributes\x12\x10\n" +
 	"\x03use\x18\x05 \x03(\tR\x03use\x12\x18\n" +
 	"\aenabled\x18\x06 \x01(\bR\aenabled\x12\x18\n" +
-	"\aweights\x18\a \x03(\x05R\aweights\x1a=\n" +
+	"\aweights\x18\a \x03(\x05R\aweights\x12!\n" +
+	"\fshadow_model\x18\b \x01(\tR\vshadowModel\x12+\n" +
+	"\x11shadow_percentage\x18\t \x01(\x01R\x10shadowPercentage\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"B\n" +

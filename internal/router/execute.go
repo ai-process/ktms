@@ -2,15 +2,19 @@ package router
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
 
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/observability"
+	"github.com/ai-process/llm-proxy/internal/panicsafe"
 	"github.com/ai-process/llm-proxy/internal/pricing"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 )
@@ -115,6 +119,94 @@ type Request struct {
 	// SoftSchema reports models whose reply has to be checked here because
 	// their API cannot enforce a schema.
 	SoftSchema func(m *proxydb.Model) bool
+	// ShadowModel is an optional candidate for asynchronous request mirroring.
+	ShadowModel *proxydb.Model
+	// ShadowPercentage is the traffic percentage (0.0 - 100.0) to mirror.
+	ShadowPercentage float64
+}
+
+const defaultShadowTimeout = 30 * time.Second
+
+func samplePercentage(pct float64) bool {
+	if pct <= 0 {
+		return false
+	}
+	if pct >= 100 {
+		return true
+	}
+	n, err := rand.Int(rand.Reader, big.NewInt(10000))
+	if err != nil {
+		return false
+	}
+	return float64(n.Int64()) < pct*100
+}
+
+func (r *Request) dispatchShadow(ctx context.Context) {
+	if r.ShadowModel == nil || r.ShadowPercentage <= 0 {
+		return
+	}
+	if !samplePercentage(r.ShadowPercentage) {
+		return
+	}
+	shadowModel := r.ShadowModel
+	var chat *llm.ChatContext
+	if r.Chat != nil {
+		chat = r.Chat.Clone()
+	}
+	cb := r.CircuitBreaker
+	adapterFn := r.Adapter
+
+	// Mirror traffic asynchronously without adding caller latency or failing user requests.
+	go func() {
+		defer panicsafe.Guard("router: shadow dispatch")
+
+		shadowCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), defaultShadowTimeout)
+		defer cancel()
+
+		if cb != nil && !cb.Allow(shadowModel.Vendor, shadowModel.ID) {
+			observability.CircuitBreakerRejectionsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID).Inc()
+			return
+		}
+
+		adapter, err := adapterFn(shadowModel)
+		if err != nil {
+			if cb != nil {
+				cb.Release(shadowModel.Vendor, shadowModel.ID)
+			}
+			observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, "error").Inc()
+			log.Warn().Err(err).Str("shadow_model", shadowModel.ID).Msg("shadow adapter creation failed")
+			return
+		}
+
+		if chat != nil {
+			chat.WithContext(shadowCtx)
+			meta := chat.GetMeta()
+			if meta == nil {
+				meta = make(map[string]string)
+			} else {
+				clonedMeta := make(map[string]string, len(meta)+1)
+				for k, v := range meta {
+					clonedMeta[k] = v
+				}
+				meta = clonedMeta
+			}
+			meta["is_shadow"] = "true"
+			chat.SetMeta(meta)
+		}
+
+		_, callErr := adapter.GenerateText(shadowCtx, chat)
+		if cb != nil {
+			cb.Report(shadowCtx, shadowModel.Vendor, shadowModel.ID, callErr)
+		}
+
+		status := "success"
+		if callErr != nil {
+			status = "error"
+			log.Warn().Err(callErr).Str("shadow_model", shadowModel.ID).Str("vendor", shadowModel.Vendor).
+				Msg("shadow execution failed")
+		}
+		observability.ShadowRequestsTotal.WithLabelValues(shadowModel.Vendor, shadowModel.ID, status).Inc()
+	}()
 }
 
 // maxOutput is the caller's output ceiling, 0 when none was set.
@@ -132,12 +224,15 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 	if r.Chat != nil {
 		r.Chat.WithContext(ctx)
 	}
-	var lastErr error
-	allThrottled := true
-	allCircuitBroken := true
-	anyCircuitBroken := false
-	throttledCount := 0
-	throttleKind := "rpm"
+	var (
+		lastErr          error
+		allThrottled     = true
+		allCircuitBroken = true
+		anyCircuitBroken = false
+		throttledCount   = 0
+		throttleKind     = "rpm"
+		shadowOnce       sync.Once
+	)
 
 	for i, m := range r.Chain {
 		if r.CircuitBreaker != nil && !r.CircuitBreaker.Allow(m.Vendor, m.ID) {
@@ -187,6 +282,10 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 			lastErr = err
 			continue
 		}
+
+		shadowOnce.Do(func() {
+			r.dispatchShadow(ctx)
+		})
 
 		resp, err := r.callAndCheck(ctx, adapter, m, th, res)
 		if r.CircuitBreaker != nil {
@@ -264,12 +363,15 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 	if r.Chat != nil {
 		r.Chat.WithContext(ctx)
 	}
-	var lastErr error
-	allThrottled := true
-	allCircuitBroken := true
-	anyCircuitBroken := false
-	throttledCount := 0
-	throttleKind := "rpm"
+	var (
+		lastErr          error
+		allThrottled     = true
+		allCircuitBroken = true
+		anyCircuitBroken = false
+		throttledCount   = 0
+		throttleKind     = "rpm"
+		shadowOnce       sync.Once
+	)
 
 	for i, m := range r.Chain {
 		if r.CircuitBreaker != nil && !r.CircuitBreaker.Allow(m.Vendor, m.ID) {
@@ -341,6 +443,10 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			log.Warn().Str("model", m.ID).Msg("model does not support streaming, trying next in chain")
 			continue
 		}
+
+		shadowOnce.Do(func() {
+			r.dispatchShadow(ctx)
+		})
 
 		schema := r.Chat.GetResponseSchema()
 		soft := schema != nil && r.SoftSchema != nil && r.SoftSchema(m)

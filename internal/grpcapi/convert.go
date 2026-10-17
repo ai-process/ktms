@@ -180,12 +180,14 @@ func propertiesFromProto(in map[string]*pb.SchemaProperty) map[string]*llm.Schem
 
 func ruleToProto(r *proxydb.Rule) *pb.RuleSpec {
 	return &pb.RuleSpec{
-		Name:       r.Name,
-		Priority:   r.Priority,
-		Effort:     effortToProto(r.Effort),
-		Attributes: r.Attributes,
-		Use:        r.Use,
-		Enabled:    r.Enabled,
-		Weights:    r.Weights,
+		Name:             r.Name,
+		Priority:         r.Priority,
+		Effort:           effortToProto(r.Effort),
+		Attributes:       r.Attributes,
+		Use:              r.Use,
+		Enabled:          r.Enabled,
+		Weights:          r.Weights,
+		ShadowModel:      r.ShadowModel,
+		ShadowPercentage: r.ShadowPercentage,
 	}
 }

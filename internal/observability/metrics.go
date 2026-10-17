@@ -141,4 +141,14 @@ var (
 		},
 		[]string{"vendor", "model"},
 	)
+
+	// ShadowRequestsTotal tracks mirrored requests sent to shadow models.
+	ShadowRequestsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "llmproxy",
+			Name:      "shadow_requests_total",
+			Help:      "Total number of mirrored shadow requests by vendor, model, and status.",
+		},
+		[]string{"vendor", "model", "status"},
+	)
 )
