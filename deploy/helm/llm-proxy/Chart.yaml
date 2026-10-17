@@ -4,6 +4,7 @@ description: Official Helm chart for llm-proxy — high-performance, self-hosted
 type: application
 version: 0.1.0
 appVersion: "0.12.0"
+kubeVersion: ">=1.26.0-0"
 keywords:
   - llm
   - ai
@@ -18,4 +19,3 @@ sources:
 maintainers:
   - name: ai-process
     email: security@vasiliy.pro
-icon: https://raw.githubusercontent.com/ai-process/docs/main/assets/logo.png

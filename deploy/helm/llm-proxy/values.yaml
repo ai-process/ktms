@@ -17,8 +17,8 @@ fullnameOverride: ""
 serviceAccount:
   # Specifies whether a service account should be created
   create: true
-  # Automatically mount a ServiceAccount's API credentials?
-  automount: true
+  # Automatically mount a ServiceAccount's API credentials (default false for restricted security)
+  automount: false
   # Annotations to add to the service account
   annotations: {}
   # The name of the service account to use.
@@ -33,6 +33,8 @@ podSecurityContext:
   runAsUser: 10001
   runAsGroup: 10001
   fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
 
 securityContext:
   allowPrivilegeEscalation: false
@@ -41,10 +43,18 @@ securityContext:
     drop:
       - ALL
 
+terminationGracePeriodSeconds: 60
+
+lifecycle:
+  preStop:
+    exec:
+      command: ["/bin/sleep", "5"]
+
 service:
   type: ClusterIP
   httpPort: 8080
   grpcPort: 9090
+  metricsPort: 9091
   annotations: {}
 
 ingress:
@@ -58,7 +68,6 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
-          port: 8080
   tls: []
   #  - secretName: llm-proxy-tls
   #    hosts:
@@ -76,7 +85,6 @@ ingress:
         paths:
           - path: /
             pathType: Prefix
-            port: 9090
     tls: []
 
 resources:
@@ -94,7 +102,22 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # maxUnavailable: 1
+
 probes:
+  # startupProbe accommodates schema migration locks during rolling deployments
+  startup:
+    enabled: true
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 40  # 40 * 5s = 200s (> MIGRATE_TIMEOUT 3m)
   liveness:
     httpGet:
       path: /healthz
@@ -109,13 +132,13 @@ probes:
       port: http
     initialDelaySeconds: 5
     periodSeconds: 5
-    timeoutSeconds: 3
+    timeoutSeconds: 5
     failureThreshold: 3
 
 # Secret credentials: can be provided inline (creates a Secret) or via an existingSecret
 secrets:
   # If set, secrets.databaseUrl and secrets.encryptionKeys are read from this secret instead.
-  # Expected keys: DATABASE_URL, LLMPROXY_ENCRYPTION_KEYS, and optionally BOOTSTRAP_ADMIN_KEY.
+  # Expected keys: DATABASE_URL, LLMPROXY_ENCRYPTION_KEYS, and optionally BOOTSTRAP_ADMIN_KEY, REDIS_PASSWORD.
   existingSecret: ""
   # PostgreSQL connection URL (e.g., postgres://user:pass@postgres-host:5432/llmproxy?sslmode=require)
   databaseUrl: ""
@@ -123,13 +146,15 @@ secrets:
   encryptionKeys: ""
   # Optional initial admin bootstrap key for minting client API keys
   bootstrapAdminKey: ""
+  # Optional password for Redis authentication
+  redisPassword: ""
 
 config:
   httpApiEnabled: true
   logLevel: "info"
   autoMigrate: true
   autoSeed: false
-  routingReload: "2s"
+  routingReloadSeconds: 60
   # Redis connection address (e.g. "redis-master:6379")
   redisAddr: ""
   redisKeyPrefix: ""
@@ -137,7 +162,7 @@ config:
   circuitBreakerEnabled: true
   circuitBreakerFailThreshold: 5
   circuitBreakerCooldown: "30s"
-  # Spend limits fail mode: "closed" (fail-safe) or "open" (unmetered fallback if Redis down)
+  # Spend limits fail mode: "closed" (fail-safe refusal if Redis unreachable) or "open" (unmetered bypass)
   spendLimitsFailMode: "closed"
   budgetGraceMargin: 0.05
   # Optional gRPC usage collector sink
@@ -150,6 +175,7 @@ config:
 
 metrics:
   enabled: true
+  port: 9091
   # Prometheus Operator ServiceMonitor
   serviceMonitor:
     enabled: false
@@ -157,6 +183,10 @@ metrics:
     scrapeTimeout: "10s"
     labels: {}
 
+extraVolumes: []
+extraVolumeMounts: []
+
+topologySpreadConstraints: []
 nodeSelector: {}
 tolerations: []
 affinity: {}

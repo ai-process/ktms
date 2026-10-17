@@ -52,10 +52,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
+        with:
+          version: v3.18.4
       - name: Lint Helm chart
-        run: helm lint deploy/helm/llm-proxy
-      - name: Dry-run Helm template (default values)
-        run: helm template test deploy/helm/llm-proxy
+        run: helm lint --strict deploy/helm/llm-proxy
+      - name: Dry-run Helm template (existingSecret)
+        run: helm template test deploy/helm/llm-proxy --set secrets.existingSecret=my-secret
+      - name: Dry-run Helm template (inline secrets)
+        run: >
+          helm template test deploy/helm/llm-proxy
+          --set secrets.databaseUrl="postgres://u:p@db:5432/db"
+          --set secrets.encryptionKeys="1:YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY="
       - name: Dry-run Helm template (all features enabled)
         run: >
           helm template test deploy/helm/llm-proxy
@@ -63,4 +70,5 @@ jobs:
           --set ingress.grpc.enabled=true
           --set autoscaling.enabled=true
           --set metrics.serviceMonitor.enabled=true
+          --set podDisruptionBudget.enabled=true
           --set secrets.existingSecret=my-secret

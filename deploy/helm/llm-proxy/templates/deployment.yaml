@@ -13,9 +13,14 @@ spec:
       {{- include "llm-proxy.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
+      {{- if or (not .Values.secrets.existingSecret) .Values.podAnnotations }}
       annotations:
+        {{- if not .Values.secrets.existingSecret }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       labels:
         {{- include "llm-proxy.labels" . | nindent 8 }}
@@ -28,6 +33,8 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "llm-proxy.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 60 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -43,10 +50,23 @@ spec:
             - name: grpc
               containerPort: {{ .Values.service.grpcPort }}
               protocol: TCP
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+              protocol: TCP
+            {{- end }}
+          {{- if .Values.probes.startup.enabled }}
+          startupProbe:
+            {{- omit .Values.probes.startup "enabled" | toYaml | nindent 12 }}
+          {{- end }}
           livenessProbe:
             {{- toYaml .Values.probes.liveness | nindent 12 }}
           readinessProbe:
             {{- toYaml .Values.probes.readiness | nindent 12 }}
+          {{- with .Values.lifecycle }}
+          lifecycle:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           env:
@@ -66,6 +86,14 @@ spec:
                   name: {{ include "llm-proxy.secretName" . }}
                   key: BOOTSTRAP_ADMIN_KEY
                   optional: true
+            {{- if or .Values.config.redisAddr (or .Values.secrets.redisPassword .Values.secrets.existingSecret) }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "llm-proxy.secretName" . }}
+                  key: REDIS_PASSWORD
+                  optional: true
+            {{- end }}
             - name: HTTP_API_ENABLED
               value: {{ .Values.config.httpApiEnabled | quote }}
             - name: LOG_LEVEL
@@ -74,8 +102,8 @@ spec:
               value: {{ .Values.config.autoMigrate | quote }}
             - name: AUTO_SEED
               value: {{ .Values.config.autoSeed | quote }}
-            - name: ROUTING_RELOAD
-              value: {{ .Values.config.routingReload | quote }}
+            - name: ROUTING_RELOAD_SECONDS
+              value: {{ .Values.config.routingReloadSeconds | quote }}
             {{- if .Values.config.redisAddr }}
             - name: REDIS_ADDR
               value: {{ .Values.config.redisAddr | quote }}
@@ -94,6 +122,13 @@ spec:
               value: {{ .Values.config.spendLimitsFailMode | quote }}
             - name: BUDGET_GRACE_MARGIN
               value: {{ .Values.config.budgetGraceMargin | quote }}
+            {{- if .Values.metrics.enabled }}
+            - name: METRICS_ADDR
+              value: ":{{ .Values.metrics.port }}"
+            {{- else }}
+            - name: METRICS_ADDR
+              value: ""
+            {{- end }}
             {{- if .Values.config.usageCollectorHost }}
             - name: USAGE_COLLECTOR_HOST
               value: {{ .Values.config.usageCollectorHost | quote }}
@@ -111,6 +146,18 @@ spec:
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- with .Values.extraVolumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.extraVolumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

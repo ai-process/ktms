@@ -218,9 +218,9 @@ kubectl create secret generic llm-proxy-secrets \
 helm install llm-proxy ./deploy/helm/llm-proxy \
   --set secrets.existingSecret=llm-proxy-secrets \
   --set ingress.enabled=true \
-  --set ingress.hosts[0].host=proxy.example.com \
-  --set ingress.hosts[0].paths[0].path=/ \
-  --set ingress.hosts[0].paths[0].pathType=Prefix
+  --set "ingress.hosts[0].host=proxy.example.com" \
+  --set "ingress.hosts[0].paths[0].path=/" \
+  --set "ingress.hosts[0].paths[0].pathType=Prefix"
 ```
 
 The chart supports non-root security context (`appuser:10001`), HorizontalPodAutoscaler, Prometheus Operator `ServiceMonitor`, and separate gRPC Ingress configuration. See [`deploy/helm/llm-proxy/README.md`](deploy/helm/llm-proxy/README.md) for full configuration parameters.

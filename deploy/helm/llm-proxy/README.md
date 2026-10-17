@@ -29,6 +29,14 @@ helm install llm-proxy ./deploy/helm/llm-proxy \
   --set secrets.existingSecret=llm-proxy-secrets
 ```
 
+Or install with inline secrets:
+
+```bash
+helm install llm-proxy ./deploy/helm/llm-proxy \
+  --set secrets.databaseUrl="postgres://user:pass@postgres:5432/llmproxy?sslmode=require" \
+  --set secrets.encryptionKeys="1:$(head -c 32 /dev/urandom | base64)"
+```
+
 ## Key Configuration Parameters
 
 | Parameter | Description | Default |
@@ -36,11 +44,20 @@ helm install llm-proxy ./deploy/helm/llm-proxy \
 | `replicaCount` | Number of pods to run | `2` |
 | `image.repository` | Container image repository | `coyl/llm-proxy` |
 | `image.tag` | Container image tag | `""` (uses `appVersion`) |
-| `secrets.existingSecret` | Name of existing Secret with `DATABASE_URL`, `LLMPROXY_ENCRYPTION_KEYS`, `BOOTSTRAP_ADMIN_KEY` | `""` |
+| `secrets.existingSecret` | Name of existing Secret with `DATABASE_URL`, `LLMPROXY_ENCRYPTION_KEYS`, `BOOTSTRAP_ADMIN_KEY`, `REDIS_PASSWORD` | `""` |
+| `config.routingReloadSeconds` | Replicas config poll interval in seconds | `60` |
 | `config.redisAddr` | Optional Redis address for rate limiting | `""` |
+| `config.spendLimitsFailMode` | Spend limit fail mode (`closed` fails safe, `open` allows unmetered) | `closed` |
 | `config.logLevel` | Application log level (`debug`, `info`, `warn`, `error`) | `info` |
+| `probes.startup.enabled` | Startup probe to accommodate database schema migrations | `true` |
 | `ingress.enabled` | Enable HTTP/REST Ingress | `false` |
 | `ingress.grpc.enabled` | Enable dedicated gRPC Ingress | `false` |
 | `autoscaling.enabled` | Enable HorizontalPodAutoscaler | `false` |
+| `podDisruptionBudget.enabled` | Enable PodDisruptionBudget | `false` |
+| `metrics.enabled` | Expose dedicated Prometheus metrics listener | `true` |
+| `metrics.port` | Metrics listener port | `9091` |
 | `metrics.serviceMonitor.enabled` | Enable Prometheus Operator ServiceMonitor | `false` |
-| `securityContext` | Container security context (non-root by default) | `runAsNonRoot: true`, `runAsUser: 10001` |
+| `podSecurityContext` | Pod security context (non-root, seccomp RuntimeDefault) | `runAsNonRoot: true`, `runAsUser: 10001` |
+| `securityContext` | Container security context (drop ALL, read-only rootfs) | `readOnlyRootFilesystem: true` |
+| `terminationGracePeriodSeconds` | Pod termination grace period in seconds | `60` |
+| `lifecycle.preStop` | PreStop hook to drain traffic before shutdown | `sleep 5` |

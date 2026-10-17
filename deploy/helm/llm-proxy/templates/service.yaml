@@ -15,9 +15,18 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+      appProtocol: http
     - port: {{ .Values.service.grpcPort }}
       targetPort: grpc
       protocol: TCP
       name: grpc
+      appProtocol: grpc
+    {{- if .Values.metrics.enabled }}
+    - port: {{ .Values.service.metricsPort | default .Values.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+      appProtocol: http
+    {{- end }}
   selector:
     {{- include "llm-proxy.selectorLabels" . | nindent 4 }}
