@@ -51,14 +51,14 @@ func effortsToProto(in []string) []pb.Effort {
 
 func modelFromProto(m *pb.ModelSpec) *proxydb.Model {
 	return &proxydb.Model{
-		ID:                  m.GetId(),
-		Vendor:              m.GetVendor(),
-		Endpoint:            m.GetEndpoint(),
-		Efforts:             effortsToStrings(m.GetEfforts()),
-		Capabilities:        m.GetCapabilities(),
-		RPM:                 m.GetRpm(),
-		PriceInPerMtok:      m.GetPriceInPerMtok(),
-		PriceOutPerMtok:     m.GetPriceOutPerMtok(),
+		ID:                   m.GetId(),
+		Vendor:               m.GetVendor(),
+		Endpoint:             m.GetEndpoint(),
+		Efforts:              effortsToStrings(m.GetEfforts()),
+		Capabilities:         m.GetCapabilities(),
+		RPM:                  m.GetRpm(),
+		PriceInPerMtok:       m.GetPriceInPerMtok(),
+		PriceOutPerMtok:      m.GetPriceOutPerMtok(),
 		PriceInPeakPerMtok:   m.GetPriceInPeakPerMtok(),
 		PriceOutPeakPerMtok:  m.GetPriceOutPeakPerMtok(),
 		PriceInBatchPerMtok:  m.GetPriceInBatchPerMtok(),
@@ -180,12 +180,14 @@ func propertiesFromProto(in map[string]*pb.SchemaProperty) map[string]*llm.Schem
 
 func ruleToProto(r *proxydb.Rule) *pb.RuleSpec {
 	return &pb.RuleSpec{
-		Name:       r.Name,
-		Priority:   r.Priority,
-		Effort:     effortToProto(r.Effort),
-		Attributes: r.Attributes,
-		Use:        r.Use,
-		Enabled:    r.Enabled,
-		Weights:    r.Weights,
+		Name:             r.Name,
+		Priority:         r.Priority,
+		Effort:           effortToProto(r.Effort),
+		Attributes:       r.Attributes,
+		Use:              r.Use,
+		Enabled:          r.Enabled,
+		Weights:          r.Weights,
+		ShadowModel:      r.ShadowModel,
+		ShadowPercentage: r.ShadowPercentage,
 	}
 }

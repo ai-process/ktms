@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -213,6 +214,7 @@ func fail(err error) func() (*llm.Response, error) {
 // recordingThrottle logs reserve/settle pairs.
 type recordingThrottle struct {
 	NoopThrottle
+	mu       sync.Mutex
 	rpmDeny  map[string]bool
 	settled  []llm.TokensUsage
 	reserves int
@@ -223,11 +225,15 @@ func (r *recordingThrottle) AllowRPM(_ context.Context, _, _ string, m *proxydb.
 }
 
 func (r *recordingThrottle) Reserve(context.Context, *proxydb.Model, string, string, int64, int64) (*Reservation, string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.reserves++
 	return &Reservation{Estimate: 1}, ""
 }
 
 func (r *recordingThrottle) Settle(_ *Reservation, usage llm.TokensUsage) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.settled = append(r.settled, usage)
 }
 
@@ -1122,5 +1128,467 @@ func TestExecuteMediaCircuitBreakerAndThrottled(t *testing.T) {
 	}
 	if st := ToStatus(err); status.Code(st) != codes.ResourceExhausted {
 		t.Fatalf("expected ResourceExhausted, got %v", status.Code(st))
+	}
+}
+
+type shadowCaptureAdapter struct {
+	fakeAdapter
+	capturedChat *llm.ChatContext
+	called       chan struct{}
+	done         chan struct{}
+}
+
+func (s *shadowCaptureAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
+	s.capturedChat = chat
+	if s.called != nil {
+		select {
+		case s.called <- struct{}{}:
+		default:
+		}
+	}
+	defer func() {
+		if s.done != nil {
+			select {
+			case s.done <- struct{}{}:
+			default:
+			}
+		}
+	}()
+	return s.fakeAdapter.GenerateText(ctx, chat)
+}
+
+func TestSamplePercentage(t *testing.T) {
+	if samplePercentage(0) {
+		t.Error("samplePercentage(0) must be false")
+	}
+	if samplePercentage(-10) {
+		t.Error("samplePercentage(-10) must be false")
+	}
+	if !samplePercentage(100) {
+		t.Error("samplePercentage(100) must be true")
+	}
+	if !samplePercentage(150) {
+		t.Error("samplePercentage(150) must be true")
+	}
+}
+
+func TestExecute_ShadowRouting(t *testing.T) {
+	mPrimary := model("primary-m", "openai")
+	mShadow := model("shadow-m", "deepseek")
+
+	primary := &fakeAdapter{responses: []func() (*llm.Response, error){ok("primary output")}}
+	shadow := &shadowCaptureAdapter{
+		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){ok("shadow output")}},
+		called:      make(chan struct{}, 1),
+		done:        make(chan struct{}, 1),
+	}
+
+	adapters := map[string]llm.ClientAdapter{
+		"primary-m": primary,
+		"shadow-m":  shadow,
+	}
+
+	chat := llm.NewChatContext()
+	chat.SetMeta(map[string]string{"client": "test"})
+	chat.AddUserMessage("hello")
+
+	req := Request{
+		Chain:            []*proxydb.Model{mPrimary},
+		KeyName:          "test-key",
+		UserID:           "user-1",
+		Chat:             chat,
+		ShadowModel:      mShadow,
+		ShadowPercentage: 100,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			return adapters[m.ID], nil
+		},
+	}
+
+	resp, chosen, err := Execute(context.Background(), NoopThrottle{}, req)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if chosen.ID != "primary-m" {
+		t.Errorf("chosen model = %q, want primary-m", chosen.ID)
+	}
+	if len(resp.Choices) == 0 || resp.Choices[0].Text != "primary output" {
+		t.Fatalf("unexpected primary response: %+v", resp)
+	}
+
+	select {
+	case <-shadow.called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for shadow execution")
+	}
+
+	select {
+	case <-shadow.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for shadow completion")
+	}
+
+	if shadow.capturedChat == nil {
+		t.Fatal("shadow did not receive chat context")
+	}
+	if shadow.capturedChat.GetMeta()["is_shadow"] != "true" {
+		t.Errorf("shadow meta is_shadow = %q, want true", shadow.capturedChat.GetMeta()["is_shadow"])
+	}
+	if chat.GetMeta()["is_shadow"] != "" {
+		t.Errorf("primary chat meta was contaminated with is_shadow: %v", chat.GetMeta())
+	}
+}
+
+func TestExecute_ShadowFailureIsolated(t *testing.T) {
+	mPrimary := model("primary-m", "openai")
+	mShadow := model("shadow-m", "deepseek")
+
+	primary := &fakeAdapter{responses: []func() (*llm.Response, error){ok("primary output")}}
+	shadow := &shadowCaptureAdapter{
+		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){fail(errors.New("shadow vendor failure"))}},
+		called:      make(chan struct{}, 1),
+		done:        make(chan struct{}, 1),
+	}
+
+	adapters := map[string]llm.ClientAdapter{
+		"primary-m": primary,
+		"shadow-m":  shadow,
+	}
+
+	req := Request{
+		Chain:            []*proxydb.Model{mPrimary},
+		KeyName:          "test-key",
+		UserID:           "user-1",
+		Chat:             llm.NewChatContext(),
+		ShadowModel:      mShadow,
+		ShadowPercentage: 100,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			return adapters[m.ID], nil
+		},
+	}
+
+	resp, chosen, err := Execute(context.Background(), NoopThrottle{}, req)
+	if err != nil {
+		t.Fatalf("Execute should succeed even when shadow fails: %v", err)
+	}
+	if chosen.ID != "primary-m" || resp.Choices[0].Text != "primary output" {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+
+	select {
+	case <-shadow.called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for shadow execution")
+	}
+
+	select {
+	case <-shadow.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for shadow completion")
+	}
+}
+
+func TestExecute_ShadowPercentageZero(t *testing.T) {
+	mPrimary := model("primary-m", "openai")
+	mShadow := model("shadow-m", "deepseek")
+
+	primary := &fakeAdapter{responses: []func() (*llm.Response, error){ok("primary output")}}
+	shadow := &shadowCaptureAdapter{
+		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){ok("shadow output")}},
+		called:      make(chan struct{}, 1),
+	}
+
+	req := Request{
+		Chain:            []*proxydb.Model{mPrimary},
+		KeyName:          "test-key",
+		UserID:           "user-1",
+		Chat:             llm.NewChatContext(),
+		ShadowModel:      mShadow,
+		ShadowPercentage: 0,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "shadow-m" {
+				return shadow, nil
+			}
+			return primary, nil
+		},
+	}
+
+	_, _, err := Execute(context.Background(), NoopThrottle{}, req)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+
+	select {
+	case <-shadow.called:
+		t.Fatal("shadow should not be called when percentage is 0")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestExecute_ShadowDroppedOnCapacity(t *testing.T) {
+	for i := 0; i < maxConcurrentShadows; i++ {
+		shadowSem <- struct{}{}
+	}
+	defer func() {
+		for i := 0; i < maxConcurrentShadows; i++ {
+			<-shadowSem
+		}
+	}()
+
+	mPrimary := model("primary-m", "openai")
+	mShadow := model("shadow-m", "deepseek")
+
+	primary := &fakeAdapter{responses: []func() (*llm.Response, error){ok("primary output")}}
+	shadow := &shadowCaptureAdapter{
+		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){ok("shadow output")}},
+		called:      make(chan struct{}, 1),
+	}
+
+	req := Request{
+		Chain:            []*proxydb.Model{mPrimary},
+		KeyName:          "test-key",
+		UserID:           "user-1",
+		Chat:             llm.NewChatContext(),
+		ShadowModel:      mShadow,
+		ShadowPercentage: 100,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "shadow-m" {
+				return shadow, nil
+			}
+			return primary, nil
+		},
+	}
+
+	_, _, err := Execute(context.Background(), NoopThrottle{}, req)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+
+	select {
+	case <-shadow.called:
+		t.Fatal("shadow should be dropped when semaphore is full")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestExecute_ShadowThrottledRPM(t *testing.T) {
+	mPrimary := model("primary-m", "openai")
+	mShadow := model("shadow-m", "deepseek")
+
+	primary := &fakeAdapter{responses: []func() (*llm.Response, error){ok("primary output")}}
+	shadow := &shadowCaptureAdapter{
+		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){ok("shadow output")}},
+		called:      make(chan struct{}, 1),
+	}
+
+	th := &recordingThrottle{rpmDeny: map[string]bool{"shadow-m": true}}
+
+	req := Request{
+		Chain:            []*proxydb.Model{mPrimary},
+		KeyName:          "test-key",
+		UserID:           "user-1",
+		Chat:             llm.NewChatContext(),
+		ShadowModel:      mShadow,
+		ShadowPercentage: 100,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "shadow-m" {
+				return shadow, nil
+			}
+			return primary, nil
+		},
+	}
+
+	_, _, err := Execute(context.Background(), th, req)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+
+	select {
+	case <-shadow.called:
+		t.Fatal("shadow should be skipped when shadow model is rpm saturated")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestExecuteStream_ShadowRouting(t *testing.T) {
+	mPrimary := model("primary-stream", "openai")
+	mShadow := model("shadow-m", "deepseek")
+
+	primaryStream := &fakeStreamAdapter{
+		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){ok("stream text")}},
+		stream: func(ctx context.Context, chat *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+			if err := onChunk(llm.StreamChunk{Delta: "hello "}); err != nil {
+				return err
+			}
+			return onChunk(llm.StreamChunk{Delta: "world"})
+		},
+	}
+	shadow := &shadowCaptureAdapter{
+		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){ok("shadow text")}},
+		called:      make(chan struct{}, 1),
+		done:        make(chan struct{}, 1),
+	}
+
+	adapters := map[string]llm.ClientAdapter{
+		"primary-stream": primaryStream,
+		"shadow-m":       shadow,
+	}
+
+	req := Request{
+		Chain:            []*proxydb.Model{mPrimary},
+		KeyName:          "test-key",
+		UserID:           "user-1",
+		Chat:             llm.NewChatContext(),
+		ShadowModel:      mShadow,
+		ShadowPercentage: 100,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			return adapters[m.ID], nil
+		},
+	}
+
+	var chunks []string
+	chosen, err := ExecuteStream(context.Background(), NoopThrottle{}, req, func(_ *proxydb.Model, c llm.StreamChunk) error {
+		chunks = append(chunks, c.Delta)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ExecuteStream failed: %v", err)
+	}
+	if chosen.ID != "primary-stream" {
+		t.Errorf("chosen = %q, want primary-stream", chosen.ID)
+	}
+	if len(chunks) != 2 {
+		t.Errorf("chunks len = %d, want 2", len(chunks))
+	}
+
+	select {
+	case <-shadow.called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for shadow execution")
+	}
+
+	select {
+	case <-shadow.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for shadow completion")
+	}
+
+	if shadow.capturedChat.GetMeta()["is_shadow"] != "true" {
+		t.Errorf("shadow meta is_shadow = %q, want true", shadow.capturedChat.GetMeta()["is_shadow"])
+	}
+}
+
+func TestExecute_ShadowCircuitOpenSkipped(t *testing.T) {
+	mPrimary := model("primary-m", "openai")
+	mShadow := model("shadow-m", "deepseek")
+
+	primary := &fakeAdapter{responses: []func() (*llm.Response, error){ok("primary output")}}
+	shadow := &shadowCaptureAdapter{
+		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){ok("shadow output")}},
+		called:      make(chan struct{}, 1),
+	}
+
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{Enabled: true, FailThreshold: 1, Cooldown: 10 * time.Minute})
+	cbMgr.Report(context.Background(), mShadow.Vendor, mShadow.ID, retryableErr)
+
+	if cbMgr.IsClosed(mShadow.Vendor, mShadow.ID) {
+		t.Fatal("expected shadow breaker to be open")
+	}
+
+	req := Request{
+		Chain:            []*proxydb.Model{mPrimary},
+		KeyName:          "test-key",
+		UserID:           "user-1",
+		Chat:             llm.NewChatContext(),
+		ShadowModel:      mShadow,
+		ShadowPercentage: 100,
+		CircuitBreaker:   cbMgr,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "shadow-m" {
+				return shadow, nil
+			}
+			return primary, nil
+		},
+	}
+
+	_, _, err := Execute(context.Background(), NoopThrottle{}, req)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+
+	select {
+	case <-shadow.called:
+		t.Fatal("shadow should not be called when circuit breaker is open")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestExecute_ShadowSpendSettled(t *testing.T) {
+	mPrimary := model("primary-m", "openai")
+	mShadow := model("shadow-m", "deepseek")
+
+	primaryResp := &llm.Response{
+		Choices: []*llm.Message{{Text: "primary", Type: llm.MessageTypeBot}},
+		Usage:   llm.TokensUsage{Input: 10, Output: 20},
+	}
+	shadowResp := &llm.Response{
+		Choices: []*llm.Message{{Text: "shadow", Type: llm.MessageTypeBot}},
+		Usage:   llm.TokensUsage{Input: 15, Output: 25},
+	}
+
+	primary := &fakeAdapter{responses: []func() (*llm.Response, error){func() (*llm.Response, error) { return primaryResp, nil }}}
+	shadow := &shadowCaptureAdapter{
+		fakeAdapter: fakeAdapter{responses: []func() (*llm.Response, error){func() (*llm.Response, error) { return shadowResp, nil }}},
+		called:      make(chan struct{}, 1),
+		done:        make(chan struct{}, 1),
+	}
+
+	th := &recordingThrottle{}
+
+	req := Request{
+		Chain:            []*proxydb.Model{mPrimary},
+		KeyName:          "test-key",
+		UserID:           "user-1",
+		Chat:             llm.NewChatContext(),
+		ShadowModel:      mShadow,
+		ShadowPercentage: 100,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "shadow-m" {
+				return shadow, nil
+			}
+			return primary, nil
+		},
+	}
+
+	_, _, err := Execute(context.Background(), th, req)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+
+	select {
+	case <-shadow.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for shadow completion")
+	}
+
+	th.mu.Lock()
+	reserves := th.reserves
+	settledCount := len(th.settled)
+	settled := append([]llm.TokensUsage{}, th.settled...)
+	th.mu.Unlock()
+
+	if reserves != 2 {
+		t.Fatalf("reserves = %d, want 2", reserves)
+	}
+	if settledCount != 2 {
+		t.Fatalf("settled count = %d, want 2", settledCount)
+	}
+	foundShadowUsage := false
+	for _, u := range settled {
+		if u.Input == 15 && u.Output == 25 {
+			foundShadowUsage = true
+		}
+	}
+	if !foundShadowUsage {
+		t.Fatalf("shadow usage (15, 25) not found in settled: %+v", settled)
 	}
 }

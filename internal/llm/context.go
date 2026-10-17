@@ -97,6 +97,31 @@ func (c *ChatContext) WithContext(ctx context.Context) *ChatContext {
 	return c
 }
 
+// Clone creates an isolated copy of the context so async background
+// operations like shadow routing can modify metadata without data races.
+func (c *ChatContext) Clone() *ChatContext {
+	if c == nil {
+		return nil
+	}
+	clone := *c
+	if c.meta != nil {
+		clone.meta = make(map[string]string, len(c.meta))
+		for k, v := range c.meta {
+			clone.meta[k] = v
+		}
+	}
+	if c.messages != nil {
+		clone.messages = append([]*Message(nil), c.messages...)
+	}
+	if c.protectedIndices != nil {
+		clone.protectedIndices = append([]int(nil), c.protectedIndices...)
+	}
+	if c.tools != nil {
+		clone.tools = append([]*Tool(nil), c.tools...)
+	}
+	return &clone
+}
+
 func NewChatContext() *ChatContext {
 	return &ChatContext{
 		Version:       ChatContextVersion2,
