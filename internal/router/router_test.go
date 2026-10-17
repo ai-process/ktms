@@ -991,3 +991,51 @@ func TestExecuteCircuitBreakerAllBroken(t *testing.T) {
 		t.Fatalf("expected codes.Unavailable, got %v", status.Code(st))
 	}
 }
+
+func TestExecuteCircuitBreakerAndThrottled(t *testing.T) {
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 1,
+		Cooldown:      10 * time.Second,
+	})
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	mBig := snap.Models["big"]
+	chain := []*proxydb.Model{mDeep, mBig}
+
+	// Trip deep model's circuit breaker
+	cbMgr.Report(context.Background(), mDeep.Vendor, mDeep.ID, retryableErr)
+
+	// Throttler that refuses big model for RPM
+	th := &recordingThrottle{rpmDeny: map[string]bool{"big": true}}
+
+	req := Request{
+		Chain:          chain,
+		KeyName:        "test-key",
+		UserID:         "user-1",
+		Chat:           llm.NewChatContext(),
+		CircuitBreaker: cbMgr,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			t.Fatal("adapter should not be called when candidates are broken or throttled")
+			return nil, nil
+		},
+	}
+
+	_, _, err := Execute(context.Background(), th, req)
+	if err == nil {
+		t.Fatal("expected error when all models are broken or throttled")
+	}
+
+	var exhausted *ChainExhausted
+	if !errors.As(err, &exhausted) {
+		t.Fatalf("expected ChainExhausted, got %v", err)
+	}
+	if !exhausted.AllThrottled || !exhausted.AnyCircuitBroken {
+		t.Fatalf("expected AllThrottled=true and AnyCircuitBroken=true, got %+v", exhausted)
+	}
+
+	st := ToStatus(err)
+	if status.Code(st) != codes.ResourceExhausted {
+		t.Fatalf("expected codes.ResourceExhausted, got %v (%v)", status.Code(st), st)
+	}
+}

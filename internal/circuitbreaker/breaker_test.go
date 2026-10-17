@@ -250,6 +250,44 @@ func TestProbeCancellationKeepsHalfOpen(t *testing.T) {
 	}
 }
 
+func TestNonTrippingErrorDoesNotCloseHalfOpen(t *testing.T) {
+	currentTime := time.Now()
+	nowMock := func() time.Time { return currentTime }
+
+	cfg := Config{Enabled: true, FailThreshold: 1, Cooldown: 5 * time.Second}
+	mgr := NewManager(cfg)
+	mgr.nowFunc = nowMock
+
+	vendor := "google"
+	model := "gemini-1.5-pro"
+	ctx := context.Background()
+
+	mgr.Report(ctx, vendor, model, customHTTPStatusError{status: 503})
+	if mgr.State(vendor, model) != StateOpen {
+		t.Fatalf("expected OPEN state, got %v", mgr.State(vendor, model))
+	}
+
+	currentTime = currentTime.Add(6 * time.Second)
+	if !mgr.Allow(vendor, model) {
+		t.Fatal("expected probe to be admitted")
+	}
+	if mgr.State(vendor, model) != StateHalfOpen {
+		t.Fatalf("expected HALF_OPEN state, got %v", mgr.State(vendor, model))
+	}
+
+	// 400 Bad Request or capability mismatch (e.g. ErrJudgmentUnsupported) during probe
+	mgr.Report(ctx, vendor, model, customHTTPStatusError{status: 400})
+
+	// Must remain HALF_OPEN (not prematurely marked healthy/CLOSED)
+	if mgr.State(vendor, model) != StateHalfOpen {
+		t.Fatalf("expected state to remain HALF_OPEN after non-tripping error, got %v", mgr.State(vendor, model))
+	}
+	// Probe slot must be released so a subsequent valid request can probe
+	if !mgr.Allow(vendor, model) {
+		t.Fatal("expected new probe to be admitted after non-tripping error released slot")
+	}
+}
+
 func TestTrippingErrorClassification(t *testing.T) {
 	ctx := context.Background()
 

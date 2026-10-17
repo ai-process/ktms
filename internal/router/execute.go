@@ -135,6 +135,8 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 	var lastErr error
 	allThrottled := true
 	allCircuitBroken := true
+	anyCircuitBroken := false
+	throttledCount := 0
 	throttleKind := "rpm"
 
 	for i, m := range r.Chain {
@@ -148,6 +150,7 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 			log.Warn().Str("model", m.ID).Str("vendor", m.Vendor).
 				Msg("circuit breaker is OPEN, skipping to next model")
 			allThrottled = false
+			anyCircuitBroken = true
 			continue
 		}
 		allCircuitBroken = false
@@ -156,6 +159,7 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 			if r.CircuitBreaker != nil {
 				r.CircuitBreaker.Release(m.Vendor, m.ID)
 			}
+			throttledCount++
 			observability.ThrottledTotal.WithLabelValues("rpm").Inc()
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in chain")
 			continue
@@ -165,6 +169,7 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 			if r.CircuitBreaker != nil {
 				r.CircuitBreaker.Release(m.Vendor, m.ID)
 			}
+			throttledCount++
 			throttleKind = tripped
 			observability.ThrottledTotal.WithLabelValues(tripped).Inc()
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("budget", tripped).
@@ -236,7 +241,17 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 	if allThrottled {
 		return nil, nil, &ChainExhausted{AllThrottled: true, ThrottleKind: throttleKind}
 	}
-	return nil, nil, &ChainExhausted{Last: lastErr}
+	if lastErr == nil && (anyCircuitBroken || throttledCount > 0) {
+		if throttledCount > 0 {
+			return nil, nil, &ChainExhausted{
+				AllThrottled:     true,
+				ThrottleKind:     throttleKind,
+				AnyCircuitBroken: anyCircuitBroken,
+			}
+		}
+		return nil, nil, &ChainExhausted{AllCircuitBroken: true}
+	}
+	return nil, nil, &ChainExhausted{Last: lastErr, AnyCircuitBroken: anyCircuitBroken}
 }
 
 // ExecuteStream walks the model chain for streaming requests. Pre-stream failures
@@ -248,6 +263,8 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 	var lastErr error
 	allThrottled := true
 	allCircuitBroken := true
+	anyCircuitBroken := false
+	throttledCount := 0
 	throttleKind := "rpm"
 
 	for i, m := range r.Chain {
@@ -261,6 +278,7 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			log.Warn().Str("model", m.ID).Str("vendor", m.Vendor).
 				Msg("circuit breaker is OPEN, skipping in stream chain")
 			allThrottled = false
+			anyCircuitBroken = true
 			continue
 		}
 		allCircuitBroken = false
@@ -269,6 +287,7 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			if r.CircuitBreaker != nil {
 				r.CircuitBreaker.Release(m.Vendor, m.ID)
 			}
+			throttledCount++
 			observability.ThrottledTotal.WithLabelValues("rpm").Inc()
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in stream chain")
 			continue
@@ -278,6 +297,7 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			if r.CircuitBreaker != nil {
 				r.CircuitBreaker.Release(m.Vendor, m.ID)
 			}
+			throttledCount++
 			throttleKind = tripped
 			observability.ThrottledTotal.WithLabelValues(tripped).Inc()
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("budget", tripped).
@@ -467,7 +487,17 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 	if allThrottled {
 		return nil, &ChainExhausted{AllThrottled: true, ThrottleKind: throttleKind}
 	}
-	return nil, &ChainExhausted{Last: lastErr}
+	if lastErr == nil && (anyCircuitBroken || throttledCount > 0) {
+		if throttledCount > 0 {
+			return nil, &ChainExhausted{
+				AllThrottled:     true,
+				ThrottleKind:     throttleKind,
+				AnyCircuitBroken: anyCircuitBroken,
+			}
+		}
+		return nil, &ChainExhausted{AllCircuitBroken: true}
+	}
+	return nil, &ChainExhausted{Last: lastErr, AnyCircuitBroken: anyCircuitBroken}
 }
 
 // callAndCheck runs one model and, when that model cannot be handed a schema
@@ -560,6 +590,8 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 	var lastErr error
 	allThrottled := true
 	allCircuitBroken := true
+	anyCircuitBroken := false
+	throttledCount := 0
 	throttleKind := "rpm"
 
 	for i, m := range r.Chain {
@@ -573,6 +605,7 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 			log.Warn().Str("model", m.ID).Str("vendor", m.Vendor).
 				Msg("circuit breaker is OPEN, skipping in media chain")
 			allThrottled = false
+			anyCircuitBroken = true
 			continue
 		}
 		allCircuitBroken = false
@@ -581,6 +614,7 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 			if r.CircuitBreaker != nil {
 				r.CircuitBreaker.Release(m.Vendor, m.ID)
 			}
+			throttledCount++
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in chain")
 			continue
 		}
@@ -589,6 +623,7 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 			if r.CircuitBreaker != nil {
 				r.CircuitBreaker.Release(m.Vendor, m.ID)
 			}
+			throttledCount++
 			throttleKind = tripped
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("budget", tripped).
 				Msg("budget exhausted, trying next in chain")
@@ -635,5 +670,15 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 	if allThrottled {
 		return nil, &ChainExhausted{AllThrottled: true, ThrottleKind: throttleKind}
 	}
-	return nil, &ChainExhausted{Last: lastErr}
+	if lastErr == nil && (anyCircuitBroken || throttledCount > 0) {
+		if throttledCount > 0 {
+			return nil, &ChainExhausted{
+				AllThrottled:     true,
+				ThrottleKind:     throttleKind,
+				AnyCircuitBroken: anyCircuitBroken,
+			}
+		}
+		return nil, &ChainExhausted{AllCircuitBroken: true}
+	}
+	return nil, &ChainExhausted{Last: lastErr, AnyCircuitBroken: anyCircuitBroken}
 }

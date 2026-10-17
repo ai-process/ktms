@@ -32,10 +32,6 @@ func IsTrippingError(ctx context.Context, err error) bool {
 		return false
 	}
 
-	if code, ok := llm.ExtractHTTPStatusCode(err); ok {
-		return code >= 500 && code < 600
-	}
-
 	if errors.Is(err, llm.ErrOutputTruncated) ||
 		errors.Is(err, llm.ErrStreamingNotSupported) ||
 		errors.Is(err, llm.ErrEmbeddingUnsupported) ||
@@ -59,6 +55,10 @@ func IsTrippingError(ctx context.Context, err error) bool {
 		case "ThrottlingException", "ValidationException", "AccessDeniedException", "ResourceNotFoundException":
 			return false
 		}
+	}
+
+	if code, ok := llm.ExtractHTTPStatusCode(err); ok {
+		return code >= 500 && code < 600
 	}
 
 	var netErr net.Error

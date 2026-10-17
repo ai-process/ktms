@@ -39,15 +39,6 @@ type Config struct {
 	Cooldown      time.Duration
 }
 
-// DefaultConfig provides conservative fail-fast parameters for upstream LLM providers.
-func DefaultConfig() Config {
-	return Config{
-		Enabled:       true,
-		FailThreshold: 5,
-		Cooldown:      30 * time.Second,
-	}
-}
-
 // Breaker tracks consecutive upstream failures and guards access during outages.
 type Breaker struct {
 	mu               sync.Mutex
@@ -137,7 +128,7 @@ func (b *Breaker) Report(ctx context.Context, err error) {
 		return
 	}
 
-	if err == nil || !IsTrippingError(ctx, err) {
+	if err == nil {
 		b.consecutiveFails = 0
 		if b.state == StateHalfOpen {
 			b.probeInProgress = false
@@ -148,6 +139,14 @@ func (b *Breaker) Report(ctx context.Context, err error) {
 		if changed && b.onStateChange != nil {
 			b.onStateChange(b.vendor, b.model, from, to)
 		}
+		return
+	}
+
+	if !IsTrippingError(ctx, err) {
+		if b.state == StateHalfOpen && b.probeInProgress {
+			b.probeInProgress = false
+		}
+		b.mu.Unlock()
 		return
 	}
 
