@@ -25,7 +25,7 @@ func mediaModels(ids ...string) []*proxydb.Model {
 	return out
 }
 
-func mediaReq(chain []*proxydb.Model, call func(*proxydb.Model, llm.ClientAdapter) (llm.TokensUsage, error)) MediaRequest {
+func mediaReq(chain []*proxydb.Model, call func(context.Context, *proxydb.Model, llm.ClientAdapter) (llm.TokensUsage, error)) MediaRequest {
 	return MediaRequest{
 		Chain:   chain,
 		KeyName: "generation",
@@ -40,7 +40,7 @@ func TestExecuteMediaAdvancesOnRetryableFailure(t *testing.T) {
 	var tried []string
 	m, err := ExecuteMedia(context.Background(), noThrottle{}, mediaReq(
 		mediaModels("gemini-tts", "openai-tts"),
-		func(m *proxydb.Model, _ llm.ClientAdapter) (llm.TokensUsage, error) {
+		func(_ context.Context, m *proxydb.Model, _ llm.ClientAdapter) (llm.TokensUsage, error) {
 			tried = append(tried, m.ID)
 			if m.ID == "gemini-tts" {
 				return llm.TokensUsage{}, llm.ErrNoAudioContent
@@ -64,7 +64,7 @@ func TestExecuteMediaAdvancesOnFFmpegMissing(t *testing.T) {
 	var tried []string
 	m, err := ExecuteMedia(context.Background(), noThrottle{}, mediaReq(
 		mediaModels("gemini-tts", "openai-tts"),
-		func(m *proxydb.Model, _ llm.ClientAdapter) (llm.TokensUsage, error) {
+		func(_ context.Context, m *proxydb.Model, _ llm.ClientAdapter) (llm.TokensUsage, error) {
 			tried = append(tried, m.ID)
 			if m.ID == "gemini-tts" {
 				return llm.TokensUsage{}, audio.ErrFFmpegMissing
@@ -87,7 +87,7 @@ func TestExecuteMediaStopsOnTerminalError(t *testing.T) {
 	var tried []string
 	_, err := ExecuteMedia(context.Background(), noThrottle{}, mediaReq(
 		mediaModels("a", "b"),
-		func(m *proxydb.Model, _ llm.ClientAdapter) (llm.TokensUsage, error) {
+		func(_ context.Context, m *proxydb.Model, _ llm.ClientAdapter) (llm.TokensUsage, error) {
 			tried = append(tried, m.ID)
 			return llm.TokensUsage{}, terminal
 		}))
@@ -103,7 +103,7 @@ func TestExecuteMediaStopsOnTerminalError(t *testing.T) {
 func TestExecuteMediaExhaustsChain(t *testing.T) {
 	_, err := ExecuteMedia(context.Background(), noThrottle{}, mediaReq(
 		mediaModels("a", "b"),
-		func(*proxydb.Model, llm.ClientAdapter) (llm.TokensUsage, error) {
+		func(context.Context, *proxydb.Model, llm.ClientAdapter) (llm.TokensUsage, error) {
 			return llm.TokensUsage{}, llm.ErrNoAudioContent
 		}))
 	var exhausted *ChainExhausted

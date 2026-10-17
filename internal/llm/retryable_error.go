@@ -128,3 +128,21 @@ func ShouldSkipToNextModel(err error) bool {
 	}
 	return IsContentFilterError(err)
 }
+
+// CapacityExhausted marks errors caused by local queue or pool saturation.
+// These bypass circuit breaker failure accounting and skip to fallback models.
+type CapacityExhausted interface {
+	CapacityExhausted() bool
+}
+
+// IsCapacityExhausted reports whether err signals local capacity or queue saturation.
+func IsCapacityExhausted(err error) bool {
+	if err == nil {
+		return false
+	}
+	var capErr CapacityExhausted
+	if errors.As(err, &capErr) {
+		return capErr.CapacityExhausted()
+	}
+	return false
+}
