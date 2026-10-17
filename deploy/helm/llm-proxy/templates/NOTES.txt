@@ -1,0 +1,37 @@
+llm-proxy has been successfully deployed!
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+1. Access the HTTP and OpenAI-compatible API:
+{{- if and .Values.ingress.enabled .Values.ingress.hosts }}
+  {{- $proto := ternary "https" "http" (not (empty .Values.ingress.tls)) }}
+  {{- $host := (index .Values.ingress.hosts 0).host }}
+  Endpoint: {{ $proto }}://{{ $host }}
+  Test chat completions:
+    curl {{ $proto }}://{{ $host }}/v1/chat/completions \
+      -H "Authorization: Bearer <your-client-key>" \
+      -H "Content-Type: application/json" \
+      -d '{"model":"auto","messages":[{"role":"user","content":"Hello"}]}'
+{{- else }}
+  Forward port to localhost:
+    kubectl port-forward svc/{{ include "llm-proxy.fullname" . }} {{ .Values.service.httpPort }}:{{ .Values.service.httpPort }} -n {{ .Release.Namespace }}
+  Test health probe:
+    curl http://localhost:{{ .Values.service.httpPort }}/readyz
+{{- end }}
+
+2. Access the gRPC API:
+{{- if and .Values.ingress.grpc.enabled .Values.ingress.grpc.hosts }}
+  {{- $grpcHost := (index .Values.ingress.grpc.hosts 0).host }}
+  Endpoint: {{ $grpcHost }}:443
+  Inspect gRPC services with grpcurl:
+    grpcurl {{ $grpcHost }}:443 list
+{{- else }}
+  Forward port to localhost:
+    kubectl port-forward svc/{{ include "llm-proxy.fullname" . }} {{ .Values.service.grpcPort }}:{{ .Values.service.grpcPort }} -n {{ .Release.Namespace }}
+  Inspect gRPC services with grpcurl:
+    grpcurl -plaintext localhost:{{ .Values.service.grpcPort }} list
+{{- end }}
+
+For administrative setup, model configuration, and routing rules, see:
+https://github.com/ai-process/llm-proxy

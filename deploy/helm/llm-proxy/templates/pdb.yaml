@@ -1,0 +1,21 @@
+{{- if .Values.podDisruptionBudget.enabled -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "llm-proxy.fullname" . }}
+  labels:
+    {{- include "llm-proxy.labels" . | nindent 4 }}
+spec:
+  {{- if hasKey .Values.podDisruptionBudget "maxUnavailable" }}
+    {{- if and (ne .Values.podDisruptionBudget.maxUnavailable nil) (ne (toString .Values.podDisruptionBudget.maxUnavailable) "") }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+    {{- end }}
+  {{- else if hasKey .Values.podDisruptionBudget "minAvailable" }}
+    {{- if and (ne .Values.podDisruptionBudget.minAvailable nil) (ne (toString .Values.podDisruptionBudget.minAvailable) "") }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+    {{- end }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "llm-proxy.selectorLabels" . | nindent 6 }}
+{{- end }}
