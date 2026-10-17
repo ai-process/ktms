@@ -22,6 +22,37 @@ type HTTPStatusError interface {
 	HTTPStatus() int
 }
 
+// ExtractHTTPStatusCode resolves HTTP status codes across supported provider SDKs.
+func ExtractHTTPStatusCode(err error) (int, bool) {
+	if err == nil {
+		return 0, false
+	}
+	var httpErr HTTPStatusError
+	if errors.As(err, &httpErr) {
+		return httpErr.HTTPStatus(), true
+	}
+	var openaiErr *openai.Error
+	if errors.As(err, &openaiErr) && openaiErr != nil {
+		return openaiErr.StatusCode, true
+	}
+	var anthropicErr *anthropic.Error
+	if errors.As(err, &anthropicErr) && anthropicErr != nil {
+		return anthropicErr.StatusCode, true
+	}
+	var genaiErr genai.APIError
+	if errors.As(err, &genaiErr) {
+		return genaiErr.Code, true
+	}
+	type httpStatusCodeError interface {
+		HTTPStatusCode() int
+	}
+	var httpStatusErr httpStatusCodeError
+	if errors.As(err, &httpStatusErr) {
+		return httpStatusErr.HTTPStatusCode(), true
+	}
+	return 0, false
+}
+
 // IsRetryableError returns true if the error is from an LLM API and has a retryable
 // HTTP status code (429 Too Many Requests or 5xx server errors).
 func IsRetryableError(err error) bool {
@@ -31,36 +62,7 @@ func IsRetryableError(err error) bool {
 	if errors.Is(err, ErrNoAudioContent) || errors.Is(err, ErrJudgmentUnsupported) || errors.Is(err, ErrEmbeddingUnsupported) {
 		return true
 	}
-	var httpErr HTTPStatusError
-	if errors.As(err, &httpErr) {
-		code := httpErr.HTTPStatus()
-		return code == 429 || (code >= 500 && code < 600)
-	}
-	// OpenAI SDK: Error (alias for apierror.Error) with StatusCode
-	var openaiErr *openai.Error
-	if errors.As(err, &openaiErr) && openaiErr != nil {
-		code := openaiErr.StatusCode
-		return code == 429 || (code >= 500 && code < 600)
-	}
-	// Anthropic SDK: Error (alias for apierror.Error) with StatusCode
-	var anthropicErr *anthropic.Error
-	if errors.As(err, &anthropicErr) && anthropicErr != nil {
-		code := anthropicErr.StatusCode
-		return code == 429 || (code >= 500 && code < 600)
-	}
-	// Google genai: APIError (value type) with Code
-	var genaiErr genai.APIError
-	if errors.As(err, &genaiErr) {
-		code := genaiErr.Code
-		return code == 429 || (code >= 500 && code < 600)
-	}
-	// AWS smithy: HTTPStatusCode and ErrorCode
-	type httpStatusCodeError interface {
-		HTTPStatusCode() int
-	}
-	var httpStatusErr httpStatusCodeError
-	if errors.As(err, &httpStatusErr) {
-		code := httpStatusErr.HTTPStatusCode()
+	if code, ok := ExtractHTTPStatusCode(err); ok {
 		return code == 429 || (code >= 500 && code < 600)
 	}
 	type smithyAPIError interface {
@@ -126,4 +128,3 @@ func ShouldSkipToNextModel(err error) bool {
 	}
 	return IsContentFilterError(err)
 }
-

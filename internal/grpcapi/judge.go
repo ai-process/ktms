@@ -86,9 +86,9 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 
 	var out *llm.JudgeResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
-		Chain:    plan.chain,
-		KeyName:  plan.identity.Name,
-		UserID:   router.UserID(plan.attrs, plan.identity.Name),
+		Chain:          plan.chain,
+		KeyName:        plan.identity.Name,
+		UserID:         router.UserID(plan.attrs, plan.identity.Name),
 		Estimate:       judgeEstimate(judgeReq),
 		CircuitBreaker: s.circuitBreaker,
 		Adapter:        plan.adapter,
@@ -489,9 +489,9 @@ func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRoll
 	userID := router.UserID(plan.attrs, plan.identity.Name)
 	var out *llm.EvaluateRolloutsResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
-		Chain:    plan.chain,
-		KeyName:  plan.identity.Name,
-		UserID:   userID,
+		Chain:          plan.chain,
+		KeyName:        plan.identity.Name,
+		UserID:         userID,
 		Estimate:       rolloutEstimate(rolloutReq),
 		CircuitBreaker: s.circuitBreaker,
 		Adapter:        plan.adapter,

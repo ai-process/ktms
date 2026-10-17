@@ -265,17 +265,20 @@ func TestTrippingErrorClassification(t *testing.T) {
 		{"HTTP 403", customHTTPStatusError{status: 403}, false},
 		{"HTTP 404", customHTTPStatusError{status: 404}, false},
 		{"HTTP 422", customHTTPStatusError{status: 422}, false},
-		{"HTTP 429 rate limit", customHTTPStatusError{status: 429}, true},
+		{"HTTP 429 rate limit (isolated to tenant)", customHTTPStatusError{status: 429}, false},
 		{"HTTP 500 internal error", customHTTPStatusError{status: 500}, true},
 		{"HTTP 502 bad gateway", customHTTPStatusError{status: 502}, true},
 		{"HTTP 503 unavailable", customHTTPStatusError{status: 503}, true},
 		{"HTTP 504 gateway timeout", customHTTPStatusError{status: 504}, true},
 		{"OpenAI Error 500", &openai.Error{StatusCode: 500}, true},
+		{"OpenAI Error 429", &openai.Error{StatusCode: 429}, false},
 		{"OpenAI Error 400", &openai.Error{StatusCode: 400}, false},
 		{"Network timeout", &net.DNSError{IsTimeout: true}, true},
 		{"Connection refused syscall", syscall.ECONNREFUSED, true},
 		{"Connection reset string", errors.New("read tcp 127.0.0.1: connection reset by peer"), true},
-		{"Deadline exceeded string", errors.New("upstream deadline exceeded"), true},
+		{"TLS handshake timeout", errors.New("net/http: TLS handshake timeout"), true},
+		{"i/o timeout", errors.New("read tcp 127.0.0.1:443: i/o timeout"), true},
+		{"Broken pipe", errors.New("write: broken pipe"), true},
 	}
 
 	for _, tc := range cases {
@@ -285,6 +288,69 @@ func TestTrippingErrorClassification(t *testing.T) {
 				t.Errorf("IsTrippingError(%v) = %v, want %v", tc.err, got, tc.expected)
 			}
 		})
+	}
+}
+
+func TestReleaseAllowsNextProbe(t *testing.T) {
+	currentTime := time.Now()
+	nowMock := func() time.Time { return currentTime }
+
+	cfg := Config{Enabled: true, FailThreshold: 1, Cooldown: 5 * time.Second}
+	mgr := NewManager(cfg)
+	mgr.nowFunc = nowMock
+
+	vendor := "openai"
+	model := "gpt-4o"
+	ctx := context.Background()
+
+	// Trip to OPEN
+	mgr.Report(ctx, vendor, model, customHTTPStatusError{status: 500})
+	if mgr.State(vendor, model) != StateOpen {
+		t.Fatalf("expected OPEN state, got %v", mgr.State(vendor, model))
+	}
+
+	currentTime = currentTime.Add(6 * time.Second)
+	// Allow transitions to HALF_OPEN and acquires probe lock
+	if !mgr.Allow(vendor, model) {
+		t.Fatal("expected probe to be admitted")
+	}
+	if mgr.State(vendor, model) != StateHalfOpen {
+		t.Fatalf("expected HALF_OPEN, got %v", mgr.State(vendor, model))
+	}
+
+	// While probe is in progress, next Allow fails
+	if mgr.Allow(vendor, model) {
+		t.Fatal("expected second probe to be rejected while first is in progress")
+	}
+
+	// Request is canceled or skipped before upstream call -> Release called
+	mgr.Release(vendor, model)
+
+	// Now probe lock is freed, next Allow must succeed
+	if !mgr.Allow(vendor, model) {
+		t.Fatal("expected probe to be admitted after Release")
+	}
+}
+
+func TestCallerDeadlineDoesNotTripBreaker(t *testing.T) {
+	cfg := Config{Enabled: true, FailThreshold: 2, Cooldown: 10 * time.Second}
+	mgr := NewManager(cfg)
+
+	vendor := "openai"
+	model := "gpt-4o"
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-1*time.Second))
+	defer cancel()
+
+	for i := 0; i < 5; i++ {
+		mgr.Report(ctx, vendor, model, context.DeadlineExceeded)
+	}
+
+	if mgr.State(vendor, model) != StateClosed {
+		t.Fatalf("caller deadline exceeded should not trip breaker, got state %v", mgr.State(vendor, model))
+	}
+	if !mgr.Allow(vendor, model) {
+		t.Fatal("expected Allow to remain true despite caller deadlines")
 	}
 }
 

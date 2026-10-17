@@ -142,4 +142,3 @@ var (
 		[]string{"vendor", "model"},
 	)
 )
-

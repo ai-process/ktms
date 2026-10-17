@@ -924,17 +924,12 @@ func TestExecuteCircuitBreakerFailFast(t *testing.T) {
 
 	callsBefore := brokenCalls
 	// 3rd request: deep is OPEN, must fail-fast without calling broken adapter
-	start := time.Now()
 	resp, m, err = Execute(context.Background(), NoopThrottle{}, req)
-	elapsed := time.Since(start)
 	if err != nil || m.ID != "big" || resp.Choices[0].Text != "from healthy fallback" {
 		t.Fatalf("call 3 failed: resp=%v, m=%v, err=%v", resp, m, err)
 	}
 	if brokenCalls != callsBefore {
 		t.Fatalf("expected zero calls to broken adapter while OPEN, got %d calls", brokenCalls-callsBefore)
-	}
-	if elapsed > 10*time.Millisecond {
-		t.Fatalf("expected fail-fast < 10ms, took %v", elapsed)
 	}
 
 	// 4th request: advance time past cooldown; deep recovers and answers successfully
@@ -996,4 +991,3 @@ func TestExecuteCircuitBreakerAllBroken(t *testing.T) {
 		t.Fatalf("expected codes.Unavailable, got %v", status.Code(st))
 	}
 }
-

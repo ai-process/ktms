@@ -10,7 +10,6 @@ import (
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 	"github.com/ai-process/llm-proxy/internal/apikeys"
-	"github.com/ai-process/llm-proxy/internal/circuitbreaker"
 	"github.com/ai-process/llm-proxy/internal/guardrails"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/proxydb"
@@ -49,11 +48,6 @@ type ProxyServer struct {
 func (s *ProxyServer) WithCircuitBreaker(cb router.CircuitBreaker) *ProxyServer {
 	s.circuitBreaker = cb
 	return s
-}
-
-// CircuitBreaker returns the configured circuit breaker.
-func (s *ProxyServer) CircuitBreaker() router.CircuitBreaker {
-	return s.circuitBreaker
 }
 
 // WithCache configures response caching on the server.
@@ -100,9 +94,8 @@ func NewProxyServer(snapshots SnapshotProvider, throttle router.Throttle) *Proxy
 		throttle = router.NoopThrottle{}
 	}
 	return &ProxyServer{
-		snapshots:      snapshots,
-		throttle:       throttle,
-		circuitBreaker: circuitbreaker.NewManager(circuitbreaker.DefaultConfig()),
+		snapshots: snapshots,
+		throttle:  throttle,
 	}
 }
 

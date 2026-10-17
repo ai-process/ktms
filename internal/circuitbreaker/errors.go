@@ -7,59 +7,23 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/openai/openai-go/v3"
-	"google.golang.org/genai"
-
 	"github.com/ai-process/llm-proxy/internal/llm"
 )
 
-// IsClientCancellation distinguishes client-side aborts from vendor failures
-// so caller disconnects do not erroneously trip upstream circuit breakers.
+// IsClientCancellation distinguishes client-side aborts and deadlines from vendor failures
+// so caller disconnects or short deadlines do not erroneously trip upstream circuit breakers.
 func IsClientCancellation(ctx context.Context, err error) bool {
 	if errors.Is(err, context.Canceled) {
 		return true
 	}
-	if ctx != nil && errors.Is(ctx.Err(), context.Canceled) {
+	if ctx != nil && ctx.Err() != nil {
 		return true
 	}
 	return false
 }
 
-// ExtractHTTPStatusCode resolves HTTP status codes across supported provider SDKs
-// and custom adapter error envelopes.
-func ExtractHTTPStatusCode(err error) (int, bool) {
-	if err == nil {
-		return 0, false
-	}
-	var httpErr llm.HTTPStatusError
-	if errors.As(err, &httpErr) {
-		return httpErr.HTTPStatus(), true
-	}
-	var openaiErr *openai.Error
-	if errors.As(err, &openaiErr) && openaiErr != nil {
-		return openaiErr.StatusCode, true
-	}
-	var anthropicErr *anthropic.Error
-	if errors.As(err, &anthropicErr) && anthropicErr != nil {
-		return anthropicErr.StatusCode, true
-	}
-	var genaiErr genai.APIError
-	if errors.As(err, &genaiErr) {
-		return genaiErr.Code, true
-	}
-	type httpStatusCodeError interface {
-		HTTPStatusCode() int
-	}
-	var httpStatusErr httpStatusCodeError
-	if errors.As(err, &httpStatusErr) {
-		return httpStatusErr.HTTPStatusCode(), true
-	}
-	return 0, false
-}
-
-// IsTrippingError classifies whether an error indicates vendor failure (5xx, timeouts,
-// rate exhaustion) rather than caller errors (400, auth, client cancellations).
+// IsTrippingError classifies whether an error indicates vendor failure (5xx, network drops,
+// connection refusal) rather than caller errors (400, auth, client cancellations, quota 429).
 func IsTrippingError(ctx context.Context, err error) bool {
 	if err == nil {
 		return false
@@ -68,8 +32,8 @@ func IsTrippingError(ctx context.Context, err error) bool {
 		return false
 	}
 
-	if code, ok := ExtractHTTPStatusCode(err); ok {
-		return code == 429 || (code >= 500 && code < 600)
+	if code, ok := llm.ExtractHTTPStatusCode(err); ok {
+		return code >= 500 && code < 600
 	}
 
 	if errors.Is(err, llm.ErrOutputTruncated) ||
@@ -90,9 +54,9 @@ func IsTrippingError(ctx context.Context, err error) bool {
 	var smithyErr smithyAPIError
 	if errors.As(err, &smithyErr) {
 		switch smithyErr.ErrorCode() {
-		case "ThrottlingException", "ServiceUnavailableException", "InternalServerException", "ModelTimeoutException", "ModelErrorException":
+		case "ServiceUnavailableException", "InternalServerException", "ModelTimeoutException", "ModelErrorException":
 			return true
-		case "ValidationException", "AccessDeniedException", "ResourceNotFoundException":
+		case "ThrottlingException", "ValidationException", "AccessDeniedException", "ResourceNotFoundException":
 			return false
 		}
 	}
@@ -108,17 +72,9 @@ func IsTrippingError(ctx context.Context, err error) bool {
 		}
 	}
 
-	errMsg := safeErrorString(err)
-	if strings.Contains(errMsg, "could not honour the response schema") {
-		return false
-	}
-
-	msg := strings.ToLower(errMsg)
+	msg := strings.ToLower(safeErrorString(err))
 	return strings.Contains(msg, "connection refused") ||
 		strings.Contains(msg, "connection reset") ||
-		strings.Contains(msg, "timeout") ||
-		strings.Contains(msg, "deadline exceeded") ||
-		strings.Contains(msg, "no such host") ||
 		strings.Contains(msg, "tls handshake timeout") ||
 		strings.Contains(msg, "i/o timeout") ||
 		strings.Contains(msg, "broken pipe")
@@ -135,4 +91,3 @@ func safeErrorString(err error) (s string) {
 	}()
 	return err.Error()
 }
-

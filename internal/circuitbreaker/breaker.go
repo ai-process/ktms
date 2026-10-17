@@ -73,66 +73,80 @@ func (b *Breaker) now() time.Time {
 
 // Allow determines if an execution attempt is permitted or failed fast without network IO.
 func (b *Breaker) Allow() bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	var from State
+	var changed bool
 
+	b.mu.Lock()
 	now := b.now()
+	allowed := false
+
 	switch b.state {
 	case StateClosed:
-		return true
+		allowed = true
 
 	case StateOpen:
 		if now.Sub(b.openedAt) >= b.cooldown {
-			b.transitionTo(StateHalfOpen)
+			from, changed = b.transitionTo(StateHalfOpen)
 			b.probeInProgress = true
 			b.probeStartedAt = now
-			return true
+			allowed = true
 		}
-		return false
 
 	case StateHalfOpen:
-		// Reset stuck probe if cooldown elapsed without a completion report.
 		if b.probeInProgress && now.Sub(b.probeStartedAt) > b.cooldown {
 			b.probeInProgress = false
 		}
 		if !b.probeInProgress {
 			b.probeInProgress = true
 			b.probeStartedAt = now
-			return true
+			allowed = true
 		}
-		return false
 
 	default:
-		return true
+		allowed = true
+	}
+	b.mu.Unlock()
+
+	if changed && b.onStateChange != nil {
+		b.onStateChange(b.vendor, b.model, from, StateHalfOpen)
+	}
+	return allowed
+}
+
+// Release frees any active probe lock when a request was admitted by Allow but skipped
+// before calling the upstream vendor (e.g. rate limits or pre-call errors).
+func (b *Breaker) Release() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.state == StateHalfOpen && b.probeInProgress {
+		b.probeInProgress = false
 	}
 }
 
 // Report records execution outcome, updating error counts and state machine transitions.
 func (b *Breaker) Report(ctx context.Context, err error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	var from, to State
+	var changed bool
 
+	b.mu.Lock()
 	if IsClientCancellation(ctx, err) {
 		if b.state == StateHalfOpen && b.probeInProgress {
 			b.probeInProgress = false
 		}
+		b.mu.Unlock()
 		return
 	}
 
-	if err == nil {
+	if err == nil || !IsTrippingError(ctx, err) {
 		b.consecutiveFails = 0
 		if b.state == StateHalfOpen {
 			b.probeInProgress = false
-			b.transitionTo(StateClosed)
+			from, changed = b.transitionTo(StateClosed)
+			to = StateClosed
 		}
-		return
-	}
-
-	if !IsTrippingError(ctx, err) {
-		if b.state == StateHalfOpen {
-			b.consecutiveFails = 0
-			b.probeInProgress = false
-			b.transitionTo(StateClosed)
+		b.mu.Unlock()
+		if changed && b.onStateChange != nil {
+			b.onStateChange(b.vendor, b.model, from, to)
 		}
 		return
 	}
@@ -141,13 +155,19 @@ func (b *Breaker) Report(ctx context.Context, err error) {
 	case StateClosed:
 		b.consecutiveFails++
 		if b.consecutiveFails >= b.failThreshold {
-			b.transitionTo(StateOpen)
+			from, changed = b.transitionTo(StateOpen)
+			to = StateOpen
 		}
 	case StateHalfOpen:
 		b.probeInProgress = false
-		b.transitionTo(StateOpen)
+		from, changed = b.transitionTo(StateOpen)
+		to = StateOpen
 	case StateOpen:
-		// In-flight calls that started before trip do not alter openedAt timer.
+	}
+	b.mu.Unlock()
+
+	if changed && b.onStateChange != nil {
+		b.onStateChange(b.vendor, b.model, from, to)
 	}
 }
 
@@ -158,27 +178,16 @@ func (b *Breaker) State() State {
 	return b.state
 }
 
-// Reset restores breaker to Closed state with zeroed counters.
-func (b *Breaker) Reset() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.consecutiveFails = 0
-	b.probeInProgress = false
-	b.transitionTo(StateClosed)
-}
-
-func (b *Breaker) transitionTo(to State) {
+func (b *Breaker) transitionTo(to State) (State, bool) {
 	if b.state == to {
-		return
+		return b.state, false
 	}
 	from := b.state
 	b.state = to
 	if to == StateOpen {
 		b.openedAt = b.now()
 	}
-	if b.onStateChange != nil {
-		b.onStateChange(b.vendor, b.model, from, to)
-	}
+	return from, true
 }
 
 // Manager maintains distinct breakers for each upstream (vendor, model) pair.
@@ -215,6 +224,20 @@ func (m *Manager) Allow(vendor, model string) bool {
 	return b.Allow()
 }
 
+// Release releases a probe slot if an admitted request was aborted before calling the vendor.
+func (m *Manager) Release(vendor, model string) {
+	if !m.cfg.Enabled {
+		return
+	}
+	key := vendor + "/" + model
+	m.mu.RLock()
+	b, ok := m.breakers[key]
+	m.mu.RUnlock()
+	if ok {
+		b.Release()
+	}
+}
+
 // Report forwards call results to the model's breaker.
 func (m *Manager) Report(ctx context.Context, vendor, model string, err error) {
 	if !m.cfg.Enabled {
@@ -224,19 +247,19 @@ func (m *Manager) Report(ctx context.Context, vendor, model string, err error) {
 	b.Report(ctx, err)
 }
 
-// State inspects breaker state for a specific vendor and model.
+// State inspects breaker state without mutating registry or emitting metrics.
 func (m *Manager) State(vendor, model string) State {
 	if !m.cfg.Enabled {
 		return StateClosed
 	}
-	b := m.getOrCreateBreaker(vendor, model)
+	key := vendor + "/" + model
+	m.mu.RLock()
+	b, ok := m.breakers[key]
+	m.mu.RUnlock()
+	if !ok {
+		return StateClosed
+	}
 	return b.State()
-}
-
-// Reset resets breaker counters for the specified vendor and model.
-func (m *Manager) Reset(vendor, model string) {
-	b := m.getOrCreateBreaker(vendor, model)
-	b.Reset()
 }
 
 // SetNowFunc overrides the clock source for deterministic testing.
@@ -261,8 +284,8 @@ func (m *Manager) getOrCreateBreaker(vendor, model string) *Breaker {
 	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if b, ok = m.breakers[key]; ok {
+		m.mu.Unlock()
 		return b
 	}
 
@@ -276,9 +299,11 @@ func (m *Manager) getOrCreateBreaker(vendor, model string) *Breaker {
 		onStateChange: m.onStateChange,
 	}
 	m.breakers[key] = b
+	callback := m.onStateChange
+	m.mu.Unlock()
 
-	if m.onStateChange != nil {
-		m.onStateChange(vendor, model, StateClosed, StateClosed)
+	if callback != nil {
+		callback(vendor, model, StateClosed, StateClosed)
 	}
 	return b
 }
