@@ -65,52 +65,89 @@ reflection is on, so `grpcurl` works without the `.proto` files.
 
 ## Quick start (Docker Compose)
 
-Requirements: Docker with the Compose plugin, and [`grpcurl`](https://github.com/fullstorydev/grpcurl).
+The fastest way to run llm-proxy locally is with Docker Compose. With `AUTO_SEED` enabled (default in compose), the proxy automatically initializes default models, routing rules, and a ready-to-use client key (`llm_dev_default_key`).
+
+### 1. Launch the stack
 
 ```bash
 git clone https://github.com/ai-process/llm-proxy.git
 cd llm-proxy
-docker compose up --build -d
-curl -s localhost:8080/readyz     # {"status":"ready"}
+
+# Pass your vendor API key (OpenAI, Gemini, or Anthropic)
+OPENAI_API_KEY=sk-... docker compose up -d --build
+
+# Verify readiness
+curl -s http://localhost:8080/readyz     # {"status":"ready"}
 ```
 
-This starts the proxy, Postgres 16 and Redis 7. The compose file ships a **development-only**
-encryption key and the bootstrap admin key `dev-bootstrap`; never reuse them anywhere real.
-The database schema applies itself on first start.
+Alternatively, run `./scripts/quickstart.sh` for an interactive setup that generates master encryption and bootstrap keys, configures `.env`, and launches the stack.
 
-Mint a client key, give it a vendor credential, register a model and a catch-all rule:
+> [!NOTE]
+> With `AUTO_SEED=true` (enabled by default in Compose), the proxy automatically syncs vendor API keys from environment variables (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`) to the client key named `dev-default` (or `$SEED_CLIENT_NAME`) on every startup.
+
+### 2. Make your first call
+
+You can immediately query the proxy using the OpenAI-compatible HTTP endpoint:
+
+```bash
+curl -s http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer llm_dev_default_key" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"auto","messages":[{"role":"user","content":"Say hi in three words."}]}'
+```
+
+Or using the official OpenAI Python SDK:
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8080/v1", api_key="llm_dev_default_key")
+response = client.chat.completions.create(
+    model="auto",
+    messages=[{"role": "user", "content": "Say hi in three words."}],
+)
+print(response.choices[0].message.content)
+```
+
+The response includes observability headers (`X-LLM-Proxy-Vendor`, `X-LLM-Proxy-Rule`, `X-LLM-Proxy-Placement`) indicating which upstream provider served the request.
+
+---
+
+### Manual Setup via Admin RPC (Advanced)
+
+If you prefer to configure everything manually from scratch (without auto-seeding), disable `AUTO_SEED=false` and use [`grpcurl`](https://github.com/fullstorydev/grpcurl) with `BOOTSTRAP_ADMIN_KEY`:
 
 ```bash
 export ADMIN="authorization: Bearer dev-bootstrap"
 G="grpcurl -plaintext -H"
 
-# 1. A client API key (the plaintext is shown exactly once).
+# 1. Mint a client API key (plaintext is returned once)
 $G "$ADMIN" -d '{"name":"my-app","scopes":["generate"]}' \
   localhost:9090 llmproxy.v1.LLMProxyAdminService/MintAPIKey
 
-# 2. Your OpenAI key, assigned to that client key.
+# 2. Assign vendor credential to the client key
 $G "$ADMIN" -d '{"api_key_name":"my-app","vendor":"openai","plain_key":"sk-..."}' \
   localhost:9090 llmproxy.v1.LLMProxyAdminService/SetVendorKey
 
-# 3. A model, and 4. rules (one catch-all per effort is mandatory).
+# 3. Register a model
 $G "$ADMIN" -d '{"model":{"id":"gpt-4o-mini","vendor":"openai",
   "efforts":["EFFORT_LOW","EFFORT_MEDIUM","EFFORT_HIGH"],
   "price_in_per_mtok":0.15,"price_out_per_mtok":0.60,"enabled":true}}' \
   localhost:9090 llmproxy.v1.LLMProxyAdminService/UpsertModel
 
+# 4. Set routing rules (catch-all for each effort tier is mandatory)
 $G "$ADMIN" -d '{"rules":[
   {"name":"default","priority":1,"use":["gpt-4o-mini"],"enabled":true}]}' \
   localhost:9090 llmproxy.v1.LLMProxyAdminService/ReplaceRules
 
-# 5. Ask something with the key from step 1.
+# 5. Call gRPC GenerateText with your client key
 $G "authorization: Bearer llm_<your key>" -d '{
   "effort":"EFFORT_LOW",
   "messages":[{"role":"MESSAGE_ROLE_USER","text":"Say hi in three words."}]}' \
   localhost:9090 llmproxy.v1.LLMProxyService/GenerateText
 ```
 
-The response names the model and rule that served it (`resolved_model`, `matched_rule`).
-Once your real keys exist, unset `BOOTSTRAP_ADMIN_KEY`.
+Once real keys exist in production, unset `BOOTSTRAP_ADMIN_KEY`.
 
 ## Installation
 
@@ -261,6 +298,12 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `ROUTING_RELOAD_SECONDS` | `60` | How often replicas poll for config changed elsewhere. |
 | `AUTO_MIGRATE` | `true` | Apply embedded migrations at startup (guarded by an advisory lock, safe for rolling deploys). Off means applying `migrations/*.sql` by hand. |
 | `MIGRATE_TIMEOUT` | `3m` | Bound for the whole migration run. |
+| `AUTO_SEED` | `false` | Automatically populate initial models, rules, and client key when starting against an unconfigured database (enabled in docker-compose). |
+| `SEED_CLIENT_KEY` | empty | Pre-configured client API key (e.g. `llm_dev_default_key`) for auto-seed; generated if unset. |
+| `SEED_CLIENT_NAME` | `dev-default` | Name assigned to the auto-seeded client API key. |
+| `SEED_OPENAI_KEY` / `OPENAI_API_KEY` | empty | OpenAI API key to encrypt and register during auto-seeding. |
+| `SEED_GEMINI_KEY` / `GEMINI_API_KEY` | empty | Google Gemini API key to encrypt and register during auto-seeding. |
+| `SEED_ANTHROPIC_KEY` / `ANTHROPIC_API_KEY` | empty | Anthropic API key to encrypt and register during auto-seeding. |
 | `REDIS_ADDR` | empty | Redis for throttling. Empty disables limits. |
 | `REDIS_PASSWORD` / `REDIS_DB` | empty / `0` | Redis auth and database. |
 | `REDIS_KEY_PREFIX` | empty | Namespace for counters when Redis is shared (compose uses `dev`). |

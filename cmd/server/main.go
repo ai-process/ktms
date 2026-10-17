@@ -30,6 +30,7 @@ import (
 	"github.com/ai-process/llm-proxy/internal/rediskeys"
 	"github.com/ai-process/llm-proxy/internal/registry"
 	"github.com/ai-process/llm-proxy/internal/router"
+	"github.com/ai-process/llm-proxy/internal/seed"
 	"github.com/ai-process/llm-proxy/internal/server"
 	"github.com/ai-process/llm-proxy/internal/throttle"
 	"github.com/ai-process/llm-proxy/internal/usagereport"
@@ -100,6 +101,22 @@ func main() {
 		}
 	} else {
 		log.Warn().Msg("AUTO_MIGRATE is off; the schema must be applied by hand")
+	}
+
+	if cfg.AutoSeed {
+		seedCtx, seedCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		_, err := seed.Run(seedCtx, pool, keyring, seed.Config{
+			Enabled:      cfg.AutoSeed,
+			ClientKey:    cfg.SeedClientKey,
+			ClientName:   cfg.SeedClientName,
+			OpenAIKey:    cfg.SeedOpenAIKey,
+			GeminiKey:    cfg.SeedGeminiKey,
+			AnthropicKey: cfg.SeedAnthropicKey,
+		})
+		seedCancel()
+		if err != nil {
+			log.Fatal().Err(err).Msg("applying auto-seed failed")
+		}
 	}
 
 	db := proxydb.New(pool)
