@@ -25,6 +25,15 @@ func (e customHTTPStatusError) HTTPStatus() int {
 	return e.status
 }
 
+type mockBedrockError struct {
+	code   string
+	status int
+}
+
+func (m mockBedrockError) Error() string       { return m.code }
+func (m mockBedrockError) ErrorCode() string   { return m.code }
+func (m mockBedrockError) HTTPStatusCode() int { return m.status }
+
 func TestCircuitBreakerStateTransitions(t *testing.T) {
 	currentTime := time.Now()
 	nowMock := func() time.Time { return currentTime }
@@ -317,6 +326,10 @@ func TestTrippingErrorClassification(t *testing.T) {
 		{"TLS handshake timeout", errors.New("net/http: TLS handshake timeout"), true},
 		{"i/o timeout", errors.New("read tcp 127.0.0.1:443: i/o timeout"), true},
 		{"Broken pipe", errors.New("write: broken pipe"), true},
+		{"Bedrock ModelTimeoutException 408", mockBedrockError{code: "ModelTimeoutException", status: 408}, true},
+		{"Bedrock ModelErrorException 424", mockBedrockError{code: "ModelErrorException", status: 424}, true},
+		{"Bedrock ThrottlingException 429", mockBedrockError{code: "ThrottlingException", status: 429}, false},
+		{"Bedrock ValidationException 400", mockBedrockError{code: "ValidationException", status: 400}, false},
 	}
 
 	for _, tc := range cases {

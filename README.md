@@ -948,6 +948,13 @@ purpose travels in free-form attributes, so the proxy knows nothing about your p
 - **Inference Pool Wait Buffer:** For local node pools, requests waiting for free slots use jittered backoff polling up to `queue_timeout_ms`. Interactive requests (non-service callers) are automatically capped to 250ms to safeguard Time-To-First-Token (TTFT). Little's Law predictive admission evaluates the queue depth and estimated duration, immediately falling back to the next model in the chain if expected wait time exceeds the timeout.
 - A throttled model is skipped in the fallback chain; if none of the chain is available the caller gets `RESOURCE_EXHAUSTED`.
 
+**Upstream Circuit Breaker:**
+- Monitors consecutive upstream failures (5xx, network drops, and connection timeouts) per `(vendor, model)`.
+- When consecutive failures reach `CIRCUIT_BREAKER_FAIL_THRESHOLD` (default 5), the circuit trips to `OPEN`.
+- Requests skip degraded upstream models immediately (<1ms) without network latency.
+- After `CIRCUIT_BREAKER_COOLDOWN` (default 30s), transitions to `HALF_OPEN` and admits a single probe request. Success restores `CLOSED`; failure re-opens the circuit.
+- If all models in the chain have open circuits, the caller receives `UNAVAILABLE vendors_unavailable`.
+
 **Usage reporting.** When `USAGE_COLLECTOR_HOST` is set, every call emits an event (vendor,
 model, tokens, duration, status, `action_id`, rule name and your attributes as metadata) to a
 gRPC service implementing [`usage-proto/usage/v1/usage.proto`](usage-proto/usage/v1/usage.proto).

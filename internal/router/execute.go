@@ -235,23 +235,27 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 		}
 	}
 
-	if len(r.Chain) > 0 && allCircuitBroken {
-		return nil, nil, &ChainExhausted{AllCircuitBroken: true}
+	return nil, nil, exhaustedError(len(r.Chain), allCircuitBroken, allThrottled, anyCircuitBroken, throttledCount, throttleKind, lastErr)
+}
+
+func exhaustedError(chainLen int, allCircuitBroken, allThrottled, anyCircuitBroken bool, throttledCount int, throttleKind string, lastErr error) *ChainExhausted {
+	if chainLen > 0 && allCircuitBroken {
+		return &ChainExhausted{AllCircuitBroken: true}
 	}
 	if allThrottled {
-		return nil, nil, &ChainExhausted{AllThrottled: true, ThrottleKind: throttleKind}
+		return &ChainExhausted{AllThrottled: true, ThrottleKind: throttleKind}
 	}
 	if lastErr == nil && (anyCircuitBroken || throttledCount > 0) {
 		if throttledCount > 0 {
-			return nil, nil, &ChainExhausted{
+			return &ChainExhausted{
 				AllThrottled:     true,
 				ThrottleKind:     throttleKind,
 				AnyCircuitBroken: anyCircuitBroken,
 			}
 		}
-		return nil, nil, &ChainExhausted{AllCircuitBroken: true}
+		return &ChainExhausted{AllCircuitBroken: true}
 	}
-	return nil, nil, &ChainExhausted{Last: lastErr, AnyCircuitBroken: anyCircuitBroken}
+	return &ChainExhausted{Last: lastErr, AnyCircuitBroken: anyCircuitBroken}
 }
 
 // ExecuteStream walks the model chain for streaming requests. Pre-stream failures
@@ -481,23 +485,7 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 		}
 	}
 
-	if len(r.Chain) > 0 && allCircuitBroken {
-		return nil, &ChainExhausted{AllCircuitBroken: true}
-	}
-	if allThrottled {
-		return nil, &ChainExhausted{AllThrottled: true, ThrottleKind: throttleKind}
-	}
-	if lastErr == nil && (anyCircuitBroken || throttledCount > 0) {
-		if throttledCount > 0 {
-			return nil, &ChainExhausted{
-				AllThrottled:     true,
-				ThrottleKind:     throttleKind,
-				AnyCircuitBroken: anyCircuitBroken,
-			}
-		}
-		return nil, &ChainExhausted{AllCircuitBroken: true}
-	}
-	return nil, &ChainExhausted{Last: lastErr, AnyCircuitBroken: anyCircuitBroken}
+	return nil, exhaustedError(len(r.Chain), allCircuitBroken, allThrottled, anyCircuitBroken, throttledCount, throttleKind, lastErr)
 }
 
 // callAndCheck runs one model and, when that model cannot be handed a schema
@@ -664,21 +652,5 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 			Msg("media call failed, trying next in chain")
 	}
 
-	if len(r.Chain) > 0 && allCircuitBroken {
-		return nil, &ChainExhausted{AllCircuitBroken: true}
-	}
-	if allThrottled {
-		return nil, &ChainExhausted{AllThrottled: true, ThrottleKind: throttleKind}
-	}
-	if lastErr == nil && (anyCircuitBroken || throttledCount > 0) {
-		if throttledCount > 0 {
-			return nil, &ChainExhausted{
-				AllThrottled:     true,
-				ThrottleKind:     throttleKind,
-				AnyCircuitBroken: anyCircuitBroken,
-			}
-		}
-		return nil, &ChainExhausted{AllCircuitBroken: true}
-	}
-	return nil, &ChainExhausted{Last: lastErr, AnyCircuitBroken: anyCircuitBroken}
+	return nil, exhaustedError(len(r.Chain), allCircuitBroken, allThrottled, anyCircuitBroken, throttledCount, throttleKind, lastErr)
 }

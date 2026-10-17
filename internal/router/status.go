@@ -31,7 +31,7 @@ type ChainExhausted struct {
 	AllThrottled     bool   // every model skipped by a throttle
 	ThrottleKind     string // "rpm" | "budget_key" | "budget_user" | spendlimit reasons
 	AllCircuitBroken bool   // every model skipped because circuit breaker is open
-	AnyCircuitBroken bool   // at least one model skipped because circuit breaker is open
+	AnyCircuitBroken bool   // observed at least one open circuit in chain; retained for telemetry and tests
 }
 
 func (e *ChainExhausted) Error() string {
@@ -40,12 +40,6 @@ func (e *ChainExhausted) Error() string {
 	}
 	if e.AllThrottled {
 		return "chain exhausted: throttled:" + e.ThrottleKind
-	}
-	if e.AnyCircuitBroken && e.Last == nil {
-		if e.ThrottleKind != "" {
-			return "chain exhausted: throttled:" + e.ThrottleKind
-		}
-		return "chain exhausted: circuit_broken: upstream models temporarily unavailable"
 	}
 	return fmt.Sprintf("chain exhausted: %v", e.Last)
 }
@@ -75,12 +69,6 @@ func ToStatus(err error) error {
 		}
 		if exhausted.AllThrottled {
 			return throttledStatus(exhausted.ThrottleKind, time.Now())
-		}
-		if exhausted.AnyCircuitBroken && exhausted.Last == nil {
-			if exhausted.ThrottleKind != "" {
-				return throttledStatus(exhausted.ThrottleKind, time.Now())
-			}
-			return status.Error(codes.Unavailable, "vendors_unavailable")
 		}
 		if llm.IsRetryableError(exhausted.Last) || llm.ShouldSkipToNextModel(exhausted.Last) {
 			return status.Error(codes.Unavailable, "vendors_unavailable")

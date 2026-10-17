@@ -1039,3 +1039,88 @@ func TestExecuteCircuitBreakerAndThrottled(t *testing.T) {
 		t.Fatalf("expected codes.ResourceExhausted, got %v (%v)", status.Code(st), st)
 	}
 }
+
+func TestExecuteStreamCircuitBreakerAndThrottled(t *testing.T) {
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 1,
+		Cooldown:      10 * time.Second,
+	})
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	mBig := snap.Models["big"]
+	chain := []*proxydb.Model{mDeep, mBig}
+
+	cbMgr.Report(context.Background(), mDeep.Vendor, mDeep.ID, retryableErr)
+	th := &recordingThrottle{rpmDeny: map[string]bool{"big": true}}
+
+	req := Request{
+		Chain:          chain,
+		KeyName:        "test-key",
+		UserID:         "user-1",
+		Chat:           llm.NewChatContext(),
+		CircuitBreaker: cbMgr,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			t.Fatal("adapter should not be called")
+			return nil, nil
+		},
+	}
+
+	_, err := ExecuteStream(context.Background(), th, req, func(_ *proxydb.Model, _ llm.StreamChunk) error {
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var exhausted *ChainExhausted
+	if !errors.As(err, &exhausted) || !exhausted.AllThrottled || !exhausted.AnyCircuitBroken {
+		t.Fatalf("expected AllThrottled=true and AnyCircuitBroken=true, got %+v", exhausted)
+	}
+	if st := ToStatus(err); status.Code(st) != codes.ResourceExhausted {
+		t.Fatalf("expected ResourceExhausted, got %v", status.Code(st))
+	}
+}
+
+func TestExecuteMediaCircuitBreakerAndThrottled(t *testing.T) {
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 1,
+		Cooldown:      10 * time.Second,
+	})
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	mBig := snap.Models["big"]
+	chain := []*proxydb.Model{mDeep, mBig}
+
+	cbMgr.Report(context.Background(), mDeep.Vendor, mDeep.ID, retryableErr)
+	th := &recordingThrottle{rpmDeny: map[string]bool{"big": true}}
+
+	req := MediaRequest{
+		Chain:          chain,
+		KeyName:        "test-key",
+		UserID:         "user-1",
+		CircuitBreaker: cbMgr,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			t.Fatal("adapter should not be called")
+			return nil, nil
+		},
+		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
+			t.Fatal("call should not be invoked")
+			return llm.TokensUsage{}, nil
+		},
+	}
+
+	_, err := ExecuteMedia(context.Background(), th, req)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var exhausted *ChainExhausted
+	if !errors.As(err, &exhausted) || !exhausted.AllThrottled || !exhausted.AnyCircuitBroken {
+		t.Fatalf("expected AllThrottled=true and AnyCircuitBroken=true, got %+v", exhausted)
+	}
+	if st := ToStatus(err); status.Code(st) != codes.ResourceExhausted {
+		t.Fatalf("expected ResourceExhausted, got %v", status.Code(st))
+	}
+}
