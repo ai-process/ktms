@@ -1,0 +1,55 @@
+name: Feature Request
+description: Propose a new feature, improvement, or capability for llm-proxy
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We welcome proposals to expand and improve llm-proxy! Please detail the problem your request addresses and any suggested technical design.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Target Area
+      options:
+        - Routing & Fallback Policies
+        - Upstream Vendor Integration
+        - Local Inference Nodes & Resource Management
+        - Spend & Token Quota Enforcement
+        - Protocol Parity (OpenAI HTTP / gRPC / Protobuf)
+        - Observability & Metrics
+        - Developer Experience & Tooling
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement / Motivation
+      description: What problem are you trying to solve or what limitation are you encountering?
+      placeholder: "When running ... it is difficult to ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution & Technical Details
+      description: Describe the solution you'd like to see implemented, including potential API or configuration changes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or workarounds you considered.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Links to vendor documentation, RFCs, or reference implementations.
