@@ -126,13 +126,16 @@ func Run(ctx context.Context, pool *pgxpool.Pool, keyring *crypto.Keyring, cfg C
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("lookup api key: %w", err)
-	} else if cfg.ClientKey != "" {
+	} else if strings.TrimSpace(cfg.ClientKey) != "" {
 		_, err = tx.Exec(ctx,
 			`UPDATE api_key SET key_lookup = $1, key_hash = $2, scopes = $3 WHERE id = $4`,
 			apiKeyRow.KeyLookup, apiKeyRow.KeyHash, apiKeyRow.Scopes, apiKeyID)
 		if err != nil {
 			return nil, fmt.Errorf("update api key: %w", err)
 		}
+	} else {
+		// Existing api_key row was preserved; clear un-persisted generated key.
+		plainKey = ""
 	}
 
 	var seededVendors []string
@@ -494,6 +497,12 @@ func printBanner(clientKey, keyName string, vendors []string) {
 	if len(vendors) > 0 {
 		vList = strings.Join(vendors, ", ")
 	}
+	keyDisplay := clientKey
+	authHeader := clientKey
+	if clientKey == "" {
+		keyDisplay = fmt.Sprintf("(existing %s key preserved)", keyName)
+		authHeader = "<your-client-key>"
+	}
 	banner := fmt.Sprintf(`
 ================================================================================
 [llm-proxy] Quickstart Auto-Seed Completed!
@@ -506,6 +515,6 @@ Try your first request:
     -H "Content-Type: application/json" \
     -d '{"model":"auto","messages":[{"role":"user","content":"Say hi in three words."}]}'
 ================================================================================`,
-		clientKey, keyName, vList, clientKey)
+		keyDisplay, keyName, vList, authHeader)
 	log.Info().Msg(banner)
 }
