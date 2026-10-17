@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"google.golang.org/grpc/codes"
@@ -34,20 +35,38 @@ type TextCache interface {
 // ProxyServer implements the data-plane LLMProxyService.
 type ProxyServer struct {
 	pb.UnimplementedLLMProxyServiceServer
-	snapshots      SnapshotProvider
-	throttle       router.Throttle
-	circuitBreaker router.CircuitBreaker
-	cache          TextCache
-	semantic       SemanticCache
-	guardrails     *guardrails.Guardrails
-	batchStore     BatchStore
-	batchMaxItems  int
+	snapshots       SnapshotProvider
+	throttle        router.Throttle
+	circuitBreaker  router.CircuitBreaker
+	upstreamTimeout time.Duration
+	cache           TextCache
+	semantic        SemanticCache
+	guardrails      *guardrails.Guardrails
+	batchStore      BatchStore
+	batchMaxItems   int
 }
 
 // WithCircuitBreaker configures upstream circuit breaking on the server.
 func (s *ProxyServer) WithCircuitBreaker(cb router.CircuitBreaker) *ProxyServer {
 	s.circuitBreaker = cb
 	return s
+}
+
+// WithUpstreamTimeout bounds each attempt against an upstream vendor.
+func (s *ProxyServer) WithUpstreamTimeout(d time.Duration) *ProxyServer {
+	s.upstreamTimeout = d
+	return s
+}
+
+func (s *ProxyServer) effectiveUpstreamTimeout(attrs map[string]string) time.Duration {
+	if attrs != nil {
+		if raw := attrs["upstream_timeout"]; raw != "" {
+			if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+				return d
+			}
+		}
+	}
+	return s.upstreamTimeout
 }
 
 // WithCache configures response caching on the server.
@@ -142,6 +161,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		Estimate:         estimateTokens(req),
 		Chat:             chat,
 		CircuitBreaker:   s.circuitBreaker,
+		UpstreamTimeout:  s.effectiveUpstreamTimeout(req.GetAttributes()),
 		Adapter:          func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
 		SoftSchema:       registry.SoftSchema,
 		ShadowModel:      plan.shadowModel,
@@ -261,6 +281,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		Estimate:         estimateTokens(inner),
 		Chat:             chat,
 		CircuitBreaker:   s.circuitBreaker,
+		UpstreamTimeout:  s.effectiveUpstreamTimeout(inner.GetAttributes()),
 		Adapter:          func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
 		SoftSchema:       registry.SoftSchema,
 		ShadowModel:      plan.shadowModel,

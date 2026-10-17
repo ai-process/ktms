@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1119,7 +1120,7 @@ func TestExecuteMediaCircuitBreakerAndThrottled(t *testing.T) {
 			t.Fatal("adapter should not be called")
 			return nil, nil
 		},
-		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
+		Call: func(ctx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			t.Fatal("call should not be invoked")
 			return llm.TokensUsage{}, nil
 		},
@@ -1598,5 +1599,286 @@ func TestExecute_ShadowSpendSettled(t *testing.T) {
 	}
 	if !foundShadowUsage {
 		t.Fatalf("shadow usage (15, 25) not found in settled: %+v", settled)
+	}
+}
+
+type hangingAdapter struct {
+	stallDuration time.Duration
+}
+
+func (h *hangingAdapter) GenerateText(ctx context.Context, _ *llm.ChatContext) (*llm.Response, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(h.stallDuration):
+		r := &llm.Response{Usage: llm.TokensUsage{Input: 10, Output: 5}}
+		r.AddMessage(&llm.Message{Text: "stall recovered", Type: llm.MessageTypeBot})
+		return r, nil
+	}
+}
+
+type hangingStreamAdapter struct {
+	stallBeforeFirstChunk time.Duration
+	chunks                []string
+	stallBetweenChunks    time.Duration
+}
+
+func (h *hangingStreamAdapter) SupportsStreaming() bool { return true }
+
+func (h *hangingStreamAdapter) GenerateText(ctx context.Context, _ *llm.ChatContext) (*llm.Response, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-time.After(h.stallBeforeFirstChunk):
+		r := &llm.Response{Usage: llm.TokensUsage{Input: 10, Output: 5}}
+		r.AddMessage(&llm.Message{Text: "ok", Type: llm.MessageTypeBot})
+		return r, nil
+	}
+}
+
+func (h *hangingStreamAdapter) GenerateTextStream(ctx context.Context, _ *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+	if h.stallBeforeFirstChunk > 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(h.stallBeforeFirstChunk):
+		}
+	}
+	for i, c := range h.chunks {
+		if err := onChunk(llm.StreamChunk{Delta: c}); err != nil {
+			return err
+		}
+		if h.stallBetweenChunks > 0 && i < len(h.chunks)-1 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(h.stallBetweenChunks):
+			}
+		}
+	}
+	return nil
+}
+
+func TestExecuteUpstreamTimeoutFallsBackAndTripsBreaker(t *testing.T) {
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 1,
+		Cooldown:      10 * time.Second,
+	})
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	mBig := snap.Models["big"]
+	chain := []*proxydb.Model{mDeep, mBig}
+
+	req := Request{
+		Chain:           chain,
+		KeyName:         "test-key",
+		UserID:          "user-1",
+		Chat:            llm.NewChatContext(),
+		CircuitBreaker:  cbMgr,
+		UpstreamTimeout: 40 * time.Millisecond,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "deep" {
+				return &hangingAdapter{stallDuration: 2 * time.Second}, nil
+			}
+			return &fakeAdapter{responses: []func() (*llm.Response, error){ok("big recovered")}}, nil
+		},
+	}
+
+	resp, m, err := Execute(context.Background(), NoopThrottle{}, req)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if m == nil || m.ID != "big" {
+		t.Fatalf("expected fallback to big, got model %v", m)
+	}
+	if resp.Choices[0].Text != "big recovered" {
+		t.Fatalf("expected big recovered text, got %v", resp.Choices[0].Text)
+	}
+
+	// Stalled deep model must have tripped circuit breaker to OPEN
+	if cbMgr.State(mDeep.Vendor, mDeep.ID) != circuitbreaker.StateOpen {
+		t.Fatalf("expected deep breaker to be OPEN, got %v", cbMgr.State(mDeep.Vendor, mDeep.ID))
+	}
+	// Fallback model big should remain healthy CLOSED
+	if cbMgr.State(mBig.Vendor, mBig.ID) != circuitbreaker.StateClosed {
+		t.Fatalf("expected big breaker to be CLOSED, got %v", cbMgr.State(mBig.Vendor, mBig.ID))
+	}
+}
+
+func TestExecuteStreamUpstreamTimeoutPreChunkFallsBack(t *testing.T) {
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 1,
+		Cooldown:      10 * time.Second,
+	})
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	mBig := snap.Models["big"]
+	chain := []*proxydb.Model{mDeep, mBig}
+
+	var chunks []string
+	req := Request{
+		Chain:           chain,
+		KeyName:         "test-key",
+		UserID:          "user-1",
+		Chat:            llm.NewChatContext(),
+		CircuitBreaker:  cbMgr,
+		UpstreamTimeout: 40 * time.Millisecond,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			if m.ID == "deep" {
+				return &hangingStreamAdapter{stallBeforeFirstChunk: 2 * time.Second}, nil
+			}
+			return &hangingStreamAdapter{chunks: []string{"big", " stream"}}, nil
+		},
+	}
+
+	m, err := ExecuteStream(context.Background(), NoopThrottle{}, req, func(_ *proxydb.Model, c llm.StreamChunk) error {
+		chunks = append(chunks, c.Delta)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ExecuteStream failed: %v", err)
+	}
+	if m == nil || m.ID != "big" {
+		t.Fatalf("expected fallback to big, got model %v", m)
+	}
+	if strings.Join(chunks, "") != "big stream" {
+		t.Fatalf("expected 'big stream', got %v", strings.Join(chunks, ""))
+	}
+
+	if cbMgr.State(mDeep.Vendor, mDeep.ID) != circuitbreaker.StateOpen {
+		t.Fatalf("expected deep breaker to be OPEN, got %v", cbMgr.State(mDeep.Vendor, mDeep.ID))
+	}
+}
+
+func TestExecuteStreamUpstreamTimeoutMidStreamAbortsAndTripsBreaker(t *testing.T) {
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 1,
+		Cooldown:      10 * time.Second,
+	})
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	chain := []*proxydb.Model{mDeep}
+
+	var chunks []string
+	req := Request{
+		Chain:           chain,
+		KeyName:         "test-key",
+		UserID:          "user-1",
+		Chat:            llm.NewChatContext(),
+		CircuitBreaker:  cbMgr,
+		UpstreamTimeout: 40 * time.Millisecond,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			return &hangingStreamAdapter{
+				chunks:             []string{"chunk1", "chunk2"},
+				stallBetweenChunks: 2 * time.Second,
+			}, nil
+		},
+	}
+
+	m, err := ExecuteStream(context.Background(), NoopThrottle{}, req, func(_ *proxydb.Model, c llm.StreamChunk) error {
+		chunks = append(chunks, c.Delta)
+		return nil
+	})
+	if err == nil {
+		t.Fatal("expected error on mid-stream stall")
+	}
+	if !errors.Is(err, circuitbreaker.ErrUpstreamTimeout) {
+		t.Fatalf("expected ErrUpstreamTimeout, got %v", err)
+	}
+	if m == nil || m.ID != "deep" {
+		t.Fatalf("expected model deep, got %v", m)
+	}
+	if len(chunks) != 1 || chunks[0] != "chunk1" {
+		t.Fatalf("expected chunk1 received before stall, got %v", chunks)
+	}
+
+	if cbMgr.State(mDeep.Vendor, mDeep.ID) != circuitbreaker.StateOpen {
+		t.Fatalf("expected deep breaker to be OPEN, got %v", cbMgr.State(mDeep.Vendor, mDeep.ID))
+	}
+}
+
+func TestExecuteStreamUpstreamHealthyStreamDoesNotTimeout(t *testing.T) {
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 1,
+		Cooldown:      10 * time.Second,
+	})
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	chain := []*proxydb.Model{mDeep}
+
+	var chunks []string
+	// Total stream takes 3 * 20ms = 60ms, but timeout watchdog is 40ms per chunk.
+	// Since touchWatchdog() resets on each chunk, it should not time out.
+	req := Request{
+		Chain:           chain,
+		KeyName:         "test-key",
+		UserID:          "user-1",
+		Chat:            llm.NewChatContext(),
+		CircuitBreaker:  cbMgr,
+		UpstreamTimeout: 40 * time.Millisecond,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			return &hangingStreamAdapter{
+				chunks:             []string{"a", "b", "c"},
+				stallBetweenChunks: 15 * time.Millisecond,
+			}, nil
+		},
+	}
+
+	m, err := ExecuteStream(context.Background(), NoopThrottle{}, req, func(_ *proxydb.Model, c llm.StreamChunk) error {
+		chunks = append(chunks, c.Delta)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("expected healthy stream to succeed, got %v", err)
+	}
+	if m == nil || m.ID != "deep" {
+		t.Fatalf("expected model deep, got %v", m)
+	}
+	if strings.Join(chunks, "") != "abc" {
+		t.Fatalf("expected 'abc', got %v", strings.Join(chunks, ""))
+	}
+	if cbMgr.State(mDeep.Vendor, mDeep.ID) != circuitbreaker.StateClosed {
+		t.Fatalf("expected deep breaker to be CLOSED, got %v", cbMgr.State(mDeep.Vendor, mDeep.ID))
+	}
+}
+
+func TestExecuteClientCancellationDoesNotTripBreakerEvenWithUpstreamTimeoutConfigured(t *testing.T) {
+	cbMgr := circuitbreaker.NewManager(circuitbreaker.Config{
+		Enabled:       true,
+		FailThreshold: 1,
+		Cooldown:      10 * time.Second,
+	})
+	snap := snapshot()
+	mDeep := snap.Models["deep"]
+	chain := []*proxydb.Model{mDeep}
+
+	// Caller gives up after 15ms, while UpstreamTimeout is 2s.
+	callerCtx, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
+	defer cancel()
+
+	req := Request{
+		Chain:           chain,
+		KeyName:         "test-key",
+		UserID:          "user-1",
+		Chat:            llm.NewChatContext(),
+		CircuitBreaker:  cbMgr,
+		UpstreamTimeout: 2 * time.Second,
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) {
+			return &hangingAdapter{stallDuration: 5 * time.Second}, nil
+		},
+	}
+
+	_, _, err := Execute(callerCtx, NoopThrottle{}, req)
+	if err == nil {
+		t.Fatal("expected error on caller cancellation")
+	}
+
+	// Caller cancellation must NOT trip breaker
+	if cbMgr.State(mDeep.Vendor, mDeep.ID) != circuitbreaker.StateClosed {
+		t.Fatalf("caller cancellation must not trip breaker, got state %v", cbMgr.State(mDeep.Vendor, mDeep.ID))
 	}
 }

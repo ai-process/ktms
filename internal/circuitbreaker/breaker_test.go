@@ -330,6 +330,8 @@ func TestTrippingErrorClassification(t *testing.T) {
 		{"Bedrock ModelErrorException 424", mockBedrockError{code: "ModelErrorException", status: 424}, true},
 		{"Bedrock ThrottlingException 429", mockBedrockError{code: "ThrottlingException", status: 429}, false},
 		{"Bedrock ValidationException 400", mockBedrockError{code: "ValidationException", status: 400}, false},
+		{"ErrUpstreamTimeout sentinel", ErrUpstreamTimeout, true},
+		{"UpstreamTimeoutError struct", NewUpstreamTimeoutError(5*time.Second, context.DeadlineExceeded), true},
 	}
 
 	for _, tc := range cases {
@@ -402,6 +404,54 @@ func TestCallerDeadlineDoesNotTripBreaker(t *testing.T) {
 	}
 	if !mgr.Allow(vendor, model) {
 		t.Fatal("expected Allow to remain true despite caller deadlines")
+	}
+}
+
+func TestUpstreamTimeoutTripsBreaker(t *testing.T) {
+	cfg := Config{Enabled: true, FailThreshold: 2, Cooldown: 10 * time.Second}
+	mgr := NewManager(cfg)
+
+	vendor := "anthropic"
+	model := "claude-3-7-sonnet"
+	ctx := context.Background()
+
+	timeoutErr := NewUpstreamTimeoutError(5*time.Second, context.DeadlineExceeded)
+
+	mgr.Report(ctx, vendor, model, timeoutErr)
+	if mgr.State(vendor, model) != StateClosed {
+		t.Fatalf("expected CLOSED after 1 failure, got %v", mgr.State(vendor, model))
+	}
+
+	mgr.Report(ctx, vendor, model, timeoutErr)
+	if mgr.State(vendor, model) != StateOpen {
+		t.Fatalf("expected OPEN after 2 upstream timeouts, got %v", mgr.State(vendor, model))
+	}
+	if mgr.Allow(vendor, model) {
+		t.Fatal("expected Allow to be false after breaker tripped to OPEN")
+	}
+}
+
+func TestUpstreamTimeoutWithExpiredCallerContextTripsBreaker(t *testing.T) {
+	cfg := Config{Enabled: true, FailThreshold: 2, Cooldown: 10 * time.Second}
+	mgr := NewManager(cfg)
+
+	vendor := "google"
+	model := "gemini-2.5-pro"
+
+	// Caller context deadline is expired, but failure is caused by upstream timeout watchdog.
+	expiredCtx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-1*time.Second))
+	defer cancel()
+
+	timeoutErr := NewUpstreamTimeoutError(10*time.Second, context.DeadlineExceeded)
+
+	mgr.Report(expiredCtx, vendor, model, timeoutErr)
+	mgr.Report(expiredCtx, vendor, model, timeoutErr)
+
+	if mgr.State(vendor, model) != StateOpen {
+		t.Fatalf("upstream timeout with expired caller context should trip breaker, got state %v", mgr.State(vendor, model))
+	}
+	if mgr.Allow(vendor, model) {
+		t.Fatal("expected Allow to be false after breaker tripped to OPEN")
 	}
 }
 

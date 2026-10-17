@@ -1082,3 +1082,18 @@ func TestGenerateTextStream_ShadowRouting(t *testing.T) {
 		t.Fatalf("expected shadow event with is_shadow=true, got: %+v", events)
 	}
 }
+
+func TestEffectiveUpstreamTimeout(t *testing.T) {
+	snap := registry.NewSnapshotForTest(nil, nil, nil, nil)
+	server := NewProxyServer(fixedSnapshot{snap}, nil).WithUpstreamTimeout(30 * time.Second)
+
+	if got := server.effectiveUpstreamTimeout(nil); got != 30*time.Second {
+		t.Fatalf("expected default 30s, got %v", got)
+	}
+	if got := server.effectiveUpstreamTimeout(map[string]string{"upstream_timeout": "12s"}); got != 12*time.Second {
+		t.Fatalf("expected overridden 12s, got %v", got)
+	}
+	if got := server.effectiveUpstreamTimeout(map[string]string{"upstream_timeout": "invalid"}); got != 30*time.Second {
+		t.Fatalf("expected fallback to 30s on invalid duration, got %v", got)
+	}
+}

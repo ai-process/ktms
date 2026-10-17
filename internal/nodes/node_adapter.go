@@ -16,6 +16,7 @@ import (
 
 	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
 
+	"github.com/ai-process/llm-proxy/internal/circuitbreaker"
 	"github.com/ai-process/llm-proxy/internal/crypto"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/llm/adapters"
@@ -107,7 +108,7 @@ func (pa *PoolAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) 
 	duration := time.Since(start)
 
 	if err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(ctx.Err(), context.Canceled) {
+		if (!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(ctx.Err(), context.Canceled)) || errors.Is(context.Cause(ctx), circuitbreaker.ErrUpstreamTimeout) {
 			if recErr := pa.selector.mgr.Circuit().RecordFailure(context.Background(), cand.Snapshot.Meta.NodeID); recErr != nil {
 				log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record circuit failure")
 			}
@@ -197,7 +198,7 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 
 	duration := time.Since(start)
 	if err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(ctx.Err(), context.Canceled) {
+		if (!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(ctx.Err(), context.Canceled)) || errors.Is(context.Cause(ctx), circuitbreaker.ErrUpstreamTimeout) {
 			if recErr := pa.selector.mgr.Circuit().RecordFailure(context.Background(), cand.Snapshot.Meta.NodeID); recErr != nil {
 				log.Warn().Err(recErr).Str("node_id", cand.Snapshot.Meta.NodeID).Msg("failed to record circuit failure")
 			}
@@ -484,7 +485,7 @@ func (pa *PoolAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, userID 
 	duration := time.Since(start)
 
 	if err != nil {
-		isClientErr := ctx.Err() != nil
+		isClientErr := ctx.Err() != nil && !errors.Is(context.Cause(ctx), circuitbreaker.ErrUpstreamTimeout)
 		var decisionErr *adapters.OpenAIDecisionError
 		if errors.As(err, &decisionErr) {
 			switch decisionErr.Status {
@@ -579,7 +580,7 @@ func (pa *PoolAdapter) EvaluateRollouts(ctx context.Context, req *llm.EvaluateRo
 	duration := time.Since(start)
 
 	if err != nil {
-		isClientErr := ctx.Err() != nil
+		isClientErr := ctx.Err() != nil && !errors.Is(context.Cause(ctx), circuitbreaker.ErrUpstreamTimeout)
 		var decisionErr *adapters.OpenAIDecisionError
 		if errors.As(err, &decisionErr) {
 			switch decisionErr.Status {

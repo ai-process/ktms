@@ -80,6 +80,9 @@ type Config struct {
 	CircuitBreakerEnabled       bool
 	CircuitBreakerFailThreshold int
 	CircuitBreakerCooldown      time.Duration
+	// UpstreamRequestTimeout bounds each attempt against an upstream vendor.
+	// Stalls beyond this duration trip circuit breakers and advance fallback chains.
+	UpstreamRequestTimeout time.Duration
 
 	MetricsAddr              string
 	OTELServiceName          string
@@ -164,6 +167,7 @@ func Load() *Config {
 		CircuitBreakerEnabled:           getBoolEnv("CIRCUIT_BREAKER_ENABLED", true),
 		CircuitBreakerFailThreshold:     getIntEnv("CIRCUIT_BREAKER_FAIL_THRESHOLD", 5),
 		CircuitBreakerCooldown:          getDurationEnv("CIRCUIT_BREAKER_COOLDOWN", 30*time.Second),
+		UpstreamRequestTimeout:          getDurationEnv("UPSTREAM_REQUEST_TIMEOUT", 0),
 		MetricsAddr:                     getEnv("METRICS_ADDR", ":9091"),
 		OTELServiceName:                 getEnv("OTEL_SERVICE_NAME", "llm-proxy"),
 		OTELExporterOTLPEndpoint:        getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),

@@ -58,10 +58,11 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 		UserID:  router.UserID(plan.attrs, plan.identity.Name),
 		// Input-side estimate only; Settle replaces it with what the vendor
 		// billed, which for speech is audio tokens and far larger.
-		Estimate:       int64(len([]rune(speechText))/4 + 1),
-		CircuitBreaker: s.circuitBreaker,
-		Adapter:        plan.adapter,
-		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
+		Estimate:        int64(len([]rune(speechText))/4 + 1),
+		CircuitBreaker:  s.circuitBreaker,
+		UpstreamTimeout: s.effectiveUpstreamTimeout(req.GetAttributes()),
+		Adapter:         plan.adapter,
+		Call: func(callCtx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			synth, ok := adapter.(llm.SpeechSynthesizer)
 			if !ok {
 				// The capability filter should have excluded this model; if the
@@ -69,7 +70,7 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 				return llm.TokensUsage{}, status.Errorf(codes.FailedPrecondition,
 					"no_capable_model: %s cannot synthesize speech", m.ID)
 			}
-			res, err := synth.SynthesizeSpeech(ctx, speechText, req.GetLanguage(), router.UserID(plan.attrs, plan.identity.Name), plan.meta)
+			res, err := synth.SynthesizeSpeech(callCtx, speechText, req.GetLanguage(), router.UserID(plan.attrs, plan.identity.Name), plan.meta)
 			if err != nil {
 				return llm.TokensUsage{}, err
 			}
@@ -120,16 +121,17 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 		UserID:  router.UserID(plan.attrs, plan.identity.Name),
 		// Input-side estimate only; image output tokens dwarf it, so Settle is
 		// what makes the budget accounting true.
-		Estimate:       int64(len([]rune(prompt))/4 + 1),
-		CircuitBreaker: s.circuitBreaker,
-		Adapter:        plan.adapter,
-		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
+		Estimate:        int64(len([]rune(prompt))/4 + 1),
+		CircuitBreaker:  s.circuitBreaker,
+		UpstreamTimeout: s.effectiveUpstreamTimeout(req.GetAttributes()),
+		Adapter:         plan.adapter,
+		Call: func(callCtx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			gen, ok := adapter.(llm.ImageGenerator)
 			if !ok {
 				return llm.TokensUsage{}, status.Errorf(codes.FailedPrecondition,
 					"no_capable_model: %s cannot generate images", m.ID)
 			}
-			res, err := gen.GenerateImage(ctx, prompt, router.UserID(plan.attrs, plan.identity.Name), plan.meta)
+			res, err := gen.GenerateImage(callCtx, prompt, router.UserID(plan.attrs, plan.identity.Name), plan.meta)
 			if err != nil {
 				return llm.TokensUsage{}, err
 			}

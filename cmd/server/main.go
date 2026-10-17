@@ -213,7 +213,10 @@ func main() {
 		FailThreshold: cfg.CircuitBreakerFailThreshold,
 		Cooldown:      cfg.CircuitBreakerCooldown,
 	})
-	proxySrv := grpcapi.NewProxyServer(loader, limiter).WithCircuitBreaker(cb).WithBatch(db, cfg.BatchMaxItems)
+	proxySrv := grpcapi.NewProxyServer(loader, limiter).
+		WithCircuitBreaker(cb).
+		WithUpstreamTimeout(cfg.UpstreamRequestTimeout).
+		WithBatch(db, cfg.BatchMaxItems)
 	if cfg.CacheEnabled && redisClient != nil {
 		c := cache.New(redisClient, keyring, cfg.CacheTTL, cfg.CacheMaxBytes, cfg.RedisKeyPrefix)
 		proxySrv.WithCache(c)

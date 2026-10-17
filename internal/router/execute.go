@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/ai-process/llm-proxy/internal/circuitbreaker"
 	"github.com/ai-process/llm-proxy/internal/llm"
 	"github.com/ai-process/llm-proxy/internal/observability"
 	"github.com/ai-process/llm-proxy/internal/panicsafe"
@@ -113,6 +115,8 @@ type Request struct {
 	Estimate       int64            // estimated input tokens to reserve
 	Chat           *llm.ChatContext
 	CircuitBreaker CircuitBreaker
+	// UpstreamTimeout bounds each attempt against an upstream vendor.
+	UpstreamTimeout time.Duration
 	// Adapter resolves the vendor adapter for a chain model — a closure over
 	// the snapshot and the calling client, so the router stays testable.
 	Adapter func(m *proxydb.Model) (llm.ClientAdapter, error)
@@ -343,7 +347,9 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 				nextModel = r.Chain[i+1].ID
 			}
 			reason := "capacity_exhausted"
-			if llm.IsContentFilterError(err) {
+			if errors.Is(err, circuitbreaker.ErrUpstreamTimeout) {
+				reason = "upstream_timeout"
+			} else if llm.IsContentFilterError(err) {
 				reason = "content_filter"
 			}
 			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, reason).Inc()
@@ -497,8 +503,44 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			fullText       strings.Builder
 		)
 
+		streamCtx := ctx
+		var stopWatchdog func()
+		var touchWatchdog func()
+		if r.UpstreamTimeout > 0 {
+			var cancel context.CancelCauseFunc
+			streamCtx, cancel = context.WithCancelCause(ctx)
+			var mu sync.Mutex
+			timer := time.AfterFunc(r.UpstreamTimeout, func() {
+				cancel(circuitbreaker.ErrUpstreamTimeout)
+			})
+			touchWatchdog = func() {
+				mu.Lock()
+				defer mu.Unlock()
+				if timer != nil {
+					timer.Reset(r.UpstreamTimeout)
+				}
+			}
+			stopWatchdog = func() {
+				mu.Lock()
+				defer mu.Unlock()
+				if timer != nil {
+					timer.Stop()
+					timer = nil
+				}
+				cancel(nil)
+			}
+			defer stopWatchdog()
+		}
+
+		if r.Chat != nil {
+			r.Chat.WithContext(streamCtx)
+		}
+
 		streamStart := time.Now()
-		err = streamAdapter.GenerateTextStream(ctx, r.Chat, func(chunk llm.StreamChunk) error {
+		err = streamAdapter.GenerateTextStream(streamCtx, r.Chat, func(chunk llm.StreamChunk) error {
+			if touchWatchdog != nil {
+				touchWatchdog()
+			}
 			if !firstChunkSent {
 				firstChunkSent = true
 				observability.TimeToFirstToken.WithLabelValues(m.Vendor, m.ID).Observe(time.Since(streamStart).Seconds())
@@ -522,6 +564,15 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			}
 			return onChunk(m, chunk)
 		})
+		if stopWatchdog != nil {
+			stopWatchdog()
+		}
+		if r.Chat != nil {
+			r.Chat.WithContext(ctx)
+		}
+		if r.UpstreamTimeout > 0 && errors.Is(context.Cause(streamCtx), circuitbreaker.ErrUpstreamTimeout) {
+			err = circuitbreaker.NewUpstreamTimeoutError(r.UpstreamTimeout, err)
+		}
 
 		if soft && err == nil {
 			if checkErr := llm.CheckResponseSchema(fullText.String(), schema); checkErr != nil {
@@ -613,7 +664,9 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 				nextModel = r.Chain[i+1].ID
 			}
 			reason := "capacity_exhausted"
-			if llm.IsContentFilterError(err) {
+			if errors.Is(err, circuitbreaker.ErrUpstreamTimeout) {
+				reason = "upstream_timeout"
+			} else if llm.IsContentFilterError(err) {
 				reason = "content_filter"
 			}
 			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, reason).Inc()
@@ -644,7 +697,7 @@ func (r Request) callAndCheck(ctx context.Context, adapter llm.ClientAdapter, m 
 	var spent llm.TokensUsage
 	var lastCheck error
 	for attempt := 0; attempt < schemaAttempts; attempt++ {
-		resp, err := callWithRetries(ctx, adapter, r.Chat, m.ID)
+		resp, err := callWithRetries(ctx, adapter, r.Chat, m.ID, r.UpstreamTimeout)
 		if err != nil {
 			th.Settle(res, spent)
 			return nil, err
@@ -673,7 +726,7 @@ func (r Request) callAndCheck(ctx context.Context, adapter llm.ClientAdapter, m 
 
 // callWithRetries retries retryable vendor errors (429/5xx) on the same
 // model before Execute moves down the chain.
-func callWithRetries(ctx context.Context, adapter llm.ClientAdapter, chat *llm.ChatContext, modelID string) (*llm.Response, error) {
+func callWithRetries(ctx context.Context, adapter llm.ClientAdapter, chat *llm.ChatContext, modelID string, upstreamTimeout time.Duration) (*llm.Response, error) {
 	var lastErr error
 	for attempt := 0; attempt < perModelAttempts; attempt++ {
 		if attempt > 0 {
@@ -683,7 +736,28 @@ func callWithRetries(ctx context.Context, adapter llm.ClientAdapter, chat *llm.C
 			case <-time.After(attemptBackoff * time.Duration(attempt)):
 			}
 		}
-		resp, err := adapter.GenerateText(ctx, chat)
+
+		attemptCtx := ctx
+		var cancel context.CancelFunc
+		if upstreamTimeout > 0 {
+			attemptCtx, cancel = context.WithTimeoutCause(ctx, upstreamTimeout, circuitbreaker.ErrUpstreamTimeout)
+		}
+		if chat != nil {
+			chat.WithContext(attemptCtx)
+		}
+
+		resp, err := adapter.GenerateText(attemptCtx, chat)
+		if cancel != nil {
+			cancel()
+		}
+		if chat != nil {
+			chat.WithContext(ctx)
+		}
+
+		if upstreamTimeout > 0 && errors.Is(context.Cause(attemptCtx), circuitbreaker.ErrUpstreamTimeout) {
+			err = circuitbreaker.NewUpstreamTimeoutError(upstreamTimeout, err)
+		}
+
 		if err == nil {
 			return resp, nil
 		}
@@ -708,9 +782,11 @@ type MediaRequest struct {
 	UserID         string
 	Estimate       int64
 	CircuitBreaker CircuitBreaker
+	// UpstreamTimeout bounds each attempt against an upstream vendor.
+	UpstreamTimeout time.Duration
 	// Call runs one model and reports what the vendor billed. The adapter is
 	// resolved for the calling client, exactly as on the text path.
-	Call func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error)
+	Call func(ctx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error)
 	// Adapter resolves the vendor adapter for a chain model.
 	Adapter func(m *proxydb.Model) (llm.ClientAdapter, error)
 }
@@ -773,7 +849,18 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 			continue
 		}
 
-		spent, err := r.Call(m, adapter)
+		attemptCtx := ctx
+		var cancel context.CancelFunc
+		if r.UpstreamTimeout > 0 {
+			attemptCtx, cancel = context.WithTimeoutCause(ctx, r.UpstreamTimeout, circuitbreaker.ErrUpstreamTimeout)
+		}
+		spent, err := r.Call(attemptCtx, m, adapter)
+		if cancel != nil {
+			cancel()
+		}
+		if r.UpstreamTimeout > 0 && errors.Is(context.Cause(attemptCtx), circuitbreaker.ErrUpstreamTimeout) {
+			err = circuitbreaker.NewUpstreamTimeoutError(r.UpstreamTimeout, err)
+		}
 		th.Settle(res, spent)
 		if r.CircuitBreaker != nil {
 			r.CircuitBreaker.Report(ctx, m.Vendor, m.ID, err)

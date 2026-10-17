@@ -86,20 +86,21 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 
 	var out *llm.JudgeResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
-		Chain:          plan.chain,
-		KeyName:        plan.identity.Name,
-		UserID:         router.UserID(plan.attrs, plan.identity.Name),
-		Estimate:       judgeEstimate(judgeReq),
-		CircuitBreaker: s.circuitBreaker,
-		Adapter:        plan.adapter,
-		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
+		Chain:           plan.chain,
+		KeyName:         plan.identity.Name,
+		UserID:          router.UserID(plan.attrs, plan.identity.Name),
+		Estimate:        judgeEstimate(judgeReq),
+		CircuitBreaker:  s.circuitBreaker,
+		UpstreamTimeout: s.effectiveUpstreamTimeout(req.GetAttributes()),
+		Adapter:         plan.adapter,
+		Call: func(callCtx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			judge, ok := adapter.(llm.Judge)
 			if !ok {
 				// Models misconfigured with the judge capability should yield to
 				// capable fallback models in the chain instead of failing immediately.
 				return llm.TokensUsage{}, llm.ErrJudgmentUnsupported
 			}
-			res, err := judge.Judge(ctx, judgeReq, router.UserID(plan.attrs, plan.identity.Name), plan.meta)
+			res, err := judge.Judge(callCtx, judgeReq, router.UserID(plan.attrs, plan.identity.Name), plan.meta)
 			if err != nil {
 				return llm.TokensUsage{}, err
 			}
@@ -489,15 +490,16 @@ func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRoll
 	userID := router.UserID(plan.attrs, plan.identity.Name)
 	var out *llm.EvaluateRolloutsResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
-		Chain:          plan.chain,
-		KeyName:        plan.identity.Name,
-		UserID:         userID,
-		Estimate:       rolloutEstimate(rolloutReq),
-		CircuitBreaker: s.circuitBreaker,
-		Adapter:        plan.adapter,
-		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
+		Chain:           plan.chain,
+		KeyName:         plan.identity.Name,
+		UserID:          userID,
+		Estimate:        rolloutEstimate(rolloutReq),
+		CircuitBreaker:  s.circuitBreaker,
+		UpstreamTimeout: s.effectiveUpstreamTimeout(req.GetAttributes()),
+		Adapter:         plan.adapter,
+		Call: func(callCtx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			if rj, ok := adapter.(llm.RolloutJudge); ok {
-				res, err := rj.EvaluateRollouts(ctx, rolloutReq, userID, plan.meta)
+				res, err := rj.EvaluateRollouts(callCtx, rolloutReq, userID, plan.meta)
 				if err == nil {
 					out = res
 					return res.Usage, nil
@@ -513,7 +515,7 @@ func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRoll
 			if !ok {
 				return llm.TokensUsage{}, llm.ErrJudgmentUnsupported
 			}
-			res, err := executeParallelCandidateRollouts(ctx, judge, rolloutReq, userID, plan.meta)
+			res, err := executeParallelCandidateRollouts(callCtx, judge, rolloutReq, userID, plan.meta)
 			if err != nil {
 				if res != nil {
 					return res.Usage, err
