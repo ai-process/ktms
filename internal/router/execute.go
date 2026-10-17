@@ -41,6 +41,12 @@ type Throttle interface {
 	ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string, usage llm.TokensUsage)
 }
 
+// CircuitBreaker fails fast on degraded upstream models without network IO.
+type CircuitBreaker interface {
+	Allow(vendor, model string) bool
+	Report(ctx context.Context, vendor, model string, err error)
+}
+
 // Reservation is the throttle's bookkeeping handle for one admitted call.
 type Reservation struct {
 	Keys     []string
@@ -93,11 +99,12 @@ func (e *SchemaFailure) Unwrap() error { return e.Err }
 
 // Request is one admission-controlled generation attempt over a model chain.
 type Request struct {
-	Chain    []*proxydb.Model // pre-filtered candidates, in fallback order
-	KeyName  string           // api_key name: throttle keys, logs
-	UserID   string           // attributes["user_id"] or svc:<keyName> fallback
-	Estimate int64            // estimated input tokens to reserve
-	Chat     *llm.ChatContext
+	Chain          []*proxydb.Model // pre-filtered candidates, in fallback order
+	KeyName        string           // api_key name: throttle keys, logs
+	UserID         string           // attributes["user_id"] or svc:<keyName> fallback
+	Estimate       int64            // estimated input tokens to reserve
+	Chat           *llm.ChatContext
+	CircuitBreaker CircuitBreaker
 	// Adapter resolves the vendor adapter for a chain model — a closure over
 	// the snapshot and the calling client, so the router stays testable.
 	Adapter func(m *proxydb.Model) (llm.ClientAdapter, error)
@@ -123,9 +130,23 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 	}
 	var lastErr error
 	allThrottled := true
+	allCircuitBroken := true
 	throttleKind := "rpm"
 
 	for i, m := range r.Chain {
+		if r.CircuitBreaker != nil && !r.CircuitBreaker.Allow(m.Vendor, m.ID) {
+			var nextModel string
+			if i+1 < len(r.Chain) {
+				nextModel = r.Chain[i+1].ID
+			}
+			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, "circuit_broken").Inc()
+			observability.CircuitBreakerRejectionsTotal.WithLabelValues(m.Vendor, m.ID).Inc()
+			log.Warn().Str("model", m.ID).Str("vendor", m.Vendor).
+				Msg("circuit breaker is OPEN, skipping to next model")
+			continue
+		}
+		allCircuitBroken = false
+
 		if !th.AllowRPM(ctx, r.KeyName, r.UserID, m) {
 			observability.ThrottledTotal.WithLabelValues("rpm").Inc()
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in chain")
@@ -149,6 +170,9 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 		}
 
 		resp, err := r.callAndCheck(ctx, adapter, m, th, res)
+		if r.CircuitBreaker != nil {
+			r.CircuitBreaker.Report(ctx, m.Vendor, m.ID, err)
+		}
 		if err == nil {
 			return resp, m, nil
 		}
@@ -187,6 +211,9 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 		}
 	}
 
+	if len(r.Chain) > 0 && allCircuitBroken {
+		return nil, nil, &ChainExhausted{AllCircuitBroken: true}
+	}
 	if allThrottled {
 		return nil, nil, &ChainExhausted{AllThrottled: true, ThrottleKind: throttleKind}
 	}
@@ -201,9 +228,23 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 	}
 	var lastErr error
 	allThrottled := true
+	allCircuitBroken := true
 	throttleKind := "rpm"
 
 	for i, m := range r.Chain {
+		if r.CircuitBreaker != nil && !r.CircuitBreaker.Allow(m.Vendor, m.ID) {
+			var nextModel string
+			if i+1 < len(r.Chain) {
+				nextModel = r.Chain[i+1].ID
+			}
+			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, "circuit_broken").Inc()
+			observability.CircuitBreakerRejectionsTotal.WithLabelValues(m.Vendor, m.ID).Inc()
+			log.Warn().Str("model", m.ID).Str("vendor", m.Vendor).
+				Msg("circuit breaker is OPEN, skipping in stream chain")
+			continue
+		}
+		allCircuitBroken = false
+
 		if !th.AllowRPM(ctx, r.KeyName, r.UserID, m) {
 			observability.ThrottledTotal.WithLabelValues("rpm").Inc()
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in stream chain")
@@ -339,6 +380,10 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 
 		th.Settle(res, spent)
 
+		if r.CircuitBreaker != nil {
+			r.CircuitBreaker.Report(ctx, m.Vendor, m.ID, err)
+		}
+
 		if err == nil {
 			return m, nil
 		}
@@ -375,6 +420,9 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 		}
 	}
 
+	if len(r.Chain) > 0 && allCircuitBroken {
+		return nil, &ChainExhausted{AllCircuitBroken: true}
+	}
 	if allThrottled {
 		return nil, &ChainExhausted{AllThrottled: true, ThrottleKind: throttleKind}
 	}
@@ -452,10 +500,11 @@ func callWithRetries(ctx context.Context, adapter llm.ClientAdapter, chat *llm.C
 // text path's throttling and chain semantics but not its schema handling: there
 // is no shape to verify, only bytes to get back.
 type MediaRequest struct {
-	Chain    []*proxydb.Model
-	KeyName  string
-	UserID   string
-	Estimate int64
+	Chain          []*proxydb.Model
+	KeyName        string
+	UserID         string
+	Estimate       int64
+	CircuitBreaker CircuitBreaker
 	// Call runs one model and reports what the vendor billed. The adapter is
 	// resolved for the calling client, exactly as on the text path.
 	Call func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error)
@@ -469,9 +518,23 @@ type MediaRequest struct {
 func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Model, error) {
 	var lastErr error
 	allThrottled := true
+	allCircuitBroken := true
 	throttleKind := "rpm"
 
-	for _, m := range r.Chain {
+	for i, m := range r.Chain {
+		if r.CircuitBreaker != nil && !r.CircuitBreaker.Allow(m.Vendor, m.ID) {
+			var nextModel string
+			if i+1 < len(r.Chain) {
+				nextModel = r.Chain[i+1].ID
+			}
+			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, "circuit_broken").Inc()
+			observability.CircuitBreakerRejectionsTotal.WithLabelValues(m.Vendor, m.ID).Inc()
+			log.Warn().Str("model", m.ID).Str("vendor", m.Vendor).
+				Msg("circuit breaker is OPEN, skipping in media chain")
+			continue
+		}
+		allCircuitBroken = false
+
 		if !th.AllowRPM(ctx, r.KeyName, r.UserID, m) {
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in chain")
 			continue
@@ -494,6 +557,9 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 
 		spent, err := r.Call(m, adapter)
 		th.Settle(res, spent)
+		if r.CircuitBreaker != nil {
+			r.CircuitBreaker.Report(ctx, m.Vendor, m.ID, err)
+		}
 		if err == nil {
 			return m, nil
 		}
@@ -512,6 +578,9 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 			Msg("media call failed, trying next in chain")
 	}
 
+	if len(r.Chain) > 0 && allCircuitBroken {
+		return nil, &ChainExhausted{AllCircuitBroken: true}
+	}
 	if allThrottled {
 		return nil, &ChainExhausted{AllThrottled: true, ThrottleKind: throttleKind}
 	}

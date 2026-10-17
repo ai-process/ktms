@@ -108,4 +108,38 @@ var (
 		},
 		[]string{"vendor"},
 	)
+
+	// CircuitBreakerState exports the state machine value (0=Closed, 1=Open, 2=HalfOpen)
+	// so monitoring dashboards can alert when upstream vendors trip into outages.
+	CircuitBreakerState = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "llmproxy",
+			Name:      "circuit_breaker_state",
+			Help:      "Current upstream circuit breaker state (0=closed, 1=open, 2=half_open).",
+		},
+		[]string{"vendor", "model"},
+	)
+
+	// CircuitBreakerTransitionsTotal tracks tripped and recovered circuits to observe
+	// upstream vendor stability trends over time.
+	CircuitBreakerTransitionsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "llmproxy",
+			Name:      "circuit_breaker_transitions_total",
+			Help:      "Total number of circuit breaker state transitions.",
+		},
+		[]string{"vendor", "model", "from", "to"},
+	)
+
+	// CircuitBreakerRejectionsTotal tracks requests skipped immediately without network
+	// latency while a model's upstream circuit is open.
+	CircuitBreakerRejectionsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "llmproxy",
+			Name:      "circuit_breaker_rejections_total",
+			Help:      "Total number of requests rejected by an open circuit breaker.",
+		},
+		[]string{"vendor", "model"},
+	)
 )
+

@@ -58,8 +58,9 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 		UserID:  router.UserID(plan.attrs, plan.identity.Name),
 		// Input-side estimate only; Settle replaces it with what the vendor
 		// billed, which for speech is audio tokens and far larger.
-		Estimate: int64(len([]rune(speechText))/4 + 1),
-		Adapter:  plan.adapter,
+		Estimate:       int64(len([]rune(speechText))/4 + 1),
+		CircuitBreaker: s.circuitBreaker,
+		Adapter:        plan.adapter,
 		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			synth, ok := adapter.(llm.SpeechSynthesizer)
 			if !ok {
@@ -119,8 +120,9 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 		UserID:  router.UserID(plan.attrs, plan.identity.Name),
 		// Input-side estimate only; image output tokens dwarf it, so Settle is
 		// what makes the budget accounting true.
-		Estimate: int64(len([]rune(prompt))/4 + 1),
-		Adapter:  plan.adapter,
+		Estimate:       int64(len([]rune(prompt))/4 + 1),
+		CircuitBreaker: s.circuitBreaker,
+		Adapter:        plan.adapter,
 		Call: func(m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			gen, ok := adapter.(llm.ImageGenerator)
 			if !ok {
