@@ -9,7 +9,7 @@ var (
 	// RequestsTotal counts completed requests partitioned by vendor, model, effort, and status.
 	RequestsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "requests_total",
 			Help:      "Total number of completed requests by vendor, model, effort, and status.",
 		},
@@ -19,7 +19,7 @@ var (
 	// RequestDuration measures request latency end-to-end.
 	RequestDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "request_duration_seconds",
 			Help:      "Latency of requests in seconds.",
 			Buckets:   []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
@@ -30,7 +30,7 @@ var (
 	// TimeToFirstToken tracks latency to first chunk in streaming requests.
 	TimeToFirstToken = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "time_to_first_token_seconds",
 			Help:      "Latency to the first streaming chunk in seconds.",
 			Buckets:   []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20},
@@ -41,7 +41,7 @@ var (
 	// TokensTotal tracks billed input and output tokens.
 	TokensTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "tokens_total",
 			Help:      "Total tokens consumed by vendor, model, and direction (input/output).",
 		},
@@ -51,7 +51,7 @@ var (
 	// ActiveRequests gauges current in-flight calls to upstream vendors.
 	ActiveRequests = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "active_requests",
 			Help:      "Number of currently active upstream requests.",
 		},
@@ -61,7 +61,7 @@ var (
 	// ThrottledTotal counts requests rejected by rate limits or budgets.
 	ThrottledTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "throttled_total",
 			Help:      "Total number of requests rejected by throttling or budget limits.",
 		},
@@ -71,7 +71,7 @@ var (
 	// FallbacksTotal tracks transparent fallback events across models.
 	FallbacksTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "fallbacks_total",
 			Help:      "Total number of fallback transitions between models.",
 		},
@@ -81,7 +81,7 @@ var (
 	// BatchJobsTotal tracks batch jobs by vendor and lifecycle state.
 	BatchJobsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "batch_jobs_total",
 			Help:      "Total batch jobs processed by vendor and state.",
 		},
@@ -91,7 +91,7 @@ var (
 	// BatchItemsTotal tracks individual batch item outcomes.
 	BatchItemsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "batch_items_total",
 			Help:      "Total batch items processed by vendor and state.",
 		},
@@ -101,7 +101,7 @@ var (
 	// BatchPollDuration tracks duration of background batch polling runs.
 	BatchPollDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "batch_poll_duration_seconds",
 			Help:      "Duration of vendor batch polling operations in seconds.",
 			Buckets:   []float64{0.1, 0.5, 1, 2, 5, 10, 30},
@@ -113,7 +113,7 @@ var (
 	// so monitoring dashboards can alert when upstream vendors trip into outages.
 	CircuitBreakerState = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "circuit_breaker_state",
 			Help:      "Current upstream circuit breaker state (0=closed, 1=open, 2=half_open).",
 		},
@@ -124,7 +124,7 @@ var (
 	// upstream vendor stability trends over time.
 	CircuitBreakerTransitionsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "circuit_breaker_transitions_total",
 			Help:      "Total number of circuit breaker state transitions.",
 		},
@@ -135,7 +135,7 @@ var (
 	// latency while a model's upstream circuit is open.
 	CircuitBreakerRejectionsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "circuit_breaker_rejections_total",
 			Help:      "Total number of requests rejected by an open circuit breaker.",
 		},
@@ -145,7 +145,7 @@ var (
 	// ShadowRequestsTotal tracks mirrored requests sent to shadow models.
 	ShadowRequestsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "shadow_requests_total",
 			Help:      "Total number of mirrored shadow requests by vendor, model, and status.",
 		},
@@ -155,7 +155,7 @@ var (
 	// ShadowJudgeEvaluationsTotal tracks automated quality evaluations comparing primary vs shadow.
 	ShadowJudgeEvaluationsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "shadow_judge_evaluations_total",
 			Help:      "Total automated quality evaluations by primary model, shadow model, and preference outcome.",
 		},
@@ -165,11 +165,21 @@ var (
 	// ShadowJudgeScores records quality scores assigned by Judge to candidates.
 	ShadowJudgeScores = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Namespace: "llmproxy",
+			Namespace: "ktms",
 			Name:      "shadow_judge_scores",
 			Help:      "Quality scores assigned by Judge to primary and shadow outputs.",
 			Buckets:   []float64{0.0, 0.25, 0.5, 0.75, 1.0},
 		},
 		[]string{"model", "role"},
+	)
+
+	// LegacyHeadersRequestsTotal tracks requests using deprecated X-LLM-Proxy-* headers.
+	LegacyHeadersRequestsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "ktms",
+			Name:      "legacy_headers_requests_total",
+			Help:      "Total requests using deprecated X-LLM-Proxy-* headers.",
+		},
+		[]string{"header"},
 	)
 )

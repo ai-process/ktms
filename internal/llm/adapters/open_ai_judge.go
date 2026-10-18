@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
+	"github.com/ai-process/ktms/internal/llm"
 )
 
 // OpenAIDecisionError is a non-2xx response from OpenAI's Decisions API.

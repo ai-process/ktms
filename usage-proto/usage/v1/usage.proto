@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package usage.v1;
 
-option go_package = "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1;usagev1";
+option go_package = "github.com/ai-process/ktms/internal/usagereport/gen/usage/v1;usagev1";
 
 import "google/protobuf/timestamp.proto";
 

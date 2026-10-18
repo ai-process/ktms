@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             (unknown)
-// source: llmproxy/v1/node.proto
+// source: ktms/v1/node.proto
 
-package llmproxyv1
+package ktmsv1
 
 import (
 	context "context"
@@ -19,10 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	NodeRegistryService_RegisterNode_FullMethodName   = "/llmproxy.v1.NodeRegistryService/RegisterNode"
-	NodeRegistryService_ValidateNode_FullMethodName   = "/llmproxy.v1.NodeRegistryService/ValidateNode"
-	NodeRegistryService_Heartbeat_FullMethodName      = "/llmproxy.v1.NodeRegistryService/Heartbeat"
-	NodeRegistryService_UnregisterNode_FullMethodName = "/llmproxy.v1.NodeRegistryService/UnregisterNode"
+	NodeRegistryService_RegisterNode_FullMethodName   = "/ktms.v1.NodeRegistryService/RegisterNode"
+	NodeRegistryService_ValidateNode_FullMethodName   = "/ktms.v1.NodeRegistryService/ValidateNode"
+	NodeRegistryService_Heartbeat_FullMethodName      = "/ktms.v1.NodeRegistryService/Heartbeat"
+	NodeRegistryService_UnregisterNode_FullMethodName = "/ktms.v1.NodeRegistryService/UnregisterNode"
 )
 
 // NodeRegistryServiceClient is the client API for NodeRegistryService service.
@@ -220,7 +220,7 @@ func _NodeRegistryService_UnregisterNode_Handler(srv interface{}, ctx context.Co
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var NodeRegistryService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "llmproxy.v1.NodeRegistryService",
+	ServiceName: "ktms.v1.NodeRegistryService",
 	HandlerType: (*NodeRegistryServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -241,5 +241,5 @@ var NodeRegistryService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "llmproxy/v1/node.proto",
+	Metadata: "ktms/v1/node.proto",
 }

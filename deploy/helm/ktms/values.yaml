@@ -1,11 +1,11 @@
-# Default values for llm-proxy.
+# Default values for ktms.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
 replicaCount: 2
 
 image:
-  repository: coyl/llm-proxy
+  repository: coyl/ktms
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
@@ -64,14 +64,14 @@ ingress:
     # kubernetes.io/ingress.class: nginx
     # cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
-    - host: llm-proxy.local
+    - host: ktms.local
       paths:
         - path: /
           pathType: Prefix
   tls: []
-  #  - secretName: llm-proxy-tls
+  #  - secretName: ktms-tls
   #    hosts:
-  #      - llm-proxy.local
+  #      - ktms.local
 
   # Dedicated gRPC ingress config if your ingress controller requires distinct annotations
   # (e.g. nginx.ingress.kubernetes.io/backend-protocol: "GRPC")
@@ -81,7 +81,7 @@ ingress:
     annotations: {}
       # nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
     hosts:
-      - host: grpc.llm-proxy.local
+      - host: grpc.ktms.local
         paths:
           - path: /
             pathType: Prefix

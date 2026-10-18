@@ -12,15 +12,15 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/observability"
-	"github.com/ai-process/llm-proxy/internal/panicsafe"
-	"github.com/ai-process/llm-proxy/internal/pricing"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/registry"
-	"github.com/ai-process/llm-proxy/internal/router"
-	usagev1 "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/observability"
+	"github.com/ai-process/ktms/internal/panicsafe"
+	"github.com/ai-process/ktms/internal/pricing"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
+	"github.com/ai-process/ktms/internal/router"
+	usagev1 "github.com/ai-process/ktms/internal/usagereport/gen/usage/v1"
 )
 
 const (
@@ -382,7 +382,7 @@ func (p *Poller) emitUsage(
 	userID := router.UserID(b.Attributes, b.KeyName)
 	actionID := b.ActionID
 	if actionID == "" {
-		actionID = "llmproxy.generate_text"
+		actionID = "ktms.generate_text"
 	}
 
 	if err := p.tracker.RecordUsage(

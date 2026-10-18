@@ -24,7 +24,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           lint: true
           breaking: true
-          breaking_against: "https://github.com/ai-process/llm-proxy.git#branch=main"
+          breaking_against: "https://github.com/ai-process/ktms.git#branch=main"
           push: false
 
       - name: Push to Buf Schema Registry

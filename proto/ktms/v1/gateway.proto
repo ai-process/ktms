@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-package llmproxy.v1;
+package ktms.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/ai-process/llm-proxy/gen/llmproxy/v1;llmproxyv1";
+option go_package = "github.com/ai-process/ktms/gen/ktms/v1;ktmsv1";
 
 // Effort is the only routing field the proxy is guaranteed to understand.
 // Everything else about a request's purpose travels in opaque attributes.
@@ -228,7 +228,7 @@ message GenerateTextStreamRequest {
 // "bad_request: <message>" (validation errors, empty batch, duplicate custom_id).
 // UNIMPLEMENTED: "ffmpeg_missing: <hint>" (Gemini speech synthesis without ffmpeg).
 // INTERNAL "vendor_error" = terminal vendor failure.
-service LLMProxyService {
+service GatewayService {
   rpc GenerateText(GenerateTextRequest) returns (GenerateTextResponse);
   rpc GenerateTextStream(GenerateTextStreamRequest) returns (stream GenerateTextChunk);
   // Speech and images route by the same rules as text. They carry no effort of

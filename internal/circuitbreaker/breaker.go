@@ -7,7 +7,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/ai-process/llm-proxy/internal/observability"
+	"github.com/ai-process/ktms/internal/observability"
 )
 
 // State represents the lifecycle state of a circuit breaker.

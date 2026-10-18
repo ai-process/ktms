@@ -1,11 +1,11 @@
 syntax = "proto3";
 
-package llmproxy.v1;
+package ktms.v1;
 
 import "google/protobuf/timestamp.proto";
-import "llmproxy/v1/llmproxy.proto";
+import "ktms/v1/gateway.proto";
 
-option go_package = "github.com/ai-process/llm-proxy/gen/llmproxy/v1;llmproxyv1";
+option go_package = "github.com/ai-process/ktms/gen/ktms/v1;ktmsv1";
 
 // ModelSpec is a registry entry. Vendor credentials are NOT part of the spec:
 // they are per-client rows managed via SetVendorKey.
@@ -269,7 +269,7 @@ message ListSpendLimitsResponse {
 
 // All admin RPCs require the "admin" scope. Every config mutation validates
 // the resulting full config in one transaction and bumps the config version.
-service LLMProxyAdminService {
+service AdminService {
   rpc UpsertModel(UpsertModelRequest) returns (UpsertModelResponse);
   rpc DeleteModel(DeleteModelRequest) returns (DeleteModelResponse);
   rpc ReplaceRules(ReplaceRulesRequest) returns (ReplaceRulesResponse);

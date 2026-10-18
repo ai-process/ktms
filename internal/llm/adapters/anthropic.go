@@ -11,7 +11,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
 	"github.com/rs/zerolog/log"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
+	"github.com/ai-process/ktms/internal/llm"
 )
 
 // modelMaxOutputTokens returns the output token limit for Claude models.

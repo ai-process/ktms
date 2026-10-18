@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ai-process/llm-proxy/internal/audio"
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/registry"
+	"github.com/ai-process/ktms/internal/audio"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 // noThrottle admits everything: these tests are about chain walking, and the

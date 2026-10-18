@@ -13,9 +13,9 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/apikeys"
-	"github.com/ai-process/llm-proxy/internal/panicsafe"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/panicsafe"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 )
 
@@ -27,7 +27,7 @@ type GRPCServer struct {
 
 // NewGRPCServer wires interceptors (logging first, auth second) and registers
 // the services.
-func NewGRPCServer(proxy pb.LLMProxyServiceServer, admin pb.LLMProxyAdminServiceServer,
+func NewGRPCServer(proxy pb.GatewayServiceServer, admin pb.AdminServiceServer,
 	nodeReg pb.NodeRegistryServiceServer, verifier *apikeys.Verifier, addr string, maxRecvMsgSize int) *GRPCServer {
 	opts := []grpclib.ServerOption{
 		grpclib.StatsHandler(otelgrpc.NewServerHandler()),
@@ -39,8 +39,8 @@ func NewGRPCServer(proxy pb.LLMProxyServiceServer, admin pb.LLMProxyAdminService
 	}
 	srv := grpclib.NewServer(opts...)
 
-	pb.RegisterLLMProxyServiceServer(srv, proxy)
-	pb.RegisterLLMProxyAdminServiceServer(srv, admin)
+	pb.RegisterGatewayServiceServer(srv, proxy)
+	pb.RegisterAdminServiceServer(srv, admin)
 	if nodeReg != nil {
 		pb.RegisterNodeRegistryServiceServer(srv, nodeReg)
 	}

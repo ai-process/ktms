@@ -11,10 +11,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/ai-process/llm-proxy/internal/audio"
-	"github.com/ai-process/llm-proxy/internal/circuitbreaker"
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/spendlimit"
+	"github.com/ai-process/ktms/internal/audio"
+	"github.com/ai-process/ktms/internal/circuitbreaker"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/spendlimit"
 )
 
 // InsufficientQuota is the OpenAI-compatible code for an exhausted spend limit.
@@ -98,7 +98,7 @@ func throttledStatus(kind string, now time.Time) error {
 		return st.Err()
 	}
 	withInfo, err := st.WithDetails(
-		&errdetails.ErrorInfo{Reason: InsufficientQuota, Domain: "llmproxy"},
+		&errdetails.ErrorInfo{Reason: InsufficientQuota, Domain: "ktms"},
 		&errdetails.RetryInfo{RetryDelay: durationpb.New(retry)},
 	)
 	if err != nil {

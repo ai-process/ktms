@@ -15,18 +15,18 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/apikeys"
-	"github.com/ai-process/llm-proxy/internal/crypto"
-	"github.com/ai-process/llm-proxy/internal/nodes"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/registry"
-	"github.com/ai-process/llm-proxy/internal/spendlimit"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/crypto"
+	"github.com/ai-process/ktms/internal/nodes"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
+	"github.com/ai-process/ktms/internal/spendlimit"
 )
 
 // AdminServer implements LLMProxyAdminService.
 type AdminServer struct {
-	pb.UnimplementedLLMProxyAdminServiceServer
+	pb.UnimplementedAdminServiceServer
 	db      *proxydb.DB
 	keyring *crypto.Keyring
 	nodeMgr *nodes.Manager

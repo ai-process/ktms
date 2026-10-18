@@ -10,8 +10,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/apikeys"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/apikeys"
 )
 
 const metadataKeyAuthorization = "authorization"
@@ -20,41 +20,41 @@ const metadataKeyAuthorization = "authorization"
 // refused, so adding an RPC without deciding who may call it fails closed
 // instead of shipping an open endpoint.
 var methodScopes = map[string]string{
-	method(pb.LLMProxyService_GenerateText_FullMethodName):       apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_GenerateTextStream_FullMethodName): apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_SynthesizeSpeech_FullMethodName):   apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_GenerateImage_FullMethodName):      apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_Judge_FullMethodName):              apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_GetEmbeddings_FullMethodName):      apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_JudgeStream_FullMethodName):        apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_EvaluateRollouts_FullMethodName):   apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_ListModels_FullMethodName):         apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_SubmitBatch_FullMethodName):        apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_GetBatch_FullMethodName):           apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_ListBatchResults_FullMethodName):   apikeys.ScopeGenerate,
-	method(pb.LLMProxyService_CancelBatch_FullMethodName):        apikeys.ScopeGenerate,
+	method(pb.GatewayService_GenerateText_FullMethodName):       apikeys.ScopeGenerate,
+	method(pb.GatewayService_GenerateTextStream_FullMethodName): apikeys.ScopeGenerate,
+	method(pb.GatewayService_SynthesizeSpeech_FullMethodName):   apikeys.ScopeGenerate,
+	method(pb.GatewayService_GenerateImage_FullMethodName):      apikeys.ScopeGenerate,
+	method(pb.GatewayService_Judge_FullMethodName):              apikeys.ScopeGenerate,
+	method(pb.GatewayService_GetEmbeddings_FullMethodName):      apikeys.ScopeGenerate,
+	method(pb.GatewayService_JudgeStream_FullMethodName):        apikeys.ScopeGenerate,
+	method(pb.GatewayService_EvaluateRollouts_FullMethodName):   apikeys.ScopeGenerate,
+	method(pb.GatewayService_ListModels_FullMethodName):         apikeys.ScopeGenerate,
+	method(pb.GatewayService_SubmitBatch_FullMethodName):        apikeys.ScopeGenerate,
+	method(pb.GatewayService_GetBatch_FullMethodName):           apikeys.ScopeGenerate,
+	method(pb.GatewayService_ListBatchResults_FullMethodName):   apikeys.ScopeGenerate,
+	method(pb.GatewayService_CancelBatch_FullMethodName):        apikeys.ScopeGenerate,
 
-	method(pb.LLMProxyAdminService_UpsertModel_FullMethodName):         apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_DeleteModel_FullMethodName):         apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_ReplaceRules_FullMethodName):        apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_SetVendorKey_FullMethodName):        apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_DeleteVendorKey_FullMethodName):     apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_GetConfig_FullMethodName):           apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_MintAPIKey_FullMethodName):          apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_RevokeAPIKey_FullMethodName):        apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_ListAPIKeys_FullMethodName):         apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_RotateEncryption_FullMethodName):    apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_MintNodeKey_FullMethodName):         apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_RevokeNodeKey_FullMethodName):       apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_ListNodeKeys_FullMethodName):        apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_ListNodes_FullMethodName):           apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_DrainNode_FullMethodName):           apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_SetUserRateLimit_FullMethodName):    apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_DeleteUserRateLimit_FullMethodName): apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_ListUserRateLimits_FullMethodName):  apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_SetSpendLimit_FullMethodName):       apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_DeleteSpendLimit_FullMethodName):    apikeys.ScopeAdmin,
-	method(pb.LLMProxyAdminService_ListSpendLimits_FullMethodName):     apikeys.ScopeAdmin,
+	method(pb.AdminService_UpsertModel_FullMethodName):         apikeys.ScopeAdmin,
+	method(pb.AdminService_DeleteModel_FullMethodName):         apikeys.ScopeAdmin,
+	method(pb.AdminService_ReplaceRules_FullMethodName):        apikeys.ScopeAdmin,
+	method(pb.AdminService_SetVendorKey_FullMethodName):        apikeys.ScopeAdmin,
+	method(pb.AdminService_DeleteVendorKey_FullMethodName):     apikeys.ScopeAdmin,
+	method(pb.AdminService_GetConfig_FullMethodName):           apikeys.ScopeAdmin,
+	method(pb.AdminService_MintAPIKey_FullMethodName):          apikeys.ScopeAdmin,
+	method(pb.AdminService_RevokeAPIKey_FullMethodName):        apikeys.ScopeAdmin,
+	method(pb.AdminService_ListAPIKeys_FullMethodName):         apikeys.ScopeAdmin,
+	method(pb.AdminService_RotateEncryption_FullMethodName):    apikeys.ScopeAdmin,
+	method(pb.AdminService_MintNodeKey_FullMethodName):         apikeys.ScopeAdmin,
+	method(pb.AdminService_RevokeNodeKey_FullMethodName):       apikeys.ScopeAdmin,
+	method(pb.AdminService_ListNodeKeys_FullMethodName):        apikeys.ScopeAdmin,
+	method(pb.AdminService_ListNodes_FullMethodName):           apikeys.ScopeAdmin,
+	method(pb.AdminService_DrainNode_FullMethodName):           apikeys.ScopeAdmin,
+	method(pb.AdminService_SetUserRateLimit_FullMethodName):    apikeys.ScopeAdmin,
+	method(pb.AdminService_DeleteUserRateLimit_FullMethodName): apikeys.ScopeAdmin,
+	method(pb.AdminService_ListUserRateLimits_FullMethodName):  apikeys.ScopeAdmin,
+	method(pb.AdminService_SetSpendLimit_FullMethodName):       apikeys.ScopeAdmin,
+	method(pb.AdminService_DeleteSpendLimit_FullMethodName):    apikeys.ScopeAdmin,
+	method(pb.AdminService_ListSpendLimits_FullMethodName):     apikeys.ScopeAdmin,
 
 	method(pb.NodeRegistryService_RegisterNode_FullMethodName):   apikeys.ScopeNode,
 	method(pb.NodeRegistryService_ValidateNode_FullMethodName):   apikeys.ScopeNode,

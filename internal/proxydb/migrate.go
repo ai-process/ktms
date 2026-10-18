@@ -22,7 +22,7 @@ const ledgerTable = "llmproxy_schema_migration"
 
 // migrationLockKey serializes the applying replicas. A rolling deploy starts
 // several at once and they would otherwise race on the same ALTER TABLE.
-const migrationLockKey = "llmproxy:migrations"
+const migrationLockKey = "ktms:migrations"
 
 // Migrate applies every embedded file that the ledger has not recorded yet.
 //

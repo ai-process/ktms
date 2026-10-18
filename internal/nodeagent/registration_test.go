@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
 )
 
 // scriptedRegistry answers ValidateNode and RegisterNode from scripted errors.

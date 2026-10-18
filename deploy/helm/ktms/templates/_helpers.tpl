@@ -1,7 +1,7 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "llm-proxy.name" -}}
+{{- define "ktms.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
@@ -10,7 +10,7 @@ Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
 */}}
-{{- define "llm-proxy.fullname" -}}
+{{- define "ktms.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -26,16 +26,16 @@ If release name contains chart name it will be used as a full name.
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "llm-proxy.chart" -}}
+{{- define "ktms.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "llm-proxy.labels" -}}
-helm.sh/chart: {{ include "llm-proxy.chart" . }}
-{{ include "llm-proxy.selectorLabels" . }}
+{{- define "ktms.labels" -}}
+helm.sh/chart: {{ include "ktms.chart" . }}
+{{ include "ktms.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -45,17 +45,17 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
-{{- define "llm-proxy.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "llm-proxy.name" . }}
+{{- define "ktms.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "ktms.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
 Create the name of the service account to use
 */}}
-{{- define "llm-proxy.serviceAccountName" -}}
+{{- define "ktms.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "llm-proxy.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "ktms.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
@@ -64,10 +64,10 @@ Create the name of the service account to use
 {{/*
 Return the name of the secret containing sensitive credentials
 */}}
-{{- define "llm-proxy.secretName" -}}
+{{- define "ktms.secretName" -}}
 {{- if .Values.secrets.existingSecret }}
 {{- .Values.secrets.existingSecret }}
 {{- else }}
-{{- include "llm-proxy.fullname" . }}
+{{- include "ktms.fullname" . }}
 {{- end }}
 {{- end }}

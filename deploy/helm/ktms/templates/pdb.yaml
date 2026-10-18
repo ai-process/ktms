@@ -2,9 +2,9 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "llm-proxy.fullname" . }}
+  name: {{ include "ktms.fullname" . }}
   labels:
-    {{- include "llm-proxy.labels" . | nindent 4 }}
+    {{- include "ktms.labels" . | nindent 4 }}
 spec:
   {{- if hasKey .Values.podDisruptionBudget "maxUnavailable" }}
     {{- if and (ne .Values.podDisruptionBudget.maxUnavailable nil) (ne (toString .Values.podDisruptionBudget.maxUnavailable) "") }}
@@ -17,5 +17,5 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      {{- include "llm-proxy.selectorLabels" . | nindent 6 }}
+      {{- include "ktms.selectorLabels" . | nindent 6 }}
 {{- end }}

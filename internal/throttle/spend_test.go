@@ -11,10 +11,10 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/router"
-	"github.com/ai-process/llm-proxy/internal/spendlimit"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/router"
+	"github.com/ai-process/ktms/internal/spendlimit"
 )
 
 // pricedModel bills $1/Mtok in and $2/Mtok out: 1000 nano per input token,

@@ -2,9 +2,9 @@
 // versions:
 // 	protoc-gen-go v1.36.12
 // 	protoc        (unknown)
-// source: llmproxy/v1/llmproxy.proto
+// source: ktms/v1/gateway.proto
 
-package llmproxyv1
+package ktmsv1
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -60,11 +60,11 @@ func (x Effort) String() string {
 }
 
 func (Effort) Descriptor() protoreflect.EnumDescriptor {
-	return file_llmproxy_v1_llmproxy_proto_enumTypes[0].Descriptor()
+	return file_ktms_v1_gateway_proto_enumTypes[0].Descriptor()
 }
 
 func (Effort) Type() protoreflect.EnumType {
-	return &file_llmproxy_v1_llmproxy_proto_enumTypes[0]
+	return &file_ktms_v1_gateway_proto_enumTypes[0]
 }
 
 func (x Effort) Number() protoreflect.EnumNumber {
@@ -73,7 +73,7 @@ func (x Effort) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Effort.Descriptor instead.
 func (Effort) EnumDescriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{0}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{0}
 }
 
 // System content never travels as a message: it goes in the two instruction
@@ -114,11 +114,11 @@ func (x MessageRole) String() string {
 }
 
 func (MessageRole) Descriptor() protoreflect.EnumDescriptor {
-	return file_llmproxy_v1_llmproxy_proto_enumTypes[1].Descriptor()
+	return file_ktms_v1_gateway_proto_enumTypes[1].Descriptor()
 }
 
 func (MessageRole) Type() protoreflect.EnumType {
-	return &file_llmproxy_v1_llmproxy_proto_enumTypes[1]
+	return &file_ktms_v1_gateway_proto_enumTypes[1]
 }
 
 func (x MessageRole) Number() protoreflect.EnumNumber {
@@ -127,7 +127,7 @@ func (x MessageRole) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use MessageRole.Descriptor instead.
 func (MessageRole) EnumDescriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{1}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{1}
 }
 
 // JudgeType is the question shape. Each type answers a different kind of
@@ -168,11 +168,11 @@ func (x JudgeType) String() string {
 }
 
 func (JudgeType) Descriptor() protoreflect.EnumDescriptor {
-	return file_llmproxy_v1_llmproxy_proto_enumTypes[2].Descriptor()
+	return file_ktms_v1_gateway_proto_enumTypes[2].Descriptor()
 }
 
 func (JudgeType) Type() protoreflect.EnumType {
-	return &file_llmproxy_v1_llmproxy_proto_enumTypes[2]
+	return &file_ktms_v1_gateway_proto_enumTypes[2]
 }
 
 func (x JudgeType) Number() protoreflect.EnumNumber {
@@ -181,7 +181,7 @@ func (x JudgeType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use JudgeType.Descriptor instead.
 func (JudgeType) EnumDescriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{2}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{2}
 }
 
 type BatchState int32
@@ -229,11 +229,11 @@ func (x BatchState) String() string {
 }
 
 func (BatchState) Descriptor() protoreflect.EnumDescriptor {
-	return file_llmproxy_v1_llmproxy_proto_enumTypes[3].Descriptor()
+	return file_ktms_v1_gateway_proto_enumTypes[3].Descriptor()
 }
 
 func (BatchState) Type() protoreflect.EnumType {
-	return &file_llmproxy_v1_llmproxy_proto_enumTypes[3]
+	return &file_ktms_v1_gateway_proto_enumTypes[3]
 }
 
 func (x BatchState) Number() protoreflect.EnumNumber {
@@ -242,7 +242,7 @@ func (x BatchState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use BatchState.Descriptor instead.
 func (BatchState) EnumDescriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{3}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{3}
 }
 
 type ToolChoice_Mode int32
@@ -284,11 +284,11 @@ func (x ToolChoice_Mode) String() string {
 }
 
 func (ToolChoice_Mode) Descriptor() protoreflect.EnumDescriptor {
-	return file_llmproxy_v1_llmproxy_proto_enumTypes[4].Descriptor()
+	return file_ktms_v1_gateway_proto_enumTypes[4].Descriptor()
 }
 
 func (ToolChoice_Mode) Type() protoreflect.EnumType {
-	return &file_llmproxy_v1_llmproxy_proto_enumTypes[4]
+	return &file_ktms_v1_gateway_proto_enumTypes[4]
 }
 
 func (x ToolChoice_Mode) Number() protoreflect.EnumNumber {
@@ -297,7 +297,7 @@ func (x ToolChoice_Mode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ToolChoice_Mode.Descriptor instead.
 func (ToolChoice_Mode) EnumDescriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{5, 0}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{5, 0}
 }
 
 type ToolCall struct {
@@ -311,7 +311,7 @@ type ToolCall struct {
 
 func (x *ToolCall) Reset() {
 	*x = ToolCall{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[0]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -323,7 +323,7 @@ func (x *ToolCall) String() string {
 func (*ToolCall) ProtoMessage() {}
 
 func (x *ToolCall) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[0]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -336,7 +336,7 @@ func (x *ToolCall) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolCall.ProtoReflect.Descriptor instead.
 func (*ToolCall) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{0}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *ToolCall) GetId() string {
@@ -370,7 +370,7 @@ type FunctionCall struct {
 
 func (x *FunctionCall) Reset() {
 	*x = FunctionCall{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[1]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -382,7 +382,7 @@ func (x *FunctionCall) String() string {
 func (*FunctionCall) ProtoMessage() {}
 
 func (x *FunctionCall) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[1]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -395,7 +395,7 @@ func (x *FunctionCall) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FunctionCall.ProtoReflect.Descriptor instead.
 func (*FunctionCall) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{1}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *FunctionCall) GetName() string {
@@ -425,7 +425,7 @@ type ToolCallChunk struct {
 
 func (x *ToolCallChunk) Reset() {
 	*x = ToolCallChunk{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[2]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -437,7 +437,7 @@ func (x *ToolCallChunk) String() string {
 func (*ToolCallChunk) ProtoMessage() {}
 
 func (x *ToolCallChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[2]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -450,7 +450,7 @@ func (x *ToolCallChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolCallChunk.ProtoReflect.Descriptor instead.
 func (*ToolCallChunk) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{2}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ToolCallChunk) GetIndex() int32 {
@@ -498,7 +498,7 @@ type Tool struct {
 
 func (x *Tool) Reset() {
 	*x = Tool{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[3]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -510,7 +510,7 @@ func (x *Tool) String() string {
 func (*Tool) ProtoMessage() {}
 
 func (x *Tool) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[3]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -523,7 +523,7 @@ func (x *Tool) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Tool.ProtoReflect.Descriptor instead.
 func (*Tool) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{3}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Tool) GetType() string {
@@ -552,7 +552,7 @@ type FunctionDefinition struct {
 
 func (x *FunctionDefinition) Reset() {
 	*x = FunctionDefinition{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[4]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -564,7 +564,7 @@ func (x *FunctionDefinition) String() string {
 func (*FunctionDefinition) ProtoMessage() {}
 
 func (x *FunctionDefinition) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[4]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -577,7 +577,7 @@ func (x *FunctionDefinition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FunctionDefinition.ProtoReflect.Descriptor instead.
 func (*FunctionDefinition) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{4}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *FunctionDefinition) GetName() string {
@@ -610,7 +610,7 @@ func (x *FunctionDefinition) GetStrict() bool {
 
 type ToolChoice struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
-	Mode                 ToolChoice_Mode        `protobuf:"varint,1,opt,name=mode,proto3,enum=llmproxy.v1.ToolChoice_Mode" json:"mode,omitempty"`
+	Mode                 ToolChoice_Mode        `protobuf:"varint,1,opt,name=mode,proto3,enum=ktms.v1.ToolChoice_Mode" json:"mode,omitempty"`
 	SpecificFunctionName string                 `protobuf:"bytes,2,opt,name=specific_function_name,json=specificFunctionName,proto3" json:"specific_function_name,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
@@ -618,7 +618,7 @@ type ToolChoice struct {
 
 func (x *ToolChoice) Reset() {
 	*x = ToolChoice{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[5]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -630,7 +630,7 @@ func (x *ToolChoice) String() string {
 func (*ToolChoice) ProtoMessage() {}
 
 func (x *ToolChoice) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[5]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -643,7 +643,7 @@ func (x *ToolChoice) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ToolChoice.ProtoReflect.Descriptor instead.
 func (*ToolChoice) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{5}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ToolChoice) GetMode() ToolChoice_Mode {
@@ -672,7 +672,7 @@ type ImagePart struct {
 
 func (x *ImagePart) Reset() {
 	*x = ImagePart{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[6]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -684,7 +684,7 @@ func (x *ImagePart) String() string {
 func (*ImagePart) ProtoMessage() {}
 
 func (x *ImagePart) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[6]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -697,7 +697,7 @@ func (x *ImagePart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImagePart.ProtoReflect.Descriptor instead.
 func (*ImagePart) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{6}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ImagePart) GetMimeType() string {
@@ -739,7 +739,7 @@ type AudioPart struct {
 
 func (x *AudioPart) Reset() {
 	*x = AudioPart{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[7]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -751,7 +751,7 @@ func (x *AudioPart) String() string {
 func (*AudioPart) ProtoMessage() {}
 
 func (x *AudioPart) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[7]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -764,7 +764,7 @@ func (x *AudioPart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AudioPart.ProtoReflect.Descriptor instead.
 func (*AudioPart) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{7}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *AudioPart) GetMimeType() string {
@@ -799,7 +799,7 @@ type DocumentPart struct {
 
 func (x *DocumentPart) Reset() {
 	*x = DocumentPart{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[8]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -811,7 +811,7 @@ func (x *DocumentPart) String() string {
 func (*DocumentPart) ProtoMessage() {}
 
 func (x *DocumentPart) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[8]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -824,7 +824,7 @@ func (x *DocumentPart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DocumentPart.ProtoReflect.Descriptor instead.
 func (*DocumentPart) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{8}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *DocumentPart) GetMimeType() string {
@@ -857,7 +857,7 @@ type TextPart struct {
 
 func (x *TextPart) Reset() {
 	*x = TextPart{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[9]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -869,7 +869,7 @@ func (x *TextPart) String() string {
 func (*TextPart) ProtoMessage() {}
 
 func (x *TextPart) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[9]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -882,7 +882,7 @@ func (x *TextPart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextPart.ProtoReflect.Descriptor instead.
 func (*TextPart) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{9}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *TextPart) GetText() string {
@@ -907,7 +907,7 @@ type ContentPart struct {
 
 func (x *ContentPart) Reset() {
 	*x = ContentPart{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[10]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -919,7 +919,7 @@ func (x *ContentPart) String() string {
 func (*ContentPart) ProtoMessage() {}
 
 func (x *ContentPart) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[10]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -932,7 +932,7 @@ func (x *ContentPart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContentPart.ProtoReflect.Descriptor instead.
 func (*ContentPart) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{10}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ContentPart) GetPart() isContentPart_Part {
@@ -1008,7 +1008,7 @@ func (*ContentPart_Document) isContentPart_Part() {}
 
 type ChatMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Role          MessageRole            `protobuf:"varint,1,opt,name=role,proto3,enum=llmproxy.v1.MessageRole" json:"role,omitempty"`
+	Role          MessageRole            `protobuf:"varint,1,opt,name=role,proto3,enum=ktms.v1.MessageRole" json:"role,omitempty"`
 	Text          string                 `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
 	ToolCalls     []*ToolCall            `protobuf:"bytes,3,rep,name=tool_calls,json=toolCalls,proto3" json:"tool_calls,omitempty"`
 	ToolCallId    string                 `protobuf:"bytes,4,opt,name=tool_call_id,json=toolCallId,proto3" json:"tool_call_id,omitempty"`
@@ -1019,7 +1019,7 @@ type ChatMessage struct {
 
 func (x *ChatMessage) Reset() {
 	*x = ChatMessage{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[11]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1031,7 +1031,7 @@ func (x *ChatMessage) String() string {
 func (*ChatMessage) ProtoMessage() {}
 
 func (x *ChatMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[11]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1044,7 +1044,7 @@ func (x *ChatMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatMessage.ProtoReflect.Descriptor instead.
 func (*ChatMessage) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{11}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ChatMessage) GetRole() MessageRole {
@@ -1098,7 +1098,7 @@ type SchemaProperty struct {
 
 func (x *SchemaProperty) Reset() {
 	*x = SchemaProperty{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[12]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1110,7 +1110,7 @@ func (x *SchemaProperty) String() string {
 func (*SchemaProperty) ProtoMessage() {}
 
 func (x *SchemaProperty) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[12]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1123,7 +1123,7 @@ func (x *SchemaProperty) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SchemaProperty.ProtoReflect.Descriptor instead.
 func (*SchemaProperty) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{12}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SchemaProperty) GetType() string {
@@ -1181,7 +1181,7 @@ type ResponseSchema struct {
 
 func (x *ResponseSchema) Reset() {
 	*x = ResponseSchema{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[13]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1193,7 +1193,7 @@ func (x *ResponseSchema) String() string {
 func (*ResponseSchema) ProtoMessage() {}
 
 func (x *ResponseSchema) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[13]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1206,7 +1206,7 @@ func (x *ResponseSchema) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseSchema.ProtoReflect.Descriptor instead.
 func (*ResponseSchema) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{13}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ResponseSchema) GetType() string {
@@ -1239,7 +1239,7 @@ func (x *ResponseSchema) GetRequired() []string {
 
 type GenerateTextRequest struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
-	Effort Effort                 `protobuf:"varint,1,opt,name=effort,proto3,enum=llmproxy.v1.Effort" json:"effort,omitempty"`
+	Effort Effort                 `protobuf:"varint,1,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"`
 	// Opaque routing/usage attributes: "subject", "user_id", "task", ...
 	// Matched by equality in rules and forwarded to usage meta.
 	// Reserved names: "user_id" attributes the call to an end user (and provides default canary stickiness);
@@ -1267,7 +1267,7 @@ type GenerateTextRequest struct {
 
 func (x *GenerateTextRequest) Reset() {
 	*x = GenerateTextRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[14]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1279,7 +1279,7 @@ func (x *GenerateTextRequest) String() string {
 func (*GenerateTextRequest) ProtoMessage() {}
 
 func (x *GenerateTextRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[14]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1292,7 +1292,7 @@ func (x *GenerateTextRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateTextRequest.ProtoReflect.Descriptor instead.
 func (*GenerateTextRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{14}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GenerateTextRequest) GetEffort() Effort {
@@ -1417,7 +1417,7 @@ type TokensUsage struct {
 
 func (x *TokensUsage) Reset() {
 	*x = TokensUsage{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[15]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1429,7 +1429,7 @@ func (x *TokensUsage) String() string {
 func (*TokensUsage) ProtoMessage() {}
 
 func (x *TokensUsage) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[15]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1442,7 +1442,7 @@ func (x *TokensUsage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TokensUsage.ProtoReflect.Descriptor instead.
 func (*TokensUsage) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{15}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *TokensUsage) GetInput() int64 {
@@ -1471,7 +1471,7 @@ type Choice struct {
 
 func (x *Choice) Reset() {
 	*x = Choice{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[16]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1483,7 +1483,7 @@ func (x *Choice) String() string {
 func (*Choice) ProtoMessage() {}
 
 func (x *Choice) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[16]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1496,7 +1496,7 @@ func (x *Choice) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Choice.ProtoReflect.Descriptor instead.
 func (*Choice) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{16}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Choice) GetIndex() int32 {
@@ -1546,7 +1546,7 @@ type GenerateTextResponse struct {
 
 func (x *GenerateTextResponse) Reset() {
 	*x = GenerateTextResponse{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[17]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1558,7 +1558,7 @@ func (x *GenerateTextResponse) String() string {
 func (*GenerateTextResponse) ProtoMessage() {}
 
 func (x *GenerateTextResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[17]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1571,7 +1571,7 @@ func (x *GenerateTextResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateTextResponse.ProtoReflect.Descriptor instead.
 func (*GenerateTextResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{17}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *GenerateTextResponse) GetChoices() []string {
@@ -1671,7 +1671,7 @@ type GenerateTextChunk struct {
 
 func (x *GenerateTextChunk) Reset() {
 	*x = GenerateTextChunk{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[18]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1683,7 +1683,7 @@ func (x *GenerateTextChunk) String() string {
 func (*GenerateTextChunk) ProtoMessage() {}
 
 func (x *GenerateTextChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[18]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1696,7 +1696,7 @@ func (x *GenerateTextChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateTextChunk.ProtoReflect.Descriptor instead.
 func (*GenerateTextChunk) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{18}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GenerateTextChunk) GetDelta() string {
@@ -1791,7 +1791,7 @@ type ListModelsRequest struct {
 
 func (x *ListModelsRequest) Reset() {
 	*x = ListModelsRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[19]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1803,7 +1803,7 @@ func (x *ListModelsRequest) String() string {
 func (*ListModelsRequest) ProtoMessage() {}
 
 func (x *ListModelsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[19]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1816,14 +1816,14 @@ func (x *ListModelsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListModelsRequest.ProtoReflect.Descriptor instead.
 func (*ListModelsRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{19}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{19}
 }
 
 type ModelInfo struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	Id                   string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Vendor               string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`
-	Efforts              []Effort               `protobuf:"varint,3,rep,packed,name=efforts,proto3,enum=llmproxy.v1.Effort" json:"efforts,omitempty"`
+	Efforts              []Effort               `protobuf:"varint,3,rep,packed,name=efforts,proto3,enum=ktms.v1.Effort" json:"efforts,omitempty"`
 	Capabilities         []string               `protobuf:"bytes,4,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
 	Rpm                  int32                  `protobuf:"varint,5,opt,name=rpm,proto3" json:"rpm,omitempty"`
 	PriceInPerMtok       float64                `protobuf:"fixed64,6,opt,name=price_in_per_mtok,json=priceInPerMtok,proto3" json:"price_in_per_mtok,omitempty"`
@@ -1836,7 +1836,7 @@ type ModelInfo struct {
 
 func (x *ModelInfo) Reset() {
 	*x = ModelInfo{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[20]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1848,7 +1848,7 @@ func (x *ModelInfo) String() string {
 func (*ModelInfo) ProtoMessage() {}
 
 func (x *ModelInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[20]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1861,7 +1861,7 @@ func (x *ModelInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelInfo.ProtoReflect.Descriptor instead.
 func (*ModelInfo) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{20}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ModelInfo) GetId() string {
@@ -1937,7 +1937,7 @@ type ListModelsResponse struct {
 
 func (x *ListModelsResponse) Reset() {
 	*x = ListModelsResponse{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[21]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1949,7 +1949,7 @@ func (x *ListModelsResponse) String() string {
 func (*ListModelsResponse) ProtoMessage() {}
 
 func (x *ListModelsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[21]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1962,7 +1962,7 @@ func (x *ListModelsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListModelsResponse.ProtoReflect.Descriptor instead.
 func (*ListModelsResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{21}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ListModelsResponse) GetModels() []*ModelInfo {
@@ -1981,7 +1981,7 @@ type GenerateTextStreamRequest struct {
 
 func (x *GenerateTextStreamRequest) Reset() {
 	*x = GenerateTextStreamRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[22]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1993,7 +1993,7 @@ func (x *GenerateTextStreamRequest) String() string {
 func (*GenerateTextStreamRequest) ProtoMessage() {}
 
 func (x *GenerateTextStreamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[22]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2006,7 +2006,7 @@ func (x *GenerateTextStreamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateTextStreamRequest.ProtoReflect.Descriptor instead.
 func (*GenerateTextStreamRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{22}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *GenerateTextStreamRequest) GetRequest() *GenerateTextRequest {
@@ -2029,7 +2029,7 @@ type SynthesizeSpeechRequest struct {
 
 func (x *SynthesizeSpeechRequest) Reset() {
 	*x = SynthesizeSpeechRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[23]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2041,7 +2041,7 @@ func (x *SynthesizeSpeechRequest) String() string {
 func (*SynthesizeSpeechRequest) ProtoMessage() {}
 
 func (x *SynthesizeSpeechRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[23]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2054,7 +2054,7 @@ func (x *SynthesizeSpeechRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeSpeechRequest.ProtoReflect.Descriptor instead.
 func (*SynthesizeSpeechRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{23}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *SynthesizeSpeechRequest) GetText() string {
@@ -2107,7 +2107,7 @@ type SynthesizeSpeechResponse struct {
 
 func (x *SynthesizeSpeechResponse) Reset() {
 	*x = SynthesizeSpeechResponse{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[24]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2119,7 +2119,7 @@ func (x *SynthesizeSpeechResponse) String() string {
 func (*SynthesizeSpeechResponse) ProtoMessage() {}
 
 func (x *SynthesizeSpeechResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[24]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2132,7 +2132,7 @@ func (x *SynthesizeSpeechResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SynthesizeSpeechResponse.ProtoReflect.Descriptor instead.
 func (*SynthesizeSpeechResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{24}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *SynthesizeSpeechResponse) GetAudio() []byte {
@@ -2196,7 +2196,7 @@ type GenerateImageRequest struct {
 
 func (x *GenerateImageRequest) Reset() {
 	*x = GenerateImageRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[25]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2208,7 +2208,7 @@ func (x *GenerateImageRequest) String() string {
 func (*GenerateImageRequest) ProtoMessage() {}
 
 func (x *GenerateImageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[25]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2221,7 +2221,7 @@ func (x *GenerateImageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateImageRequest.ProtoReflect.Descriptor instead.
 func (*GenerateImageRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{25}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GenerateImageRequest) GetPrompt() string {
@@ -2266,7 +2266,7 @@ type GenerateImageResponse struct {
 
 func (x *GenerateImageResponse) Reset() {
 	*x = GenerateImageResponse{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[26]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2278,7 +2278,7 @@ func (x *GenerateImageResponse) String() string {
 func (*GenerateImageResponse) ProtoMessage() {}
 
 func (x *GenerateImageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[26]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2291,7 +2291,7 @@ func (x *GenerateImageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateImageResponse.ProtoReflect.Descriptor instead.
 func (*GenerateImageResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{26}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *GenerateImageResponse) GetImage() []byte {
@@ -2338,7 +2338,7 @@ func (x *GenerateImageResponse) GetMatchedRule() string {
 
 type JudgeQuestion struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          JudgeType              `protobuf:"varint,1,opt,name=type,proto3,enum=llmproxy.v1.JudgeType" json:"type,omitempty"`
+	Type          JudgeType              `protobuf:"varint,1,opt,name=type,proto3,enum=ktms.v1.JudgeType" json:"type,omitempty"`
 	Instructions  string                 `protobuf:"bytes,2,opt,name=instructions,proto3" json:"instructions,omitempty"`                                                                 // the judgment itself, stated in full
 	Options       map[string]string      `protobuf:"bytes,3,rep,name=options,proto3" json:"options,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // CHOICE: option id -> what it covers
 	Levels        []string               `protobuf:"bytes,4,rep,name=levels,proto3" json:"levels,omitempty"`                                                                             // SCORE: ordered level descriptions, lowest first
@@ -2350,7 +2350,7 @@ type JudgeQuestion struct {
 
 func (x *JudgeQuestion) Reset() {
 	*x = JudgeQuestion{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[27]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2362,7 +2362,7 @@ func (x *JudgeQuestion) String() string {
 func (*JudgeQuestion) ProtoMessage() {}
 
 func (x *JudgeQuestion) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[27]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2375,7 +2375,7 @@ func (x *JudgeQuestion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JudgeQuestion.ProtoReflect.Descriptor instead.
 func (*JudgeQuestion) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{27}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *JudgeQuestion) GetType() JudgeType {
@@ -2422,7 +2422,7 @@ func (x *JudgeQuestion) GetFalseCriteria() string {
 
 type JudgeAnswer struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          JudgeType              `protobuf:"varint,1,opt,name=type,proto3,enum=llmproxy.v1.JudgeType" json:"type,omitempty"`
+	Type          JudgeType              `protobuf:"varint,1,opt,name=type,proto3,enum=ktms.v1.JudgeType" json:"type,omitempty"`
 	Choice        string                 `protobuf:"bytes,2,opt,name=choice,proto3" json:"choice,omitempty"`                                                                                           // CHOICE: the selected option id
 	Noul          float64                `protobuf:"fixed64,3,opt,name=noul,proto3" json:"noul,omitempty"`                                                                                             // NOUL: probability of yes, 0..1
 	Score         float64                `protobuf:"fixed64,4,opt,name=score,proto3" json:"score,omitempty"`                                                                                           // SCORE: probability-weighted level position
@@ -2435,7 +2435,7 @@ type JudgeAnswer struct {
 
 func (x *JudgeAnswer) Reset() {
 	*x = JudgeAnswer{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[28]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2447,7 +2447,7 @@ func (x *JudgeAnswer) String() string {
 func (*JudgeAnswer) ProtoMessage() {}
 
 func (x *JudgeAnswer) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[28]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2460,7 +2460,7 @@ func (x *JudgeAnswer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JudgeAnswer.ProtoReflect.Descriptor instead.
 func (*JudgeAnswer) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{28}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *JudgeAnswer) GetType() JudgeType {
@@ -2524,7 +2524,7 @@ type EmbeddingPart struct {
 
 func (x *EmbeddingPart) Reset() {
 	*x = EmbeddingPart{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[29]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2536,7 +2536,7 @@ func (x *EmbeddingPart) String() string {
 func (*EmbeddingPart) ProtoMessage() {}
 
 func (x *EmbeddingPart) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[29]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2549,7 +2549,7 @@ func (x *EmbeddingPart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmbeddingPart.ProtoReflect.Descriptor instead.
 func (*EmbeddingPart) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{29}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *EmbeddingPart) GetValues() []float32 {
@@ -2583,7 +2583,7 @@ type MediaPart struct {
 
 func (x *MediaPart) Reset() {
 	*x = MediaPart{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[30]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2595,7 +2595,7 @@ func (x *MediaPart) String() string {
 func (*MediaPart) ProtoMessage() {}
 
 func (x *MediaPart) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[30]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2608,7 +2608,7 @@ func (x *MediaPart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MediaPart.ProtoReflect.Descriptor instead.
 func (*MediaPart) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{30}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *MediaPart) GetPart() isMediaPart_Part {
@@ -2702,7 +2702,7 @@ type JudgeRequest struct {
 
 func (x *JudgeRequest) Reset() {
 	*x = JudgeRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[31]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2714,7 +2714,7 @@ func (x *JudgeRequest) String() string {
 func (*JudgeRequest) ProtoMessage() {}
 
 func (x *JudgeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[31]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2727,7 +2727,7 @@ func (x *JudgeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JudgeRequest.ProtoReflect.Descriptor instead.
 func (*JudgeRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{31}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *JudgeRequest) GetStateJson() string {
@@ -2785,7 +2785,7 @@ type JudgeResponse struct {
 
 func (x *JudgeResponse) Reset() {
 	*x = JudgeResponse{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[32]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2797,7 +2797,7 @@ func (x *JudgeResponse) String() string {
 func (*JudgeResponse) ProtoMessage() {}
 
 func (x *JudgeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[32]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2810,7 +2810,7 @@ func (x *JudgeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JudgeResponse.ProtoReflect.Descriptor instead.
 func (*JudgeResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{32}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *JudgeResponse) GetAnswers() map[string]*JudgeAnswer {
@@ -2858,7 +2858,7 @@ type Embedding struct {
 
 func (x *Embedding) Reset() {
 	*x = Embedding{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[33]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2870,7 +2870,7 @@ func (x *Embedding) String() string {
 func (*Embedding) ProtoMessage() {}
 
 func (x *Embedding) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[33]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2883,7 +2883,7 @@ func (x *Embedding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Embedding.ProtoReflect.Descriptor instead.
 func (*Embedding) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{33}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *Embedding) GetIndex() int32 {
@@ -2914,7 +2914,7 @@ type GetEmbeddingsRequest struct {
 
 func (x *GetEmbeddingsRequest) Reset() {
 	*x = GetEmbeddingsRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[34]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2926,7 +2926,7 @@ func (x *GetEmbeddingsRequest) String() string {
 func (*GetEmbeddingsRequest) ProtoMessage() {}
 
 func (x *GetEmbeddingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[34]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2939,7 +2939,7 @@ func (x *GetEmbeddingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEmbeddingsRequest.ProtoReflect.Descriptor instead.
 func (*GetEmbeddingsRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{34}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *GetEmbeddingsRequest) GetInputs() []string {
@@ -2997,7 +2997,7 @@ type GetEmbeddingsResponse struct {
 
 func (x *GetEmbeddingsResponse) Reset() {
 	*x = GetEmbeddingsResponse{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[35]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3009,7 +3009,7 @@ func (x *GetEmbeddingsResponse) String() string {
 func (*GetEmbeddingsResponse) ProtoMessage() {}
 
 func (x *GetEmbeddingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[35]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3022,7 +3022,7 @@ func (x *GetEmbeddingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEmbeddingsResponse.ProtoReflect.Descriptor instead.
 func (*GetEmbeddingsResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{35}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *GetEmbeddingsResponse) GetData() []*Embedding {
@@ -3073,7 +3073,7 @@ type RolloutCandidate struct {
 
 func (x *RolloutCandidate) Reset() {
 	*x = RolloutCandidate{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[36]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3085,7 +3085,7 @@ func (x *RolloutCandidate) String() string {
 func (*RolloutCandidate) ProtoMessage() {}
 
 func (x *RolloutCandidate) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[36]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3098,7 +3098,7 @@ func (x *RolloutCandidate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RolloutCandidate.ProtoReflect.Descriptor instead.
 func (*RolloutCandidate) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{36}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *RolloutCandidate) GetId() string {
@@ -3142,7 +3142,7 @@ type CandidateEvaluation struct {
 
 func (x *CandidateEvaluation) Reset() {
 	*x = CandidateEvaluation{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[37]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3154,7 +3154,7 @@ func (x *CandidateEvaluation) String() string {
 func (*CandidateEvaluation) ProtoMessage() {}
 
 func (x *CandidateEvaluation) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[37]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3167,7 +3167,7 @@ func (x *CandidateEvaluation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CandidateEvaluation.ProtoReflect.Descriptor instead.
 func (*CandidateEvaluation) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{37}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *CandidateEvaluation) GetId() string {
@@ -3214,7 +3214,7 @@ type EvaluateRolloutsRequest struct {
 
 func (x *EvaluateRolloutsRequest) Reset() {
 	*x = EvaluateRolloutsRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[38]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3226,7 +3226,7 @@ func (x *EvaluateRolloutsRequest) String() string {
 func (*EvaluateRolloutsRequest) ProtoMessage() {}
 
 func (x *EvaluateRolloutsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[38]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3239,7 +3239,7 @@ func (x *EvaluateRolloutsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluateRolloutsRequest.ProtoReflect.Descriptor instead.
 func (*EvaluateRolloutsRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{38}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *EvaluateRolloutsRequest) GetStateJson() string {
@@ -3306,7 +3306,7 @@ type EvaluateRolloutsResponse struct {
 
 func (x *EvaluateRolloutsResponse) Reset() {
 	*x = EvaluateRolloutsResponse{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[39]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3318,7 +3318,7 @@ func (x *EvaluateRolloutsResponse) String() string {
 func (*EvaluateRolloutsResponse) ProtoMessage() {}
 
 func (x *EvaluateRolloutsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[39]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3331,7 +3331,7 @@ func (x *EvaluateRolloutsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluateRolloutsResponse.ProtoReflect.Descriptor instead.
 func (*EvaluateRolloutsResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{39}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *EvaluateRolloutsResponse) GetEvaluations() []*CandidateEvaluation {
@@ -3387,7 +3387,7 @@ type BatchCounts struct {
 
 func (x *BatchCounts) Reset() {
 	*x = BatchCounts{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[40]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3399,7 +3399,7 @@ func (x *BatchCounts) String() string {
 func (*BatchCounts) ProtoMessage() {}
 
 func (x *BatchCounts) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[40]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3412,7 +3412,7 @@ func (x *BatchCounts) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchCounts.ProtoReflect.Descriptor instead.
 func (*BatchCounts) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{40}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *BatchCounts) GetTotal() int32 {
@@ -3440,7 +3440,7 @@ type Batch struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	ClientBatchId string                 `protobuf:"bytes,2,opt,name=client_batch_id,json=clientBatchId,proto3" json:"client_batch_id,omitempty"`
-	State         BatchState             `protobuf:"varint,3,opt,name=state,proto3,enum=llmproxy.v1.BatchState" json:"state,omitempty"`
+	State         BatchState             `protobuf:"varint,3,opt,name=state,proto3,enum=ktms.v1.BatchState" json:"state,omitempty"`
 	Counts        *BatchCounts           `protobuf:"bytes,4,opt,name=counts,proto3" json:"counts,omitempty"`
 	Model         string                 `protobuf:"bytes,5,opt,name=model,proto3" json:"model,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
@@ -3451,7 +3451,7 @@ type Batch struct {
 
 func (x *Batch) Reset() {
 	*x = Batch{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[41]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3463,7 +3463,7 @@ func (x *Batch) String() string {
 func (*Batch) ProtoMessage() {}
 
 func (x *Batch) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[41]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3476,7 +3476,7 @@ func (x *Batch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Batch.ProtoReflect.Descriptor instead.
 func (*Batch) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{41}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *Batch) GetId() string {
@@ -3538,7 +3538,7 @@ type BatchItemRequest struct {
 
 func (x *BatchItemRequest) Reset() {
 	*x = BatchItemRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[42]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3550,7 +3550,7 @@ func (x *BatchItemRequest) String() string {
 func (*BatchItemRequest) ProtoMessage() {}
 
 func (x *BatchItemRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[42]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3563,7 +3563,7 @@ func (x *BatchItemRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchItemRequest.ProtoReflect.Descriptor instead.
 func (*BatchItemRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{42}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *BatchItemRequest) GetCustomId() string {
@@ -3583,7 +3583,7 @@ func (x *BatchItemRequest) GetRequest() *GenerateTextRequest {
 type SubmitBatchRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*BatchItemRequest    `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	Effort        Effort                 `protobuf:"varint,2,opt,name=effort,proto3,enum=llmproxy.v1.Effort" json:"effort,omitempty"`
+	Effort        Effort                 `protobuf:"varint,2,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"`
 	Attributes    map[string]string      `protobuf:"bytes,3,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	ClientBatchId string                 `protobuf:"bytes,4,opt,name=client_batch_id,json=clientBatchId,proto3" json:"client_batch_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -3592,7 +3592,7 @@ type SubmitBatchRequest struct {
 
 func (x *SubmitBatchRequest) Reset() {
 	*x = SubmitBatchRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[43]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3604,7 +3604,7 @@ func (x *SubmitBatchRequest) String() string {
 func (*SubmitBatchRequest) ProtoMessage() {}
 
 func (x *SubmitBatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[43]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3617,7 +3617,7 @@ func (x *SubmitBatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitBatchRequest.ProtoReflect.Descriptor instead.
 func (*SubmitBatchRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{43}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *SubmitBatchRequest) GetItems() []*BatchItemRequest {
@@ -3657,7 +3657,7 @@ type SubmitBatchResponse struct {
 
 func (x *SubmitBatchResponse) Reset() {
 	*x = SubmitBatchResponse{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[44]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3669,7 +3669,7 @@ func (x *SubmitBatchResponse) String() string {
 func (*SubmitBatchResponse) ProtoMessage() {}
 
 func (x *SubmitBatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[44]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3682,7 +3682,7 @@ func (x *SubmitBatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitBatchResponse.ProtoReflect.Descriptor instead.
 func (*SubmitBatchResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{44}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *SubmitBatchResponse) GetBatch() *Batch {
@@ -3701,7 +3701,7 @@ type GetBatchRequest struct {
 
 func (x *GetBatchRequest) Reset() {
 	*x = GetBatchRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[45]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3713,7 +3713,7 @@ func (x *GetBatchRequest) String() string {
 func (*GetBatchRequest) ProtoMessage() {}
 
 func (x *GetBatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[45]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3726,7 +3726,7 @@ func (x *GetBatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBatchRequest.ProtoReflect.Descriptor instead.
 func (*GetBatchRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{45}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *GetBatchRequest) GetBatchId() string {
@@ -3747,7 +3747,7 @@ type BatchItemError struct {
 
 func (x *BatchItemError) Reset() {
 	*x = BatchItemError{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[46]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3759,7 +3759,7 @@ func (x *BatchItemError) String() string {
 func (*BatchItemError) ProtoMessage() {}
 
 func (x *BatchItemError) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[46]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3772,7 +3772,7 @@ func (x *BatchItemError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchItemError.ProtoReflect.Descriptor instead.
 func (*BatchItemError) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{46}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *BatchItemError) GetCode() int32 {
@@ -3810,7 +3810,7 @@ type BatchItemResult struct {
 
 func (x *BatchItemResult) Reset() {
 	*x = BatchItemResult{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[47]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3822,7 +3822,7 @@ func (x *BatchItemResult) String() string {
 func (*BatchItemResult) ProtoMessage() {}
 
 func (x *BatchItemResult) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[47]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3835,7 +3835,7 @@ func (x *BatchItemResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchItemResult.ProtoReflect.Descriptor instead.
 func (*BatchItemResult) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{47}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *BatchItemResult) GetCustomId() string {
@@ -3897,7 +3897,7 @@ type ListBatchResultsRequest struct {
 
 func (x *ListBatchResultsRequest) Reset() {
 	*x = ListBatchResultsRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[48]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3909,7 +3909,7 @@ func (x *ListBatchResultsRequest) String() string {
 func (*ListBatchResultsRequest) ProtoMessage() {}
 
 func (x *ListBatchResultsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[48]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3922,7 +3922,7 @@ func (x *ListBatchResultsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBatchResultsRequest.ProtoReflect.Descriptor instead.
 func (*ListBatchResultsRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{48}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ListBatchResultsRequest) GetBatchId() string {
@@ -3956,7 +3956,7 @@ type ListBatchResultsResponse struct {
 
 func (x *ListBatchResultsResponse) Reset() {
 	*x = ListBatchResultsResponse{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[49]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3968,7 +3968,7 @@ func (x *ListBatchResultsResponse) String() string {
 func (*ListBatchResultsResponse) ProtoMessage() {}
 
 func (x *ListBatchResultsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[49]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3981,7 +3981,7 @@ func (x *ListBatchResultsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBatchResultsResponse.ProtoReflect.Descriptor instead.
 func (*ListBatchResultsResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{49}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ListBatchResultsResponse) GetItems() []*BatchItemResult {
@@ -4007,7 +4007,7 @@ type CancelBatchRequest struct {
 
 func (x *CancelBatchRequest) Reset() {
 	*x = CancelBatchRequest{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[50]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4019,7 +4019,7 @@ func (x *CancelBatchRequest) String() string {
 func (*CancelBatchRequest) ProtoMessage() {}
 
 func (x *CancelBatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[50]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4032,7 +4032,7 @@ func (x *CancelBatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelBatchRequest.ProtoReflect.Descriptor instead.
 func (*CancelBatchRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{50}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *CancelBatchRequest) GetBatchId() string {
@@ -4050,7 +4050,7 @@ type CancelBatchResponse struct {
 
 func (x *CancelBatchResponse) Reset() {
 	*x = CancelBatchResponse{}
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[51]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4062,7 +4062,7 @@ func (x *CancelBatchResponse) String() string {
 func (*CancelBatchResponse) ProtoMessage() {}
 
 func (x *CancelBatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_llmproxy_proto_msgTypes[51]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4075,18 +4075,18 @@ func (x *CancelBatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelBatchResponse.ProtoReflect.Descriptor instead.
 func (*CancelBatchResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_llmproxy_proto_rawDescGZIP(), []int{51}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{51}
 }
 
-var File_llmproxy_v1_llmproxy_proto protoreflect.FileDescriptor
+var File_ktms_v1_gateway_proto protoreflect.FileDescriptor
 
-const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
+const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\n" +
-	"\x1allmproxy/v1/llmproxy.proto\x12\vllmproxy.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"e\n" +
+	"\x15ktms/v1/gateway.proto\x12\aktms.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"a\n" +
 	"\bToolCall\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04type\x18\x02 \x01(\tR\x04type\x125\n" +
-	"\bfunction\x18\x03 \x01(\v2\x19.llmproxy.v1.FunctionCallR\bfunction\"@\n" +
+	"\x04type\x18\x02 \x01(\tR\x04type\x121\n" +
+	"\bfunction\x18\x03 \x01(\v2\x15.ktms.v1.FunctionCallR\bfunction\"@\n" +
 	"\fFunctionCall\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
 	"\targuments\x18\x02 \x01(\tR\targuments\"\x86\x01\n" +
@@ -4095,20 +4095,20 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x12\n" +
 	"\x04type\x18\x03 \x01(\tR\x04type\x12\x12\n" +
 	"\x04name\x18\x04 \x01(\tR\x04name\x12'\n" +
-	"\x0farguments_delta\x18\x05 \x01(\tR\x0eargumentsDelta\"W\n" +
+	"\x0farguments_delta\x18\x05 \x01(\tR\x0eargumentsDelta\"S\n" +
 	"\x04Tool\x12\x12\n" +
-	"\x04type\x18\x01 \x01(\tR\x04type\x12;\n" +
-	"\bfunction\x18\x02 \x01(\v2\x1f.llmproxy.v1.FunctionDefinitionR\bfunction\"\x9f\x01\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x127\n" +
+	"\bfunction\x18\x02 \x01(\v2\x1b.ktms.v1.FunctionDefinitionR\bfunction\"\x9b\x01\n" +
 	"\x12FunctionDefinition\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\x02 \x01(\tR\vdescription\x12;\n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x127\n" +
 	"\n" +
-	"parameters\x18\x03 \x01(\v2\x1b.llmproxy.v1.ResponseSchemaR\n" +
+	"parameters\x18\x03 \x01(\v2\x17.ktms.v1.ResponseSchemaR\n" +
 	"parameters\x12\x16\n" +
-	"\x06strict\x18\x04 \x01(\bR\x06strict\"\xd6\x01\n" +
+	"\x06strict\x18\x04 \x01(\bR\x06strict\"\xd2\x01\n" +
 	"\n" +
-	"ToolChoice\x120\n" +
-	"\x04mode\x18\x01 \x01(\x0e2\x1c.llmproxy.v1.ToolChoice.ModeR\x04mode\x124\n" +
+	"ToolChoice\x12,\n" +
+	"\x04mode\x18\x01 \x01(\x0e2\x18.ktms.v1.ToolChoice.ModeR\x04mode\x124\n" +
 	"\x16specific_function_name\x18\x02 \x01(\tR\x14specificFunctionName\"`\n" +
 	"\x04Mode\x12\x14\n" +
 	"\x10MODE_UNSPECIFIED\x10\x00\x12\r\n" +
@@ -4130,59 +4130,59 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\x04data\x18\x02 \x01(\fR\x04data\x12\x1b\n" +
 	"\tfile_name\x18\x03 \x01(\tR\bfileName\"\x1e\n" +
 	"\bTextPart\x12\x12\n" +
-	"\x04text\x18\x01 \x01(\tR\x04text\"\xdb\x01\n" +
-	"\vContentPart\x12+\n" +
-	"\x04text\x18\x01 \x01(\v2\x15.llmproxy.v1.TextPartH\x00R\x04text\x12.\n" +
-	"\x05image\x18\x02 \x01(\v2\x16.llmproxy.v1.ImagePartH\x00R\x05image\x12.\n" +
-	"\x05audio\x18\x03 \x01(\v2\x16.llmproxy.v1.AudioPartH\x00R\x05audio\x127\n" +
-	"\bdocument\x18\x04 \x01(\v2\x19.llmproxy.v1.DocumentPartH\x00R\bdocumentB\x06\n" +
-	"\x04part\"\xd7\x01\n" +
-	"\vChatMessage\x12,\n" +
-	"\x04role\x18\x01 \x01(\x0e2\x18.llmproxy.v1.MessageRoleR\x04role\x12\x12\n" +
-	"\x04text\x18\x02 \x01(\tR\x04text\x124\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\"\xcb\x01\n" +
+	"\vContentPart\x12'\n" +
+	"\x04text\x18\x01 \x01(\v2\x11.ktms.v1.TextPartH\x00R\x04text\x12*\n" +
+	"\x05image\x18\x02 \x01(\v2\x12.ktms.v1.ImagePartH\x00R\x05image\x12*\n" +
+	"\x05audio\x18\x03 \x01(\v2\x12.ktms.v1.AudioPartH\x00R\x05audio\x123\n" +
+	"\bdocument\x18\x04 \x01(\v2\x15.ktms.v1.DocumentPartH\x00R\bdocumentB\x06\n" +
+	"\x04part\"\xcb\x01\n" +
+	"\vChatMessage\x12(\n" +
+	"\x04role\x18\x01 \x01(\x0e2\x14.ktms.v1.MessageRoleR\x04role\x12\x12\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\x120\n" +
 	"\n" +
-	"tool_calls\x18\x03 \x03(\v2\x15.llmproxy.v1.ToolCallR\ttoolCalls\x12 \n" +
+	"tool_calls\x18\x03 \x03(\v2\x11.ktms.v1.ToolCallR\ttoolCalls\x12 \n" +
 	"\ftool_call_id\x18\x04 \x01(\tR\n" +
-	"toolCallId\x12.\n" +
-	"\x05parts\x18\x05 \x03(\v2\x18.llmproxy.v1.ContentPartR\x05parts\"\xda\x02\n" +
+	"toolCallId\x12*\n" +
+	"\x05parts\x18\x05 \x03(\v2\x14.ktms.v1.ContentPartR\x05parts\"\xce\x02\n" +
 	"\x0eSchemaProperty\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12 \n" +
-	"\vdescription\x18\x02 \x01(\tR\vdescription\x12K\n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x12G\n" +
 	"\n" +
-	"properties\x18\x03 \x03(\v2+.llmproxy.v1.SchemaProperty.PropertiesEntryR\n" +
-	"properties\x121\n" +
-	"\x05items\x18\x04 \x01(\v2\x1b.llmproxy.v1.SchemaPropertyR\x05items\x12\x1a\n" +
+	"properties\x18\x03 \x03(\v2'.ktms.v1.SchemaProperty.PropertiesEntryR\n" +
+	"properties\x12-\n" +
+	"\x05items\x18\x04 \x01(\v2\x17.ktms.v1.SchemaPropertyR\x05items\x12\x1a\n" +
 	"\brequired\x18\x05 \x03(\tR\brequired\x12\x1a\n" +
-	"\bnullable\x18\x06 \x01(\bR\bnullable\x1aZ\n" +
+	"\bnullable\x18\x06 \x01(\bR\bnullable\x1aV\n" +
 	"\x0fPropertiesEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x121\n" +
-	"\x05value\x18\x02 \x01(\v2\x1b.llmproxy.v1.SchemaPropertyR\x05value:\x028\x01\"\x9c\x02\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
+	"\x05value\x18\x02 \x01(\v2\x17.ktms.v1.SchemaPropertyR\x05value:\x028\x01\"\x90\x02\n" +
 	"\x0eResponseSchema\x12\x12\n" +
-	"\x04type\x18\x01 \x01(\tR\x04type\x12K\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12G\n" +
 	"\n" +
-	"properties\x18\x02 \x03(\v2+.llmproxy.v1.ResponseSchema.PropertiesEntryR\n" +
-	"properties\x121\n" +
-	"\x05items\x18\x03 \x01(\v2\x1b.llmproxy.v1.SchemaPropertyR\x05items\x12\x1a\n" +
-	"\brequired\x18\x04 \x03(\tR\brequired\x1aZ\n" +
+	"properties\x18\x02 \x03(\v2'.ktms.v1.ResponseSchema.PropertiesEntryR\n" +
+	"properties\x12-\n" +
+	"\x05items\x18\x03 \x01(\v2\x17.ktms.v1.SchemaPropertyR\x05items\x12\x1a\n" +
+	"\brequired\x18\x04 \x03(\tR\brequired\x1aV\n" +
 	"\x0fPropertiesEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x121\n" +
-	"\x05value\x18\x02 \x01(\v2\x1b.llmproxy.v1.SchemaPropertyR\x05value:\x028\x01\"\xc8\x06\n" +
-	"\x13GenerateTextRequest\x12+\n" +
-	"\x06effort\x18\x01 \x01(\x0e2\x13.llmproxy.v1.EffortR\x06effort\x12P\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
+	"\x05value\x18\x02 \x01(\v2\x17.ktms.v1.SchemaPropertyR\x05value:\x028\x01\"\xb0\x06\n" +
+	"\x13GenerateTextRequest\x12'\n" +
+	"\x06effort\x18\x01 \x01(\x0e2\x0f.ktms.v1.EffortR\x06effort\x12L\n" +
 	"\n" +
-	"attributes\x18\x02 \x03(\v20.llmproxy.v1.GenerateTextRequest.AttributesEntryR\n" +
-	"attributes\x124\n" +
-	"\bmessages\x18\x03 \x03(\v2\x18.llmproxy.v1.ChatMessageR\bmessages\x126\n" +
+	"attributes\x18\x02 \x03(\v2,.ktms.v1.GenerateTextRequest.AttributesEntryR\n" +
+	"attributes\x120\n" +
+	"\bmessages\x18\x03 \x03(\v2\x14.ktms.v1.ChatMessageR\bmessages\x126\n" +
 	"\x17base_system_instruction\x18\x04 \x01(\tR\x15baseSystemInstruction\x12/\n" +
-	"\x13request_instruction\x18\x05 \x01(\tR\x12requestInstruction\x12D\n" +
-	"\x0fresponse_schema\x18\x06 \x01(\v2\x1b.llmproxy.v1.ResponseSchemaR\x0eresponseSchema\x12*\n" +
+	"\x13request_instruction\x18\x05 \x01(\tR\x12requestInstruction\x12@\n" +
+	"\x0fresponse_schema\x18\x06 \x01(\v2\x17.ktms.v1.ResponseSchemaR\x0eresponseSchema\x12*\n" +
 	"\x11max_output_tokens\x18\a \x01(\x05R\x0fmaxOutputTokens\x120\n" +
 	"\x14enable_google_search\x18\b \x01(\bR\x12enableGoogleSearch\x12\x1b\n" +
 	"\taction_id\x18\t \x01(\tR\bactionId\x12%\n" +
 	"\x0emodel_override\x18\n" +
-	" \x01(\tR\rmodelOverride\x12'\n" +
-	"\x05tools\x18\v \x03(\v2\x11.llmproxy.v1.ToolR\x05tools\x128\n" +
-	"\vtool_choice\x18\f \x01(\v2\x17.llmproxy.v1.ToolChoiceR\n" +
+	" \x01(\tR\rmodelOverride\x12#\n" +
+	"\x05tools\x18\v \x03(\v2\r.ktms.v1.ToolR\x05tools\x124\n" +
+	"\vtool_choice\x18\f \x01(\v2\x13.ktms.v1.ToolChoiceR\n" +
 	"toolChoice\x12!\n" +
 	"\fenable_cache\x18\r \x01(\bR\venableCache\x12\x1c\n" +
 	"\tplacement\x18\x0e \x01(\tR\tplacement\x12\x1d\n" +
@@ -4194,20 +4194,20 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\";\n" +
 	"\vTokensUsage\x12\x14\n" +
 	"\x05input\x18\x01 \x01(\x03R\x05input\x12\x16\n" +
-	"\x06output\x18\x02 \x01(\x03R\x06output\"\x8d\x01\n" +
+	"\x06output\x18\x02 \x01(\x03R\x06output\"\x89\x01\n" +
 	"\x06Choice\x12\x14\n" +
 	"\x05index\x18\x01 \x01(\x05R\x05index\x12\x12\n" +
-	"\x04text\x18\x02 \x01(\tR\x04text\x124\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\x120\n" +
 	"\n" +
-	"tool_calls\x18\x03 \x03(\v2\x15.llmproxy.v1.ToolCallR\ttoolCalls\x12#\n" +
-	"\rfinish_reason\x18\x04 \x01(\tR\ffinishReason\"\x99\x03\n" +
+	"tool_calls\x18\x03 \x03(\v2\x11.ktms.v1.ToolCallR\ttoolCalls\x12#\n" +
+	"\rfinish_reason\x18\x04 \x01(\tR\ffinishReason\"\x91\x03\n" +
 	"\x14GenerateTextResponse\x12\x18\n" +
-	"\achoices\x18\x01 \x03(\tR\achoices\x12.\n" +
-	"\x05usage\x18\x02 \x01(\v2\x18.llmproxy.v1.TokensUsageR\x05usage\x12%\n" +
+	"\achoices\x18\x01 \x03(\tR\achoices\x12*\n" +
+	"\x05usage\x18\x02 \x01(\v2\x14.ktms.v1.TokensUsageR\x05usage\x12%\n" +
 	"\x0eresolved_model\x18\x03 \x01(\tR\rresolvedModel\x12'\n" +
 	"\x0fresolved_vendor\x18\x04 \x01(\tR\x0eresolvedVendor\x12!\n" +
-	"\fmatched_rule\x18\x05 \x01(\tR\vmatchedRule\x12-\n" +
-	"\adetails\x18\x06 \x03(\v2\x13.llmproxy.v1.ChoiceR\adetails\x12\x16\n" +
+	"\fmatched_rule\x18\x05 \x01(\tR\vmatchedRule\x12)\n" +
+	"\adetails\x18\x06 \x03(\v2\x0f.ktms.v1.ChoiceR\adetails\x12\x16\n" +
 	"\x06cached\x18\a \x01(\bR\x06cached\x12\x1d\n" +
 	"\n" +
 	"route_mode\x18\b \x01(\tR\trouteMode\x12\x1c\n" +
@@ -4216,15 +4216,15 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	" \x01(\x01R\n" +
 	"judgeScore\x12\x1f\n" +
 	"\vjudge_model\x18\v \x01(\tR\n" +
-	"judgeModel\"\xce\x03\n" +
+	"judgeModel\"\xc6\x03\n" +
 	"\x11GenerateTextChunk\x12\x14\n" +
 	"\x05delta\x18\x01 \x01(\tR\x05delta\x12#\n" +
-	"\rfinish_reason\x18\x02 \x01(\tR\ffinishReason\x12.\n" +
-	"\x05usage\x18\x03 \x01(\v2\x18.llmproxy.v1.TokensUsageR\x05usage\x12%\n" +
+	"\rfinish_reason\x18\x02 \x01(\tR\ffinishReason\x12*\n" +
+	"\x05usage\x18\x03 \x01(\v2\x14.ktms.v1.TokensUsageR\x05usage\x12%\n" +
 	"\x0eresolved_model\x18\x04 \x01(\tR\rresolvedModel\x12'\n" +
 	"\x0fresolved_vendor\x18\x05 \x01(\tR\x0eresolvedVendor\x12!\n" +
-	"\fmatched_rule\x18\x06 \x01(\tR\vmatchedRule\x12D\n" +
-	"\x10tool_call_chunks\x18\a \x03(\v2\x1a.llmproxy.v1.ToolCallChunkR\x0etoolCallChunks\x12\x16\n" +
+	"\fmatched_rule\x18\x06 \x01(\tR\vmatchedRule\x12@\n" +
+	"\x10tool_call_chunks\x18\a \x03(\v2\x16.ktms.v1.ToolCallChunkR\x0etoolCallChunks\x12\x16\n" +
 	"\x06cached\x18\b \x01(\bR\x06cached\x12\x1d\n" +
 	"\n" +
 	"route_mode\x18\t \x01(\tR\trouteMode\x12\x1c\n" +
@@ -4234,78 +4234,78 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"judgeScore\x12\x1f\n" +
 	"\vjudge_model\x18\f \x01(\tR\n" +
 	"judgeModel\"\x13\n" +
-	"\x11ListModelsRequest\"\xde\x02\n" +
+	"\x11ListModelsRequest\"\xda\x02\n" +
 	"\tModelInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
-	"\x06vendor\x18\x02 \x01(\tR\x06vendor\x12-\n" +
-	"\aefforts\x18\x03 \x03(\x0e2\x13.llmproxy.v1.EffortR\aefforts\x12\"\n" +
+	"\x06vendor\x18\x02 \x01(\tR\x06vendor\x12)\n" +
+	"\aefforts\x18\x03 \x03(\x0e2\x0f.ktms.v1.EffortR\aefforts\x12\"\n" +
 	"\fcapabilities\x18\x04 \x03(\tR\fcapabilities\x12\x10\n" +
 	"\x03rpm\x18\x05 \x01(\x05R\x03rpm\x12)\n" +
 	"\x11price_in_per_mtok\x18\x06 \x01(\x01R\x0epriceInPerMtok\x12+\n" +
 	"\x12price_out_per_mtok\x18\a \x01(\x01R\x0fpriceOutPerMtok\x124\n" +
 	"\x17price_in_batch_per_mtok\x18\b \x01(\x01R\x13priceInBatchPerMtok\x126\n" +
-	"\x18price_out_batch_per_mtok\x18\t \x01(\x01R\x14priceOutBatchPerMtok\"D\n" +
-	"\x12ListModelsResponse\x12.\n" +
-	"\x06models\x18\x01 \x03(\v2\x16.llmproxy.v1.ModelInfoR\x06models\"W\n" +
-	"\x19GenerateTextStreamRequest\x12:\n" +
-	"\arequest\x18\x01 \x01(\v2 .llmproxy.v1.GenerateTextRequestR\arequest\"\xa2\x02\n" +
+	"\x18price_out_batch_per_mtok\x18\t \x01(\x01R\x14priceOutBatchPerMtok\"@\n" +
+	"\x12ListModelsResponse\x12*\n" +
+	"\x06models\x18\x01 \x03(\v2\x12.ktms.v1.ModelInfoR\x06models\"S\n" +
+	"\x19GenerateTextStreamRequest\x126\n" +
+	"\arequest\x18\x01 \x01(\v2\x1c.ktms.v1.GenerateTextRequestR\arequest\"\x9e\x02\n" +
 	"\x17SynthesizeSpeechRequest\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x1a\n" +
-	"\blanguage\x18\x02 \x01(\tR\blanguage\x12T\n" +
+	"\blanguage\x18\x02 \x01(\tR\blanguage\x12P\n" +
 	"\n" +
-	"attributes\x18\x03 \x03(\v24.llmproxy.v1.SynthesizeSpeechRequest.AttributesEntryR\n" +
+	"attributes\x18\x03 \x03(\v20.ktms.v1.SynthesizeSpeechRequest.AttributesEntryR\n" +
 	"attributes\x12\x1b\n" +
 	"\taction_id\x18\x04 \x01(\tR\bactionId\x12%\n" +
 	"\x0emodel_override\x18\x05 \x01(\tR\rmodelOverride\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x91\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8d\x02\n" +
 	"\x18SynthesizeSpeechResponse\x12\x14\n" +
 	"\x05audio\x18\x01 \x01(\fR\x05audio\x12\x1b\n" +
 	"\tmime_type\x18\x02 \x01(\tR\bmimeType\x12\x1f\n" +
 	"\vduration_ms\x18\x03 \x01(\x05R\n" +
 	"durationMs\x12%\n" +
 	"\x0eresolved_model\x18\x04 \x01(\tR\rresolvedModel\x12'\n" +
-	"\x0fresolved_vendor\x18\x05 \x01(\tR\x0eresolvedVendor\x12.\n" +
-	"\x05usage\x18\x06 \x01(\v2\x18.llmproxy.v1.TokensUsageR\x05usage\x12!\n" +
-	"\fmatched_rule\x18\a \x01(\tR\vmatchedRule\"\x84\x02\n" +
+	"\x0fresolved_vendor\x18\x05 \x01(\tR\x0eresolvedVendor\x12*\n" +
+	"\x05usage\x18\x06 \x01(\v2\x14.ktms.v1.TokensUsageR\x05usage\x12!\n" +
+	"\fmatched_rule\x18\a \x01(\tR\vmatchedRule\"\x80\x02\n" +
 	"\x14GenerateImageRequest\x12\x16\n" +
-	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12Q\n" +
+	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12M\n" +
 	"\n" +
-	"attributes\x18\x02 \x03(\v21.llmproxy.v1.GenerateImageRequest.AttributesEntryR\n" +
+	"attributes\x18\x02 \x03(\v2-.ktms.v1.GenerateImageRequest.AttributesEntryR\n" +
 	"attributes\x12\x1b\n" +
 	"\taction_id\x18\x03 \x01(\tR\bactionId\x12%\n" +
 	"\x0emodel_override\x18\x04 \x01(\tR\rmodelOverride\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xed\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe9\x01\n" +
 	"\x15GenerateImageResponse\x12\x14\n" +
 	"\x05image\x18\x01 \x01(\fR\x05image\x12\x1b\n" +
 	"\tmime_type\x18\x02 \x01(\tR\bmimeType\x12%\n" +
 	"\x0eresolved_model\x18\x03 \x01(\tR\rresolvedModel\x12'\n" +
-	"\x0fresolved_vendor\x18\x04 \x01(\tR\x0eresolvedVendor\x12.\n" +
-	"\x05usage\x18\x05 \x01(\v2\x18.llmproxy.v1.TokensUsageR\x05usage\x12!\n" +
-	"\fmatched_rule\x18\x06 \x01(\tR\vmatchedRule\"\xc2\x02\n" +
-	"\rJudgeQuestion\x12*\n" +
-	"\x04type\x18\x01 \x01(\x0e2\x16.llmproxy.v1.JudgeTypeR\x04type\x12\"\n" +
-	"\finstructions\x18\x02 \x01(\tR\finstructions\x12A\n" +
-	"\aoptions\x18\x03 \x03(\v2'.llmproxy.v1.JudgeQuestion.OptionsEntryR\aoptions\x12\x16\n" +
+	"\x0fresolved_vendor\x18\x04 \x01(\tR\x0eresolvedVendor\x12*\n" +
+	"\x05usage\x18\x05 \x01(\v2\x14.ktms.v1.TokensUsageR\x05usage\x12!\n" +
+	"\fmatched_rule\x18\x06 \x01(\tR\vmatchedRule\"\xba\x02\n" +
+	"\rJudgeQuestion\x12&\n" +
+	"\x04type\x18\x01 \x01(\x0e2\x12.ktms.v1.JudgeTypeR\x04type\x12\"\n" +
+	"\finstructions\x18\x02 \x01(\tR\finstructions\x12=\n" +
+	"\aoptions\x18\x03 \x03(\v2#.ktms.v1.JudgeQuestion.OptionsEntryR\aoptions\x12\x16\n" +
 	"\x06levels\x18\x04 \x03(\tR\x06levels\x12#\n" +
 	"\rtrue_criteria\x18\x05 \x01(\tR\ftrueCriteria\x12%\n" +
 	"\x0efalse_criteria\x18\x06 \x01(\tR\rfalseCriteria\x1a:\n" +
 	"\fOptionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa9\x03\n" +
-	"\vJudgeAnswer\x12*\n" +
-	"\x04type\x18\x01 \x01(\x0e2\x16.llmproxy.v1.JudgeTypeR\x04type\x12\x16\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9d\x03\n" +
+	"\vJudgeAnswer\x12&\n" +
+	"\x04type\x18\x01 \x01(\x0e2\x12.ktms.v1.JudgeTypeR\x04type\x12\x16\n" +
 	"\x06choice\x18\x02 \x01(\tR\x06choice\x12\x12\n" +
 	"\x04noul\x18\x03 \x01(\x01R\x04noul\x12\x14\n" +
-	"\x05score\x18\x04 \x01(\x01R\x05score\x12Q\n" +
-	"\rprobabilities\x18\x05 \x03(\v2+.llmproxy.v1.JudgeAnswer.ProbabilitiesEntryR\rprobabilities\x12\x1e\n" +
+	"\x05score\x18\x04 \x01(\x01R\x05score\x12M\n" +
+	"\rprobabilities\x18\x05 \x03(\v2'.ktms.v1.JudgeAnswer.ProbabilitiesEntryR\rprobabilities\x12\x1e\n" +
 	"\n" +
 	"confidence\x18\x06 \x01(\x01R\n" +
-	"confidence\x12<\n" +
-	"\x06legend\x18\a \x03(\v2$.llmproxy.v1.JudgeAnswer.LegendEntryR\x06legend\x1a@\n" +
+	"confidence\x128\n" +
+	"\x06legend\x18\a \x03(\v2 .ktms.v1.JudgeAnswer.LegendEntryR\x06legend\x1a@\n" +
 	"\x12ProbabilitiesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\x1a9\n" +
@@ -4314,42 +4314,42 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"=\n" +
 	"\rEmbeddingPart\x12\x16\n" +
 	"\x06values\x18\x01 \x03(\x02R\x06values\x12\x14\n" +
-	"\x05model\x18\x02 \x01(\tR\x05model\"\xdc\x01\n" +
-	"\tMediaPart\x12+\n" +
-	"\x04text\x18\x01 \x01(\v2\x15.llmproxy.v1.TextPartH\x00R\x04text\x12.\n" +
-	"\x05image\x18\x02 \x01(\v2\x16.llmproxy.v1.ImagePartH\x00R\x05image\x12.\n" +
-	"\x05audio\x18\x03 \x01(\v2\x16.llmproxy.v1.AudioPartH\x00R\x05audio\x12:\n" +
-	"\tembedding\x18\x04 \x01(\v2\x1a.llmproxy.v1.EmbeddingPartH\x00R\tembeddingB\x06\n" +
-	"\x04part\"\xd6\x03\n" +
+	"\x05model\x18\x02 \x01(\tR\x05model\"\xcc\x01\n" +
+	"\tMediaPart\x12'\n" +
+	"\x04text\x18\x01 \x01(\v2\x11.ktms.v1.TextPartH\x00R\x04text\x12*\n" +
+	"\x05image\x18\x02 \x01(\v2\x12.ktms.v1.ImagePartH\x00R\x05image\x12*\n" +
+	"\x05audio\x18\x03 \x01(\v2\x12.ktms.v1.AudioPartH\x00R\x05audio\x126\n" +
+	"\tembedding\x18\x04 \x01(\v2\x16.ktms.v1.EmbeddingPartH\x00R\tembeddingB\x06\n" +
+	"\x04part\"\xc6\x03\n" +
 	"\fJudgeRequest\x12\x1d\n" +
 	"\n" +
-	"state_json\x18\x01 \x01(\tR\tstateJson\x12F\n" +
-	"\tquestions\x18\x02 \x03(\v2(.llmproxy.v1.JudgeRequest.QuestionsEntryR\tquestions\x12I\n" +
+	"state_json\x18\x01 \x01(\tR\tstateJson\x12B\n" +
+	"\tquestions\x18\x02 \x03(\v2$.ktms.v1.JudgeRequest.QuestionsEntryR\tquestions\x12E\n" +
 	"\n" +
-	"attributes\x18\x03 \x03(\v2).llmproxy.v1.JudgeRequest.AttributesEntryR\n" +
+	"attributes\x18\x03 \x03(\v2%.ktms.v1.JudgeRequest.AttributesEntryR\n" +
 	"attributes\x12\x1b\n" +
 	"\taction_id\x18\x04 \x01(\tR\bactionId\x12%\n" +
-	"\x0emodel_override\x18\x05 \x01(\tR\rmodelOverride\x127\n" +
-	"\vstate_media\x18\x06 \x03(\v2\x16.llmproxy.v1.MediaPartR\n" +
-	"stateMedia\x1aX\n" +
+	"\x0emodel_override\x18\x05 \x01(\tR\rmodelOverride\x123\n" +
+	"\vstate_media\x18\x06 \x03(\v2\x12.ktms.v1.MediaPartR\n" +
+	"stateMedia\x1aT\n" +
 	"\x0eQuestionsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x120\n" +
-	"\x05value\x18\x02 \x01(\v2\x1a.llmproxy.v1.JudgeQuestionR\x05value:\x028\x01\x1a=\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
+	"\x05value\x18\x02 \x01(\v2\x16.ktms.v1.JudgeQuestionR\x05value:\x028\x01\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xcb\x02\n" +
-	"\rJudgeResponse\x12A\n" +
-	"\aanswers\x18\x01 \x03(\v2'.llmproxy.v1.JudgeResponse.AnswersEntryR\aanswers\x12.\n" +
-	"\x05usage\x18\x02 \x01(\v2\x18.llmproxy.v1.TokensUsageR\x05usage\x12%\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbf\x02\n" +
+	"\rJudgeResponse\x12=\n" +
+	"\aanswers\x18\x01 \x03(\v2#.ktms.v1.JudgeResponse.AnswersEntryR\aanswers\x12*\n" +
+	"\x05usage\x18\x02 \x01(\v2\x14.ktms.v1.TokensUsageR\x05usage\x12%\n" +
 	"\x0eresolved_model\x18\x03 \x01(\tR\rresolvedModel\x12'\n" +
 	"\x0fresolved_vendor\x18\x04 \x01(\tR\x0eresolvedVendor\x12!\n" +
-	"\fmatched_rule\x18\x05 \x01(\tR\vmatchedRule\x1aT\n" +
+	"\fmatched_rule\x18\x05 \x01(\tR\vmatchedRule\x1aP\n" +
 	"\fAnswersEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12.\n" +
-	"\x05value\x18\x02 \x01(\v2\x18.llmproxy.v1.JudgeAnswerR\x05value:\x028\x01\"9\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12*\n" +
+	"\x05value\x18\x02 \x01(\v2\x14.ktms.v1.JudgeAnswerR\x05value:\x028\x01\"9\n" +
 	"\tEmbedding\x12\x14\n" +
 	"\x05index\x18\x01 \x01(\x05R\x05index\x12\x16\n" +
-	"\x06values\x18\x02 \x03(\x02R\x06values\"\xb2\x02\n" +
+	"\x06values\x18\x02 \x03(\x02R\x06values\"\xae\x02\n" +
 	"\x14GetEmbeddingsRequest\x12\x16\n" +
 	"\x06inputs\x18\x01 \x03(\tR\x06inputs\x12\x14\n" +
 	"\x05model\x18\x02 \x01(\tR\x05model\x12\x1e\n" +
@@ -4358,107 +4358,107 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"dimensions\x12\x1d\n" +
 	"\n" +
 	"input_type\x18\x04 \x01(\tR\tinputType\x12\x1b\n" +
-	"\taction_id\x18\x05 \x01(\tR\bactionId\x12Q\n" +
+	"\taction_id\x18\x05 \x01(\tR\bactionId\x12M\n" +
 	"\n" +
-	"attributes\x18\x06 \x03(\v21.llmproxy.v1.GetEmbeddingsRequest.AttributesEntryR\n" +
+	"attributes\x18\x06 \x03(\v2-.ktms.v1.GetEmbeddingsRequest.AttributesEntryR\n" +
 	"attributes\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe6\x01\n" +
-	"\x15GetEmbeddingsResponse\x12*\n" +
-	"\x04data\x18\x01 \x03(\v2\x16.llmproxy.v1.EmbeddingR\x04data\x12.\n" +
-	"\x05usage\x18\x02 \x01(\v2\x18.llmproxy.v1.TokensUsageR\x05usage\x12%\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xde\x01\n" +
+	"\x15GetEmbeddingsResponse\x12&\n" +
+	"\x04data\x18\x01 \x03(\v2\x12.ktms.v1.EmbeddingR\x04data\x12*\n" +
+	"\x05usage\x18\x02 \x01(\v2\x14.ktms.v1.TokensUsageR\x05usage\x12%\n" +
 	"\x0eresolved_model\x18\x03 \x01(\tR\rresolvedModel\x12'\n" +
 	"\x0fresolved_vendor\x18\x04 \x01(\tR\x0eresolvedVendor\x12!\n" +
-	"\fmatched_rule\x18\x05 \x01(\tR\vmatchedRule\"\x9f\x01\n" +
+	"\fmatched_rule\x18\x05 \x01(\tR\vmatchedRule\"\x9b\x01\n" +
 	"\x10RolloutCandidate\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vaction_json\x18\x02 \x01(\tR\n" +
-	"actionJson\x129\n" +
-	"\faction_media\x18\x03 \x03(\v2\x16.llmproxy.v1.MediaPartR\vactionMedia\x12\x1f\n" +
+	"actionJson\x125\n" +
+	"\faction_media\x18\x03 \x03(\v2\x12.ktms.v1.MediaPartR\vactionMedia\x12\x1f\n" +
 	"\vaction_text\x18\x04 \x01(\tR\n" +
-	"actionText\"\x81\x02\n" +
+	"actionText\"\xf9\x01\n" +
 	"\x13CandidateEvaluation\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12G\n" +
-	"\aanswers\x18\x02 \x03(\v2-.llmproxy.v1.CandidateEvaluation.AnswersEntryR\aanswers\x12'\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12C\n" +
+	"\aanswers\x18\x02 \x03(\v2).ktms.v1.CandidateEvaluation.AnswersEntryR\aanswers\x12'\n" +
 	"\x0fcomposite_score\x18\x03 \x01(\x01R\x0ecompositeScore\x12\x12\n" +
-	"\x04rank\x18\x04 \x01(\x05R\x04rank\x1aT\n" +
+	"\x04rank\x18\x04 \x01(\x05R\x04rank\x1aP\n" +
 	"\fAnswersEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12.\n" +
-	"\x05value\x18\x02 \x01(\v2\x18.llmproxy.v1.JudgeAnswerR\x05value:\x028\x01\"\xb2\x04\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12*\n" +
+	"\x05value\x18\x02 \x01(\v2\x14.ktms.v1.JudgeAnswerR\x05value:\x028\x01\"\x9e\x04\n" +
 	"\x17EvaluateRolloutsRequest\x12\x1d\n" +
 	"\n" +
-	"state_json\x18\x01 \x01(\tR\tstateJson\x127\n" +
-	"\vstate_media\x18\x02 \x03(\v2\x16.llmproxy.v1.MediaPartR\n" +
-	"stateMedia\x12=\n" +
+	"state_json\x18\x01 \x01(\tR\tstateJson\x123\n" +
+	"\vstate_media\x18\x02 \x03(\v2\x12.ktms.v1.MediaPartR\n" +
+	"stateMedia\x129\n" +
 	"\n" +
-	"candidates\x18\x03 \x03(\v2\x1d.llmproxy.v1.RolloutCandidateR\n" +
-	"candidates\x12N\n" +
-	"\bcriteria\x18\x04 \x03(\v22.llmproxy.v1.EvaluateRolloutsRequest.CriteriaEntryR\bcriteria\x12T\n" +
+	"candidates\x18\x03 \x03(\v2\x19.ktms.v1.RolloutCandidateR\n" +
+	"candidates\x12J\n" +
+	"\bcriteria\x18\x04 \x03(\v2..ktms.v1.EvaluateRolloutsRequest.CriteriaEntryR\bcriteria\x12P\n" +
 	"\n" +
-	"attributes\x18\x05 \x03(\v24.llmproxy.v1.EvaluateRolloutsRequest.AttributesEntryR\n" +
+	"attributes\x18\x05 \x03(\v20.ktms.v1.EvaluateRolloutsRequest.AttributesEntryR\n" +
 	"attributes\x12\x1b\n" +
 	"\taction_id\x18\x06 \x01(\tR\bactionId\x12%\n" +
-	"\x0emodel_override\x18\a \x01(\tR\rmodelOverride\x1aW\n" +
+	"\x0emodel_override\x18\a \x01(\tR\rmodelOverride\x1aS\n" +
 	"\rCriteriaEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x120\n" +
-	"\x05value\x18\x02 \x01(\v2\x1a.llmproxy.v1.JudgeQuestionR\x05value:\x028\x01\x1a=\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
+	"\x05value\x18\x02 \x01(\v2\x16.ktms.v1.JudgeQuestionR\x05value:\x028\x01\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xad\x02\n" +
-	"\x18EvaluateRolloutsResponse\x12B\n" +
-	"\vevaluations\x18\x01 \x03(\v2 .llmproxy.v1.CandidateEvaluationR\vevaluations\x12*\n" +
-	"\x11best_candidate_id\x18\x02 \x01(\tR\x0fbestCandidateId\x12.\n" +
-	"\x05usage\x18\x03 \x01(\v2\x18.llmproxy.v1.TokensUsageR\x05usage\x12%\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa5\x02\n" +
+	"\x18EvaluateRolloutsResponse\x12>\n" +
+	"\vevaluations\x18\x01 \x03(\v2\x1c.ktms.v1.CandidateEvaluationR\vevaluations\x12*\n" +
+	"\x11best_candidate_id\x18\x02 \x01(\tR\x0fbestCandidateId\x12*\n" +
+	"\x05usage\x18\x03 \x01(\v2\x14.ktms.v1.TokensUsageR\x05usage\x12%\n" +
 	"\x0eresolved_model\x18\x04 \x01(\tR\rresolvedModel\x12'\n" +
 	"\x0fresolved_vendor\x18\x05 \x01(\tR\x0eresolvedVendor\x12!\n" +
 	"\fmatched_rule\x18\x06 \x01(\tR\vmatchedRule\"O\n" +
 	"\vBatchCounts\x12\x14\n" +
 	"\x05total\x18\x01 \x01(\x05R\x05total\x12\x12\n" +
 	"\x04done\x18\x02 \x01(\x05R\x04done\x12\x16\n" +
-	"\x06failed\x18\x03 \x01(\x05R\x06failed\"\xb0\x02\n" +
+	"\x06failed\x18\x03 \x01(\x05R\x06failed\"\xa8\x02\n" +
 	"\x05Batch\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12&\n" +
-	"\x0fclient_batch_id\x18\x02 \x01(\tR\rclientBatchId\x12-\n" +
-	"\x05state\x18\x03 \x01(\x0e2\x17.llmproxy.v1.BatchStateR\x05state\x120\n" +
-	"\x06counts\x18\x04 \x01(\v2\x18.llmproxy.v1.BatchCountsR\x06counts\x12\x14\n" +
+	"\x0fclient_batch_id\x18\x02 \x01(\tR\rclientBatchId\x12)\n" +
+	"\x05state\x18\x03 \x01(\x0e2\x13.ktms.v1.BatchStateR\x05state\x12,\n" +
+	"\x06counts\x18\x04 \x01(\v2\x14.ktms.v1.BatchCountsR\x06counts\x12\x14\n" +
 	"\x05model\x18\x05 \x01(\tR\x05model\x129\n" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12=\n" +
-	"\fcompleted_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\"k\n" +
+	"\fcompleted_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\"g\n" +
 	"\x10BatchItemRequest\x12\x1b\n" +
-	"\tcustom_id\x18\x01 \x01(\tR\bcustomId\x12:\n" +
-	"\arequest\x18\x02 \x01(\v2 .llmproxy.v1.GenerateTextRequestR\arequest\"\xae\x02\n" +
-	"\x12SubmitBatchRequest\x123\n" +
-	"\x05items\x18\x01 \x03(\v2\x1d.llmproxy.v1.BatchItemRequestR\x05items\x12+\n" +
-	"\x06effort\x18\x02 \x01(\x0e2\x13.llmproxy.v1.EffortR\x06effort\x12O\n" +
+	"\tcustom_id\x18\x01 \x01(\tR\bcustomId\x126\n" +
+	"\arequest\x18\x02 \x01(\v2\x1c.ktms.v1.GenerateTextRequestR\arequest\"\xa2\x02\n" +
+	"\x12SubmitBatchRequest\x12/\n" +
+	"\x05items\x18\x01 \x03(\v2\x19.ktms.v1.BatchItemRequestR\x05items\x12'\n" +
+	"\x06effort\x18\x02 \x01(\x0e2\x0f.ktms.v1.EffortR\x06effort\x12K\n" +
 	"\n" +
-	"attributes\x18\x03 \x03(\v2/.llmproxy.v1.SubmitBatchRequest.AttributesEntryR\n" +
+	"attributes\x18\x03 \x03(\v2+.ktms.v1.SubmitBatchRequest.AttributesEntryR\n" +
 	"attributes\x12&\n" +
 	"\x0fclient_batch_id\x18\x04 \x01(\tR\rclientBatchId\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"?\n" +
-	"\x13SubmitBatchResponse\x12(\n" +
-	"\x05batch\x18\x01 \x01(\v2\x12.llmproxy.v1.BatchR\x05batch\",\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\";\n" +
+	"\x13SubmitBatchResponse\x12$\n" +
+	"\x05batch\x18\x01 \x01(\v2\x0e.ktms.v1.BatchR\x05batch\",\n" +
 	"\x0fGetBatchRequest\x12\x19\n" +
 	"\bbatch_id\x18\x01 \x01(\tR\abatchId\"V\n" +
 	"\x0eBatchItemError\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\x05R\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\"\xae\x01\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"\xa6\x01\n" +
 	"\x0fBatchItemResult\x12\x1b\n" +
-	"\tcustom_id\x18\x01 \x01(\tR\bcustomId\x12?\n" +
-	"\bresponse\x18\x02 \x01(\v2!.llmproxy.v1.GenerateTextResponseH\x00R\bresponse\x123\n" +
-	"\x05error\x18\x03 \x01(\v2\x1b.llmproxy.v1.BatchItemErrorH\x00R\x05errorB\b\n" +
+	"\tcustom_id\x18\x01 \x01(\tR\bcustomId\x12;\n" +
+	"\bresponse\x18\x02 \x01(\v2\x1d.ktms.v1.GenerateTextResponseH\x00R\bresponse\x12/\n" +
+	"\x05error\x18\x03 \x01(\v2\x17.ktms.v1.BatchItemErrorH\x00R\x05errorB\b\n" +
 	"\x06result\"p\n" +
 	"\x17ListBatchResultsRequest\x12\x19\n" +
 	"\bbatch_id\x18\x01 \x01(\tR\abatchId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"v\n" +
-	"\x18ListBatchResultsResponse\x122\n" +
-	"\x05items\x18\x01 \x03(\v2\x1c.llmproxy.v1.BatchItemResultR\x05items\x12&\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"r\n" +
+	"\x18ListBatchResultsResponse\x12.\n" +
+	"\x05items\x18\x01 \x03(\v2\x18.ktms.v1.BatchItemResultR\x05items\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"/\n" +
 	"\x12CancelBatchRequest\x12\x19\n" +
 	"\bbatch_id\x18\x01 \x01(\tR\abatchId\"\x15\n" +
@@ -4487,217 +4487,217 @@ const file_llmproxy_v1_llmproxy_proto_rawDesc = "" +
 	"\x15BATCH_STATE_SUCCEEDED\x10\x03\x12\x16\n" +
 	"\x12BATCH_STATE_FAILED\x10\x04\x12\x19\n" +
 	"\x15BATCH_STATE_CANCELLED\x10\x05\x12\x17\n" +
-	"\x13BATCH_STATE_EXPIRED\x10\x062\xd4\b\n" +
-	"\x0fLLMProxyService\x12S\n" +
-	"\fGenerateText\x12 .llmproxy.v1.GenerateTextRequest\x1a!.llmproxy.v1.GenerateTextResponse\x12^\n" +
-	"\x12GenerateTextStream\x12&.llmproxy.v1.GenerateTextStreamRequest\x1a\x1e.llmproxy.v1.GenerateTextChunk0\x01\x12_\n" +
-	"\x10SynthesizeSpeech\x12$.llmproxy.v1.SynthesizeSpeechRequest\x1a%.llmproxy.v1.SynthesizeSpeechResponse\x12V\n" +
-	"\rGenerateImage\x12!.llmproxy.v1.GenerateImageRequest\x1a\".llmproxy.v1.GenerateImageResponse\x12>\n" +
-	"\x05Judge\x12\x19.llmproxy.v1.JudgeRequest\x1a\x1a.llmproxy.v1.JudgeResponse\x12V\n" +
-	"\rGetEmbeddings\x12!.llmproxy.v1.GetEmbeddingsRequest\x1a\".llmproxy.v1.GetEmbeddingsResponse\x12H\n" +
-	"\vJudgeStream\x12\x19.llmproxy.v1.JudgeRequest\x1a\x1a.llmproxy.v1.JudgeResponse(\x010\x01\x12_\n" +
-	"\x10EvaluateRollouts\x12$.llmproxy.v1.EvaluateRolloutsRequest\x1a%.llmproxy.v1.EvaluateRolloutsResponse\x12M\n" +
+	"\x13BATCH_STATE_EXPIRED\x10\x062\xeb\a\n" +
+	"\x0eGatewayService\x12K\n" +
+	"\fGenerateText\x12\x1c.ktms.v1.GenerateTextRequest\x1a\x1d.ktms.v1.GenerateTextResponse\x12V\n" +
+	"\x12GenerateTextStream\x12\".ktms.v1.GenerateTextStreamRequest\x1a\x1a.ktms.v1.GenerateTextChunk0\x01\x12W\n" +
+	"\x10SynthesizeSpeech\x12 .ktms.v1.SynthesizeSpeechRequest\x1a!.ktms.v1.SynthesizeSpeechResponse\x12N\n" +
+	"\rGenerateImage\x12\x1d.ktms.v1.GenerateImageRequest\x1a\x1e.ktms.v1.GenerateImageResponse\x126\n" +
+	"\x05Judge\x12\x15.ktms.v1.JudgeRequest\x1a\x16.ktms.v1.JudgeResponse\x12N\n" +
+	"\rGetEmbeddings\x12\x1d.ktms.v1.GetEmbeddingsRequest\x1a\x1e.ktms.v1.GetEmbeddingsResponse\x12@\n" +
+	"\vJudgeStream\x12\x15.ktms.v1.JudgeRequest\x1a\x16.ktms.v1.JudgeResponse(\x010\x01\x12W\n" +
+	"\x10EvaluateRollouts\x12 .ktms.v1.EvaluateRolloutsRequest\x1a!.ktms.v1.EvaluateRolloutsResponse\x12E\n" +
 	"\n" +
-	"ListModels\x12\x1e.llmproxy.v1.ListModelsRequest\x1a\x1f.llmproxy.v1.ListModelsResponse\x12P\n" +
-	"\vSubmitBatch\x12\x1f.llmproxy.v1.SubmitBatchRequest\x1a .llmproxy.v1.SubmitBatchResponse\x12<\n" +
-	"\bGetBatch\x12\x1c.llmproxy.v1.GetBatchRequest\x1a\x12.llmproxy.v1.Batch\x12_\n" +
-	"\x10ListBatchResults\x12$.llmproxy.v1.ListBatchResultsRequest\x1a%.llmproxy.v1.ListBatchResultsResponse\x12P\n" +
-	"\vCancelBatch\x12\x1f.llmproxy.v1.CancelBatchRequest\x1a .llmproxy.v1.CancelBatchResponseB\xa9\x01\n" +
-	"\x0fcom.llmproxy.v1B\rLlmproxyProtoP\x01Z:github.com/ai-process/llm-proxy/gen/llmproxy/v1;llmproxyv1\xa2\x02\x03LXX\xaa\x02\vLlmproxy.V1\xca\x02\vLlmproxy\\V1\xe2\x02\x17Llmproxy\\V1\\GPBMetadata\xea\x02\fLlmproxy::V1b\x06proto3"
+	"ListModels\x12\x1a.ktms.v1.ListModelsRequest\x1a\x1b.ktms.v1.ListModelsResponse\x12H\n" +
+	"\vSubmitBatch\x12\x1b.ktms.v1.SubmitBatchRequest\x1a\x1c.ktms.v1.SubmitBatchResponse\x124\n" +
+	"\bGetBatch\x12\x18.ktms.v1.GetBatchRequest\x1a\x0e.ktms.v1.Batch\x12W\n" +
+	"\x10ListBatchResults\x12 .ktms.v1.ListBatchResultsRequest\x1a!.ktms.v1.ListBatchResultsResponse\x12H\n" +
+	"\vCancelBatch\x12\x1b.ktms.v1.CancelBatchRequest\x1a\x1c.ktms.v1.CancelBatchResponseB\x87\x01\n" +
+	"\vcom.ktms.v1B\fGatewayProtoP\x01Z-github.com/ai-process/ktms/gen/ktms/v1;ktmsv1\xa2\x02\x03KXX\xaa\x02\aKtms.V1\xca\x02\aKtms\\V1\xe2\x02\x13Ktms\\V1\\GPBMetadata\xea\x02\bKtms::V1b\x06proto3"
 
 var (
-	file_llmproxy_v1_llmproxy_proto_rawDescOnce sync.Once
-	file_llmproxy_v1_llmproxy_proto_rawDescData []byte
+	file_ktms_v1_gateway_proto_rawDescOnce sync.Once
+	file_ktms_v1_gateway_proto_rawDescData []byte
 )
 
-func file_llmproxy_v1_llmproxy_proto_rawDescGZIP() []byte {
-	file_llmproxy_v1_llmproxy_proto_rawDescOnce.Do(func() {
-		file_llmproxy_v1_llmproxy_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_llmproxy_v1_llmproxy_proto_rawDesc), len(file_llmproxy_v1_llmproxy_proto_rawDesc)))
+func file_ktms_v1_gateway_proto_rawDescGZIP() []byte {
+	file_ktms_v1_gateway_proto_rawDescOnce.Do(func() {
+		file_ktms_v1_gateway_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_ktms_v1_gateway_proto_rawDesc), len(file_ktms_v1_gateway_proto_rawDesc)))
 	})
-	return file_llmproxy_v1_llmproxy_proto_rawDescData
+	return file_ktms_v1_gateway_proto_rawDescData
 }
 
-var file_llmproxy_v1_llmproxy_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_llmproxy_v1_llmproxy_proto_msgTypes = make([]protoimpl.MessageInfo, 68)
-var file_llmproxy_v1_llmproxy_proto_goTypes = []any{
-	(Effort)(0),                       // 0: llmproxy.v1.Effort
-	(MessageRole)(0),                  // 1: llmproxy.v1.MessageRole
-	(JudgeType)(0),                    // 2: llmproxy.v1.JudgeType
-	(BatchState)(0),                   // 3: llmproxy.v1.BatchState
-	(ToolChoice_Mode)(0),              // 4: llmproxy.v1.ToolChoice.Mode
-	(*ToolCall)(nil),                  // 5: llmproxy.v1.ToolCall
-	(*FunctionCall)(nil),              // 6: llmproxy.v1.FunctionCall
-	(*ToolCallChunk)(nil),             // 7: llmproxy.v1.ToolCallChunk
-	(*Tool)(nil),                      // 8: llmproxy.v1.Tool
-	(*FunctionDefinition)(nil),        // 9: llmproxy.v1.FunctionDefinition
-	(*ToolChoice)(nil),                // 10: llmproxy.v1.ToolChoice
-	(*ImagePart)(nil),                 // 11: llmproxy.v1.ImagePart
-	(*AudioPart)(nil),                 // 12: llmproxy.v1.AudioPart
-	(*DocumentPart)(nil),              // 13: llmproxy.v1.DocumentPart
-	(*TextPart)(nil),                  // 14: llmproxy.v1.TextPart
-	(*ContentPart)(nil),               // 15: llmproxy.v1.ContentPart
-	(*ChatMessage)(nil),               // 16: llmproxy.v1.ChatMessage
-	(*SchemaProperty)(nil),            // 17: llmproxy.v1.SchemaProperty
-	(*ResponseSchema)(nil),            // 18: llmproxy.v1.ResponseSchema
-	(*GenerateTextRequest)(nil),       // 19: llmproxy.v1.GenerateTextRequest
-	(*TokensUsage)(nil),               // 20: llmproxy.v1.TokensUsage
-	(*Choice)(nil),                    // 21: llmproxy.v1.Choice
-	(*GenerateTextResponse)(nil),      // 22: llmproxy.v1.GenerateTextResponse
-	(*GenerateTextChunk)(nil),         // 23: llmproxy.v1.GenerateTextChunk
-	(*ListModelsRequest)(nil),         // 24: llmproxy.v1.ListModelsRequest
-	(*ModelInfo)(nil),                 // 25: llmproxy.v1.ModelInfo
-	(*ListModelsResponse)(nil),        // 26: llmproxy.v1.ListModelsResponse
-	(*GenerateTextStreamRequest)(nil), // 27: llmproxy.v1.GenerateTextStreamRequest
-	(*SynthesizeSpeechRequest)(nil),   // 28: llmproxy.v1.SynthesizeSpeechRequest
-	(*SynthesizeSpeechResponse)(nil),  // 29: llmproxy.v1.SynthesizeSpeechResponse
-	(*GenerateImageRequest)(nil),      // 30: llmproxy.v1.GenerateImageRequest
-	(*GenerateImageResponse)(nil),     // 31: llmproxy.v1.GenerateImageResponse
-	(*JudgeQuestion)(nil),             // 32: llmproxy.v1.JudgeQuestion
-	(*JudgeAnswer)(nil),               // 33: llmproxy.v1.JudgeAnswer
-	(*EmbeddingPart)(nil),             // 34: llmproxy.v1.EmbeddingPart
-	(*MediaPart)(nil),                 // 35: llmproxy.v1.MediaPart
-	(*JudgeRequest)(nil),              // 36: llmproxy.v1.JudgeRequest
-	(*JudgeResponse)(nil),             // 37: llmproxy.v1.JudgeResponse
-	(*Embedding)(nil),                 // 38: llmproxy.v1.Embedding
-	(*GetEmbeddingsRequest)(nil),      // 39: llmproxy.v1.GetEmbeddingsRequest
-	(*GetEmbeddingsResponse)(nil),     // 40: llmproxy.v1.GetEmbeddingsResponse
-	(*RolloutCandidate)(nil),          // 41: llmproxy.v1.RolloutCandidate
-	(*CandidateEvaluation)(nil),       // 42: llmproxy.v1.CandidateEvaluation
-	(*EvaluateRolloutsRequest)(nil),   // 43: llmproxy.v1.EvaluateRolloutsRequest
-	(*EvaluateRolloutsResponse)(nil),  // 44: llmproxy.v1.EvaluateRolloutsResponse
-	(*BatchCounts)(nil),               // 45: llmproxy.v1.BatchCounts
-	(*Batch)(nil),                     // 46: llmproxy.v1.Batch
-	(*BatchItemRequest)(nil),          // 47: llmproxy.v1.BatchItemRequest
-	(*SubmitBatchRequest)(nil),        // 48: llmproxy.v1.SubmitBatchRequest
-	(*SubmitBatchResponse)(nil),       // 49: llmproxy.v1.SubmitBatchResponse
-	(*GetBatchRequest)(nil),           // 50: llmproxy.v1.GetBatchRequest
-	(*BatchItemError)(nil),            // 51: llmproxy.v1.BatchItemError
-	(*BatchItemResult)(nil),           // 52: llmproxy.v1.BatchItemResult
-	(*ListBatchResultsRequest)(nil),   // 53: llmproxy.v1.ListBatchResultsRequest
-	(*ListBatchResultsResponse)(nil),  // 54: llmproxy.v1.ListBatchResultsResponse
-	(*CancelBatchRequest)(nil),        // 55: llmproxy.v1.CancelBatchRequest
-	(*CancelBatchResponse)(nil),       // 56: llmproxy.v1.CancelBatchResponse
-	nil,                               // 57: llmproxy.v1.SchemaProperty.PropertiesEntry
-	nil,                               // 58: llmproxy.v1.ResponseSchema.PropertiesEntry
-	nil,                               // 59: llmproxy.v1.GenerateTextRequest.AttributesEntry
-	nil,                               // 60: llmproxy.v1.SynthesizeSpeechRequest.AttributesEntry
-	nil,                               // 61: llmproxy.v1.GenerateImageRequest.AttributesEntry
-	nil,                               // 62: llmproxy.v1.JudgeQuestion.OptionsEntry
-	nil,                               // 63: llmproxy.v1.JudgeAnswer.ProbabilitiesEntry
-	nil,                               // 64: llmproxy.v1.JudgeAnswer.LegendEntry
-	nil,                               // 65: llmproxy.v1.JudgeRequest.QuestionsEntry
-	nil,                               // 66: llmproxy.v1.JudgeRequest.AttributesEntry
-	nil,                               // 67: llmproxy.v1.JudgeResponse.AnswersEntry
-	nil,                               // 68: llmproxy.v1.GetEmbeddingsRequest.AttributesEntry
-	nil,                               // 69: llmproxy.v1.CandidateEvaluation.AnswersEntry
-	nil,                               // 70: llmproxy.v1.EvaluateRolloutsRequest.CriteriaEntry
-	nil,                               // 71: llmproxy.v1.EvaluateRolloutsRequest.AttributesEntry
-	nil,                               // 72: llmproxy.v1.SubmitBatchRequest.AttributesEntry
+var file_ktms_v1_gateway_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+var file_ktms_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 68)
+var file_ktms_v1_gateway_proto_goTypes = []any{
+	(Effort)(0),                       // 0: ktms.v1.Effort
+	(MessageRole)(0),                  // 1: ktms.v1.MessageRole
+	(JudgeType)(0),                    // 2: ktms.v1.JudgeType
+	(BatchState)(0),                   // 3: ktms.v1.BatchState
+	(ToolChoice_Mode)(0),              // 4: ktms.v1.ToolChoice.Mode
+	(*ToolCall)(nil),                  // 5: ktms.v1.ToolCall
+	(*FunctionCall)(nil),              // 6: ktms.v1.FunctionCall
+	(*ToolCallChunk)(nil),             // 7: ktms.v1.ToolCallChunk
+	(*Tool)(nil),                      // 8: ktms.v1.Tool
+	(*FunctionDefinition)(nil),        // 9: ktms.v1.FunctionDefinition
+	(*ToolChoice)(nil),                // 10: ktms.v1.ToolChoice
+	(*ImagePart)(nil),                 // 11: ktms.v1.ImagePart
+	(*AudioPart)(nil),                 // 12: ktms.v1.AudioPart
+	(*DocumentPart)(nil),              // 13: ktms.v1.DocumentPart
+	(*TextPart)(nil),                  // 14: ktms.v1.TextPart
+	(*ContentPart)(nil),               // 15: ktms.v1.ContentPart
+	(*ChatMessage)(nil),               // 16: ktms.v1.ChatMessage
+	(*SchemaProperty)(nil),            // 17: ktms.v1.SchemaProperty
+	(*ResponseSchema)(nil),            // 18: ktms.v1.ResponseSchema
+	(*GenerateTextRequest)(nil),       // 19: ktms.v1.GenerateTextRequest
+	(*TokensUsage)(nil),               // 20: ktms.v1.TokensUsage
+	(*Choice)(nil),                    // 21: ktms.v1.Choice
+	(*GenerateTextResponse)(nil),      // 22: ktms.v1.GenerateTextResponse
+	(*GenerateTextChunk)(nil),         // 23: ktms.v1.GenerateTextChunk
+	(*ListModelsRequest)(nil),         // 24: ktms.v1.ListModelsRequest
+	(*ModelInfo)(nil),                 // 25: ktms.v1.ModelInfo
+	(*ListModelsResponse)(nil),        // 26: ktms.v1.ListModelsResponse
+	(*GenerateTextStreamRequest)(nil), // 27: ktms.v1.GenerateTextStreamRequest
+	(*SynthesizeSpeechRequest)(nil),   // 28: ktms.v1.SynthesizeSpeechRequest
+	(*SynthesizeSpeechResponse)(nil),  // 29: ktms.v1.SynthesizeSpeechResponse
+	(*GenerateImageRequest)(nil),      // 30: ktms.v1.GenerateImageRequest
+	(*GenerateImageResponse)(nil),     // 31: ktms.v1.GenerateImageResponse
+	(*JudgeQuestion)(nil),             // 32: ktms.v1.JudgeQuestion
+	(*JudgeAnswer)(nil),               // 33: ktms.v1.JudgeAnswer
+	(*EmbeddingPart)(nil),             // 34: ktms.v1.EmbeddingPart
+	(*MediaPart)(nil),                 // 35: ktms.v1.MediaPart
+	(*JudgeRequest)(nil),              // 36: ktms.v1.JudgeRequest
+	(*JudgeResponse)(nil),             // 37: ktms.v1.JudgeResponse
+	(*Embedding)(nil),                 // 38: ktms.v1.Embedding
+	(*GetEmbeddingsRequest)(nil),      // 39: ktms.v1.GetEmbeddingsRequest
+	(*GetEmbeddingsResponse)(nil),     // 40: ktms.v1.GetEmbeddingsResponse
+	(*RolloutCandidate)(nil),          // 41: ktms.v1.RolloutCandidate
+	(*CandidateEvaluation)(nil),       // 42: ktms.v1.CandidateEvaluation
+	(*EvaluateRolloutsRequest)(nil),   // 43: ktms.v1.EvaluateRolloutsRequest
+	(*EvaluateRolloutsResponse)(nil),  // 44: ktms.v1.EvaluateRolloutsResponse
+	(*BatchCounts)(nil),               // 45: ktms.v1.BatchCounts
+	(*Batch)(nil),                     // 46: ktms.v1.Batch
+	(*BatchItemRequest)(nil),          // 47: ktms.v1.BatchItemRequest
+	(*SubmitBatchRequest)(nil),        // 48: ktms.v1.SubmitBatchRequest
+	(*SubmitBatchResponse)(nil),       // 49: ktms.v1.SubmitBatchResponse
+	(*GetBatchRequest)(nil),           // 50: ktms.v1.GetBatchRequest
+	(*BatchItemError)(nil),            // 51: ktms.v1.BatchItemError
+	(*BatchItemResult)(nil),           // 52: ktms.v1.BatchItemResult
+	(*ListBatchResultsRequest)(nil),   // 53: ktms.v1.ListBatchResultsRequest
+	(*ListBatchResultsResponse)(nil),  // 54: ktms.v1.ListBatchResultsResponse
+	(*CancelBatchRequest)(nil),        // 55: ktms.v1.CancelBatchRequest
+	(*CancelBatchResponse)(nil),       // 56: ktms.v1.CancelBatchResponse
+	nil,                               // 57: ktms.v1.SchemaProperty.PropertiesEntry
+	nil,                               // 58: ktms.v1.ResponseSchema.PropertiesEntry
+	nil,                               // 59: ktms.v1.GenerateTextRequest.AttributesEntry
+	nil,                               // 60: ktms.v1.SynthesizeSpeechRequest.AttributesEntry
+	nil,                               // 61: ktms.v1.GenerateImageRequest.AttributesEntry
+	nil,                               // 62: ktms.v1.JudgeQuestion.OptionsEntry
+	nil,                               // 63: ktms.v1.JudgeAnswer.ProbabilitiesEntry
+	nil,                               // 64: ktms.v1.JudgeAnswer.LegendEntry
+	nil,                               // 65: ktms.v1.JudgeRequest.QuestionsEntry
+	nil,                               // 66: ktms.v1.JudgeRequest.AttributesEntry
+	nil,                               // 67: ktms.v1.JudgeResponse.AnswersEntry
+	nil,                               // 68: ktms.v1.GetEmbeddingsRequest.AttributesEntry
+	nil,                               // 69: ktms.v1.CandidateEvaluation.AnswersEntry
+	nil,                               // 70: ktms.v1.EvaluateRolloutsRequest.CriteriaEntry
+	nil,                               // 71: ktms.v1.EvaluateRolloutsRequest.AttributesEntry
+	nil,                               // 72: ktms.v1.SubmitBatchRequest.AttributesEntry
 	(*timestamppb.Timestamp)(nil),     // 73: google.protobuf.Timestamp
 }
-var file_llmproxy_v1_llmproxy_proto_depIdxs = []int32{
-	6,  // 0: llmproxy.v1.ToolCall.function:type_name -> llmproxy.v1.FunctionCall
-	9,  // 1: llmproxy.v1.Tool.function:type_name -> llmproxy.v1.FunctionDefinition
-	18, // 2: llmproxy.v1.FunctionDefinition.parameters:type_name -> llmproxy.v1.ResponseSchema
-	4,  // 3: llmproxy.v1.ToolChoice.mode:type_name -> llmproxy.v1.ToolChoice.Mode
-	14, // 4: llmproxy.v1.ContentPart.text:type_name -> llmproxy.v1.TextPart
-	11, // 5: llmproxy.v1.ContentPart.image:type_name -> llmproxy.v1.ImagePart
-	12, // 6: llmproxy.v1.ContentPart.audio:type_name -> llmproxy.v1.AudioPart
-	13, // 7: llmproxy.v1.ContentPart.document:type_name -> llmproxy.v1.DocumentPart
-	1,  // 8: llmproxy.v1.ChatMessage.role:type_name -> llmproxy.v1.MessageRole
-	5,  // 9: llmproxy.v1.ChatMessage.tool_calls:type_name -> llmproxy.v1.ToolCall
-	15, // 10: llmproxy.v1.ChatMessage.parts:type_name -> llmproxy.v1.ContentPart
-	57, // 11: llmproxy.v1.SchemaProperty.properties:type_name -> llmproxy.v1.SchemaProperty.PropertiesEntry
-	17, // 12: llmproxy.v1.SchemaProperty.items:type_name -> llmproxy.v1.SchemaProperty
-	58, // 13: llmproxy.v1.ResponseSchema.properties:type_name -> llmproxy.v1.ResponseSchema.PropertiesEntry
-	17, // 14: llmproxy.v1.ResponseSchema.items:type_name -> llmproxy.v1.SchemaProperty
-	0,  // 15: llmproxy.v1.GenerateTextRequest.effort:type_name -> llmproxy.v1.Effort
-	59, // 16: llmproxy.v1.GenerateTextRequest.attributes:type_name -> llmproxy.v1.GenerateTextRequest.AttributesEntry
-	16, // 17: llmproxy.v1.GenerateTextRequest.messages:type_name -> llmproxy.v1.ChatMessage
-	18, // 18: llmproxy.v1.GenerateTextRequest.response_schema:type_name -> llmproxy.v1.ResponseSchema
-	8,  // 19: llmproxy.v1.GenerateTextRequest.tools:type_name -> llmproxy.v1.Tool
-	10, // 20: llmproxy.v1.GenerateTextRequest.tool_choice:type_name -> llmproxy.v1.ToolChoice
-	5,  // 21: llmproxy.v1.Choice.tool_calls:type_name -> llmproxy.v1.ToolCall
-	20, // 22: llmproxy.v1.GenerateTextResponse.usage:type_name -> llmproxy.v1.TokensUsage
-	21, // 23: llmproxy.v1.GenerateTextResponse.details:type_name -> llmproxy.v1.Choice
-	20, // 24: llmproxy.v1.GenerateTextChunk.usage:type_name -> llmproxy.v1.TokensUsage
-	7,  // 25: llmproxy.v1.GenerateTextChunk.tool_call_chunks:type_name -> llmproxy.v1.ToolCallChunk
-	0,  // 26: llmproxy.v1.ModelInfo.efforts:type_name -> llmproxy.v1.Effort
-	25, // 27: llmproxy.v1.ListModelsResponse.models:type_name -> llmproxy.v1.ModelInfo
-	19, // 28: llmproxy.v1.GenerateTextStreamRequest.request:type_name -> llmproxy.v1.GenerateTextRequest
-	60, // 29: llmproxy.v1.SynthesizeSpeechRequest.attributes:type_name -> llmproxy.v1.SynthesizeSpeechRequest.AttributesEntry
-	20, // 30: llmproxy.v1.SynthesizeSpeechResponse.usage:type_name -> llmproxy.v1.TokensUsage
-	61, // 31: llmproxy.v1.GenerateImageRequest.attributes:type_name -> llmproxy.v1.GenerateImageRequest.AttributesEntry
-	20, // 32: llmproxy.v1.GenerateImageResponse.usage:type_name -> llmproxy.v1.TokensUsage
-	2,  // 33: llmproxy.v1.JudgeQuestion.type:type_name -> llmproxy.v1.JudgeType
-	62, // 34: llmproxy.v1.JudgeQuestion.options:type_name -> llmproxy.v1.JudgeQuestion.OptionsEntry
-	2,  // 35: llmproxy.v1.JudgeAnswer.type:type_name -> llmproxy.v1.JudgeType
-	63, // 36: llmproxy.v1.JudgeAnswer.probabilities:type_name -> llmproxy.v1.JudgeAnswer.ProbabilitiesEntry
-	64, // 37: llmproxy.v1.JudgeAnswer.legend:type_name -> llmproxy.v1.JudgeAnswer.LegendEntry
-	14, // 38: llmproxy.v1.MediaPart.text:type_name -> llmproxy.v1.TextPart
-	11, // 39: llmproxy.v1.MediaPart.image:type_name -> llmproxy.v1.ImagePart
-	12, // 40: llmproxy.v1.MediaPart.audio:type_name -> llmproxy.v1.AudioPart
-	34, // 41: llmproxy.v1.MediaPart.embedding:type_name -> llmproxy.v1.EmbeddingPart
-	65, // 42: llmproxy.v1.JudgeRequest.questions:type_name -> llmproxy.v1.JudgeRequest.QuestionsEntry
-	66, // 43: llmproxy.v1.JudgeRequest.attributes:type_name -> llmproxy.v1.JudgeRequest.AttributesEntry
-	35, // 44: llmproxy.v1.JudgeRequest.state_media:type_name -> llmproxy.v1.MediaPart
-	67, // 45: llmproxy.v1.JudgeResponse.answers:type_name -> llmproxy.v1.JudgeResponse.AnswersEntry
-	20, // 46: llmproxy.v1.JudgeResponse.usage:type_name -> llmproxy.v1.TokensUsage
-	68, // 47: llmproxy.v1.GetEmbeddingsRequest.attributes:type_name -> llmproxy.v1.GetEmbeddingsRequest.AttributesEntry
-	38, // 48: llmproxy.v1.GetEmbeddingsResponse.data:type_name -> llmproxy.v1.Embedding
-	20, // 49: llmproxy.v1.GetEmbeddingsResponse.usage:type_name -> llmproxy.v1.TokensUsage
-	35, // 50: llmproxy.v1.RolloutCandidate.action_media:type_name -> llmproxy.v1.MediaPart
-	69, // 51: llmproxy.v1.CandidateEvaluation.answers:type_name -> llmproxy.v1.CandidateEvaluation.AnswersEntry
-	35, // 52: llmproxy.v1.EvaluateRolloutsRequest.state_media:type_name -> llmproxy.v1.MediaPart
-	41, // 53: llmproxy.v1.EvaluateRolloutsRequest.candidates:type_name -> llmproxy.v1.RolloutCandidate
-	70, // 54: llmproxy.v1.EvaluateRolloutsRequest.criteria:type_name -> llmproxy.v1.EvaluateRolloutsRequest.CriteriaEntry
-	71, // 55: llmproxy.v1.EvaluateRolloutsRequest.attributes:type_name -> llmproxy.v1.EvaluateRolloutsRequest.AttributesEntry
-	42, // 56: llmproxy.v1.EvaluateRolloutsResponse.evaluations:type_name -> llmproxy.v1.CandidateEvaluation
-	20, // 57: llmproxy.v1.EvaluateRolloutsResponse.usage:type_name -> llmproxy.v1.TokensUsage
-	3,  // 58: llmproxy.v1.Batch.state:type_name -> llmproxy.v1.BatchState
-	45, // 59: llmproxy.v1.Batch.counts:type_name -> llmproxy.v1.BatchCounts
-	73, // 60: llmproxy.v1.Batch.created_at:type_name -> google.protobuf.Timestamp
-	73, // 61: llmproxy.v1.Batch.completed_at:type_name -> google.protobuf.Timestamp
-	19, // 62: llmproxy.v1.BatchItemRequest.request:type_name -> llmproxy.v1.GenerateTextRequest
-	47, // 63: llmproxy.v1.SubmitBatchRequest.items:type_name -> llmproxy.v1.BatchItemRequest
-	0,  // 64: llmproxy.v1.SubmitBatchRequest.effort:type_name -> llmproxy.v1.Effort
-	72, // 65: llmproxy.v1.SubmitBatchRequest.attributes:type_name -> llmproxy.v1.SubmitBatchRequest.AttributesEntry
-	46, // 66: llmproxy.v1.SubmitBatchResponse.batch:type_name -> llmproxy.v1.Batch
-	22, // 67: llmproxy.v1.BatchItemResult.response:type_name -> llmproxy.v1.GenerateTextResponse
-	51, // 68: llmproxy.v1.BatchItemResult.error:type_name -> llmproxy.v1.BatchItemError
-	52, // 69: llmproxy.v1.ListBatchResultsResponse.items:type_name -> llmproxy.v1.BatchItemResult
-	17, // 70: llmproxy.v1.SchemaProperty.PropertiesEntry.value:type_name -> llmproxy.v1.SchemaProperty
-	17, // 71: llmproxy.v1.ResponseSchema.PropertiesEntry.value:type_name -> llmproxy.v1.SchemaProperty
-	32, // 72: llmproxy.v1.JudgeRequest.QuestionsEntry.value:type_name -> llmproxy.v1.JudgeQuestion
-	33, // 73: llmproxy.v1.JudgeResponse.AnswersEntry.value:type_name -> llmproxy.v1.JudgeAnswer
-	33, // 74: llmproxy.v1.CandidateEvaluation.AnswersEntry.value:type_name -> llmproxy.v1.JudgeAnswer
-	32, // 75: llmproxy.v1.EvaluateRolloutsRequest.CriteriaEntry.value:type_name -> llmproxy.v1.JudgeQuestion
-	19, // 76: llmproxy.v1.LLMProxyService.GenerateText:input_type -> llmproxy.v1.GenerateTextRequest
-	27, // 77: llmproxy.v1.LLMProxyService.GenerateTextStream:input_type -> llmproxy.v1.GenerateTextStreamRequest
-	28, // 78: llmproxy.v1.LLMProxyService.SynthesizeSpeech:input_type -> llmproxy.v1.SynthesizeSpeechRequest
-	30, // 79: llmproxy.v1.LLMProxyService.GenerateImage:input_type -> llmproxy.v1.GenerateImageRequest
-	36, // 80: llmproxy.v1.LLMProxyService.Judge:input_type -> llmproxy.v1.JudgeRequest
-	39, // 81: llmproxy.v1.LLMProxyService.GetEmbeddings:input_type -> llmproxy.v1.GetEmbeddingsRequest
-	36, // 82: llmproxy.v1.LLMProxyService.JudgeStream:input_type -> llmproxy.v1.JudgeRequest
-	43, // 83: llmproxy.v1.LLMProxyService.EvaluateRollouts:input_type -> llmproxy.v1.EvaluateRolloutsRequest
-	24, // 84: llmproxy.v1.LLMProxyService.ListModels:input_type -> llmproxy.v1.ListModelsRequest
-	48, // 85: llmproxy.v1.LLMProxyService.SubmitBatch:input_type -> llmproxy.v1.SubmitBatchRequest
-	50, // 86: llmproxy.v1.LLMProxyService.GetBatch:input_type -> llmproxy.v1.GetBatchRequest
-	53, // 87: llmproxy.v1.LLMProxyService.ListBatchResults:input_type -> llmproxy.v1.ListBatchResultsRequest
-	55, // 88: llmproxy.v1.LLMProxyService.CancelBatch:input_type -> llmproxy.v1.CancelBatchRequest
-	22, // 89: llmproxy.v1.LLMProxyService.GenerateText:output_type -> llmproxy.v1.GenerateTextResponse
-	23, // 90: llmproxy.v1.LLMProxyService.GenerateTextStream:output_type -> llmproxy.v1.GenerateTextChunk
-	29, // 91: llmproxy.v1.LLMProxyService.SynthesizeSpeech:output_type -> llmproxy.v1.SynthesizeSpeechResponse
-	31, // 92: llmproxy.v1.LLMProxyService.GenerateImage:output_type -> llmproxy.v1.GenerateImageResponse
-	37, // 93: llmproxy.v1.LLMProxyService.Judge:output_type -> llmproxy.v1.JudgeResponse
-	40, // 94: llmproxy.v1.LLMProxyService.GetEmbeddings:output_type -> llmproxy.v1.GetEmbeddingsResponse
-	37, // 95: llmproxy.v1.LLMProxyService.JudgeStream:output_type -> llmproxy.v1.JudgeResponse
-	44, // 96: llmproxy.v1.LLMProxyService.EvaluateRollouts:output_type -> llmproxy.v1.EvaluateRolloutsResponse
-	26, // 97: llmproxy.v1.LLMProxyService.ListModels:output_type -> llmproxy.v1.ListModelsResponse
-	49, // 98: llmproxy.v1.LLMProxyService.SubmitBatch:output_type -> llmproxy.v1.SubmitBatchResponse
-	46, // 99: llmproxy.v1.LLMProxyService.GetBatch:output_type -> llmproxy.v1.Batch
-	54, // 100: llmproxy.v1.LLMProxyService.ListBatchResults:output_type -> llmproxy.v1.ListBatchResultsResponse
-	56, // 101: llmproxy.v1.LLMProxyService.CancelBatch:output_type -> llmproxy.v1.CancelBatchResponse
+var file_ktms_v1_gateway_proto_depIdxs = []int32{
+	6,  // 0: ktms.v1.ToolCall.function:type_name -> ktms.v1.FunctionCall
+	9,  // 1: ktms.v1.Tool.function:type_name -> ktms.v1.FunctionDefinition
+	18, // 2: ktms.v1.FunctionDefinition.parameters:type_name -> ktms.v1.ResponseSchema
+	4,  // 3: ktms.v1.ToolChoice.mode:type_name -> ktms.v1.ToolChoice.Mode
+	14, // 4: ktms.v1.ContentPart.text:type_name -> ktms.v1.TextPart
+	11, // 5: ktms.v1.ContentPart.image:type_name -> ktms.v1.ImagePart
+	12, // 6: ktms.v1.ContentPart.audio:type_name -> ktms.v1.AudioPart
+	13, // 7: ktms.v1.ContentPart.document:type_name -> ktms.v1.DocumentPart
+	1,  // 8: ktms.v1.ChatMessage.role:type_name -> ktms.v1.MessageRole
+	5,  // 9: ktms.v1.ChatMessage.tool_calls:type_name -> ktms.v1.ToolCall
+	15, // 10: ktms.v1.ChatMessage.parts:type_name -> ktms.v1.ContentPart
+	57, // 11: ktms.v1.SchemaProperty.properties:type_name -> ktms.v1.SchemaProperty.PropertiesEntry
+	17, // 12: ktms.v1.SchemaProperty.items:type_name -> ktms.v1.SchemaProperty
+	58, // 13: ktms.v1.ResponseSchema.properties:type_name -> ktms.v1.ResponseSchema.PropertiesEntry
+	17, // 14: ktms.v1.ResponseSchema.items:type_name -> ktms.v1.SchemaProperty
+	0,  // 15: ktms.v1.GenerateTextRequest.effort:type_name -> ktms.v1.Effort
+	59, // 16: ktms.v1.GenerateTextRequest.attributes:type_name -> ktms.v1.GenerateTextRequest.AttributesEntry
+	16, // 17: ktms.v1.GenerateTextRequest.messages:type_name -> ktms.v1.ChatMessage
+	18, // 18: ktms.v1.GenerateTextRequest.response_schema:type_name -> ktms.v1.ResponseSchema
+	8,  // 19: ktms.v1.GenerateTextRequest.tools:type_name -> ktms.v1.Tool
+	10, // 20: ktms.v1.GenerateTextRequest.tool_choice:type_name -> ktms.v1.ToolChoice
+	5,  // 21: ktms.v1.Choice.tool_calls:type_name -> ktms.v1.ToolCall
+	20, // 22: ktms.v1.GenerateTextResponse.usage:type_name -> ktms.v1.TokensUsage
+	21, // 23: ktms.v1.GenerateTextResponse.details:type_name -> ktms.v1.Choice
+	20, // 24: ktms.v1.GenerateTextChunk.usage:type_name -> ktms.v1.TokensUsage
+	7,  // 25: ktms.v1.GenerateTextChunk.tool_call_chunks:type_name -> ktms.v1.ToolCallChunk
+	0,  // 26: ktms.v1.ModelInfo.efforts:type_name -> ktms.v1.Effort
+	25, // 27: ktms.v1.ListModelsResponse.models:type_name -> ktms.v1.ModelInfo
+	19, // 28: ktms.v1.GenerateTextStreamRequest.request:type_name -> ktms.v1.GenerateTextRequest
+	60, // 29: ktms.v1.SynthesizeSpeechRequest.attributes:type_name -> ktms.v1.SynthesizeSpeechRequest.AttributesEntry
+	20, // 30: ktms.v1.SynthesizeSpeechResponse.usage:type_name -> ktms.v1.TokensUsage
+	61, // 31: ktms.v1.GenerateImageRequest.attributes:type_name -> ktms.v1.GenerateImageRequest.AttributesEntry
+	20, // 32: ktms.v1.GenerateImageResponse.usage:type_name -> ktms.v1.TokensUsage
+	2,  // 33: ktms.v1.JudgeQuestion.type:type_name -> ktms.v1.JudgeType
+	62, // 34: ktms.v1.JudgeQuestion.options:type_name -> ktms.v1.JudgeQuestion.OptionsEntry
+	2,  // 35: ktms.v1.JudgeAnswer.type:type_name -> ktms.v1.JudgeType
+	63, // 36: ktms.v1.JudgeAnswer.probabilities:type_name -> ktms.v1.JudgeAnswer.ProbabilitiesEntry
+	64, // 37: ktms.v1.JudgeAnswer.legend:type_name -> ktms.v1.JudgeAnswer.LegendEntry
+	14, // 38: ktms.v1.MediaPart.text:type_name -> ktms.v1.TextPart
+	11, // 39: ktms.v1.MediaPart.image:type_name -> ktms.v1.ImagePart
+	12, // 40: ktms.v1.MediaPart.audio:type_name -> ktms.v1.AudioPart
+	34, // 41: ktms.v1.MediaPart.embedding:type_name -> ktms.v1.EmbeddingPart
+	65, // 42: ktms.v1.JudgeRequest.questions:type_name -> ktms.v1.JudgeRequest.QuestionsEntry
+	66, // 43: ktms.v1.JudgeRequest.attributes:type_name -> ktms.v1.JudgeRequest.AttributesEntry
+	35, // 44: ktms.v1.JudgeRequest.state_media:type_name -> ktms.v1.MediaPart
+	67, // 45: ktms.v1.JudgeResponse.answers:type_name -> ktms.v1.JudgeResponse.AnswersEntry
+	20, // 46: ktms.v1.JudgeResponse.usage:type_name -> ktms.v1.TokensUsage
+	68, // 47: ktms.v1.GetEmbeddingsRequest.attributes:type_name -> ktms.v1.GetEmbeddingsRequest.AttributesEntry
+	38, // 48: ktms.v1.GetEmbeddingsResponse.data:type_name -> ktms.v1.Embedding
+	20, // 49: ktms.v1.GetEmbeddingsResponse.usage:type_name -> ktms.v1.TokensUsage
+	35, // 50: ktms.v1.RolloutCandidate.action_media:type_name -> ktms.v1.MediaPart
+	69, // 51: ktms.v1.CandidateEvaluation.answers:type_name -> ktms.v1.CandidateEvaluation.AnswersEntry
+	35, // 52: ktms.v1.EvaluateRolloutsRequest.state_media:type_name -> ktms.v1.MediaPart
+	41, // 53: ktms.v1.EvaluateRolloutsRequest.candidates:type_name -> ktms.v1.RolloutCandidate
+	70, // 54: ktms.v1.EvaluateRolloutsRequest.criteria:type_name -> ktms.v1.EvaluateRolloutsRequest.CriteriaEntry
+	71, // 55: ktms.v1.EvaluateRolloutsRequest.attributes:type_name -> ktms.v1.EvaluateRolloutsRequest.AttributesEntry
+	42, // 56: ktms.v1.EvaluateRolloutsResponse.evaluations:type_name -> ktms.v1.CandidateEvaluation
+	20, // 57: ktms.v1.EvaluateRolloutsResponse.usage:type_name -> ktms.v1.TokensUsage
+	3,  // 58: ktms.v1.Batch.state:type_name -> ktms.v1.BatchState
+	45, // 59: ktms.v1.Batch.counts:type_name -> ktms.v1.BatchCounts
+	73, // 60: ktms.v1.Batch.created_at:type_name -> google.protobuf.Timestamp
+	73, // 61: ktms.v1.Batch.completed_at:type_name -> google.protobuf.Timestamp
+	19, // 62: ktms.v1.BatchItemRequest.request:type_name -> ktms.v1.GenerateTextRequest
+	47, // 63: ktms.v1.SubmitBatchRequest.items:type_name -> ktms.v1.BatchItemRequest
+	0,  // 64: ktms.v1.SubmitBatchRequest.effort:type_name -> ktms.v1.Effort
+	72, // 65: ktms.v1.SubmitBatchRequest.attributes:type_name -> ktms.v1.SubmitBatchRequest.AttributesEntry
+	46, // 66: ktms.v1.SubmitBatchResponse.batch:type_name -> ktms.v1.Batch
+	22, // 67: ktms.v1.BatchItemResult.response:type_name -> ktms.v1.GenerateTextResponse
+	51, // 68: ktms.v1.BatchItemResult.error:type_name -> ktms.v1.BatchItemError
+	52, // 69: ktms.v1.ListBatchResultsResponse.items:type_name -> ktms.v1.BatchItemResult
+	17, // 70: ktms.v1.SchemaProperty.PropertiesEntry.value:type_name -> ktms.v1.SchemaProperty
+	17, // 71: ktms.v1.ResponseSchema.PropertiesEntry.value:type_name -> ktms.v1.SchemaProperty
+	32, // 72: ktms.v1.JudgeRequest.QuestionsEntry.value:type_name -> ktms.v1.JudgeQuestion
+	33, // 73: ktms.v1.JudgeResponse.AnswersEntry.value:type_name -> ktms.v1.JudgeAnswer
+	33, // 74: ktms.v1.CandidateEvaluation.AnswersEntry.value:type_name -> ktms.v1.JudgeAnswer
+	32, // 75: ktms.v1.EvaluateRolloutsRequest.CriteriaEntry.value:type_name -> ktms.v1.JudgeQuestion
+	19, // 76: ktms.v1.GatewayService.GenerateText:input_type -> ktms.v1.GenerateTextRequest
+	27, // 77: ktms.v1.GatewayService.GenerateTextStream:input_type -> ktms.v1.GenerateTextStreamRequest
+	28, // 78: ktms.v1.GatewayService.SynthesizeSpeech:input_type -> ktms.v1.SynthesizeSpeechRequest
+	30, // 79: ktms.v1.GatewayService.GenerateImage:input_type -> ktms.v1.GenerateImageRequest
+	36, // 80: ktms.v1.GatewayService.Judge:input_type -> ktms.v1.JudgeRequest
+	39, // 81: ktms.v1.GatewayService.GetEmbeddings:input_type -> ktms.v1.GetEmbeddingsRequest
+	36, // 82: ktms.v1.GatewayService.JudgeStream:input_type -> ktms.v1.JudgeRequest
+	43, // 83: ktms.v1.GatewayService.EvaluateRollouts:input_type -> ktms.v1.EvaluateRolloutsRequest
+	24, // 84: ktms.v1.GatewayService.ListModels:input_type -> ktms.v1.ListModelsRequest
+	48, // 85: ktms.v1.GatewayService.SubmitBatch:input_type -> ktms.v1.SubmitBatchRequest
+	50, // 86: ktms.v1.GatewayService.GetBatch:input_type -> ktms.v1.GetBatchRequest
+	53, // 87: ktms.v1.GatewayService.ListBatchResults:input_type -> ktms.v1.ListBatchResultsRequest
+	55, // 88: ktms.v1.GatewayService.CancelBatch:input_type -> ktms.v1.CancelBatchRequest
+	22, // 89: ktms.v1.GatewayService.GenerateText:output_type -> ktms.v1.GenerateTextResponse
+	23, // 90: ktms.v1.GatewayService.GenerateTextStream:output_type -> ktms.v1.GenerateTextChunk
+	29, // 91: ktms.v1.GatewayService.SynthesizeSpeech:output_type -> ktms.v1.SynthesizeSpeechResponse
+	31, // 92: ktms.v1.GatewayService.GenerateImage:output_type -> ktms.v1.GenerateImageResponse
+	37, // 93: ktms.v1.GatewayService.Judge:output_type -> ktms.v1.JudgeResponse
+	40, // 94: ktms.v1.GatewayService.GetEmbeddings:output_type -> ktms.v1.GetEmbeddingsResponse
+	37, // 95: ktms.v1.GatewayService.JudgeStream:output_type -> ktms.v1.JudgeResponse
+	44, // 96: ktms.v1.GatewayService.EvaluateRollouts:output_type -> ktms.v1.EvaluateRolloutsResponse
+	26, // 97: ktms.v1.GatewayService.ListModels:output_type -> ktms.v1.ListModelsResponse
+	49, // 98: ktms.v1.GatewayService.SubmitBatch:output_type -> ktms.v1.SubmitBatchResponse
+	46, // 99: ktms.v1.GatewayService.GetBatch:output_type -> ktms.v1.Batch
+	54, // 100: ktms.v1.GatewayService.ListBatchResults:output_type -> ktms.v1.ListBatchResultsResponse
+	56, // 101: ktms.v1.GatewayService.CancelBatch:output_type -> ktms.v1.CancelBatchResponse
 	89, // [89:102] is the sub-list for method output_type
 	76, // [76:89] is the sub-list for method input_type
 	76, // [76:76] is the sub-list for extension type_name
@@ -4705,24 +4705,24 @@ var file_llmproxy_v1_llmproxy_proto_depIdxs = []int32{
 	0,  // [0:76] is the sub-list for field type_name
 }
 
-func init() { file_llmproxy_v1_llmproxy_proto_init() }
-func file_llmproxy_v1_llmproxy_proto_init() {
-	if File_llmproxy_v1_llmproxy_proto != nil {
+func init() { file_ktms_v1_gateway_proto_init() }
+func file_ktms_v1_gateway_proto_init() {
+	if File_ktms_v1_gateway_proto != nil {
 		return
 	}
-	file_llmproxy_v1_llmproxy_proto_msgTypes[10].OneofWrappers = []any{
+	file_ktms_v1_gateway_proto_msgTypes[10].OneofWrappers = []any{
 		(*ContentPart_Text)(nil),
 		(*ContentPart_Image)(nil),
 		(*ContentPart_Audio)(nil),
 		(*ContentPart_Document)(nil),
 	}
-	file_llmproxy_v1_llmproxy_proto_msgTypes[30].OneofWrappers = []any{
+	file_ktms_v1_gateway_proto_msgTypes[30].OneofWrappers = []any{
 		(*MediaPart_Text)(nil),
 		(*MediaPart_Image)(nil),
 		(*MediaPart_Audio)(nil),
 		(*MediaPart_Embedding)(nil),
 	}
-	file_llmproxy_v1_llmproxy_proto_msgTypes[47].OneofWrappers = []any{
+	file_ktms_v1_gateway_proto_msgTypes[47].OneofWrappers = []any{
 		(*BatchItemResult_Response)(nil),
 		(*BatchItemResult_Error)(nil),
 	}
@@ -4730,18 +4730,18 @@ func file_llmproxy_v1_llmproxy_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_llmproxy_v1_llmproxy_proto_rawDesc), len(file_llmproxy_v1_llmproxy_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ktms_v1_gateway_proto_rawDesc), len(file_ktms_v1_gateway_proto_rawDesc)),
 			NumEnums:      5,
 			NumMessages:   68,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_llmproxy_v1_llmproxy_proto_goTypes,
-		DependencyIndexes: file_llmproxy_v1_llmproxy_proto_depIdxs,
-		EnumInfos:         file_llmproxy_v1_llmproxy_proto_enumTypes,
-		MessageInfos:      file_llmproxy_v1_llmproxy_proto_msgTypes,
+		GoTypes:           file_ktms_v1_gateway_proto_goTypes,
+		DependencyIndexes: file_ktms_v1_gateway_proto_depIdxs,
+		EnumInfos:         file_ktms_v1_gateway_proto_enumTypes,
+		MessageInfos:      file_ktms_v1_gateway_proto_msgTypes,
 	}.Build()
-	File_llmproxy_v1_llmproxy_proto = out.File
-	file_llmproxy_v1_llmproxy_proto_goTypes = nil
-	file_llmproxy_v1_llmproxy_proto_depIdxs = nil
+	File_ktms_v1_gateway_proto = out.File
+	file_ktms_v1_gateway_proto_goTypes = nil
+	file_ktms_v1_gateway_proto_depIdxs = nil
 }

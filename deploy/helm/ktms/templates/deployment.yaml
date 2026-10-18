@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "llm-proxy.fullname" . }}
+  name: {{ include "ktms.fullname" . }}
   labels:
-    {{- include "llm-proxy.labels" . | nindent 4 }}
+    {{- include "ktms.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "llm-proxy.selectorLabels" . | nindent 6 }}
+      {{- include "ktms.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- if or (not .Values.secrets.existingSecret) .Values.podAnnotations }}
@@ -23,7 +23,7 @@ spec:
         {{- end }}
       {{- end }}
       labels:
-        {{- include "llm-proxy.labels" . | nindent 8 }}
+        {{- include "ktms.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -32,7 +32,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "llm-proxy.serviceAccountName" . }}
+      serviceAccountName: {{ include "ktms.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
       terminationGracePeriodSeconds: {{ hasKey .Values "terminationGracePeriodSeconds" | ternary .Values.terminationGracePeriodSeconds 60 }}
       securityContext:
@@ -73,24 +73,31 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.secretName" . }}
+                  name: {{ include "ktms.secretName" . }}
                   key: DATABASE_URL
+            - name: KTMS_ENCRYPTION_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ktms.secretName" . }}
+                  key: KTMS_ENCRYPTION_KEYS
+                  optional: true
             - name: LLMPROXY_ENCRYPTION_KEYS
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.secretName" . }}
+                  name: {{ include "ktms.secretName" . }}
                   key: LLMPROXY_ENCRYPTION_KEYS
+                  optional: true
             - name: BOOTSTRAP_ADMIN_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.secretName" . }}
+                  name: {{ include "ktms.secretName" . }}
                   key: BOOTSTRAP_ADMIN_KEY
                   optional: true
             {{- if or .Values.config.redisAddr (or .Values.secrets.redisPassword .Values.secrets.existingSecret) }}
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "llm-proxy.secretName" . }}
+                  name: {{ include "ktms.secretName" . }}
                   key: REDIS_PASSWORD
                   optional: true
             {{- end }}

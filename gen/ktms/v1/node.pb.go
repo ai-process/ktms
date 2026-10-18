@@ -2,9 +2,9 @@
 // versions:
 // 	protoc-gen-go v1.36.12
 // 	protoc        (unknown)
-// source: llmproxy/v1/node.proto
+// source: ktms/v1/node.proto
 
-package llmproxyv1
+package ktmsv1
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -63,11 +63,11 @@ func (x NodeState) String() string {
 }
 
 func (NodeState) Descriptor() protoreflect.EnumDescriptor {
-	return file_llmproxy_v1_node_proto_enumTypes[0].Descriptor()
+	return file_ktms_v1_node_proto_enumTypes[0].Descriptor()
 }
 
 func (NodeState) Type() protoreflect.EnumType {
-	return &file_llmproxy_v1_node_proto_enumTypes[0]
+	return &file_ktms_v1_node_proto_enumTypes[0]
 }
 
 func (x NodeState) Number() protoreflect.EnumNumber {
@@ -76,7 +76,7 @@ func (x NodeState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use NodeState.Descriptor instead.
 func (NodeState) EnumDescriptor() ([]byte, []int) {
-	return file_llmproxy_v1_node_proto_rawDescGZIP(), []int{0}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{0}
 }
 
 type NodeResources struct {
@@ -96,7 +96,7 @@ type NodeResources struct {
 
 func (x *NodeResources) Reset() {
 	*x = NodeResources{}
-	mi := &file_llmproxy_v1_node_proto_msgTypes[0]
+	mi := &file_ktms_v1_node_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -108,7 +108,7 @@ func (x *NodeResources) String() string {
 func (*NodeResources) ProtoMessage() {}
 
 func (x *NodeResources) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_node_proto_msgTypes[0]
+	mi := &file_ktms_v1_node_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -121,7 +121,7 @@ func (x *NodeResources) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeResources.ProtoReflect.Descriptor instead.
 func (*NodeResources) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_node_proto_rawDescGZIP(), []int{0}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *NodeResources) GetBaseWeight() float64 {
@@ -189,7 +189,7 @@ func (x *NodeResources) GetRamFreeMb() uint64 {
 
 type NodeModelSpec struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	ModelId         string                 `protobuf:"bytes,1,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`                           // model id in the llm-proxy registry
+	ModelId         string                 `protobuf:"bytes,1,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`                           // model id in the ktms registry
 	RemoteModelName string                 `protobuf:"bytes,2,opt,name=remote_model_name,json=remoteModelName,proto3" json:"remote_model_name,omitempty"` // underlying model name on the engine (empty = model_id)
 	ContextLength   uint32                 `protobuf:"varint,3,opt,name=context_length,json=contextLength,proto3" json:"context_length,omitempty"`
 	IsWarm          bool                   `protobuf:"varint,4,opt,name=is_warm,json=isWarm,proto3" json:"is_warm,omitempty"` // true when weights are loaded in VRAM
@@ -203,7 +203,7 @@ type NodeModelSpec struct {
 
 func (x *NodeModelSpec) Reset() {
 	*x = NodeModelSpec{}
-	mi := &file_llmproxy_v1_node_proto_msgTypes[1]
+	mi := &file_ktms_v1_node_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -215,7 +215,7 @@ func (x *NodeModelSpec) String() string {
 func (*NodeModelSpec) ProtoMessage() {}
 
 func (x *NodeModelSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_node_proto_msgTypes[1]
+	mi := &file_ktms_v1_node_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -228,7 +228,7 @@ func (x *NodeModelSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeModelSpec.ProtoReflect.Descriptor instead.
 func (*NodeModelSpec) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_node_proto_rawDescGZIP(), []int{1}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *NodeModelSpec) GetModelId() string {
@@ -303,7 +303,7 @@ type RegisterNodeRequest struct {
 
 func (x *RegisterNodeRequest) Reset() {
 	*x = RegisterNodeRequest{}
-	mi := &file_llmproxy_v1_node_proto_msgTypes[2]
+	mi := &file_ktms_v1_node_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -315,7 +315,7 @@ func (x *RegisterNodeRequest) String() string {
 func (*RegisterNodeRequest) ProtoMessage() {}
 
 func (x *RegisterNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_node_proto_msgTypes[2]
+	mi := &file_ktms_v1_node_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -328,7 +328,7 @@ func (x *RegisterNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterNodeRequest.ProtoReflect.Descriptor instead.
 func (*RegisterNodeRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_node_proto_rawDescGZIP(), []int{2}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *RegisterNodeRequest) GetNodeId() string {
@@ -398,7 +398,7 @@ type RegisterNodeResponse struct {
 
 func (x *RegisterNodeResponse) Reset() {
 	*x = RegisterNodeResponse{}
-	mi := &file_llmproxy_v1_node_proto_msgTypes[3]
+	mi := &file_ktms_v1_node_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -410,7 +410,7 @@ func (x *RegisterNodeResponse) String() string {
 func (*RegisterNodeResponse) ProtoMessage() {}
 
 func (x *RegisterNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_node_proto_msgTypes[3]
+	mi := &file_ktms_v1_node_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -423,7 +423,7 @@ func (x *RegisterNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterNodeResponse.ProtoReflect.Descriptor instead.
 func (*RegisterNodeResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_node_proto_rawDescGZIP(), []int{3}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *RegisterNodeResponse) GetAssignedNodeId() string {
@@ -458,7 +458,7 @@ type ValidateNodeRequest struct {
 
 func (x *ValidateNodeRequest) Reset() {
 	*x = ValidateNodeRequest{}
-	mi := &file_llmproxy_v1_node_proto_msgTypes[4]
+	mi := &file_ktms_v1_node_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -470,7 +470,7 @@ func (x *ValidateNodeRequest) String() string {
 func (*ValidateNodeRequest) ProtoMessage() {}
 
 func (x *ValidateNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_node_proto_msgTypes[4]
+	mi := &file_ktms_v1_node_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -483,7 +483,7 @@ func (x *ValidateNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateNodeRequest.ProtoReflect.Descriptor instead.
 func (*ValidateNodeRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_node_proto_rawDescGZIP(), []int{4}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ValidateNodeRequest) GetNodeId() string {
@@ -510,7 +510,7 @@ type ValidateNodeResponse struct {
 
 func (x *ValidateNodeResponse) Reset() {
 	*x = ValidateNodeResponse{}
-	mi := &file_llmproxy_v1_node_proto_msgTypes[5]
+	mi := &file_ktms_v1_node_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -522,7 +522,7 @@ func (x *ValidateNodeResponse) String() string {
 func (*ValidateNodeResponse) ProtoMessage() {}
 
 func (x *ValidateNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_node_proto_msgTypes[5]
+	mi := &file_ktms_v1_node_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -535,7 +535,7 @@ func (x *ValidateNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateNodeResponse.ProtoReflect.Descriptor instead.
 func (*ValidateNodeResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_node_proto_rawDescGZIP(), []int{5}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ValidateNodeResponse) GetAcceptedModels() []string {
@@ -566,7 +566,7 @@ type HeartbeatRequest struct {
 
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
-	mi := &file_llmproxy_v1_node_proto_msgTypes[6]
+	mi := &file_ktms_v1_node_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -578,7 +578,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_node_proto_msgTypes[6]
+	mi := &file_ktms_v1_node_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -591,7 +591,7 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_node_proto_rawDescGZIP(), []int{6}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *HeartbeatRequest) GetNodeId() string {
@@ -648,7 +648,7 @@ type HeartbeatResponse struct {
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_llmproxy_v1_node_proto_msgTypes[7]
+	mi := &file_ktms_v1_node_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -660,7 +660,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_node_proto_msgTypes[7]
+	mi := &file_ktms_v1_node_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -673,7 +673,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_node_proto_rawDescGZIP(), []int{7}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *HeartbeatResponse) GetOk() bool {
@@ -714,7 +714,7 @@ type UnregisterNodeRequest struct {
 
 func (x *UnregisterNodeRequest) Reset() {
 	*x = UnregisterNodeRequest{}
-	mi := &file_llmproxy_v1_node_proto_msgTypes[8]
+	mi := &file_ktms_v1_node_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -726,7 +726,7 @@ func (x *UnregisterNodeRequest) String() string {
 func (*UnregisterNodeRequest) ProtoMessage() {}
 
 func (x *UnregisterNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_node_proto_msgTypes[8]
+	mi := &file_ktms_v1_node_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -739,7 +739,7 @@ func (x *UnregisterNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnregisterNodeRequest.ProtoReflect.Descriptor instead.
 func (*UnregisterNodeRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_node_proto_rawDescGZIP(), []int{8}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UnregisterNodeRequest) GetNodeId() string {
@@ -765,7 +765,7 @@ type UnregisterNodeResponse struct {
 
 func (x *UnregisterNodeResponse) Reset() {
 	*x = UnregisterNodeResponse{}
-	mi := &file_llmproxy_v1_node_proto_msgTypes[9]
+	mi := &file_ktms_v1_node_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -777,7 +777,7 @@ func (x *UnregisterNodeResponse) String() string {
 func (*UnregisterNodeResponse) ProtoMessage() {}
 
 func (x *UnregisterNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_node_proto_msgTypes[9]
+	mi := &file_ktms_v1_node_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -790,7 +790,7 @@ func (x *UnregisterNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnregisterNodeResponse.ProtoReflect.Descriptor instead.
 func (*UnregisterNodeResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_node_proto_rawDescGZIP(), []int{9}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *UnregisterNodeResponse) GetOk() bool {
@@ -800,11 +800,11 @@ func (x *UnregisterNodeResponse) GetOk() bool {
 	return false
 }
 
-var File_llmproxy_v1_node_proto protoreflect.FileDescriptor
+var File_ktms_v1_node_proto protoreflect.FileDescriptor
 
-const file_llmproxy_v1_node_proto_rawDesc = "" +
+const file_ktms_v1_node_proto_rawDesc = "" +
 	"\n" +
-	"\x16llmproxy/v1/node.proto\x12\vllmproxy.v1\"\xc4\x02\n" +
+	"\x12ktms/v1/node.proto\x12\aktms.v1\"\xc4\x02\n" +
 	"\rNodeResources\x12\x1f\n" +
 	"\vbase_weight\x18\x01 \x01(\x01R\n" +
 	"baseWeight\x12%\n" +
@@ -827,37 +827,37 @@ const file_llmproxy_v1_node_proto_rawDesc = "" +
 	"\asize_mb\x18\x05 \x01(\x04R\x06sizeMb\x12\"\n" +
 	"\fquantization\x18\x06 \x01(\tR\fquantization\x12\x16\n" +
 	"\x06family\x18\a \x01(\tR\x06family\x12\"\n" +
-	"\fcapabilities\x18\b \x03(\tR\fcapabilities\"\x85\x03\n" +
+	"\fcapabilities\x18\b \x03(\tR\fcapabilities\"\xf9\x02\n" +
 	"\x13RegisterNodeRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
 	"\bendpoint\x18\x03 \x01(\tR\bendpoint\x12\x16\n" +
 	"\x06engine\x18\x04 \x01(\tR\x06engine\x12&\n" +
-	"\x0fnode_auth_token\x18\x05 \x01(\tR\rnodeAuthToken\x128\n" +
-	"\tresources\x18\x06 \x01(\v2\x1a.llmproxy.v1.NodeResourcesR\tresources\x122\n" +
-	"\x06models\x18\a \x03(\v2\x1a.llmproxy.v1.NodeModelSpecR\x06models\x12>\n" +
-	"\x04tags\x18\b \x03(\v2*.llmproxy.v1.RegisterNodeRequest.TagsEntryR\x04tags\x1a7\n" +
+	"\x0fnode_auth_token\x18\x05 \x01(\tR\rnodeAuthToken\x124\n" +
+	"\tresources\x18\x06 \x01(\v2\x16.ktms.v1.NodeResourcesR\tresources\x12.\n" +
+	"\x06models\x18\a \x03(\v2\x16.ktms.v1.NodeModelSpecR\x06models\x12:\n" +
+	"\x04tags\x18\b \x03(\v2&.ktms.v1.RegisterNodeRequest.TagsEntryR\x04tags\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb2\x01\n" +
 	"\x14RegisterNodeResponse\x12(\n" +
 	"\x10assigned_node_id\x18\x01 \x01(\tR\x0eassignedNodeId\x12<\n" +
 	"\x1aheartbeat_interval_seconds\x18\x02 \x01(\x05R\x18heartbeatIntervalSeconds\x122\n" +
-	"\x15heartbeat_ttl_seconds\x18\x03 \x01(\x05R\x13heartbeatTtlSeconds\"b\n" +
+	"\x15heartbeat_ttl_seconds\x18\x03 \x01(\x05R\x13heartbeatTtlSeconds\"^\n" +
 	"\x13ValidateNodeRequest\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x122\n" +
-	"\x06models\x18\x02 \x03(\v2\x1a.llmproxy.v1.NodeModelSpecR\x06models\"f\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12.\n" +
+	"\x06models\x18\x02 \x03(\v2\x16.ktms.v1.NodeModelSpecR\x06models\"f\n" +
 	"\x14ValidateNodeResponse\x12'\n" +
 	"\x0faccepted_models\x18\x01 \x03(\tR\x0eacceptedModels\x12%\n" +
-	"\x0edropped_models\x18\x02 \x03(\tR\rdroppedModels\"\xff\x01\n" +
+	"\x0edropped_models\x18\x02 \x03(\tR\rdroppedModels\"\xf7\x01\n" +
 	"\x10HeartbeatRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x1a\n" +
 	"\bdraining\x18\x02 \x01(\bR\bdraining\x12'\n" +
 	"\x0factive_requests\x18\x03 \x01(\rR\x0eactiveRequests\x12\x1f\n" +
 	"\vqueue_depth\x18\x04 \x01(\rR\n" +
-	"queueDepth\x128\n" +
-	"\tresources\x18\x05 \x01(\v2\x1a.llmproxy.v1.NodeResourcesR\tresources\x122\n" +
-	"\x06models\x18\x06 \x03(\v2\x1a.llmproxy.v1.NodeModelSpecR\x06models\"\xb2\x01\n" +
+	"queueDepth\x124\n" +
+	"\tresources\x18\x05 \x01(\v2\x16.ktms.v1.NodeResourcesR\tresources\x12.\n" +
+	"\x06models\x18\x06 \x03(\v2\x16.ktms.v1.NodeModelSpecR\x06models\"\xb2\x01\n" +
 	"\x11HeartbeatResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x120\n" +
 	"\x14re_register_required\x18\x02 \x01(\bR\x12reRegisterRequired\x12'\n" +
@@ -874,57 +874,57 @@ const file_llmproxy_v1_node_proto_rawDesc = "" +
 	"\x12NODE_STATE_SUSPECT\x10\x02\x12\x16\n" +
 	"\x12NODE_STATE_OFFLINE\x10\x03\x12\x17\n" +
 	"\x13NODE_STATE_DRAINING\x10\x04\x12\x1d\n" +
-	"\x19NODE_STATE_CIRCUIT_BROKEN\x10\x052\xe6\x02\n" +
-	"\x13NodeRegistryService\x12S\n" +
-	"\fRegisterNode\x12 .llmproxy.v1.RegisterNodeRequest\x1a!.llmproxy.v1.RegisterNodeResponse\x12S\n" +
-	"\fValidateNode\x12 .llmproxy.v1.ValidateNodeRequest\x1a!.llmproxy.v1.ValidateNodeResponse\x12J\n" +
-	"\tHeartbeat\x12\x1d.llmproxy.v1.HeartbeatRequest\x1a\x1e.llmproxy.v1.HeartbeatResponse\x12Y\n" +
-	"\x0eUnregisterNode\x12\".llmproxy.v1.UnregisterNodeRequest\x1a#.llmproxy.v1.UnregisterNodeResponseB\xa5\x01\n" +
-	"\x0fcom.llmproxy.v1B\tNodeProtoP\x01Z:github.com/ai-process/llm-proxy/gen/llmproxy/v1;llmproxyv1\xa2\x02\x03LXX\xaa\x02\vLlmproxy.V1\xca\x02\vLlmproxy\\V1\xe2\x02\x17Llmproxy\\V1\\GPBMetadata\xea\x02\fLlmproxy::V1b\x06proto3"
+	"\x19NODE_STATE_CIRCUIT_BROKEN\x10\x052\xc6\x02\n" +
+	"\x13NodeRegistryService\x12K\n" +
+	"\fRegisterNode\x12\x1c.ktms.v1.RegisterNodeRequest\x1a\x1d.ktms.v1.RegisterNodeResponse\x12K\n" +
+	"\fValidateNode\x12\x1c.ktms.v1.ValidateNodeRequest\x1a\x1d.ktms.v1.ValidateNodeResponse\x12B\n" +
+	"\tHeartbeat\x12\x19.ktms.v1.HeartbeatRequest\x1a\x1a.ktms.v1.HeartbeatResponse\x12Q\n" +
+	"\x0eUnregisterNode\x12\x1e.ktms.v1.UnregisterNodeRequest\x1a\x1f.ktms.v1.UnregisterNodeResponseB\x84\x01\n" +
+	"\vcom.ktms.v1B\tNodeProtoP\x01Z-github.com/ai-process/ktms/gen/ktms/v1;ktmsv1\xa2\x02\x03KXX\xaa\x02\aKtms.V1\xca\x02\aKtms\\V1\xe2\x02\x13Ktms\\V1\\GPBMetadata\xea\x02\bKtms::V1b\x06proto3"
 
 var (
-	file_llmproxy_v1_node_proto_rawDescOnce sync.Once
-	file_llmproxy_v1_node_proto_rawDescData []byte
+	file_ktms_v1_node_proto_rawDescOnce sync.Once
+	file_ktms_v1_node_proto_rawDescData []byte
 )
 
-func file_llmproxy_v1_node_proto_rawDescGZIP() []byte {
-	file_llmproxy_v1_node_proto_rawDescOnce.Do(func() {
-		file_llmproxy_v1_node_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_llmproxy_v1_node_proto_rawDesc), len(file_llmproxy_v1_node_proto_rawDesc)))
+func file_ktms_v1_node_proto_rawDescGZIP() []byte {
+	file_ktms_v1_node_proto_rawDescOnce.Do(func() {
+		file_ktms_v1_node_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_ktms_v1_node_proto_rawDesc), len(file_ktms_v1_node_proto_rawDesc)))
 	})
-	return file_llmproxy_v1_node_proto_rawDescData
+	return file_ktms_v1_node_proto_rawDescData
 }
 
-var file_llmproxy_v1_node_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_llmproxy_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
-var file_llmproxy_v1_node_proto_goTypes = []any{
-	(NodeState)(0),                 // 0: llmproxy.v1.NodeState
-	(*NodeResources)(nil),          // 1: llmproxy.v1.NodeResources
-	(*NodeModelSpec)(nil),          // 2: llmproxy.v1.NodeModelSpec
-	(*RegisterNodeRequest)(nil),    // 3: llmproxy.v1.RegisterNodeRequest
-	(*RegisterNodeResponse)(nil),   // 4: llmproxy.v1.RegisterNodeResponse
-	(*ValidateNodeRequest)(nil),    // 5: llmproxy.v1.ValidateNodeRequest
-	(*ValidateNodeResponse)(nil),   // 6: llmproxy.v1.ValidateNodeResponse
-	(*HeartbeatRequest)(nil),       // 7: llmproxy.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),      // 8: llmproxy.v1.HeartbeatResponse
-	(*UnregisterNodeRequest)(nil),  // 9: llmproxy.v1.UnregisterNodeRequest
-	(*UnregisterNodeResponse)(nil), // 10: llmproxy.v1.UnregisterNodeResponse
-	nil,                            // 11: llmproxy.v1.RegisterNodeRequest.TagsEntry
+var file_ktms_v1_node_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_ktms_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_ktms_v1_node_proto_goTypes = []any{
+	(NodeState)(0),                 // 0: ktms.v1.NodeState
+	(*NodeResources)(nil),          // 1: ktms.v1.NodeResources
+	(*NodeModelSpec)(nil),          // 2: ktms.v1.NodeModelSpec
+	(*RegisterNodeRequest)(nil),    // 3: ktms.v1.RegisterNodeRequest
+	(*RegisterNodeResponse)(nil),   // 4: ktms.v1.RegisterNodeResponse
+	(*ValidateNodeRequest)(nil),    // 5: ktms.v1.ValidateNodeRequest
+	(*ValidateNodeResponse)(nil),   // 6: ktms.v1.ValidateNodeResponse
+	(*HeartbeatRequest)(nil),       // 7: ktms.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),      // 8: ktms.v1.HeartbeatResponse
+	(*UnregisterNodeRequest)(nil),  // 9: ktms.v1.UnregisterNodeRequest
+	(*UnregisterNodeResponse)(nil), // 10: ktms.v1.UnregisterNodeResponse
+	nil,                            // 11: ktms.v1.RegisterNodeRequest.TagsEntry
 }
-var file_llmproxy_v1_node_proto_depIdxs = []int32{
-	1,  // 0: llmproxy.v1.RegisterNodeRequest.resources:type_name -> llmproxy.v1.NodeResources
-	2,  // 1: llmproxy.v1.RegisterNodeRequest.models:type_name -> llmproxy.v1.NodeModelSpec
-	11, // 2: llmproxy.v1.RegisterNodeRequest.tags:type_name -> llmproxy.v1.RegisterNodeRequest.TagsEntry
-	2,  // 3: llmproxy.v1.ValidateNodeRequest.models:type_name -> llmproxy.v1.NodeModelSpec
-	1,  // 4: llmproxy.v1.HeartbeatRequest.resources:type_name -> llmproxy.v1.NodeResources
-	2,  // 5: llmproxy.v1.HeartbeatRequest.models:type_name -> llmproxy.v1.NodeModelSpec
-	3,  // 6: llmproxy.v1.NodeRegistryService.RegisterNode:input_type -> llmproxy.v1.RegisterNodeRequest
-	5,  // 7: llmproxy.v1.NodeRegistryService.ValidateNode:input_type -> llmproxy.v1.ValidateNodeRequest
-	7,  // 8: llmproxy.v1.NodeRegistryService.Heartbeat:input_type -> llmproxy.v1.HeartbeatRequest
-	9,  // 9: llmproxy.v1.NodeRegistryService.UnregisterNode:input_type -> llmproxy.v1.UnregisterNodeRequest
-	4,  // 10: llmproxy.v1.NodeRegistryService.RegisterNode:output_type -> llmproxy.v1.RegisterNodeResponse
-	6,  // 11: llmproxy.v1.NodeRegistryService.ValidateNode:output_type -> llmproxy.v1.ValidateNodeResponse
-	8,  // 12: llmproxy.v1.NodeRegistryService.Heartbeat:output_type -> llmproxy.v1.HeartbeatResponse
-	10, // 13: llmproxy.v1.NodeRegistryService.UnregisterNode:output_type -> llmproxy.v1.UnregisterNodeResponse
+var file_ktms_v1_node_proto_depIdxs = []int32{
+	1,  // 0: ktms.v1.RegisterNodeRequest.resources:type_name -> ktms.v1.NodeResources
+	2,  // 1: ktms.v1.RegisterNodeRequest.models:type_name -> ktms.v1.NodeModelSpec
+	11, // 2: ktms.v1.RegisterNodeRequest.tags:type_name -> ktms.v1.RegisterNodeRequest.TagsEntry
+	2,  // 3: ktms.v1.ValidateNodeRequest.models:type_name -> ktms.v1.NodeModelSpec
+	1,  // 4: ktms.v1.HeartbeatRequest.resources:type_name -> ktms.v1.NodeResources
+	2,  // 5: ktms.v1.HeartbeatRequest.models:type_name -> ktms.v1.NodeModelSpec
+	3,  // 6: ktms.v1.NodeRegistryService.RegisterNode:input_type -> ktms.v1.RegisterNodeRequest
+	5,  // 7: ktms.v1.NodeRegistryService.ValidateNode:input_type -> ktms.v1.ValidateNodeRequest
+	7,  // 8: ktms.v1.NodeRegistryService.Heartbeat:input_type -> ktms.v1.HeartbeatRequest
+	9,  // 9: ktms.v1.NodeRegistryService.UnregisterNode:input_type -> ktms.v1.UnregisterNodeRequest
+	4,  // 10: ktms.v1.NodeRegistryService.RegisterNode:output_type -> ktms.v1.RegisterNodeResponse
+	6,  // 11: ktms.v1.NodeRegistryService.ValidateNode:output_type -> ktms.v1.ValidateNodeResponse
+	8,  // 12: ktms.v1.NodeRegistryService.Heartbeat:output_type -> ktms.v1.HeartbeatResponse
+	10, // 13: ktms.v1.NodeRegistryService.UnregisterNode:output_type -> ktms.v1.UnregisterNodeResponse
 	10, // [10:14] is the sub-list for method output_type
 	6,  // [6:10] is the sub-list for method input_type
 	6,  // [6:6] is the sub-list for extension type_name
@@ -932,27 +932,27 @@ var file_llmproxy_v1_node_proto_depIdxs = []int32{
 	0,  // [0:6] is the sub-list for field type_name
 }
 
-func init() { file_llmproxy_v1_node_proto_init() }
-func file_llmproxy_v1_node_proto_init() {
-	if File_llmproxy_v1_node_proto != nil {
+func init() { file_ktms_v1_node_proto_init() }
+func file_ktms_v1_node_proto_init() {
+	if File_ktms_v1_node_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_llmproxy_v1_node_proto_rawDesc), len(file_llmproxy_v1_node_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ktms_v1_node_proto_rawDesc), len(file_ktms_v1_node_proto_rawDesc)),
 			NumEnums:      1,
 			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_llmproxy_v1_node_proto_goTypes,
-		DependencyIndexes: file_llmproxy_v1_node_proto_depIdxs,
-		EnumInfos:         file_llmproxy_v1_node_proto_enumTypes,
-		MessageInfos:      file_llmproxy_v1_node_proto_msgTypes,
+		GoTypes:           file_ktms_v1_node_proto_goTypes,
+		DependencyIndexes: file_ktms_v1_node_proto_depIdxs,
+		EnumInfos:         file_ktms_v1_node_proto_enumTypes,
+		MessageInfos:      file_ktms_v1_node_proto_msgTypes,
 	}.Build()
-	File_llmproxy_v1_node_proto = out.File
-	file_llmproxy_v1_node_proto_goTypes = nil
-	file_llmproxy_v1_node_proto_depIdxs = nil
+	File_ktms_v1_node_proto = out.File
+	file_ktms_v1_node_proto_goTypes = nil
+	file_ktms_v1_node_proto_depIdxs = nil
 }

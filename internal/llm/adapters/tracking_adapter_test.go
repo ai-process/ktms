@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
-	usagev1 "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1"
+	"github.com/ai-process/ktms/internal/llm"
+	usagev1 "github.com/ai-process/ktms/internal/usagereport/gen/usage/v1"
 )
 
 type stubAdapter struct{ resp *llm.Response }

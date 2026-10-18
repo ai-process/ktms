@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# scripts/quickstart.sh - 10-second local onboarding for llm-proxy
+# scripts/quickstart.sh - 10-second local onboarding for KTMS
 
 echo "=========================================================="
-echo "           🚀 Welcome to llm-proxy Quickstart            "
+echo "              🚀 Welcome to KTMS Quickstart               "
 echo "=========================================================="
 echo ""
 
@@ -36,11 +36,11 @@ if [[ ! -f ".env" ]]; then
   RAND_BOOTSTRAP="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | tr -d '\n')"
   
   cat <<EOF > .env
-DATABASE_URL=postgres://llmproxy:llmproxy@db:5432/llmproxy?sslmode=disable
-LLMPROXY_ENCRYPTION_KEYS=1:${RAND_KEY}
+DATABASE_URL=postgres://ktms:ktms@db:5432/ktms?sslmode=disable
+KTMS_ENCRYPTION_KEYS=1:${RAND_KEY}
 BOOTSTRAP_ADMIN_KEY=${RAND_BOOTSTRAP}
 AUTO_SEED=true
-SEED_CLIENT_KEY=llm_dev_default_key
+SEED_CLIENT_KEY=ktms_dev_default_key
 OPENAI_API_KEY=${OPENAI_API_KEY:-}
 GEMINI_API_KEY=${GEMINI_API_KEY:-}
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
@@ -49,11 +49,11 @@ EOF
 fi
 
 # 4. Start Docker Compose
-echo "🐳 Starting llm-proxy, PostgreSQL, and Redis containers..."
+echo "🐳 Starting KTMS, PostgreSQL, and Redis containers..."
 docker compose up -d
 
 # 5. Wait for proxy to become ready
-echo "⏳ Waiting for llm-proxy to become ready on http://localhost:8080/readyz..."
+echo "⏳ Waiting for KTMS to become ready on http://localhost:8080/readyz..."
 ready=0
 for i in {1..30}; do
   if curl -s -f "http://localhost:8080/readyz" >/dev/null 2>&1; then
@@ -64,25 +64,25 @@ for i in {1..30}; do
 done
 
 if [[ "$ready" -ne 1 ]]; then
-  echo "⚠️ Proxy took longer than expected to start. Check logs with: docker compose logs llm-proxy"
+  echo "⚠️ KTMS took longer than expected to start. Check logs with: docker compose logs ktms"
   exit 1
 fi
 
 echo ""
 echo "=========================================================="
-echo "✅ llm-proxy is up and ready to serve!"
+echo "✅ KTMS is up and ready to serve!"
 echo "=========================================================="
 echo ""
 echo "Test your first completion:"
 echo ""
 echo 'curl -s http://localhost:8080/v1/chat/completions \'
-echo '  -H "Authorization: Bearer llm_dev_default_key" \'
+echo '  -H "Authorization: Bearer ktms_dev_default_key" \'
 echo '  -H "Content-Type: application/json" \'
 echo '  -d '\''{"model":"auto","messages":[{"role":"user","content":"Say hi in three words."}]}'\'
 echo ""
 echo "Or using Python:"
 echo ""
 echo 'from openai import OpenAI'
-echo 'client = OpenAI(base_url="http://localhost:8080/v1", api_key="llm_dev_default_key")'
+echo 'client = OpenAI(base_url="http://localhost:8080/v1", api_key="ktms_dev_default_key")'
 echo 'print(client.chat.completions.create(model="auto", messages=[{"role":"user","content":"Say hi!"}]).choices[0].message.content)'
 echo ""

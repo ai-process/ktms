@@ -13,8 +13,8 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/llm/adapters"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/llm/adapters"
 )
 
 const completionJSON = `{"id":"c1","object":"chat.completion","created":1,"model":"gemma","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"hi"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`

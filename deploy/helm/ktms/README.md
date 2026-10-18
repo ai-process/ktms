@@ -1,6 +1,6 @@
-# llm-proxy Helm Chart
+# KTMS Helm Chart
 
-Official Helm chart for deploying [llm-proxy](https://github.com/ai-process/llm-proxy) on Kubernetes.
+Official Helm chart for deploying [KTMS (Keystone: The Model Switchboard)](https://github.com/ai-process/ktms) on Kubernetes.
 
 ## Prerequisites
 
@@ -16,24 +16,24 @@ Official Helm chart for deploying [llm-proxy](https://github.com/ai-process/llm-
 Create a Kubernetes Secret containing database credentials and the encryption keyring:
 
 ```bash
-kubectl create secret generic llm-proxy-secrets \
-  --from-literal=DATABASE_URL="postgres://user:pass@postgres:5432/llmproxy?sslmode=require" \
-  --from-literal=LLMPROXY_ENCRYPTION_KEYS="1:$(head -c 32 /dev/urandom | base64)" \
+kubectl create secret generic ktms-secrets \
+  --from-literal=DATABASE_URL="postgres://user:pass@postgres:5432/ktms?sslmode=require" \
+  --from-literal=KTMS_ENCRYPTION_KEYS="1:$(head -c 32 /dev/urandom | base64)" \
   --from-literal=BOOTSTRAP_ADMIN_KEY="$(head -c 24 /dev/urandom | base64 | tr -d '/+=')"
 ```
 
 ### 2. Install
 
 ```bash
-helm install llm-proxy ./deploy/helm/llm-proxy \
-  --set secrets.existingSecret=llm-proxy-secrets
+helm install ktms ./deploy/helm/ktms \
+  --set secrets.existingSecret=ktms-secrets
 ```
 
 Or install with inline secrets:
 
 ```bash
-helm install llm-proxy ./deploy/helm/llm-proxy \
-  --set secrets.databaseUrl="postgres://user:pass@postgres:5432/llmproxy?sslmode=require" \
+helm install ktms ./deploy/helm/ktms \
+  --set secrets.databaseUrl="postgres://user:pass@postgres:5432/ktms?sslmode=require" \
   --set secrets.encryptionKeys="1:$(head -c 32 /dev/urandom | base64)"
 ```
 
@@ -42,9 +42,9 @@ helm install llm-proxy ./deploy/helm/llm-proxy \
 | Parameter | Description | Default |
 | --- | --- | --- |
 | `replicaCount` | Number of pods to run | `2` |
-| `image.repository` | Container image repository | `coyl/llm-proxy` |
+| `image.repository` | Container image repository | `coyl/ktms` |
 | `image.tag` | Container image tag | `""` (uses `appVersion`) |
-| `secrets.existingSecret` | Name of existing Secret with `DATABASE_URL`, `LLMPROXY_ENCRYPTION_KEYS`, `BOOTSTRAP_ADMIN_KEY`, `REDIS_PASSWORD` | `""` |
+| `secrets.existingSecret` | Name of existing Secret with `DATABASE_URL`, `KTMS_ENCRYPTION_KEYS`, `BOOTSTRAP_ADMIN_KEY`, `REDIS_PASSWORD` | `""` |
 | `config.routingReloadSeconds` | Replicas config poll interval in seconds | `60` |
 | `config.redisAddr` | Optional Redis address for rate limiting | `""` |
 | `config.spendLimitsFailMode` | Spend limit fail mode (`closed` fails safe, `open` allows unmetered; chart defaults to `closed` for production safety) | `closed` |

@@ -22,7 +22,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
 )
 
 // Level ranks a finding. Only a problem makes the doctor exit non-zero.
@@ -353,11 +353,11 @@ func (d *Doctor) checkProxy(ctx context.Context) []Finding {
 			}
 			return []Finding{reach, {"Node key", LevelProblem, fmt.Sprintf("This key belongs to node %q but this agent runs as %q.", m[1], d.Cfg.NodeID), fmt.Sprintf("Run with --node-id %s, or ask for a key minted for %s.", m[1], d.Cfg.NodeID)}}
 		}
-		return []Finding{reach, {"Node key", LevelProblem, "The proxy refused the key for this operation: it is probably not a node key.", "Use a key minted with MintNodeKey (starts with llm_node_)."}}
+		return []Finding{reach, {"Node key", LevelProblem, "The proxy refused the key for this operation: it is probably not a node key.", "Use a key minted with MintNodeKey (starts with ktms_node_)."}}
 	case codes.Unavailable:
 		return []Finding{{"Proxy", LevelProblem, "The proxy is not reachable over gRPC: " + transportHint(d.Cfg.TLS, st.Message()), ""}}
 	case codes.DeadlineExceeded:
-		return []Finding{{"Proxy", LevelProblem, "The proxy did not answer in time.", "Check the network path (a load balancer must pass /llmproxy.v1.NodeRegistryService/*)."}}
+		return []Finding{{"Proxy", LevelProblem, "The proxy did not answer in time.", "Check the network path (a load balancer must pass /ktms.v1.NodeRegistryService/*)."}}
 	}
 	return []Finding{reach, {"Node key", LevelWarn, fmt.Sprintf("Unexpected answer from the proxy (%s): %s", st.Code(), st.Message()), ""}}
 }

@@ -11,10 +11,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/apikeys"
-	"github.com/ai-process/llm-proxy/internal/nodes"
-	"github.com/ai-process/llm-proxy/internal/rediskeys"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/nodes"
+	"github.com/ai-process/ktms/internal/rediskeys"
 )
 
 func specs(ids ...string) []*pb.NodeModelSpec {

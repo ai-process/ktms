@@ -1,13 +1,13 @@
-# llm-proxy
+# KTMS (Keystone: The Model Switchboard)
 
-[![CI](https://github.com/ai-process/llm-proxy/actions/workflows/test.yml/badge.svg)](https://github.com/ai-process/llm-proxy/actions/workflows/test.yml)
-[![Buf](https://github.com/ai-process/llm-proxy/actions/workflows/buf.yml/badge.svg)](https://github.com/ai-process/llm-proxy/actions/workflows/buf.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ai-process/llm-proxy)](https://goreportcard.com/report/github.com/ai-process/llm-proxy)
-[![Release](https://img.shields.io/github/v/release/ai-process/llm-proxy?sort=semver)](https://github.com/ai-process/llm-proxy/releases)
-[![Docker Image](https://img.shields.io/docker/v/coyl/llm-proxy?label=docker%20hub&sort=semver)](https://hub.docker.com/r/coyl/llm-proxy)
+[![CI](https://github.com/ai-process/ktms/actions/workflows/test.yml/badge.svg)](https://github.com/ai-process/ktms/actions/workflows/test.yml)
+[![Buf](https://github.com/ai-process/ktms/actions/workflows/buf.yml/badge.svg)](https://github.com/ai-process/ktms/actions/workflows/buf.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ai-process/ktms)](https://goreportcard.com/report/github.com/ai-process/ktms)
+[![Release](https://img.shields.io/github/v/release/ai-process/ktms?sort=semver)](https://github.com/ai-process/ktms/releases)
+[![Docker Image](https://img.shields.io/docker/v/coyl/ktms?label=docker%20hub&sort=semver)](https://hub.docker.com/r/coyl/ktms)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A self-hosted LLM gateway. Your services talk to one gRPC endpoint; the proxy holds
+A self-hosted LLM gateway and model switchboard. Your services talk to one endpoint; KTMS holds
 the vendor API keys, decides which model answers each request, falls back when a
 vendor is down, enforces rate and spend limits, and records usage.
 
@@ -24,7 +24,7 @@ vendor is down, enforces rate and spend limits, and records usage.
   and get routing, fallbacks and limits for free.
 - **Usage reporting.** Optionally forwards one event per call to a gRPC usage sink.
 - **Small footprint.** Single Go binary: ~64 MB image, ~25–35 MiB idle RAM, ready in under 60 ms.
-- **Web console.** [llm-proxy-admin](#web-console) manages models, rules and keys in the browser.
+- **Web console.** [ktms-admin](#web-console) manages models, rules and keys in the browser.
 
 ## Contents
 
@@ -52,7 +52,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 ## How it works
 
 ```
- your services ──gRPC (Bearer llm_…)──▶ llm-proxy ──▶ OpenAI / Anthropic / Gemini / DeepSeek / TypeSafe
+ your services ──gRPC (Bearer ktms_…)──▶ KTMS ──▶ OpenAI / Anthropic / Gemini / DeepSeek / TypeSafe
                                           │  │
                                  Postgres ┘  └ Redis (limits)      └─▶ usage sink (optional)
                                  config, keys, encrypted vendor keys
@@ -62,8 +62,8 @@ Two gRPC services share port `9090`:
 
 | Service | Purpose | Needed scope |
 | --- | --- | --- |
-| `llmproxy.v1.LLMProxyService` | `GenerateText`, `GenerateTextStream`, `SubmitBatch`, `GetBatch`, `ListBatchResults`, `CancelBatch`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `JudgeStream`, `EvaluateRollouts`, `GetEmbeddings`, `ListModels` | `generate` |
-| `llmproxy.v1.LLMProxyAdminService` | models, rules, vendor keys, API keys, key rotation | `admin` |
+| `ktms.v1.GatewayService` | `GenerateText`, `GenerateTextStream`, `SubmitBatch`, `GetBatch`, `ListBatchResults`, `CancelBatch`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `JudgeStream`, `EvaluateRollouts`, `GetEmbeddings`, `ListModels` | `generate` |
+| `ktms.v1.AdminService` | models, rules, vendor keys, API keys, key rotation | `admin` |
 
 Port `8080` serves the health probes (`/healthz`, `/readyz`) and the
 [OpenAI-compatible HTTP API](#openai-compatible-http-api) under `/v1`. gRPC server
@@ -71,13 +71,13 @@ reflection is on, so `grpcurl` works without the `.proto` files.
 
 ## Quick start (Docker Compose)
 
-The fastest way to run llm-proxy locally is with Docker Compose. With `AUTO_SEED` enabled (default in compose), the proxy automatically initializes default models, routing rules, and a ready-to-use client key (`llm_dev_default_key`).
+The fastest way to run KTMS locally is with Docker Compose. With `AUTO_SEED` enabled (default in compose), the proxy automatically initializes default models, routing rules, and a ready-to-use client key (`ktms_dev_default_key`).
 
 ### 1. Launch the stack
 
 ```bash
-git clone https://github.com/ai-process/llm-proxy.git
-cd llm-proxy
+git clone https://github.com/ai-process/ktms.git
+cd ktms
 
 # Pass your vendor API key (OpenAI, Gemini, or Anthropic)
 OPENAI_API_KEY=sk-... docker compose up -d --build
@@ -97,7 +97,7 @@ You can immediately query the proxy using the OpenAI-compatible HTTP endpoint:
 
 ```bash
 curl -s http://localhost:8080/v1/chat/completions \
-  -H "Authorization: Bearer llm_dev_default_key" \
+  -H "Authorization: Bearer ktms_dev_default_key" \
   -H "Content-Type: application/json" \
   -d '{"model":"auto","messages":[{"role":"user","content":"Say hi in three words."}]}'
 ```
@@ -107,7 +107,7 @@ Or using the official OpenAI Python SDK:
 ```python
 from openai import OpenAI
 
-client = OpenAI(base_url="http://localhost:8080/v1", api_key="llm_dev_default_key")
+client = OpenAI(base_url="http://localhost:8080/v1", api_key="ktms_dev_default_key")
 response = client.chat.completions.create(
     model="auto",
     messages=[{"role": "user", "content": "Say hi in three words."}],
@@ -115,7 +115,7 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
-The response includes observability headers (`X-LLM-Proxy-Vendor`, `X-LLM-Proxy-Rule`, `X-LLM-Proxy-Placement`) indicating which upstream provider served the request.
+The response includes canonical observability headers (`X-KTMS-Vendor`, `X-KTMS-Rule`, `X-KTMS-Placement`) along with backwards-compatible `X-LLM-Proxy-*` headers.
 
 ---
 
@@ -157,11 +157,11 @@ Once real keys exist in production, unset `BOOTSTRAP_ADMIN_KEY`.
 
 ## Resource footprint
 
-Compiled as a single Go binary without a runtime interpreter, `llm-proxy` delivers
+Compiled as a single Go binary without a runtime interpreter, KTMS delivers
 high-throughput LLM gateway capabilities at a fraction of the memory, disk, and
 startup overhead of Python-based gateways like LiteLLM Proxy.
 
-| Metric | `llm-proxy` (Go) | LiteLLM Proxy (Python) | Difference |
+| Metric | KTMS (Go) | LiteLLM Proxy (Python) | Difference |
 |---|---|---|---|
 | Docker image size (uncompressed) | ~64 MB (slim) / ~172 MB (audio) | ~2.2 GB | ~92–97% smaller disk footprint |
 | Idle memory (cgroup memory.current) | ~25–35 MiB | ~400–600 MiB | ~11–24x less idle memory |
@@ -178,15 +178,15 @@ startup overhead of Python-based gateways like LiteLLM Proxy.
 
 Release images are published to Docker Hub for `linux/amd64` and `linux/arm64` in two variants:
 
-- **`coyl/llm-proxy:latest`** (also tagged **`:slim`** or pinned `:<version>` / `:<version>-slim`): default lightweight image (~64 MB uncompressed, ~18 MB download). A clean Alpine container without `ffmpeg`, optimized for text generation, chat, reasoning, embeddings, and OpenAI TTS.
-- **`coyl/llm-proxy:audio`** (or pinned `:<version>-audio`): extended image (~172 MB uncompressed) with `ffmpeg` installed for Gemini speech synthesis (transcoding raw PCM into OGG/Opus voice messages).
+- **`coyl/ktms:latest`** (also tagged **`:slim`** or pinned `:<version>` / `:<version>-slim`): default lightweight image (~64 MB uncompressed, ~18 MB download). A clean Alpine container without `ffmpeg`, optimized for text generation, chat, reasoning, embeddings, and OpenAI TTS.
+- **`coyl/ktms:audio`** (or pinned `:<version>-audio`): extended image (~172 MB uncompressed) with `ffmpeg` installed for Gemini speech synthesis (transcoding raw PCM into OGG/Opus voice messages).
 
 ```bash
-docker pull coyl/llm-proxy:latest      # default lightweight image (~64 MB)
-docker pull coyl/llm-proxy:audio       # with ffmpeg for Gemini speech synthesis (~172 MB)
+docker pull coyl/ktms:latest      # default lightweight image (~64 MB)
+docker pull coyl/ktms:audio       # with ffmpeg for Gemini speech synthesis (~172 MB)
 ```
 
-If Gemini TTS is requested without ffmpeg available (e.g. on the default slim image), the proxy returns gRPC `Codes.Unimplemented` / HTTP 501 Not Implemented: `ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/llm-proxy:audio' container image`. OpenAI TTS produces native Opus directly and works on both variants without ffmpeg.
+If Gemini TTS is requested without ffmpeg available (e.g. on the default slim image), the proxy returns gRPC `Codes.Unimplemented` / HTTP 501 Not Implemented: `ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/ktms:audio' container image`. OpenAI TTS produces native Opus directly and works on both variants without ffmpeg.
 
 The image runs as a non-root user (`appuser`, UID 10001), exposes `8080` (HTTP) and `9090` (gRPC), and is configured entirely through environment variables.
 
@@ -194,28 +194,28 @@ You need a Postgres database (required; 16 is what the compose file uses) and a 
 
 ```bash
 # generate the at-rest encryption keyring once and keep it safe
-export LLMPROXY_ENCRYPTION_KEYS="1:$(head -c 32 /dev/urandom | base64)"
+export KTMS_ENCRYPTION_KEYS="1:$(head -c 32 /dev/urandom | base64)"
 export BOOTSTRAP_ADMIN_KEY="$(head -c 24 /dev/urandom | base64 | tr -d '/+=')"
 
-docker run -d --name llm-proxy \
+docker run -d --name ktms \
   -p 9090:9090 -p 8080:8080 \
-  -e DATABASE_URL='postgres://user:pass@db-host:5432/llmproxy?sslmode=require' \
-  -e LLMPROXY_ENCRYPTION_KEYS \
+  -e DATABASE_URL='postgres://user:pass@db-host:5432/ktms?sslmode=require' \
+  -e KTMS_ENCRYPTION_KEYS \
   -e BOOTSTRAP_ADMIN_KEY \
   -e REDIS_ADDR=redis-host:6379 \
-  coyl/llm-proxy:latest
+  coyl/ktms:latest
 ```
 
 A minimal Compose service for your own stack:
 
 ```yaml
 services:
-  llm-proxy:
-    image: coyl/llm-proxy:latest
+  ktms:
+    image: coyl/ktms:latest
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://llmproxy:${DB_PASSWORD}@db:5432/llmproxy?sslmode=disable
-      LLMPROXY_ENCRYPTION_KEYS: ${LLMPROXY_ENCRYPTION_KEYS}
+      DATABASE_URL: postgres://ktms:${DB_PASSWORD}@db:5432/ktms?sslmode=disable
+      KTMS_ENCRYPTION_KEYS: ${KTMS_ENCRYPTION_KEYS}
       REDIS_ADDR: redis:6379
     ports:
       - "9090:9090"
@@ -228,49 +228,49 @@ Postgres and Redis and pick up configuration changes within `ROUTING_RELOAD_SECO
 
 ### Helm chart (Kubernetes)
 
-An official Helm v3 chart is provided under [`deploy/helm/llm-proxy`](deploy/helm/llm-proxy):
+An official Helm v3 chart is provided under [`deploy/helm/ktms`](deploy/helm/ktms):
 
 ```bash
 # 1. Create a secret with your database URL and encryption keys
-kubectl create secret generic llm-proxy-secrets \
-  --from-literal=DATABASE_URL='postgres://llmproxy:pass@db:5432/llmproxy?sslmode=require' \
-  --from-literal=LLMPROXY_ENCRYPTION_KEYS="1:$(head -c 32 /dev/urandom | base64)" \
+kubectl create secret generic ktms-secrets \
+  --from-literal=DATABASE_URL='postgres://ktms:pass@db:5432/ktms?sslmode=require' \
+  --from-literal=KTMS_ENCRYPTION_KEYS="1:$(head -c 32 /dev/urandom | base64)" \
   --from-literal=BOOTSTRAP_ADMIN_KEY="$(head -c 24 /dev/urandom | base64 | tr -d '/+=')"
 
 # 2. Install the release
-helm install llm-proxy ./deploy/helm/llm-proxy \
-  --set secrets.existingSecret=llm-proxy-secrets \
+helm install ktms ./deploy/helm/ktms \
+  --set secrets.existingSecret=ktms-secrets \
   --set ingress.enabled=true \
   --set "ingress.hosts[0].host=proxy.example.com" \
   --set "ingress.hosts[0].paths[0].path=/" \
   --set "ingress.hosts[0].paths[0].pathType=Prefix"
 ```
 
-The chart supports non-root security context (`appuser:10001`), HorizontalPodAutoscaler, Prometheus Operator `ServiceMonitor`, and separate gRPC Ingress configuration. See [`deploy/helm/llm-proxy/README.md`](deploy/helm/llm-proxy/README.md) for full configuration parameters.
+The chart supports non-root security context (`appuser:10001`), HorizontalPodAutoscaler, Prometheus Operator `ServiceMonitor`, and separate gRPC Ingress configuration. See [`deploy/helm/ktms/README.md`](deploy/helm/ktms/README.md) for full configuration parameters.
 
 ### Building from source
 
 Requires Go 1.26+ (and `ffmpeg` on `PATH` if you use speech).
 
 ```bash
-make build                       # → bin/llm-proxy-server and bin/llm-proxy-node
-export DATABASE_URL=postgres://llmproxy:llmproxy@localhost:5432/llmproxy?sslmode=disable
-export LLMPROXY_ENCRYPTION_KEYS="1:$(head -c 32 /dev/urandom | base64)"
-./bin/llm-proxy-server
+make build                       # → bin/ktms-server and bin/ktms-node
+export DATABASE_URL=postgres://ktms:ktms@localhost:5432/ktms?sslmode=disable
+export KTMS_ENCRYPTION_KEYS="1:$(head -c 32 /dev/urandom | base64)"
+./bin/ktms-server
 ```
 
-Or build the image yourself: `docker build -t llm-proxy .`
+Or build the image yourself: `docker build -t ktms .`
 
 ### Node agent
 
-`bin/llm-proxy-node` runs next to a local inference engine (`ollama`, `vllm`, `tgi`, `llamacpp`),
-registers it with the proxy and sends heartbeats with the loaded models and GPU metrics. It
-authenticates with a node key minted with the `MintNodeKey` admin RPC. The proxy dials the node,
+`bin/ktms-node` runs next to a local inference engine (`ollama`, `vllm`, `tgi`, `llamacpp`),
+registers it with KTMS and sends heartbeats with the loaded models and GPU metrics. It
+authenticates with a node key minted with the `MintNodeKey` admin RPC. KTMS dials the node,
 so the node must be reachable; the agent can do that itself:
 
 ```bash
 export NODE_KEY=...                       # or --node-key-file
-./bin/llm-proxy-node --proxy-addr proxy.example.com:443 --tls \
+./bin/ktms-node --proxy-addr proxy.example.com:443 --tls \
   --engine ollama --expose=cloudflared    # needs the cloudflared binary
 ```
 
@@ -298,7 +298,7 @@ models and registers the node with the allowed ones; it refuses only when none i
 `--cloudflared-path` to pick the binary. `NODE_AUTH_TOKEN` is the bearer the engine itself
 requires, if any.
 
-If a node does not show up or serves badly, `llm-proxy-node doctor` takes the same flags (plus
+If a node does not show up or serves badly, `ktms-node doctor` takes the same flags (plus
 `--model`) and says in plain words what is wrong: engine not answering, model missing or not
 loaded, Ollama on the CPU (an Intel build under Rosetta on Apple Silicon), proxy unreachable or
 needing/not needing `--tls`, a node key that is wrong or bound to another node id, or a tunnel
@@ -315,7 +315,7 @@ Cloudflare tunnel per attempt.
 - **TLS.** The server speaks plaintext gRPC. Terminate TLS in front of it (Envoy, nginx
   with `grpc_pass`, a service mesh, a cloud load balancer) or keep it on a private network.
   Node agents that reach the proxy through that TLS endpoint run with `--tls`.
-- **Back up the encryption keyring.** Without `LLMPROXY_ENCRYPTION_KEYS` the stored vendor
+- **Back up the encryption keyring.** Without `KTMS_ENCRYPTION_KEYS` (or legacy `LLMPROXY_ENCRYPTION_KEYS`) the stored vendor
   keys are unreadable. Treat it like any other root secret.
 - **Mint real keys, then unset `BOOTSTRAP_ADMIN_KEY`.** It is accepted as an implicit admin key.
 - **Run Redis if you want limits.** With `REDIS_ADDR` empty, RPM, token budgets and spend
@@ -334,7 +334,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | Variable | Default | Description |
 | --- | --- | --- |
 | `DATABASE_URL` | – | **Required.** Postgres connection string. |
-| `LLMPROXY_ENCRYPTION_KEYS` | – | **Required.** Versioned keyring `1:<base64 32 bytes>[,2:…]`. The highest version encrypts new writes; all listed versions can decrypt. |
+| `KTMS_ENCRYPTION_KEYS` / `LLMPROXY_ENCRYPTION_KEYS` | – | **Required.** Versioned keyring `1:<base64 32 bytes>[,2:…]`. The highest version encrypts new writes; all listed versions can decrypt. |
 | `GRPC_ADDR` | `:9090` | gRPC listen address (data and admin planes). |
 | `GRPC_MAX_RECV_MSG_SIZE` | `16777216` | Maximum gRPC message receive size in bytes (16MB). |
 | `HTTP_ADDR` | `:8080` | HTTP listen address (health probes and the OpenAI-compatible API). |
@@ -348,7 +348,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `AUTO_MIGRATE` | `true` | Apply embedded migrations at startup (guarded by an advisory lock, safe for rolling deploys). Off means applying `migrations/*.sql` by hand. |
 | `MIGRATE_TIMEOUT` | `3m` | Bound for the whole migration run. |
 | `AUTO_SEED` | `false` | Automatically populate initial models, rules, and client key when starting against an unconfigured database (enabled in docker-compose). |
-| `SEED_CLIENT_KEY` | empty | Pre-configured client API key (e.g. `llm_dev_default_key`) for auto-seed; generated if unset. |
+| `SEED_CLIENT_KEY` | empty | Pre-configured client API key (e.g. `ktms_dev_default_key`) for auto-seed; generated if unset. |
 | `SEED_CLIENT_NAME` | `dev-default` | Name assigned to the auto-seeded client API key. |
 | `SEED_OPENAI_KEY` / `OPENAI_API_KEY` | empty | OpenAI API key to encrypt and register during auto-seeding. |
 | `SEED_GEMINI_KEY` / `GEMINI_API_KEY` | empty | Google Gemini API key to encrypt and register during auto-seeding. |
@@ -373,11 +373,11 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `BOOTSTRAP_ADMIN_KEY` | empty | Implicit admin key for creating the first real key. Unset afterwards. |
 | `USAGE_COLLECTOR_HOST` | empty | `host:port` of a gRPC usage sink. Empty disables reporting. |
 | `USAGE_COLLECTOR_TLS` | `false` | Reach the sink over TLS, e.g. light-tokenmeter on Cloud Run (`host:443`). |
-| `USAGE_PROJECT_ID` | `llm-proxy` | Default project name on usage events. |
+| `USAGE_PROJECT_ID` | `ktms` | Default project name on usage events. |
 | `SENTRY_DSN` | empty | Error reporting; empty disables it. |
 | `SENTRY_ENVIRONMENT` / `SENTRY_RELEASE` | `development` / empty | Sentry metadata. |
 | `SENTRY_ENABLE_TRACING` | `false` | Sentry performance tracing. |
-| `OTEL_SERVICE_NAME` | `llm-proxy` | Service name reported in OpenTelemetry traces. |
+| `OTEL_SERVICE_NAME` | `ktms` | Service name reported in OpenTelemetry traces. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | OTLP gRPC endpoint (`host:port`) for distributed tracing; empty disables remote export. |
 | `CACHE_ENABLED` | `false` | Enable prompt and completion exact-match cache in Redis. |
 | `CACHE_TTL` | `1h` | Expiration time for cached responses. |
@@ -580,14 +580,14 @@ $G "$ADMIN" -d '{"name":"anna-mac","node_id":"anna-mac"}' \
 $G "$ADMIN" -d '{"model":{"id":"gemma4:26b-a4b-it-qat","vendor":"local",
   "efforts":["EFFORT_LOW","EFFORT_MEDIUM"],"capabilities":["no_thinking"],
   "queue_timeout_ms":2000,"enabled":true}}' \
-  proxy.example.com:443 llmproxy.v1.LLMProxyAdminService/UpsertModel
+  proxy.example.com:443 ktms.v1.AdminService/UpsertModel
 ```
 
 **2. Run one command** on the machine (replace the three values), and paste the key when asked.
 The input is hidden and the key is stored in a file only you can read:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ai-process/llm-proxy/vX.Y.Z/scripts/install-node.sh | sh -s -- \
+curl -fsSL https://raw.githubusercontent.com/ai-process/ktms/vX.Y.Z/scripts/install-node.sh | sh -s -- \
   --proxy proxy.example.com --node-id anna-mac --model gemma4:26b-a4b-it-qat
 ```
 
@@ -609,7 +609,7 @@ fails to start is rolled back. Remove everything with the same command plus `--u
 Run the same command with `--doctor`. It says in plain words what is wrong: Ollama not answering,
 the model missing or not loaded, Ollama on the CPU (an Intel build running through Rosetta), the
 proxy unreachable or `--tls` wrong, a key that is wrong or belongs to another node id, or a tunnel
-that cannot come up (outbound port 7844 blocked). Logs are in `~/.llm-proxy-node/logs/`.
+that cannot come up (outbound port 7844 blocked). Logs are in `~/.ktms-node/logs/`.
 
 | Symptom | Cause and fix |
 | --- | --- |
@@ -627,7 +627,7 @@ Installs on Linux need `zstd` (Ubuntu: `sudo apt install zstd`) and a normal log
 
 ## Web console
 
-[**llm-proxy-admin**](https://github.com/ai-process/llm-proxy-admin) is a small web UI for everything in
+[**ktms-admin**](https://github.com/ai-process/ktms-admin) is a small web UI for everything in
 the previous section: models, routing rules, client API keys, vendor credentials and a playground for
 trying a prompt through your rules. It can also show usage and spend per project, user and model when
 paired with [light-tokenmeter](https://github.com/ai-process/light-tokenmeter). Sign-in is Google, limited to
@@ -636,47 +636,47 @@ an e-mail allowlist with wildcards (`*@example.com`).
 ```bash
 # 1. a key for the console
 grpcurl -plaintext -H "authorization: Bearer $BOOTSTRAP_ADMIN_KEY" \
-  -d '{"name":"console","scopes":["admin"]}' localhost:9090 llmproxy.v1.LLMProxyAdminService/MintAPIKey
+  -d '{"name":"console","scopes":["admin"]}' localhost:9090 ktms.v1.AdminService/MintAPIKey
 
 # 2. run it (see its README for the Google OAuth setup)
 docker run -d -p 8081:8080 \
   -e PUBLIC_URL=https://admin.example.com \
   -e GOOGLE_CLIENT_ID=… -e GOOGLE_CLIENT_SECRET=… -e ALLOWED_EMAILS='*@example.com' \
   -e SESSION_SECRET="$(openssl rand -base64 36)" \
-  -e LLM_PROXY_ADDR=llm-proxy:9090 -e LLM_PROXY_ADMIN_KEY=llm_… \
-  coyl/llm-proxy-admin:latest
+  -e KTMS_ADDR=ktms:9090 -e KTMS_ADMIN_KEY=ktms_… \
+  coyl/ktms-admin:latest
 ```
 
 ## Calling the proxy
 
-Authenticate every call with `authorization: Bearer llm_…` gRPC metadata.
+Authenticate every call with `authorization: Bearer ktms_…` (legacy `llm_…` keys supported) gRPC metadata.
 
 You can import the committed Go stubs directly from this repository:
 ```bash
-go get github.com/ai-process/llm-proxy/gen/llmproxy/v1
+go get github.com/ai-process/ktms/gen/ktms/v1
 ```
 
 ### Consuming via Buf Schema Registry (BSR)
 
-The gRPC API is published to the [Buf Schema Registry](https://buf.build/ai-process/llm-proxy) (`buf.build/ai-process/llm-proxy`). Pre-generated client SDKs are available across languages:
+The gRPC API is published to the [Buf Schema Registry](https://buf.build/ai-process/ktms) (`buf.build/ai-process/ktms`). Pre-generated client SDKs are available across languages:
 
 - **Go (BSR):**
   ```bash
-  go get buf.build/gen/go/ai-process/llm-proxy/protocolbuffers/go
-  go get buf.build/gen/go/ai-process/llm-proxy/grpc/go
+  go get buf.build/gen/go/ai-process/ktms/protocolbuffers/go
+  go get buf.build/gen/go/ai-process/ktms/grpc/go
   ```
 - **TypeScript / Node / Web (Connect / gRPC-Web):**
   Configure npm for the `@buf` registry, then install the packages:
   ```bash
   npm config set @buf:registry https://buf.build/gen/npm/v1/
-  npm install @buf/ai-process_llm-proxy.bufbuild_es @connectrpc/connect
+  npm install @buf/ai-process_ktms.bufbuild_es @connectrpc/connect
   ```
 - **Python:**
   Install from the Buf Python registry:
   ```bash
   pip install --extra-index-url https://buf.build/gen/python \
-    ai-process-llm-proxy-protocolbuffers-python \
-    ai-process-llm-proxy-grpc-python
+    ai-process-ktms-protocolbuffers-python \
+    ai-process-ktms-grpc-python
   ```
 
 ### Local Client Generation
@@ -894,11 +894,14 @@ curl -s localhost:8080/v1/chat/completions \
 | `POST /v1/judge` | `Judge` | Protobuf JSON of `JudgeRequest` / `JudgeResponse`. |
 | `GET /v1/models`, `GET /v1/models/{id}` | `ListModels` | Only models the key holds a vendor credential for. |
 
-Authentication is `Authorization: Bearer llm_…`. Response headers provide full observability:
-- `X-LLM-Proxy-Vendor` and `X-LLM-Proxy-Rule`: vendor and matching rule that served the request.
-- `X-LLM-Proxy-Placement`: infrastructure placement (`nodes_first`, `nodes_only`, `cloud_first`, `cloud_only`).
-- `X-LLM-Proxy-Route-Mode`: routing mechanism (`direct`, `override`, `auto-judge`, `auto-default`, `auto-effort`).
-- `X-LLM-Proxy-Judge-Score` and `X-LLM-Proxy-Judge-Model`: evaluation confidence and judge model ID when judge evaluates task complexity.
+Authentication is `Authorization: Bearer ktms_…` (legacy `llm_…` keys are also supported). Response headers provide full observability:
+- `X-KTMS-Vendor` and `X-KTMS-Rule`: vendor and matching rule that served the request.
+- `X-KTMS-Placement`: infrastructure placement (`nodes_first`, `nodes_only`, `cloud_first`, `cloud_only`).
+- `X-KTMS-Route-Mode`: routing mechanism (`direct`, `override`, `auto-judge`, `auto-default`, `auto-effort`).
+- `X-KTMS-Judge-Score` and `X-KTMS-Judge-Model`: evaluation confidence and judge model ID when judge evaluates task complexity.
+
+> [!NOTE]
+> **Backwards Compatibility**: All legacy `X-LLM-Proxy-*` response headers are dual-emitted alongside `X-KTMS-*` with standard RFC 8594 `Deprecation: true`, `Sunset`, and `Warning` headers to provide seamless zero-downtime migration for existing clients.
 
 ### Choosing a model and placement
 
@@ -919,7 +922,7 @@ The `model` parameter supports smart auto-routing and infrastructure placement:
 - `cloud_only`: Excludes self-hosted nodes completely.
 
 Placement precedence:
-1. `X-LLM-Proxy-Placement` HTTP header
+1. `X-KTMS-Placement` (or legacy `X-LLM-Proxy-Placement`) HTTP header
 2. Request body `"placement": "..."`
 3. Model suffix (e.g. `model: "auto:nodes-only"`)
 4. Default: `nodes_first`
@@ -1099,17 +1102,17 @@ Pull requests are welcome; read [`CONTRIBUTING.md`](CONTRIBUTING.md) first.
 ### Releasing
 
 Push a `vX.Y.Z` tag (the `v` matters: it makes the tag a valid Go module version, so
-`go install github.com/ai-process/llm-proxy/cmd/node-agent@vX.Y.Z` works):
+`go install github.com/ai-process/ktms/cmd/node-agent@vX.Y.Z` works):
 
 ```bash
 git tag v0.10.0 && git push origin v0.10.0
 ```
 
-- **GitHub Release** (GoReleaser, `.github/workflows/release.yml`): `llm-proxy-node` and
-  `llm-proxy-server` archives for darwin and linux, amd64 and arm64, plus `checksums.txt`.
-- **Docker Hub** (`.github/workflows/docker-publish.yml`): multi-arch `coyl/llm-proxy` tagged as
+- **GitHub Release** (GoReleaser, `.github/workflows/release.yml`): `ktms-node` and
+  `ktms-server` archives for darwin and linux, amd64 and arm64, plus `checksums.txt`.
+- **Docker Hub** (`.github/workflows/docker-publish.yml`): multi-arch `coyl/ktms` tagged as
   `:<tag>`, `:<tag>-slim`, `:latest`, `:slim` (default lightweight Alpine without ffmpeg),
-  and `:<tag>-audio`, `:audio` (with ffmpeg), plus `coyl/llm-proxy-node:<tag>` (node agent).
+  and `:<tag>-audio`, `:audio` (with ffmpeg), plus `coyl/ktms-node:<tag>` (node agent).
   The repository needs the secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD` (an access token).
 - **Optional, off until their secrets exist:** macOS signing and notarization
   (`MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_ISSUER_ID`, `MACOS_NOTARY_KEY_ID`,

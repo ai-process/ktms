@@ -2,9 +2,9 @@
 // versions:
 // 	protoc-gen-go v1.36.12
 // 	protoc        (unknown)
-// source: llmproxy/v1/admin.proto
+// source: ktms/v1/admin.proto
 
-package llmproxyv1
+package ktmsv1
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -29,7 +29,7 @@ type ModelSpec struct {
 	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                                     // unique registry id, referenced by rules and model_override
 	Vendor          string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`                                             // openai | anthropic | google | deepseek | ollama | local | typesafe | groq | mistral | azure | bedrock
 	Endpoint        string                 `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"`                                         // optional base-URL override
-	Efforts         []Effort               `protobuf:"varint,4,rep,packed,name=efforts,proto3,enum=llmproxy.v1.Effort" json:"efforts,omitempty"`           // tiers this model may serve
+	Efforts         []Effort               `protobuf:"varint,4,rep,packed,name=efforts,proto3,enum=ktms.v1.Effort" json:"efforts,omitempty"`               // tiers this model may serve
 	Capabilities    []string               `protobuf:"bytes,5,rep,name=capabilities,proto3" json:"capabilities,omitempty"`                                 // e.g. "google_search"
 	Rpm             int32                  `protobuf:"varint,6,opt,name=rpm,proto3" json:"rpm,omitempty"`                                                  // per client key per minute, 0 = unlimited
 	PriceInPerMtok  float64                `protobuf:"fixed64,7,opt,name=price_in_per_mtok,json=priceInPerMtok,proto3" json:"price_in_per_mtok,omitempty"` // standard (off-peak) rate
@@ -52,7 +52,7 @@ type ModelSpec struct {
 
 func (x *ModelSpec) Reset() {
 	*x = ModelSpec{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[0]
+	mi := &file_ktms_v1_admin_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -64,7 +64,7 @@ func (x *ModelSpec) String() string {
 func (*ModelSpec) ProtoMessage() {}
 
 func (x *ModelSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[0]
+	mi := &file_ktms_v1_admin_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -77,7 +77,7 @@ func (x *ModelSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelSpec.ProtoReflect.Descriptor instead.
 func (*ModelSpec) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{0}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *ModelSpec) GetId() string {
@@ -210,7 +210,7 @@ type RuleSpec struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Name             string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                                                                       // unique, logged and put in usage meta
 	Priority         int32                  `protobuf:"varint,2,opt,name=priority,proto3" json:"priority,omitempty"`                                                                              // unique; higher wins, first match takes the request
-	Effort           Effort                 `protobuf:"varint,3,opt,name=effort,proto3,enum=llmproxy.v1.Effort" json:"effort,omitempty"`                                                          // EFFORT_UNSPECIFIED = matches any effort
+	Effort           Effort                 `protobuf:"varint,3,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"`                                                              // EFFORT_UNSPECIFIED = matches any effort
 	Attributes       map[string]string      `protobuf:"bytes,4,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // equality predicates over request attributes
 	Use              []string               `protobuf:"bytes,5,rep,name=use,proto3" json:"use,omitempty"`                                                                                         // ordered fallback chain of model ids, cheaper-first
 	Enabled          bool                   `protobuf:"varint,6,opt,name=enabled,proto3" json:"enabled,omitempty"`
@@ -224,7 +224,7 @@ type RuleSpec struct {
 
 func (x *RuleSpec) Reset() {
 	*x = RuleSpec{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[1]
+	mi := &file_ktms_v1_admin_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -236,7 +236,7 @@ func (x *RuleSpec) String() string {
 func (*RuleSpec) ProtoMessage() {}
 
 func (x *RuleSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[1]
+	mi := &file_ktms_v1_admin_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -249,7 +249,7 @@ func (x *RuleSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuleSpec.ProtoReflect.Descriptor instead.
 func (*RuleSpec) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{1}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *RuleSpec) GetName() string {
@@ -331,7 +331,7 @@ type UpsertModelRequest struct {
 
 func (x *UpsertModelRequest) Reset() {
 	*x = UpsertModelRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[2]
+	mi := &file_ktms_v1_admin_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -343,7 +343,7 @@ func (x *UpsertModelRequest) String() string {
 func (*UpsertModelRequest) ProtoMessage() {}
 
 func (x *UpsertModelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[2]
+	mi := &file_ktms_v1_admin_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -356,7 +356,7 @@ func (x *UpsertModelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertModelRequest.ProtoReflect.Descriptor instead.
 func (*UpsertModelRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{2}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *UpsertModelRequest) GetModel() *ModelSpec {
@@ -374,7 +374,7 @@ type UpsertModelResponse struct {
 
 func (x *UpsertModelResponse) Reset() {
 	*x = UpsertModelResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[3]
+	mi := &file_ktms_v1_admin_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -386,7 +386,7 @@ func (x *UpsertModelResponse) String() string {
 func (*UpsertModelResponse) ProtoMessage() {}
 
 func (x *UpsertModelResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[3]
+	mi := &file_ktms_v1_admin_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -399,7 +399,7 @@ func (x *UpsertModelResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertModelResponse.ProtoReflect.Descriptor instead.
 func (*UpsertModelResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{3}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{3}
 }
 
 type DeleteModelRequest struct {
@@ -411,7 +411,7 @@ type DeleteModelRequest struct {
 
 func (x *DeleteModelRequest) Reset() {
 	*x = DeleteModelRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[4]
+	mi := &file_ktms_v1_admin_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -423,7 +423,7 @@ func (x *DeleteModelRequest) String() string {
 func (*DeleteModelRequest) ProtoMessage() {}
 
 func (x *DeleteModelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[4]
+	mi := &file_ktms_v1_admin_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -436,7 +436,7 @@ func (x *DeleteModelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteModelRequest.ProtoReflect.Descriptor instead.
 func (*DeleteModelRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{4}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *DeleteModelRequest) GetId() string {
@@ -454,7 +454,7 @@ type DeleteModelResponse struct {
 
 func (x *DeleteModelResponse) Reset() {
 	*x = DeleteModelResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[5]
+	mi := &file_ktms_v1_admin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -466,7 +466,7 @@ func (x *DeleteModelResponse) String() string {
 func (*DeleteModelResponse) ProtoMessage() {}
 
 func (x *DeleteModelResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[5]
+	mi := &file_ktms_v1_admin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -479,7 +479,7 @@ func (x *DeleteModelResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteModelResponse.ProtoReflect.Descriptor instead.
 func (*DeleteModelResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{5}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{5}
 }
 
 // ReplaceRules swaps the whole rule set transactionally. Rules change
@@ -493,7 +493,7 @@ type ReplaceRulesRequest struct {
 
 func (x *ReplaceRulesRequest) Reset() {
 	*x = ReplaceRulesRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[6]
+	mi := &file_ktms_v1_admin_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -505,7 +505,7 @@ func (x *ReplaceRulesRequest) String() string {
 func (*ReplaceRulesRequest) ProtoMessage() {}
 
 func (x *ReplaceRulesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[6]
+	mi := &file_ktms_v1_admin_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -518,7 +518,7 @@ func (x *ReplaceRulesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplaceRulesRequest.ProtoReflect.Descriptor instead.
 func (*ReplaceRulesRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{6}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ReplaceRulesRequest) GetRules() []*RuleSpec {
@@ -536,7 +536,7 @@ type ReplaceRulesResponse struct {
 
 func (x *ReplaceRulesResponse) Reset() {
 	*x = ReplaceRulesResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[7]
+	mi := &file_ktms_v1_admin_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -548,7 +548,7 @@ func (x *ReplaceRulesResponse) String() string {
 func (*ReplaceRulesResponse) ProtoMessage() {}
 
 func (x *ReplaceRulesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[7]
+	mi := &file_ktms_v1_admin_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -561,7 +561,7 @@ func (x *ReplaceRulesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplaceRulesResponse.ProtoReflect.Descriptor instead.
 func (*ReplaceRulesResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{7}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{7}
 }
 
 type SetVendorKeyRequest struct {
@@ -575,7 +575,7 @@ type SetVendorKeyRequest struct {
 
 func (x *SetVendorKeyRequest) Reset() {
 	*x = SetVendorKeyRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[8]
+	mi := &file_ktms_v1_admin_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -587,7 +587,7 @@ func (x *SetVendorKeyRequest) String() string {
 func (*SetVendorKeyRequest) ProtoMessage() {}
 
 func (x *SetVendorKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[8]
+	mi := &file_ktms_v1_admin_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -600,7 +600,7 @@ func (x *SetVendorKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetVendorKeyRequest.ProtoReflect.Descriptor instead.
 func (*SetVendorKeyRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{8}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SetVendorKeyRequest) GetApiKeyName() string {
@@ -632,7 +632,7 @@ type SetVendorKeyResponse struct {
 
 func (x *SetVendorKeyResponse) Reset() {
 	*x = SetVendorKeyResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[9]
+	mi := &file_ktms_v1_admin_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -644,7 +644,7 @@ func (x *SetVendorKeyResponse) String() string {
 func (*SetVendorKeyResponse) ProtoMessage() {}
 
 func (x *SetVendorKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[9]
+	mi := &file_ktms_v1_admin_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -657,7 +657,7 @@ func (x *SetVendorKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetVendorKeyResponse.ProtoReflect.Descriptor instead.
 func (*SetVendorKeyResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{9}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{9}
 }
 
 type DeleteVendorKeyRequest struct {
@@ -670,7 +670,7 @@ type DeleteVendorKeyRequest struct {
 
 func (x *DeleteVendorKeyRequest) Reset() {
 	*x = DeleteVendorKeyRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[10]
+	mi := &file_ktms_v1_admin_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -682,7 +682,7 @@ func (x *DeleteVendorKeyRequest) String() string {
 func (*DeleteVendorKeyRequest) ProtoMessage() {}
 
 func (x *DeleteVendorKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[10]
+	mi := &file_ktms_v1_admin_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -695,7 +695,7 @@ func (x *DeleteVendorKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteVendorKeyRequest.ProtoReflect.Descriptor instead.
 func (*DeleteVendorKeyRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{10}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DeleteVendorKeyRequest) GetApiKeyName() string {
@@ -720,7 +720,7 @@ type DeleteVendorKeyResponse struct {
 
 func (x *DeleteVendorKeyResponse) Reset() {
 	*x = DeleteVendorKeyResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[11]
+	mi := &file_ktms_v1_admin_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -732,7 +732,7 @@ func (x *DeleteVendorKeyResponse) String() string {
 func (*DeleteVendorKeyResponse) ProtoMessage() {}
 
 func (x *DeleteVendorKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[11]
+	mi := &file_ktms_v1_admin_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -745,7 +745,7 @@ func (x *DeleteVendorKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteVendorKeyResponse.ProtoReflect.Descriptor instead.
 func (*DeleteVendorKeyResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{11}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{11}
 }
 
 type VendorKeyInfo struct {
@@ -760,7 +760,7 @@ type VendorKeyInfo struct {
 
 func (x *VendorKeyInfo) Reset() {
 	*x = VendorKeyInfo{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[12]
+	mi := &file_ktms_v1_admin_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -772,7 +772,7 @@ func (x *VendorKeyInfo) String() string {
 func (*VendorKeyInfo) ProtoMessage() {}
 
 func (x *VendorKeyInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[12]
+	mi := &file_ktms_v1_admin_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -785,7 +785,7 @@ func (x *VendorKeyInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VendorKeyInfo.ProtoReflect.Descriptor instead.
 func (*VendorKeyInfo) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{12}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *VendorKeyInfo) GetApiKeyName() string {
@@ -824,7 +824,7 @@ type GetConfigRequest struct {
 
 func (x *GetConfigRequest) Reset() {
 	*x = GetConfigRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[13]
+	mi := &file_ktms_v1_admin_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -836,7 +836,7 @@ func (x *GetConfigRequest) String() string {
 func (*GetConfigRequest) ProtoMessage() {}
 
 func (x *GetConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[13]
+	mi := &file_ktms_v1_admin_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -849,7 +849,7 @@ func (x *GetConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigRequest.ProtoReflect.Descriptor instead.
 func (*GetConfigRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{13}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{13}
 }
 
 type GetConfigResponse struct {
@@ -866,7 +866,7 @@ type GetConfigResponse struct {
 
 func (x *GetConfigResponse) Reset() {
 	*x = GetConfigResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[14]
+	mi := &file_ktms_v1_admin_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -878,7 +878,7 @@ func (x *GetConfigResponse) String() string {
 func (*GetConfigResponse) ProtoMessage() {}
 
 func (x *GetConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[14]
+	mi := &file_ktms_v1_admin_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -891,7 +891,7 @@ func (x *GetConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConfigResponse.ProtoReflect.Descriptor instead.
 func (*GetConfigResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{14}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetConfigResponse) GetModels() []*ModelSpec {
@@ -946,7 +946,7 @@ type MintAPIKeyRequest struct {
 
 func (x *MintAPIKeyRequest) Reset() {
 	*x = MintAPIKeyRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[15]
+	mi := &file_ktms_v1_admin_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -958,7 +958,7 @@ func (x *MintAPIKeyRequest) String() string {
 func (*MintAPIKeyRequest) ProtoMessage() {}
 
 func (x *MintAPIKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[15]
+	mi := &file_ktms_v1_admin_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -971,7 +971,7 @@ func (x *MintAPIKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MintAPIKeyRequest.ProtoReflect.Descriptor instead.
 func (*MintAPIKeyRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{15}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *MintAPIKeyRequest) GetName() string {
@@ -997,7 +997,7 @@ type MintAPIKeyResponse struct {
 
 func (x *MintAPIKeyResponse) Reset() {
 	*x = MintAPIKeyResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[16]
+	mi := &file_ktms_v1_admin_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1009,7 +1009,7 @@ func (x *MintAPIKeyResponse) String() string {
 func (*MintAPIKeyResponse) ProtoMessage() {}
 
 func (x *MintAPIKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[16]
+	mi := &file_ktms_v1_admin_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1022,7 +1022,7 @@ func (x *MintAPIKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MintAPIKeyResponse.ProtoReflect.Descriptor instead.
 func (*MintAPIKeyResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{16}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *MintAPIKeyResponse) GetPlainKey() string {
@@ -1041,7 +1041,7 @@ type RevokeAPIKeyRequest struct {
 
 func (x *RevokeAPIKeyRequest) Reset() {
 	*x = RevokeAPIKeyRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[17]
+	mi := &file_ktms_v1_admin_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1053,7 +1053,7 @@ func (x *RevokeAPIKeyRequest) String() string {
 func (*RevokeAPIKeyRequest) ProtoMessage() {}
 
 func (x *RevokeAPIKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[17]
+	mi := &file_ktms_v1_admin_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1066,7 +1066,7 @@ func (x *RevokeAPIKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeAPIKeyRequest.ProtoReflect.Descriptor instead.
 func (*RevokeAPIKeyRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{17}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *RevokeAPIKeyRequest) GetName() string {
@@ -1084,7 +1084,7 @@ type RevokeAPIKeyResponse struct {
 
 func (x *RevokeAPIKeyResponse) Reset() {
 	*x = RevokeAPIKeyResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[18]
+	mi := &file_ktms_v1_admin_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1096,7 +1096,7 @@ func (x *RevokeAPIKeyResponse) String() string {
 func (*RevokeAPIKeyResponse) ProtoMessage() {}
 
 func (x *RevokeAPIKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[18]
+	mi := &file_ktms_v1_admin_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1109,7 +1109,7 @@ func (x *RevokeAPIKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeAPIKeyResponse.ProtoReflect.Descriptor instead.
 func (*RevokeAPIKeyResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{18}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{18}
 }
 
 type ListAPIKeysRequest struct {
@@ -1120,7 +1120,7 @@ type ListAPIKeysRequest struct {
 
 func (x *ListAPIKeysRequest) Reset() {
 	*x = ListAPIKeysRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[19]
+	mi := &file_ktms_v1_admin_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1132,7 +1132,7 @@ func (x *ListAPIKeysRequest) String() string {
 func (*ListAPIKeysRequest) ProtoMessage() {}
 
 func (x *ListAPIKeysRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[19]
+	mi := &file_ktms_v1_admin_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1145,7 +1145,7 @@ func (x *ListAPIKeysRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAPIKeysRequest.ProtoReflect.Descriptor instead.
 func (*ListAPIKeysRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{19}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{19}
 }
 
 type APIKeyInfo struct {
@@ -1160,7 +1160,7 @@ type APIKeyInfo struct {
 
 func (x *APIKeyInfo) Reset() {
 	*x = APIKeyInfo{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[20]
+	mi := &file_ktms_v1_admin_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1172,7 +1172,7 @@ func (x *APIKeyInfo) String() string {
 func (*APIKeyInfo) ProtoMessage() {}
 
 func (x *APIKeyInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[20]
+	mi := &file_ktms_v1_admin_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1185,7 +1185,7 @@ func (x *APIKeyInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use APIKeyInfo.ProtoReflect.Descriptor instead.
 func (*APIKeyInfo) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{20}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *APIKeyInfo) GetName() string {
@@ -1225,7 +1225,7 @@ type ListAPIKeysResponse struct {
 
 func (x *ListAPIKeysResponse) Reset() {
 	*x = ListAPIKeysResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[21]
+	mi := &file_ktms_v1_admin_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1237,7 +1237,7 @@ func (x *ListAPIKeysResponse) String() string {
 func (*ListAPIKeysResponse) ProtoMessage() {}
 
 func (x *ListAPIKeysResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[21]
+	mi := &file_ktms_v1_admin_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1250,7 +1250,7 @@ func (x *ListAPIKeysResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAPIKeysResponse.ProtoReflect.Descriptor instead.
 func (*ListAPIKeysResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{21}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ListAPIKeysResponse) GetKeys() []*APIKeyInfo {
@@ -1268,7 +1268,7 @@ type RotateEncryptionRequest struct {
 
 func (x *RotateEncryptionRequest) Reset() {
 	*x = RotateEncryptionRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[22]
+	mi := &file_ktms_v1_admin_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1280,7 +1280,7 @@ func (x *RotateEncryptionRequest) String() string {
 func (*RotateEncryptionRequest) ProtoMessage() {}
 
 func (x *RotateEncryptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[22]
+	mi := &file_ktms_v1_admin_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1293,7 +1293,7 @@ func (x *RotateEncryptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RotateEncryptionRequest.ProtoReflect.Descriptor instead.
 func (*RotateEncryptionRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{22}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{22}
 }
 
 type RotateEncryptionResponse struct {
@@ -1305,7 +1305,7 @@ type RotateEncryptionResponse struct {
 
 func (x *RotateEncryptionResponse) Reset() {
 	*x = RotateEncryptionResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[23]
+	mi := &file_ktms_v1_admin_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1317,7 +1317,7 @@ func (x *RotateEncryptionResponse) String() string {
 func (*RotateEncryptionResponse) ProtoMessage() {}
 
 func (x *RotateEncryptionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[23]
+	mi := &file_ktms_v1_admin_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1330,7 +1330,7 @@ func (x *RotateEncryptionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RotateEncryptionResponse.ProtoReflect.Descriptor instead.
 func (*RotateEncryptionResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{23}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *RotateEncryptionResponse) GetReencrypted() int32 {
@@ -1354,7 +1354,7 @@ type MintNodeKeyRequest struct {
 
 func (x *MintNodeKeyRequest) Reset() {
 	*x = MintNodeKeyRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[24]
+	mi := &file_ktms_v1_admin_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1366,7 +1366,7 @@ func (x *MintNodeKeyRequest) String() string {
 func (*MintNodeKeyRequest) ProtoMessage() {}
 
 func (x *MintNodeKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[24]
+	mi := &file_ktms_v1_admin_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1379,7 +1379,7 @@ func (x *MintNodeKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MintNodeKeyRequest.ProtoReflect.Descriptor instead.
 func (*MintNodeKeyRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{24}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *MintNodeKeyRequest) GetName() string {
@@ -1434,7 +1434,7 @@ type MintNodeKeyResponse struct {
 
 func (x *MintNodeKeyResponse) Reset() {
 	*x = MintNodeKeyResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[25]
+	mi := &file_ktms_v1_admin_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1446,7 +1446,7 @@ func (x *MintNodeKeyResponse) String() string {
 func (*MintNodeKeyResponse) ProtoMessage() {}
 
 func (x *MintNodeKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[25]
+	mi := &file_ktms_v1_admin_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1459,7 +1459,7 @@ func (x *MintNodeKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MintNodeKeyResponse.ProtoReflect.Descriptor instead.
 func (*MintNodeKeyResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{25}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *MintNodeKeyResponse) GetId() int64 {
@@ -1485,7 +1485,7 @@ type RevokeNodeKeyRequest struct {
 
 func (x *RevokeNodeKeyRequest) Reset() {
 	*x = RevokeNodeKeyRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[26]
+	mi := &file_ktms_v1_admin_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1497,7 +1497,7 @@ func (x *RevokeNodeKeyRequest) String() string {
 func (*RevokeNodeKeyRequest) ProtoMessage() {}
 
 func (x *RevokeNodeKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[26]
+	mi := &file_ktms_v1_admin_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1510,7 +1510,7 @@ func (x *RevokeNodeKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeNodeKeyRequest.ProtoReflect.Descriptor instead.
 func (*RevokeNodeKeyRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{26}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *RevokeNodeKeyRequest) GetId() int64 {
@@ -1528,7 +1528,7 @@ type RevokeNodeKeyResponse struct {
 
 func (x *RevokeNodeKeyResponse) Reset() {
 	*x = RevokeNodeKeyResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[27]
+	mi := &file_ktms_v1_admin_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1540,7 +1540,7 @@ func (x *RevokeNodeKeyResponse) String() string {
 func (*RevokeNodeKeyResponse) ProtoMessage() {}
 
 func (x *RevokeNodeKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[27]
+	mi := &file_ktms_v1_admin_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1553,7 +1553,7 @@ func (x *RevokeNodeKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeNodeKeyResponse.ProtoReflect.Descriptor instead.
 func (*RevokeNodeKeyResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{27}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{27}
 }
 
 type ListNodeKeysRequest struct {
@@ -1564,7 +1564,7 @@ type ListNodeKeysRequest struct {
 
 func (x *ListNodeKeysRequest) Reset() {
 	*x = ListNodeKeysRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[28]
+	mi := &file_ktms_v1_admin_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1576,7 +1576,7 @@ func (x *ListNodeKeysRequest) String() string {
 func (*ListNodeKeysRequest) ProtoMessage() {}
 
 func (x *ListNodeKeysRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[28]
+	mi := &file_ktms_v1_admin_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1589,7 +1589,7 @@ func (x *ListNodeKeysRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNodeKeysRequest.ProtoReflect.Descriptor instead.
 func (*ListNodeKeysRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{28}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{28}
 }
 
 type NodeKeyInfo struct {
@@ -1609,7 +1609,7 @@ type NodeKeyInfo struct {
 
 func (x *NodeKeyInfo) Reset() {
 	*x = NodeKeyInfo{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[29]
+	mi := &file_ktms_v1_admin_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1621,7 +1621,7 @@ func (x *NodeKeyInfo) String() string {
 func (*NodeKeyInfo) ProtoMessage() {}
 
 func (x *NodeKeyInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[29]
+	mi := &file_ktms_v1_admin_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1634,7 +1634,7 @@ func (x *NodeKeyInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeKeyInfo.ProtoReflect.Descriptor instead.
 func (*NodeKeyInfo) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{29}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *NodeKeyInfo) GetId() int64 {
@@ -1709,7 +1709,7 @@ type ListNodeKeysResponse struct {
 
 func (x *ListNodeKeysResponse) Reset() {
 	*x = ListNodeKeysResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[30]
+	mi := &file_ktms_v1_admin_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1721,7 +1721,7 @@ func (x *ListNodeKeysResponse) String() string {
 func (*ListNodeKeysResponse) ProtoMessage() {}
 
 func (x *ListNodeKeysResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[30]
+	mi := &file_ktms_v1_admin_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1734,7 +1734,7 @@ func (x *ListNodeKeysResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNodeKeysResponse.ProtoReflect.Descriptor instead.
 func (*ListNodeKeysResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{30}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ListNodeKeysResponse) GetKeys() []*NodeKeyInfo {
@@ -1752,7 +1752,7 @@ type ListNodesRequest struct {
 
 func (x *ListNodesRequest) Reset() {
 	*x = ListNodesRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[31]
+	mi := &file_ktms_v1_admin_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1764,7 +1764,7 @@ func (x *ListNodesRequest) String() string {
 func (*ListNodesRequest) ProtoMessage() {}
 
 func (x *ListNodesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[31]
+	mi := &file_ktms_v1_admin_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1777,7 +1777,7 @@ func (x *ListNodesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNodesRequest.ProtoReflect.Descriptor instead.
 func (*ListNodesRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{31}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{31}
 }
 
 type NodeInfo struct {
@@ -1806,7 +1806,7 @@ type NodeInfo struct {
 
 func (x *NodeInfo) Reset() {
 	*x = NodeInfo{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[32]
+	mi := &file_ktms_v1_admin_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1818,7 +1818,7 @@ func (x *NodeInfo) String() string {
 func (*NodeInfo) ProtoMessage() {}
 
 func (x *NodeInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[32]
+	mi := &file_ktms_v1_admin_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1831,7 +1831,7 @@ func (x *NodeInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeInfo.ProtoReflect.Descriptor instead.
 func (*NodeInfo) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{32}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *NodeInfo) GetNodeId() string {
@@ -1969,7 +1969,7 @@ type ListNodesResponse struct {
 
 func (x *ListNodesResponse) Reset() {
 	*x = ListNodesResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[33]
+	mi := &file_ktms_v1_admin_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1981,7 +1981,7 @@ func (x *ListNodesResponse) String() string {
 func (*ListNodesResponse) ProtoMessage() {}
 
 func (x *ListNodesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[33]
+	mi := &file_ktms_v1_admin_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1994,7 +1994,7 @@ func (x *ListNodesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNodesResponse.ProtoReflect.Descriptor instead.
 func (*ListNodesResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{33}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ListNodesResponse) GetNodes() []*NodeInfo {
@@ -2013,7 +2013,7 @@ type DrainNodeRequest struct {
 
 func (x *DrainNodeRequest) Reset() {
 	*x = DrainNodeRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[34]
+	mi := &file_ktms_v1_admin_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2025,7 +2025,7 @@ func (x *DrainNodeRequest) String() string {
 func (*DrainNodeRequest) ProtoMessage() {}
 
 func (x *DrainNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[34]
+	mi := &file_ktms_v1_admin_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2038,7 +2038,7 @@ func (x *DrainNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DrainNodeRequest.ProtoReflect.Descriptor instead.
 func (*DrainNodeRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{34}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *DrainNodeRequest) GetNodeId() string {
@@ -2056,7 +2056,7 @@ type DrainNodeResponse struct {
 
 func (x *DrainNodeResponse) Reset() {
 	*x = DrainNodeResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[35]
+	mi := &file_ktms_v1_admin_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2068,7 +2068,7 @@ func (x *DrainNodeResponse) String() string {
 func (*DrainNodeResponse) ProtoMessage() {}
 
 func (x *DrainNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[35]
+	mi := &file_ktms_v1_admin_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2081,7 +2081,7 @@ func (x *DrainNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DrainNodeResponse.ProtoReflect.Descriptor instead.
 func (*DrainNodeResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{35}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{35}
 }
 
 type UserRateLimitSpec struct {
@@ -2098,7 +2098,7 @@ type UserRateLimitSpec struct {
 
 func (x *UserRateLimitSpec) Reset() {
 	*x = UserRateLimitSpec{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[36]
+	mi := &file_ktms_v1_admin_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2110,7 +2110,7 @@ func (x *UserRateLimitSpec) String() string {
 func (*UserRateLimitSpec) ProtoMessage() {}
 
 func (x *UserRateLimitSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[36]
+	mi := &file_ktms_v1_admin_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2123,7 +2123,7 @@ func (x *UserRateLimitSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserRateLimitSpec.ProtoReflect.Descriptor instead.
 func (*UserRateLimitSpec) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{36}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *UserRateLimitSpec) GetUserId() string {
@@ -2177,7 +2177,7 @@ type SetUserRateLimitRequest struct {
 
 func (x *SetUserRateLimitRequest) Reset() {
 	*x = SetUserRateLimitRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[37]
+	mi := &file_ktms_v1_admin_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2189,7 +2189,7 @@ func (x *SetUserRateLimitRequest) String() string {
 func (*SetUserRateLimitRequest) ProtoMessage() {}
 
 func (x *SetUserRateLimitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[37]
+	mi := &file_ktms_v1_admin_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2202,7 +2202,7 @@ func (x *SetUserRateLimitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetUserRateLimitRequest.ProtoReflect.Descriptor instead.
 func (*SetUserRateLimitRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{37}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *SetUserRateLimitRequest) GetRateLimit() *UserRateLimitSpec {
@@ -2220,7 +2220,7 @@ type SetUserRateLimitResponse struct {
 
 func (x *SetUserRateLimitResponse) Reset() {
 	*x = SetUserRateLimitResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[38]
+	mi := &file_ktms_v1_admin_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2232,7 +2232,7 @@ func (x *SetUserRateLimitResponse) String() string {
 func (*SetUserRateLimitResponse) ProtoMessage() {}
 
 func (x *SetUserRateLimitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[38]
+	mi := &file_ktms_v1_admin_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2245,7 +2245,7 @@ func (x *SetUserRateLimitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetUserRateLimitResponse.ProtoReflect.Descriptor instead.
 func (*SetUserRateLimitResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{38}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{38}
 }
 
 type DeleteUserRateLimitRequest struct {
@@ -2258,7 +2258,7 @@ type DeleteUserRateLimitRequest struct {
 
 func (x *DeleteUserRateLimitRequest) Reset() {
 	*x = DeleteUserRateLimitRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[39]
+	mi := &file_ktms_v1_admin_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2270,7 +2270,7 @@ func (x *DeleteUserRateLimitRequest) String() string {
 func (*DeleteUserRateLimitRequest) ProtoMessage() {}
 
 func (x *DeleteUserRateLimitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[39]
+	mi := &file_ktms_v1_admin_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2283,7 +2283,7 @@ func (x *DeleteUserRateLimitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteUserRateLimitRequest.ProtoReflect.Descriptor instead.
 func (*DeleteUserRateLimitRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{39}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *DeleteUserRateLimitRequest) GetUserId() string {
@@ -2308,7 +2308,7 @@ type DeleteUserRateLimitResponse struct {
 
 func (x *DeleteUserRateLimitResponse) Reset() {
 	*x = DeleteUserRateLimitResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[40]
+	mi := &file_ktms_v1_admin_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2320,7 +2320,7 @@ func (x *DeleteUserRateLimitResponse) String() string {
 func (*DeleteUserRateLimitResponse) ProtoMessage() {}
 
 func (x *DeleteUserRateLimitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[40]
+	mi := &file_ktms_v1_admin_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2333,7 +2333,7 @@ func (x *DeleteUserRateLimitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteUserRateLimitResponse.ProtoReflect.Descriptor instead.
 func (*DeleteUserRateLimitResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{40}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{40}
 }
 
 type ListUserRateLimitsRequest struct {
@@ -2345,7 +2345,7 @@ type ListUserRateLimitsRequest struct {
 
 func (x *ListUserRateLimitsRequest) Reset() {
 	*x = ListUserRateLimitsRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[41]
+	mi := &file_ktms_v1_admin_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2357,7 +2357,7 @@ func (x *ListUserRateLimitsRequest) String() string {
 func (*ListUserRateLimitsRequest) ProtoMessage() {}
 
 func (x *ListUserRateLimitsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[41]
+	mi := &file_ktms_v1_admin_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2370,7 +2370,7 @@ func (x *ListUserRateLimitsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUserRateLimitsRequest.ProtoReflect.Descriptor instead.
 func (*ListUserRateLimitsRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{41}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *ListUserRateLimitsRequest) GetUserId() string {
@@ -2389,7 +2389,7 @@ type ListUserRateLimitsResponse struct {
 
 func (x *ListUserRateLimitsResponse) Reset() {
 	*x = ListUserRateLimitsResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[42]
+	mi := &file_ktms_v1_admin_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2401,7 +2401,7 @@ func (x *ListUserRateLimitsResponse) String() string {
 func (*ListUserRateLimitsResponse) ProtoMessage() {}
 
 func (x *ListUserRateLimitsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[42]
+	mi := &file_ktms_v1_admin_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2414,7 +2414,7 @@ func (x *ListUserRateLimitsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUserRateLimitsResponse.ProtoReflect.Descriptor instead.
 func (*ListUserRateLimitsResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{42}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ListUserRateLimitsResponse) GetRateLimits() []*UserRateLimitSpec {
@@ -2440,7 +2440,7 @@ type SpendLimitSpec struct {
 
 func (x *SpendLimitSpec) Reset() {
 	*x = SpendLimitSpec{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[43]
+	mi := &file_ktms_v1_admin_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2452,7 +2452,7 @@ func (x *SpendLimitSpec) String() string {
 func (*SpendLimitSpec) ProtoMessage() {}
 
 func (x *SpendLimitSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[43]
+	mi := &file_ktms_v1_admin_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2465,7 +2465,7 @@ func (x *SpendLimitSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpendLimitSpec.ProtoReflect.Descriptor instead.
 func (*SpendLimitSpec) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{43}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *SpendLimitSpec) GetSubjectType() string {
@@ -2505,7 +2505,7 @@ type SetSpendLimitRequest struct {
 
 func (x *SetSpendLimitRequest) Reset() {
 	*x = SetSpendLimitRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[44]
+	mi := &file_ktms_v1_admin_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2517,7 +2517,7 @@ func (x *SetSpendLimitRequest) String() string {
 func (*SetSpendLimitRequest) ProtoMessage() {}
 
 func (x *SetSpendLimitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[44]
+	mi := &file_ktms_v1_admin_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2530,7 +2530,7 @@ func (x *SetSpendLimitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetSpendLimitRequest.ProtoReflect.Descriptor instead.
 func (*SetSpendLimitRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{44}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *SetSpendLimitRequest) GetSpendLimit() *SpendLimitSpec {
@@ -2548,7 +2548,7 @@ type SetSpendLimitResponse struct {
 
 func (x *SetSpendLimitResponse) Reset() {
 	*x = SetSpendLimitResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[45]
+	mi := &file_ktms_v1_admin_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2560,7 +2560,7 @@ func (x *SetSpendLimitResponse) String() string {
 func (*SetSpendLimitResponse) ProtoMessage() {}
 
 func (x *SetSpendLimitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[45]
+	mi := &file_ktms_v1_admin_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2573,7 +2573,7 @@ func (x *SetSpendLimitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetSpendLimitResponse.ProtoReflect.Descriptor instead.
 func (*SetSpendLimitResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{45}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{45}
 }
 
 type DeleteSpendLimitRequest struct {
@@ -2587,7 +2587,7 @@ type DeleteSpendLimitRequest struct {
 
 func (x *DeleteSpendLimitRequest) Reset() {
 	*x = DeleteSpendLimitRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[46]
+	mi := &file_ktms_v1_admin_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2599,7 +2599,7 @@ func (x *DeleteSpendLimitRequest) String() string {
 func (*DeleteSpendLimitRequest) ProtoMessage() {}
 
 func (x *DeleteSpendLimitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[46]
+	mi := &file_ktms_v1_admin_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2612,7 +2612,7 @@ func (x *DeleteSpendLimitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSpendLimitRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSpendLimitRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{46}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *DeleteSpendLimitRequest) GetSubjectType() string {
@@ -2644,7 +2644,7 @@ type DeleteSpendLimitResponse struct {
 
 func (x *DeleteSpendLimitResponse) Reset() {
 	*x = DeleteSpendLimitResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[47]
+	mi := &file_ktms_v1_admin_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2656,7 +2656,7 @@ func (x *DeleteSpendLimitResponse) String() string {
 func (*DeleteSpendLimitResponse) ProtoMessage() {}
 
 func (x *DeleteSpendLimitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[47]
+	mi := &file_ktms_v1_admin_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2669,7 +2669,7 @@ func (x *DeleteSpendLimitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSpendLimitResponse.ProtoReflect.Descriptor instead.
 func (*DeleteSpendLimitResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{47}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{47}
 }
 
 type ListSpendLimitsRequest struct {
@@ -2682,7 +2682,7 @@ type ListSpendLimitsRequest struct {
 
 func (x *ListSpendLimitsRequest) Reset() {
 	*x = ListSpendLimitsRequest{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[48]
+	mi := &file_ktms_v1_admin_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2694,7 +2694,7 @@ func (x *ListSpendLimitsRequest) String() string {
 func (*ListSpendLimitsRequest) ProtoMessage() {}
 
 func (x *ListSpendLimitsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[48]
+	mi := &file_ktms_v1_admin_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2707,7 +2707,7 @@ func (x *ListSpendLimitsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSpendLimitsRequest.ProtoReflect.Descriptor instead.
 func (*ListSpendLimitsRequest) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{48}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ListSpendLimitsRequest) GetSubjectType() string {
@@ -2733,7 +2733,7 @@ type ListSpendLimitsResponse struct {
 
 func (x *ListSpendLimitsResponse) Reset() {
 	*x = ListSpendLimitsResponse{}
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[49]
+	mi := &file_ktms_v1_admin_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2745,7 +2745,7 @@ func (x *ListSpendLimitsResponse) String() string {
 func (*ListSpendLimitsResponse) ProtoMessage() {}
 
 func (x *ListSpendLimitsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_llmproxy_v1_admin_proto_msgTypes[49]
+	mi := &file_ktms_v1_admin_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2758,7 +2758,7 @@ func (x *ListSpendLimitsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSpendLimitsResponse.ProtoReflect.Descriptor instead.
 func (*ListSpendLimitsResponse) Descriptor() ([]byte, []int) {
-	return file_llmproxy_v1_admin_proto_rawDescGZIP(), []int{49}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ListSpendLimitsResponse) GetSpendLimits() []*SpendLimitSpec {
@@ -2768,16 +2768,16 @@ func (x *ListSpendLimitsResponse) GetSpendLimits() []*SpendLimitSpec {
 	return nil
 }
 
-var File_llmproxy_v1_admin_proto protoreflect.FileDescriptor
+var File_ktms_v1_admin_proto protoreflect.FileDescriptor
 
-const file_llmproxy_v1_admin_proto_rawDesc = "" +
+const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\n" +
-	"\x17llmproxy/v1/admin.proto\x12\vllmproxy.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1allmproxy/v1/llmproxy.proto\"\xd9\x05\n" +
+	"\x13ktms/v1/admin.proto\x12\aktms.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15ktms/v1/gateway.proto\"\xd5\x05\n" +
 	"\tModelSpec\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06vendor\x18\x02 \x01(\tR\x06vendor\x12\x1a\n" +
-	"\bendpoint\x18\x03 \x01(\tR\bendpoint\x12-\n" +
-	"\aefforts\x18\x04 \x03(\x0e2\x13.llmproxy.v1.EffortR\aefforts\x12\"\n" +
+	"\bendpoint\x18\x03 \x01(\tR\bendpoint\x12)\n" +
+	"\aefforts\x18\x04 \x03(\x0e2\x0f.ktms.v1.EffortR\aefforts\x12\"\n" +
 	"\fcapabilities\x18\x05 \x03(\tR\fcapabilities\x12\x10\n" +
 	"\x03rpm\x18\x06 \x01(\x05R\x03rpm\x12)\n" +
 	"\x11price_in_per_mtok\x18\a \x01(\x01R\x0epriceInPerMtok\x12+\n" +
@@ -2792,13 +2792,13 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"\aenabled\x18\v \x01(\bR\aenabled\x12\x1b\n" +
 	"\trpm_burst\x18\x10 \x01(\x05R\brpmBurst\x12(\n" +
 	"\x10queue_timeout_ms\x18\x11 \x01(\x05R\x0equeueTimeoutMs\x12.\n" +
-	"\x13budget_grace_margin\x18\x12 \x01(\x01R\x11budgetGraceMargin\"\xa4\x03\n" +
+	"\x13budget_grace_margin\x18\x12 \x01(\x01R\x11budgetGraceMargin\"\x9c\x03\n" +
 	"\bRuleSpec\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
-	"\bpriority\x18\x02 \x01(\x05R\bpriority\x12+\n" +
-	"\x06effort\x18\x03 \x01(\x0e2\x13.llmproxy.v1.EffortR\x06effort\x12E\n" +
+	"\bpriority\x18\x02 \x01(\x05R\bpriority\x12'\n" +
+	"\x06effort\x18\x03 \x01(\x0e2\x0f.ktms.v1.EffortR\x06effort\x12A\n" +
 	"\n" +
-	"attributes\x18\x04 \x03(\v2%.llmproxy.v1.RuleSpec.AttributesEntryR\n" +
+	"attributes\x18\x04 \x03(\v2!.ktms.v1.RuleSpec.AttributesEntryR\n" +
 	"attributes\x12\x10\n" +
 	"\x03use\x18\x05 \x03(\tR\x03use\x12\x18\n" +
 	"\aenabled\x18\x06 \x01(\bR\aenabled\x12\x18\n" +
@@ -2810,15 +2810,15 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"shadowEval\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"B\n" +
-	"\x12UpsertModelRequest\x12,\n" +
-	"\x05model\x18\x01 \x01(\v2\x16.llmproxy.v1.ModelSpecR\x05model\"\x15\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\">\n" +
+	"\x12UpsertModelRequest\x12(\n" +
+	"\x05model\x18\x01 \x01(\v2\x12.ktms.v1.ModelSpecR\x05model\"\x15\n" +
 	"\x13UpsertModelResponse\"$\n" +
 	"\x12DeleteModelRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\x15\n" +
-	"\x13DeleteModelResponse\"B\n" +
-	"\x13ReplaceRulesRequest\x12+\n" +
-	"\x05rules\x18\x01 \x03(\v2\x15.llmproxy.v1.RuleSpecR\x05rules\"\x16\n" +
+	"\x13DeleteModelResponse\">\n" +
+	"\x13ReplaceRulesRequest\x12'\n" +
+	"\x05rules\x18\x01 \x03(\v2\x11.ktms.v1.RuleSpecR\x05rules\"\x16\n" +
 	"\x14ReplaceRulesResponse\"l\n" +
 	"\x13SetVendorKeyRequest\x12 \n" +
 	"\fapi_key_name\x18\x01 \x01(\tR\n" +
@@ -2839,15 +2839,15 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"keyVersion\x129\n" +
 	"\n" +
 	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x12\n" +
-	"\x10GetConfigRequest\"\xd1\x02\n" +
-	"\x11GetConfigResponse\x12.\n" +
-	"\x06models\x18\x01 \x03(\v2\x16.llmproxy.v1.ModelSpecR\x06models\x12+\n" +
-	"\x05rules\x18\x02 \x03(\v2\x15.llmproxy.v1.RuleSpecR\x05rules\x12;\n" +
-	"\vvendor_keys\x18\x03 \x03(\v2\x1a.llmproxy.v1.VendorKeyInfoR\n" +
+	"\x10GetConfigRequest\"\xbd\x02\n" +
+	"\x11GetConfigResponse\x12*\n" +
+	"\x06models\x18\x01 \x03(\v2\x12.ktms.v1.ModelSpecR\x06models\x12'\n" +
+	"\x05rules\x18\x02 \x03(\v2\x11.ktms.v1.RuleSpecR\x05rules\x127\n" +
+	"\vvendor_keys\x18\x03 \x03(\v2\x16.ktms.v1.VendorKeyInfoR\n" +
 	"vendorKeys\x12\x18\n" +
-	"\aversion\x18\x04 \x01(\x03R\aversion\x12H\n" +
-	"\x10user_rate_limits\x18\x05 \x03(\v2\x1e.llmproxy.v1.UserRateLimitSpecR\x0euserRateLimits\x12>\n" +
-	"\fspend_limits\x18\x06 \x03(\v2\x1b.llmproxy.v1.SpendLimitSpecR\vspendLimits\"?\n" +
+	"\aversion\x18\x04 \x01(\x03R\aversion\x12D\n" +
+	"\x10user_rate_limits\x18\x05 \x03(\v2\x1a.ktms.v1.UserRateLimitSpecR\x0euserRateLimits\x12:\n" +
+	"\fspend_limits\x18\x06 \x03(\v2\x17.ktms.v1.SpendLimitSpecR\vspendLimits\"?\n" +
 	"\x11MintAPIKeyRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06scopes\x18\x02 \x03(\tR\x06scopes\"1\n" +
@@ -2863,9 +2863,9 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"\x06scopes\x18\x02 \x03(\tR\x06scopes\x129\n" +
 	"\n" +
 	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1a\n" +
-	"\bdisabled\x18\x04 \x01(\bR\bdisabled\"B\n" +
-	"\x13ListAPIKeysResponse\x12+\n" +
-	"\x04keys\x18\x01 \x03(\v2\x17.llmproxy.v1.APIKeyInfoR\x04keys\"\x19\n" +
+	"\bdisabled\x18\x04 \x01(\bR\bdisabled\">\n" +
+	"\x13ListAPIKeysResponse\x12'\n" +
+	"\x04keys\x18\x01 \x03(\v2\x13.ktms.v1.APIKeyInfoR\x04keys\"\x19\n" +
 	"\x17RotateEncryptionRequest\"<\n" +
 	"\x18RotateEncryptionResponse\x12 \n" +
 	"\vreencrypted\x18\x01 \x01(\x05R\vreencrypted\"\xde\x01\n" +
@@ -2893,9 +2893,9 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"\rallowed_cidrs\x18\x06 \x03(\tR\fallowedCidrs\x12%\n" +
 	"\x0eallowed_models\x18\a \x03(\tR\rallowedModels\x12&\n" +
 	"\x0fmax_base_weight\x18\b \x01(\x01R\rmaxBaseWeight\x12'\n" +
-	"\x0fmax_concurrency\x18\t \x01(\x05R\x0emaxConcurrency\"D\n" +
-	"\x14ListNodeKeysResponse\x12,\n" +
-	"\x04keys\x18\x01 \x03(\v2\x18.llmproxy.v1.NodeKeyInfoR\x04keys\"\x12\n" +
+	"\x0fmax_concurrency\x18\t \x01(\x05R\x0emaxConcurrency\"@\n" +
+	"\x14ListNodeKeysResponse\x12(\n" +
+	"\x04keys\x18\x01 \x03(\v2\x14.ktms.v1.NodeKeyInfoR\x04keys\"\x12\n" +
 	"\x10ListNodesRequest\"\xe0\x04\n" +
 	"\bNodeInfo\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x12\n" +
@@ -2920,9 +2920,9 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"baseWeight\x12\x16\n" +
 	"\x06engine\x18\x11 \x01(\tR\x06engine\x12\x1f\n" +
 	"\vwarm_models\x18\x12 \x03(\tR\n" +
-	"warmModels\"@\n" +
-	"\x11ListNodesResponse\x12+\n" +
-	"\x05nodes\x18\x01 \x03(\v2\x15.llmproxy.v1.NodeInfoR\x05nodes\"+\n" +
+	"warmModels\"<\n" +
+	"\x11ListNodesResponse\x12'\n" +
+	"\x05nodes\x18\x01 \x03(\v2\x11.ktms.v1.NodeInfoR\x05nodes\"+\n" +
 	"\x10DrainNodeRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"\x13\n" +
 	"\x11DrainNodeResponse\"\xc3\x01\n" +
@@ -2932,28 +2932,28 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"\x03rpm\x18\x03 \x01(\x05R\x03rpm\x12\x1b\n" +
 	"\trpm_burst\x18\x04 \x01(\x05R\brpmBurst\x12(\n" +
 	"\x10queue_timeout_ms\x18\x05 \x01(\x05R\x0equeueTimeoutMs\x12!\n" +
-	"\fdaily_tokens\x18\x06 \x01(\x03R\vdailyTokens\"X\n" +
-	"\x17SetUserRateLimitRequest\x12=\n" +
+	"\fdaily_tokens\x18\x06 \x01(\x03R\vdailyTokens\"T\n" +
+	"\x17SetUserRateLimitRequest\x129\n" +
 	"\n" +
-	"rate_limit\x18\x01 \x01(\v2\x1e.llmproxy.v1.UserRateLimitSpecR\trateLimit\"\x1a\n" +
+	"rate_limit\x18\x01 \x01(\v2\x1a.ktms.v1.UserRateLimitSpecR\trateLimit\"\x1a\n" +
 	"\x18SetUserRateLimitResponse\"P\n" +
 	"\x1aDeleteUserRateLimitRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x19\n" +
 	"\bmodel_id\x18\x02 \x01(\tR\amodelId\"\x1d\n" +
 	"\x1bDeleteUserRateLimitResponse\"4\n" +
 	"\x19ListUserRateLimitsRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\tR\x06userId\"]\n" +
-	"\x1aListUserRateLimitsResponse\x12?\n" +
-	"\vrate_limits\x18\x01 \x03(\v2\x1e.llmproxy.v1.UserRateLimitSpecR\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\"Y\n" +
+	"\x1aListUserRateLimitsResponse\x12;\n" +
+	"\vrate_limits\x18\x01 \x03(\v2\x1a.ktms.v1.UserRateLimitSpecR\n" +
 	"rateLimits\"\x8f\x01\n" +
 	"\x0eSpendLimitSpec\x12!\n" +
 	"\fsubject_type\x18\x01 \x01(\tR\vsubjectType\x12\x1d\n" +
 	"\n" +
 	"subject_id\x18\x02 \x01(\tR\tsubjectId\x12\x16\n" +
 	"\x06period\x18\x03 \x01(\tR\x06period\x12#\n" +
-	"\rlimit_nanousd\x18\x04 \x01(\x03R\flimitNanousd\"T\n" +
-	"\x14SetSpendLimitRequest\x12<\n" +
-	"\vspend_limit\x18\x01 \x01(\v2\x1b.llmproxy.v1.SpendLimitSpecR\n" +
+	"\rlimit_nanousd\x18\x04 \x01(\x03R\flimitNanousd\"P\n" +
+	"\x14SetSpendLimitRequest\x128\n" +
+	"\vspend_limit\x18\x01 \x01(\v2\x17.ktms.v1.SpendLimitSpecR\n" +
 	"spendLimit\"\x17\n" +
 	"\x15SetSpendLimitResponse\"s\n" +
 	"\x17DeleteSpendLimitRequest\x12!\n" +
@@ -2965,167 +2965,167 @@ const file_llmproxy_v1_admin_proto_rawDesc = "" +
 	"\x16ListSpendLimitsRequest\x12!\n" +
 	"\fsubject_type\x18\x01 \x01(\tR\vsubjectType\x12\x1d\n" +
 	"\n" +
-	"subject_id\x18\x02 \x01(\tR\tsubjectId\"Y\n" +
-	"\x17ListSpendLimitsResponse\x12>\n" +
-	"\fspend_limits\x18\x01 \x03(\v2\x1b.llmproxy.v1.SpendLimitSpecR\vspendLimits2\xc5\x0e\n" +
-	"\x14LLMProxyAdminService\x12P\n" +
-	"\vUpsertModel\x12\x1f.llmproxy.v1.UpsertModelRequest\x1a .llmproxy.v1.UpsertModelResponse\x12P\n" +
-	"\vDeleteModel\x12\x1f.llmproxy.v1.DeleteModelRequest\x1a .llmproxy.v1.DeleteModelResponse\x12S\n" +
-	"\fReplaceRules\x12 .llmproxy.v1.ReplaceRulesRequest\x1a!.llmproxy.v1.ReplaceRulesResponse\x12S\n" +
-	"\fSetVendorKey\x12 .llmproxy.v1.SetVendorKeyRequest\x1a!.llmproxy.v1.SetVendorKeyResponse\x12\\\n" +
-	"\x0fDeleteVendorKey\x12#.llmproxy.v1.DeleteVendorKeyRequest\x1a$.llmproxy.v1.DeleteVendorKeyResponse\x12J\n" +
-	"\tGetConfig\x12\x1d.llmproxy.v1.GetConfigRequest\x1a\x1e.llmproxy.v1.GetConfigResponse\x12M\n" +
+	"subject_id\x18\x02 \x01(\tR\tsubjectId\"U\n" +
+	"\x17ListSpendLimitsResponse\x12:\n" +
+	"\fspend_limits\x18\x01 \x03(\v2\x17.ktms.v1.SpendLimitSpecR\vspendLimits2\x95\r\n" +
+	"\fAdminService\x12H\n" +
+	"\vUpsertModel\x12\x1b.ktms.v1.UpsertModelRequest\x1a\x1c.ktms.v1.UpsertModelResponse\x12H\n" +
+	"\vDeleteModel\x12\x1b.ktms.v1.DeleteModelRequest\x1a\x1c.ktms.v1.DeleteModelResponse\x12K\n" +
+	"\fReplaceRules\x12\x1c.ktms.v1.ReplaceRulesRequest\x1a\x1d.ktms.v1.ReplaceRulesResponse\x12K\n" +
+	"\fSetVendorKey\x12\x1c.ktms.v1.SetVendorKeyRequest\x1a\x1d.ktms.v1.SetVendorKeyResponse\x12T\n" +
+	"\x0fDeleteVendorKey\x12\x1f.ktms.v1.DeleteVendorKeyRequest\x1a .ktms.v1.DeleteVendorKeyResponse\x12B\n" +
+	"\tGetConfig\x12\x19.ktms.v1.GetConfigRequest\x1a\x1a.ktms.v1.GetConfigResponse\x12E\n" +
 	"\n" +
-	"MintAPIKey\x12\x1e.llmproxy.v1.MintAPIKeyRequest\x1a\x1f.llmproxy.v1.MintAPIKeyResponse\x12S\n" +
-	"\fRevokeAPIKey\x12 .llmproxy.v1.RevokeAPIKeyRequest\x1a!.llmproxy.v1.RevokeAPIKeyResponse\x12P\n" +
-	"\vListAPIKeys\x12\x1f.llmproxy.v1.ListAPIKeysRequest\x1a .llmproxy.v1.ListAPIKeysResponse\x12_\n" +
-	"\x10RotateEncryption\x12$.llmproxy.v1.RotateEncryptionRequest\x1a%.llmproxy.v1.RotateEncryptionResponse\x12P\n" +
-	"\vMintNodeKey\x12\x1f.llmproxy.v1.MintNodeKeyRequest\x1a .llmproxy.v1.MintNodeKeyResponse\x12V\n" +
-	"\rRevokeNodeKey\x12!.llmproxy.v1.RevokeNodeKeyRequest\x1a\".llmproxy.v1.RevokeNodeKeyResponse\x12S\n" +
-	"\fListNodeKeys\x12 .llmproxy.v1.ListNodeKeysRequest\x1a!.llmproxy.v1.ListNodeKeysResponse\x12J\n" +
-	"\tListNodes\x12\x1d.llmproxy.v1.ListNodesRequest\x1a\x1e.llmproxy.v1.ListNodesResponse\x12J\n" +
-	"\tDrainNode\x12\x1d.llmproxy.v1.DrainNodeRequest\x1a\x1e.llmproxy.v1.DrainNodeResponse\x12_\n" +
-	"\x10SetUserRateLimit\x12$.llmproxy.v1.SetUserRateLimitRequest\x1a%.llmproxy.v1.SetUserRateLimitResponse\x12h\n" +
-	"\x13DeleteUserRateLimit\x12'.llmproxy.v1.DeleteUserRateLimitRequest\x1a(.llmproxy.v1.DeleteUserRateLimitResponse\x12e\n" +
-	"\x12ListUserRateLimits\x12&.llmproxy.v1.ListUserRateLimitsRequest\x1a'.llmproxy.v1.ListUserRateLimitsResponse\x12V\n" +
-	"\rSetSpendLimit\x12!.llmproxy.v1.SetSpendLimitRequest\x1a\".llmproxy.v1.SetSpendLimitResponse\x12_\n" +
-	"\x10DeleteSpendLimit\x12$.llmproxy.v1.DeleteSpendLimitRequest\x1a%.llmproxy.v1.DeleteSpendLimitResponse\x12\\\n" +
-	"\x0fListSpendLimits\x12#.llmproxy.v1.ListSpendLimitsRequest\x1a$.llmproxy.v1.ListSpendLimitsResponseB\xa6\x01\n" +
-	"\x0fcom.llmproxy.v1B\n" +
-	"AdminProtoP\x01Z:github.com/ai-process/llm-proxy/gen/llmproxy/v1;llmproxyv1\xa2\x02\x03LXX\xaa\x02\vLlmproxy.V1\xca\x02\vLlmproxy\\V1\xe2\x02\x17Llmproxy\\V1\\GPBMetadata\xea\x02\fLlmproxy::V1b\x06proto3"
+	"MintAPIKey\x12\x1a.ktms.v1.MintAPIKeyRequest\x1a\x1b.ktms.v1.MintAPIKeyResponse\x12K\n" +
+	"\fRevokeAPIKey\x12\x1c.ktms.v1.RevokeAPIKeyRequest\x1a\x1d.ktms.v1.RevokeAPIKeyResponse\x12H\n" +
+	"\vListAPIKeys\x12\x1b.ktms.v1.ListAPIKeysRequest\x1a\x1c.ktms.v1.ListAPIKeysResponse\x12W\n" +
+	"\x10RotateEncryption\x12 .ktms.v1.RotateEncryptionRequest\x1a!.ktms.v1.RotateEncryptionResponse\x12H\n" +
+	"\vMintNodeKey\x12\x1b.ktms.v1.MintNodeKeyRequest\x1a\x1c.ktms.v1.MintNodeKeyResponse\x12N\n" +
+	"\rRevokeNodeKey\x12\x1d.ktms.v1.RevokeNodeKeyRequest\x1a\x1e.ktms.v1.RevokeNodeKeyResponse\x12K\n" +
+	"\fListNodeKeys\x12\x1c.ktms.v1.ListNodeKeysRequest\x1a\x1d.ktms.v1.ListNodeKeysResponse\x12B\n" +
+	"\tListNodes\x12\x19.ktms.v1.ListNodesRequest\x1a\x1a.ktms.v1.ListNodesResponse\x12B\n" +
+	"\tDrainNode\x12\x19.ktms.v1.DrainNodeRequest\x1a\x1a.ktms.v1.DrainNodeResponse\x12W\n" +
+	"\x10SetUserRateLimit\x12 .ktms.v1.SetUserRateLimitRequest\x1a!.ktms.v1.SetUserRateLimitResponse\x12`\n" +
+	"\x13DeleteUserRateLimit\x12#.ktms.v1.DeleteUserRateLimitRequest\x1a$.ktms.v1.DeleteUserRateLimitResponse\x12]\n" +
+	"\x12ListUserRateLimits\x12\".ktms.v1.ListUserRateLimitsRequest\x1a#.ktms.v1.ListUserRateLimitsResponse\x12N\n" +
+	"\rSetSpendLimit\x12\x1d.ktms.v1.SetSpendLimitRequest\x1a\x1e.ktms.v1.SetSpendLimitResponse\x12W\n" +
+	"\x10DeleteSpendLimit\x12 .ktms.v1.DeleteSpendLimitRequest\x1a!.ktms.v1.DeleteSpendLimitResponse\x12T\n" +
+	"\x0fListSpendLimits\x12\x1f.ktms.v1.ListSpendLimitsRequest\x1a .ktms.v1.ListSpendLimitsResponseB\x85\x01\n" +
+	"\vcom.ktms.v1B\n" +
+	"AdminProtoP\x01Z-github.com/ai-process/ktms/gen/ktms/v1;ktmsv1\xa2\x02\x03KXX\xaa\x02\aKtms.V1\xca\x02\aKtms\\V1\xe2\x02\x13Ktms\\V1\\GPBMetadata\xea\x02\bKtms::V1b\x06proto3"
 
 var (
-	file_llmproxy_v1_admin_proto_rawDescOnce sync.Once
-	file_llmproxy_v1_admin_proto_rawDescData []byte
+	file_ktms_v1_admin_proto_rawDescOnce sync.Once
+	file_ktms_v1_admin_proto_rawDescData []byte
 )
 
-func file_llmproxy_v1_admin_proto_rawDescGZIP() []byte {
-	file_llmproxy_v1_admin_proto_rawDescOnce.Do(func() {
-		file_llmproxy_v1_admin_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_llmproxy_v1_admin_proto_rawDesc), len(file_llmproxy_v1_admin_proto_rawDesc)))
+func file_ktms_v1_admin_proto_rawDescGZIP() []byte {
+	file_ktms_v1_admin_proto_rawDescOnce.Do(func() {
+		file_ktms_v1_admin_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_ktms_v1_admin_proto_rawDesc), len(file_ktms_v1_admin_proto_rawDesc)))
 	})
-	return file_llmproxy_v1_admin_proto_rawDescData
+	return file_ktms_v1_admin_proto_rawDescData
 }
 
-var file_llmproxy_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
-var file_llmproxy_v1_admin_proto_goTypes = []any{
-	(*ModelSpec)(nil),                   // 0: llmproxy.v1.ModelSpec
-	(*RuleSpec)(nil),                    // 1: llmproxy.v1.RuleSpec
-	(*UpsertModelRequest)(nil),          // 2: llmproxy.v1.UpsertModelRequest
-	(*UpsertModelResponse)(nil),         // 3: llmproxy.v1.UpsertModelResponse
-	(*DeleteModelRequest)(nil),          // 4: llmproxy.v1.DeleteModelRequest
-	(*DeleteModelResponse)(nil),         // 5: llmproxy.v1.DeleteModelResponse
-	(*ReplaceRulesRequest)(nil),         // 6: llmproxy.v1.ReplaceRulesRequest
-	(*ReplaceRulesResponse)(nil),        // 7: llmproxy.v1.ReplaceRulesResponse
-	(*SetVendorKeyRequest)(nil),         // 8: llmproxy.v1.SetVendorKeyRequest
-	(*SetVendorKeyResponse)(nil),        // 9: llmproxy.v1.SetVendorKeyResponse
-	(*DeleteVendorKeyRequest)(nil),      // 10: llmproxy.v1.DeleteVendorKeyRequest
-	(*DeleteVendorKeyResponse)(nil),     // 11: llmproxy.v1.DeleteVendorKeyResponse
-	(*VendorKeyInfo)(nil),               // 12: llmproxy.v1.VendorKeyInfo
-	(*GetConfigRequest)(nil),            // 13: llmproxy.v1.GetConfigRequest
-	(*GetConfigResponse)(nil),           // 14: llmproxy.v1.GetConfigResponse
-	(*MintAPIKeyRequest)(nil),           // 15: llmproxy.v1.MintAPIKeyRequest
-	(*MintAPIKeyResponse)(nil),          // 16: llmproxy.v1.MintAPIKeyResponse
-	(*RevokeAPIKeyRequest)(nil),         // 17: llmproxy.v1.RevokeAPIKeyRequest
-	(*RevokeAPIKeyResponse)(nil),        // 18: llmproxy.v1.RevokeAPIKeyResponse
-	(*ListAPIKeysRequest)(nil),          // 19: llmproxy.v1.ListAPIKeysRequest
-	(*APIKeyInfo)(nil),                  // 20: llmproxy.v1.APIKeyInfo
-	(*ListAPIKeysResponse)(nil),         // 21: llmproxy.v1.ListAPIKeysResponse
-	(*RotateEncryptionRequest)(nil),     // 22: llmproxy.v1.RotateEncryptionRequest
-	(*RotateEncryptionResponse)(nil),    // 23: llmproxy.v1.RotateEncryptionResponse
-	(*MintNodeKeyRequest)(nil),          // 24: llmproxy.v1.MintNodeKeyRequest
-	(*MintNodeKeyResponse)(nil),         // 25: llmproxy.v1.MintNodeKeyResponse
-	(*RevokeNodeKeyRequest)(nil),        // 26: llmproxy.v1.RevokeNodeKeyRequest
-	(*RevokeNodeKeyResponse)(nil),       // 27: llmproxy.v1.RevokeNodeKeyResponse
-	(*ListNodeKeysRequest)(nil),         // 28: llmproxy.v1.ListNodeKeysRequest
-	(*NodeKeyInfo)(nil),                 // 29: llmproxy.v1.NodeKeyInfo
-	(*ListNodeKeysResponse)(nil),        // 30: llmproxy.v1.ListNodeKeysResponse
-	(*ListNodesRequest)(nil),            // 31: llmproxy.v1.ListNodesRequest
-	(*NodeInfo)(nil),                    // 32: llmproxy.v1.NodeInfo
-	(*ListNodesResponse)(nil),           // 33: llmproxy.v1.ListNodesResponse
-	(*DrainNodeRequest)(nil),            // 34: llmproxy.v1.DrainNodeRequest
-	(*DrainNodeResponse)(nil),           // 35: llmproxy.v1.DrainNodeResponse
-	(*UserRateLimitSpec)(nil),           // 36: llmproxy.v1.UserRateLimitSpec
-	(*SetUserRateLimitRequest)(nil),     // 37: llmproxy.v1.SetUserRateLimitRequest
-	(*SetUserRateLimitResponse)(nil),    // 38: llmproxy.v1.SetUserRateLimitResponse
-	(*DeleteUserRateLimitRequest)(nil),  // 39: llmproxy.v1.DeleteUserRateLimitRequest
-	(*DeleteUserRateLimitResponse)(nil), // 40: llmproxy.v1.DeleteUserRateLimitResponse
-	(*ListUserRateLimitsRequest)(nil),   // 41: llmproxy.v1.ListUserRateLimitsRequest
-	(*ListUserRateLimitsResponse)(nil),  // 42: llmproxy.v1.ListUserRateLimitsResponse
-	(*SpendLimitSpec)(nil),              // 43: llmproxy.v1.SpendLimitSpec
-	(*SetSpendLimitRequest)(nil),        // 44: llmproxy.v1.SetSpendLimitRequest
-	(*SetSpendLimitResponse)(nil),       // 45: llmproxy.v1.SetSpendLimitResponse
-	(*DeleteSpendLimitRequest)(nil),     // 46: llmproxy.v1.DeleteSpendLimitRequest
-	(*DeleteSpendLimitResponse)(nil),    // 47: llmproxy.v1.DeleteSpendLimitResponse
-	(*ListSpendLimitsRequest)(nil),      // 48: llmproxy.v1.ListSpendLimitsRequest
-	(*ListSpendLimitsResponse)(nil),     // 49: llmproxy.v1.ListSpendLimitsResponse
-	nil,                                 // 50: llmproxy.v1.RuleSpec.AttributesEntry
-	(Effort)(0),                         // 51: llmproxy.v1.Effort
+var file_ktms_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
+var file_ktms_v1_admin_proto_goTypes = []any{
+	(*ModelSpec)(nil),                   // 0: ktms.v1.ModelSpec
+	(*RuleSpec)(nil),                    // 1: ktms.v1.RuleSpec
+	(*UpsertModelRequest)(nil),          // 2: ktms.v1.UpsertModelRequest
+	(*UpsertModelResponse)(nil),         // 3: ktms.v1.UpsertModelResponse
+	(*DeleteModelRequest)(nil),          // 4: ktms.v1.DeleteModelRequest
+	(*DeleteModelResponse)(nil),         // 5: ktms.v1.DeleteModelResponse
+	(*ReplaceRulesRequest)(nil),         // 6: ktms.v1.ReplaceRulesRequest
+	(*ReplaceRulesResponse)(nil),        // 7: ktms.v1.ReplaceRulesResponse
+	(*SetVendorKeyRequest)(nil),         // 8: ktms.v1.SetVendorKeyRequest
+	(*SetVendorKeyResponse)(nil),        // 9: ktms.v1.SetVendorKeyResponse
+	(*DeleteVendorKeyRequest)(nil),      // 10: ktms.v1.DeleteVendorKeyRequest
+	(*DeleteVendorKeyResponse)(nil),     // 11: ktms.v1.DeleteVendorKeyResponse
+	(*VendorKeyInfo)(nil),               // 12: ktms.v1.VendorKeyInfo
+	(*GetConfigRequest)(nil),            // 13: ktms.v1.GetConfigRequest
+	(*GetConfigResponse)(nil),           // 14: ktms.v1.GetConfigResponse
+	(*MintAPIKeyRequest)(nil),           // 15: ktms.v1.MintAPIKeyRequest
+	(*MintAPIKeyResponse)(nil),          // 16: ktms.v1.MintAPIKeyResponse
+	(*RevokeAPIKeyRequest)(nil),         // 17: ktms.v1.RevokeAPIKeyRequest
+	(*RevokeAPIKeyResponse)(nil),        // 18: ktms.v1.RevokeAPIKeyResponse
+	(*ListAPIKeysRequest)(nil),          // 19: ktms.v1.ListAPIKeysRequest
+	(*APIKeyInfo)(nil),                  // 20: ktms.v1.APIKeyInfo
+	(*ListAPIKeysResponse)(nil),         // 21: ktms.v1.ListAPIKeysResponse
+	(*RotateEncryptionRequest)(nil),     // 22: ktms.v1.RotateEncryptionRequest
+	(*RotateEncryptionResponse)(nil),    // 23: ktms.v1.RotateEncryptionResponse
+	(*MintNodeKeyRequest)(nil),          // 24: ktms.v1.MintNodeKeyRequest
+	(*MintNodeKeyResponse)(nil),         // 25: ktms.v1.MintNodeKeyResponse
+	(*RevokeNodeKeyRequest)(nil),        // 26: ktms.v1.RevokeNodeKeyRequest
+	(*RevokeNodeKeyResponse)(nil),       // 27: ktms.v1.RevokeNodeKeyResponse
+	(*ListNodeKeysRequest)(nil),         // 28: ktms.v1.ListNodeKeysRequest
+	(*NodeKeyInfo)(nil),                 // 29: ktms.v1.NodeKeyInfo
+	(*ListNodeKeysResponse)(nil),        // 30: ktms.v1.ListNodeKeysResponse
+	(*ListNodesRequest)(nil),            // 31: ktms.v1.ListNodesRequest
+	(*NodeInfo)(nil),                    // 32: ktms.v1.NodeInfo
+	(*ListNodesResponse)(nil),           // 33: ktms.v1.ListNodesResponse
+	(*DrainNodeRequest)(nil),            // 34: ktms.v1.DrainNodeRequest
+	(*DrainNodeResponse)(nil),           // 35: ktms.v1.DrainNodeResponse
+	(*UserRateLimitSpec)(nil),           // 36: ktms.v1.UserRateLimitSpec
+	(*SetUserRateLimitRequest)(nil),     // 37: ktms.v1.SetUserRateLimitRequest
+	(*SetUserRateLimitResponse)(nil),    // 38: ktms.v1.SetUserRateLimitResponse
+	(*DeleteUserRateLimitRequest)(nil),  // 39: ktms.v1.DeleteUserRateLimitRequest
+	(*DeleteUserRateLimitResponse)(nil), // 40: ktms.v1.DeleteUserRateLimitResponse
+	(*ListUserRateLimitsRequest)(nil),   // 41: ktms.v1.ListUserRateLimitsRequest
+	(*ListUserRateLimitsResponse)(nil),  // 42: ktms.v1.ListUserRateLimitsResponse
+	(*SpendLimitSpec)(nil),              // 43: ktms.v1.SpendLimitSpec
+	(*SetSpendLimitRequest)(nil),        // 44: ktms.v1.SetSpendLimitRequest
+	(*SetSpendLimitResponse)(nil),       // 45: ktms.v1.SetSpendLimitResponse
+	(*DeleteSpendLimitRequest)(nil),     // 46: ktms.v1.DeleteSpendLimitRequest
+	(*DeleteSpendLimitResponse)(nil),    // 47: ktms.v1.DeleteSpendLimitResponse
+	(*ListSpendLimitsRequest)(nil),      // 48: ktms.v1.ListSpendLimitsRequest
+	(*ListSpendLimitsResponse)(nil),     // 49: ktms.v1.ListSpendLimitsResponse
+	nil,                                 // 50: ktms.v1.RuleSpec.AttributesEntry
+	(Effort)(0),                         // 51: ktms.v1.Effort
 	(*timestamppb.Timestamp)(nil),       // 52: google.protobuf.Timestamp
 }
-var file_llmproxy_v1_admin_proto_depIdxs = []int32{
-	51, // 0: llmproxy.v1.ModelSpec.efforts:type_name -> llmproxy.v1.Effort
-	51, // 1: llmproxy.v1.RuleSpec.effort:type_name -> llmproxy.v1.Effort
-	50, // 2: llmproxy.v1.RuleSpec.attributes:type_name -> llmproxy.v1.RuleSpec.AttributesEntry
-	0,  // 3: llmproxy.v1.UpsertModelRequest.model:type_name -> llmproxy.v1.ModelSpec
-	1,  // 4: llmproxy.v1.ReplaceRulesRequest.rules:type_name -> llmproxy.v1.RuleSpec
-	52, // 5: llmproxy.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
-	0,  // 6: llmproxy.v1.GetConfigResponse.models:type_name -> llmproxy.v1.ModelSpec
-	1,  // 7: llmproxy.v1.GetConfigResponse.rules:type_name -> llmproxy.v1.RuleSpec
-	12, // 8: llmproxy.v1.GetConfigResponse.vendor_keys:type_name -> llmproxy.v1.VendorKeyInfo
-	36, // 9: llmproxy.v1.GetConfigResponse.user_rate_limits:type_name -> llmproxy.v1.UserRateLimitSpec
-	43, // 10: llmproxy.v1.GetConfigResponse.spend_limits:type_name -> llmproxy.v1.SpendLimitSpec
-	52, // 11: llmproxy.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
-	20, // 12: llmproxy.v1.ListAPIKeysResponse.keys:type_name -> llmproxy.v1.APIKeyInfo
-	52, // 13: llmproxy.v1.NodeKeyInfo.created_at:type_name -> google.protobuf.Timestamp
-	29, // 14: llmproxy.v1.ListNodeKeysResponse.keys:type_name -> llmproxy.v1.NodeKeyInfo
-	52, // 15: llmproxy.v1.NodeInfo.last_heartbeat:type_name -> google.protobuf.Timestamp
-	32, // 16: llmproxy.v1.ListNodesResponse.nodes:type_name -> llmproxy.v1.NodeInfo
-	36, // 17: llmproxy.v1.SetUserRateLimitRequest.rate_limit:type_name -> llmproxy.v1.UserRateLimitSpec
-	36, // 18: llmproxy.v1.ListUserRateLimitsResponse.rate_limits:type_name -> llmproxy.v1.UserRateLimitSpec
-	43, // 19: llmproxy.v1.SetSpendLimitRequest.spend_limit:type_name -> llmproxy.v1.SpendLimitSpec
-	43, // 20: llmproxy.v1.ListSpendLimitsResponse.spend_limits:type_name -> llmproxy.v1.SpendLimitSpec
-	2,  // 21: llmproxy.v1.LLMProxyAdminService.UpsertModel:input_type -> llmproxy.v1.UpsertModelRequest
-	4,  // 22: llmproxy.v1.LLMProxyAdminService.DeleteModel:input_type -> llmproxy.v1.DeleteModelRequest
-	6,  // 23: llmproxy.v1.LLMProxyAdminService.ReplaceRules:input_type -> llmproxy.v1.ReplaceRulesRequest
-	8,  // 24: llmproxy.v1.LLMProxyAdminService.SetVendorKey:input_type -> llmproxy.v1.SetVendorKeyRequest
-	10, // 25: llmproxy.v1.LLMProxyAdminService.DeleteVendorKey:input_type -> llmproxy.v1.DeleteVendorKeyRequest
-	13, // 26: llmproxy.v1.LLMProxyAdminService.GetConfig:input_type -> llmproxy.v1.GetConfigRequest
-	15, // 27: llmproxy.v1.LLMProxyAdminService.MintAPIKey:input_type -> llmproxy.v1.MintAPIKeyRequest
-	17, // 28: llmproxy.v1.LLMProxyAdminService.RevokeAPIKey:input_type -> llmproxy.v1.RevokeAPIKeyRequest
-	19, // 29: llmproxy.v1.LLMProxyAdminService.ListAPIKeys:input_type -> llmproxy.v1.ListAPIKeysRequest
-	22, // 30: llmproxy.v1.LLMProxyAdminService.RotateEncryption:input_type -> llmproxy.v1.RotateEncryptionRequest
-	24, // 31: llmproxy.v1.LLMProxyAdminService.MintNodeKey:input_type -> llmproxy.v1.MintNodeKeyRequest
-	26, // 32: llmproxy.v1.LLMProxyAdminService.RevokeNodeKey:input_type -> llmproxy.v1.RevokeNodeKeyRequest
-	28, // 33: llmproxy.v1.LLMProxyAdminService.ListNodeKeys:input_type -> llmproxy.v1.ListNodeKeysRequest
-	31, // 34: llmproxy.v1.LLMProxyAdminService.ListNodes:input_type -> llmproxy.v1.ListNodesRequest
-	34, // 35: llmproxy.v1.LLMProxyAdminService.DrainNode:input_type -> llmproxy.v1.DrainNodeRequest
-	37, // 36: llmproxy.v1.LLMProxyAdminService.SetUserRateLimit:input_type -> llmproxy.v1.SetUserRateLimitRequest
-	39, // 37: llmproxy.v1.LLMProxyAdminService.DeleteUserRateLimit:input_type -> llmproxy.v1.DeleteUserRateLimitRequest
-	41, // 38: llmproxy.v1.LLMProxyAdminService.ListUserRateLimits:input_type -> llmproxy.v1.ListUserRateLimitsRequest
-	44, // 39: llmproxy.v1.LLMProxyAdminService.SetSpendLimit:input_type -> llmproxy.v1.SetSpendLimitRequest
-	46, // 40: llmproxy.v1.LLMProxyAdminService.DeleteSpendLimit:input_type -> llmproxy.v1.DeleteSpendLimitRequest
-	48, // 41: llmproxy.v1.LLMProxyAdminService.ListSpendLimits:input_type -> llmproxy.v1.ListSpendLimitsRequest
-	3,  // 42: llmproxy.v1.LLMProxyAdminService.UpsertModel:output_type -> llmproxy.v1.UpsertModelResponse
-	5,  // 43: llmproxy.v1.LLMProxyAdminService.DeleteModel:output_type -> llmproxy.v1.DeleteModelResponse
-	7,  // 44: llmproxy.v1.LLMProxyAdminService.ReplaceRules:output_type -> llmproxy.v1.ReplaceRulesResponse
-	9,  // 45: llmproxy.v1.LLMProxyAdminService.SetVendorKey:output_type -> llmproxy.v1.SetVendorKeyResponse
-	11, // 46: llmproxy.v1.LLMProxyAdminService.DeleteVendorKey:output_type -> llmproxy.v1.DeleteVendorKeyResponse
-	14, // 47: llmproxy.v1.LLMProxyAdminService.GetConfig:output_type -> llmproxy.v1.GetConfigResponse
-	16, // 48: llmproxy.v1.LLMProxyAdminService.MintAPIKey:output_type -> llmproxy.v1.MintAPIKeyResponse
-	18, // 49: llmproxy.v1.LLMProxyAdminService.RevokeAPIKey:output_type -> llmproxy.v1.RevokeAPIKeyResponse
-	21, // 50: llmproxy.v1.LLMProxyAdminService.ListAPIKeys:output_type -> llmproxy.v1.ListAPIKeysResponse
-	23, // 51: llmproxy.v1.LLMProxyAdminService.RotateEncryption:output_type -> llmproxy.v1.RotateEncryptionResponse
-	25, // 52: llmproxy.v1.LLMProxyAdminService.MintNodeKey:output_type -> llmproxy.v1.MintNodeKeyResponse
-	27, // 53: llmproxy.v1.LLMProxyAdminService.RevokeNodeKey:output_type -> llmproxy.v1.RevokeNodeKeyResponse
-	30, // 54: llmproxy.v1.LLMProxyAdminService.ListNodeKeys:output_type -> llmproxy.v1.ListNodeKeysResponse
-	33, // 55: llmproxy.v1.LLMProxyAdminService.ListNodes:output_type -> llmproxy.v1.ListNodesResponse
-	35, // 56: llmproxy.v1.LLMProxyAdminService.DrainNode:output_type -> llmproxy.v1.DrainNodeResponse
-	38, // 57: llmproxy.v1.LLMProxyAdminService.SetUserRateLimit:output_type -> llmproxy.v1.SetUserRateLimitResponse
-	40, // 58: llmproxy.v1.LLMProxyAdminService.DeleteUserRateLimit:output_type -> llmproxy.v1.DeleteUserRateLimitResponse
-	42, // 59: llmproxy.v1.LLMProxyAdminService.ListUserRateLimits:output_type -> llmproxy.v1.ListUserRateLimitsResponse
-	45, // 60: llmproxy.v1.LLMProxyAdminService.SetSpendLimit:output_type -> llmproxy.v1.SetSpendLimitResponse
-	47, // 61: llmproxy.v1.LLMProxyAdminService.DeleteSpendLimit:output_type -> llmproxy.v1.DeleteSpendLimitResponse
-	49, // 62: llmproxy.v1.LLMProxyAdminService.ListSpendLimits:output_type -> llmproxy.v1.ListSpendLimitsResponse
+var file_ktms_v1_admin_proto_depIdxs = []int32{
+	51, // 0: ktms.v1.ModelSpec.efforts:type_name -> ktms.v1.Effort
+	51, // 1: ktms.v1.RuleSpec.effort:type_name -> ktms.v1.Effort
+	50, // 2: ktms.v1.RuleSpec.attributes:type_name -> ktms.v1.RuleSpec.AttributesEntry
+	0,  // 3: ktms.v1.UpsertModelRequest.model:type_name -> ktms.v1.ModelSpec
+	1,  // 4: ktms.v1.ReplaceRulesRequest.rules:type_name -> ktms.v1.RuleSpec
+	52, // 5: ktms.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	0,  // 6: ktms.v1.GetConfigResponse.models:type_name -> ktms.v1.ModelSpec
+	1,  // 7: ktms.v1.GetConfigResponse.rules:type_name -> ktms.v1.RuleSpec
+	12, // 8: ktms.v1.GetConfigResponse.vendor_keys:type_name -> ktms.v1.VendorKeyInfo
+	36, // 9: ktms.v1.GetConfigResponse.user_rate_limits:type_name -> ktms.v1.UserRateLimitSpec
+	43, // 10: ktms.v1.GetConfigResponse.spend_limits:type_name -> ktms.v1.SpendLimitSpec
+	52, // 11: ktms.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	20, // 12: ktms.v1.ListAPIKeysResponse.keys:type_name -> ktms.v1.APIKeyInfo
+	52, // 13: ktms.v1.NodeKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	29, // 14: ktms.v1.ListNodeKeysResponse.keys:type_name -> ktms.v1.NodeKeyInfo
+	52, // 15: ktms.v1.NodeInfo.last_heartbeat:type_name -> google.protobuf.Timestamp
+	32, // 16: ktms.v1.ListNodesResponse.nodes:type_name -> ktms.v1.NodeInfo
+	36, // 17: ktms.v1.SetUserRateLimitRequest.rate_limit:type_name -> ktms.v1.UserRateLimitSpec
+	36, // 18: ktms.v1.ListUserRateLimitsResponse.rate_limits:type_name -> ktms.v1.UserRateLimitSpec
+	43, // 19: ktms.v1.SetSpendLimitRequest.spend_limit:type_name -> ktms.v1.SpendLimitSpec
+	43, // 20: ktms.v1.ListSpendLimitsResponse.spend_limits:type_name -> ktms.v1.SpendLimitSpec
+	2,  // 21: ktms.v1.AdminService.UpsertModel:input_type -> ktms.v1.UpsertModelRequest
+	4,  // 22: ktms.v1.AdminService.DeleteModel:input_type -> ktms.v1.DeleteModelRequest
+	6,  // 23: ktms.v1.AdminService.ReplaceRules:input_type -> ktms.v1.ReplaceRulesRequest
+	8,  // 24: ktms.v1.AdminService.SetVendorKey:input_type -> ktms.v1.SetVendorKeyRequest
+	10, // 25: ktms.v1.AdminService.DeleteVendorKey:input_type -> ktms.v1.DeleteVendorKeyRequest
+	13, // 26: ktms.v1.AdminService.GetConfig:input_type -> ktms.v1.GetConfigRequest
+	15, // 27: ktms.v1.AdminService.MintAPIKey:input_type -> ktms.v1.MintAPIKeyRequest
+	17, // 28: ktms.v1.AdminService.RevokeAPIKey:input_type -> ktms.v1.RevokeAPIKeyRequest
+	19, // 29: ktms.v1.AdminService.ListAPIKeys:input_type -> ktms.v1.ListAPIKeysRequest
+	22, // 30: ktms.v1.AdminService.RotateEncryption:input_type -> ktms.v1.RotateEncryptionRequest
+	24, // 31: ktms.v1.AdminService.MintNodeKey:input_type -> ktms.v1.MintNodeKeyRequest
+	26, // 32: ktms.v1.AdminService.RevokeNodeKey:input_type -> ktms.v1.RevokeNodeKeyRequest
+	28, // 33: ktms.v1.AdminService.ListNodeKeys:input_type -> ktms.v1.ListNodeKeysRequest
+	31, // 34: ktms.v1.AdminService.ListNodes:input_type -> ktms.v1.ListNodesRequest
+	34, // 35: ktms.v1.AdminService.DrainNode:input_type -> ktms.v1.DrainNodeRequest
+	37, // 36: ktms.v1.AdminService.SetUserRateLimit:input_type -> ktms.v1.SetUserRateLimitRequest
+	39, // 37: ktms.v1.AdminService.DeleteUserRateLimit:input_type -> ktms.v1.DeleteUserRateLimitRequest
+	41, // 38: ktms.v1.AdminService.ListUserRateLimits:input_type -> ktms.v1.ListUserRateLimitsRequest
+	44, // 39: ktms.v1.AdminService.SetSpendLimit:input_type -> ktms.v1.SetSpendLimitRequest
+	46, // 40: ktms.v1.AdminService.DeleteSpendLimit:input_type -> ktms.v1.DeleteSpendLimitRequest
+	48, // 41: ktms.v1.AdminService.ListSpendLimits:input_type -> ktms.v1.ListSpendLimitsRequest
+	3,  // 42: ktms.v1.AdminService.UpsertModel:output_type -> ktms.v1.UpsertModelResponse
+	5,  // 43: ktms.v1.AdminService.DeleteModel:output_type -> ktms.v1.DeleteModelResponse
+	7,  // 44: ktms.v1.AdminService.ReplaceRules:output_type -> ktms.v1.ReplaceRulesResponse
+	9,  // 45: ktms.v1.AdminService.SetVendorKey:output_type -> ktms.v1.SetVendorKeyResponse
+	11, // 46: ktms.v1.AdminService.DeleteVendorKey:output_type -> ktms.v1.DeleteVendorKeyResponse
+	14, // 47: ktms.v1.AdminService.GetConfig:output_type -> ktms.v1.GetConfigResponse
+	16, // 48: ktms.v1.AdminService.MintAPIKey:output_type -> ktms.v1.MintAPIKeyResponse
+	18, // 49: ktms.v1.AdminService.RevokeAPIKey:output_type -> ktms.v1.RevokeAPIKeyResponse
+	21, // 50: ktms.v1.AdminService.ListAPIKeys:output_type -> ktms.v1.ListAPIKeysResponse
+	23, // 51: ktms.v1.AdminService.RotateEncryption:output_type -> ktms.v1.RotateEncryptionResponse
+	25, // 52: ktms.v1.AdminService.MintNodeKey:output_type -> ktms.v1.MintNodeKeyResponse
+	27, // 53: ktms.v1.AdminService.RevokeNodeKey:output_type -> ktms.v1.RevokeNodeKeyResponse
+	30, // 54: ktms.v1.AdminService.ListNodeKeys:output_type -> ktms.v1.ListNodeKeysResponse
+	33, // 55: ktms.v1.AdminService.ListNodes:output_type -> ktms.v1.ListNodesResponse
+	35, // 56: ktms.v1.AdminService.DrainNode:output_type -> ktms.v1.DrainNodeResponse
+	38, // 57: ktms.v1.AdminService.SetUserRateLimit:output_type -> ktms.v1.SetUserRateLimitResponse
+	40, // 58: ktms.v1.AdminService.DeleteUserRateLimit:output_type -> ktms.v1.DeleteUserRateLimitResponse
+	42, // 59: ktms.v1.AdminService.ListUserRateLimits:output_type -> ktms.v1.ListUserRateLimitsResponse
+	45, // 60: ktms.v1.AdminService.SetSpendLimit:output_type -> ktms.v1.SetSpendLimitResponse
+	47, // 61: ktms.v1.AdminService.DeleteSpendLimit:output_type -> ktms.v1.DeleteSpendLimitResponse
+	49, // 62: ktms.v1.AdminService.ListSpendLimits:output_type -> ktms.v1.ListSpendLimitsResponse
 	42, // [42:63] is the sub-list for method output_type
 	21, // [21:42] is the sub-list for method input_type
 	21, // [21:21] is the sub-list for extension type_name
@@ -3133,27 +3133,27 @@ var file_llmproxy_v1_admin_proto_depIdxs = []int32{
 	0,  // [0:21] is the sub-list for field type_name
 }
 
-func init() { file_llmproxy_v1_admin_proto_init() }
-func file_llmproxy_v1_admin_proto_init() {
-	if File_llmproxy_v1_admin_proto != nil {
+func init() { file_ktms_v1_admin_proto_init() }
+func file_ktms_v1_admin_proto_init() {
+	if File_ktms_v1_admin_proto != nil {
 		return
 	}
-	file_llmproxy_v1_llmproxy_proto_init()
+	file_ktms_v1_gateway_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_llmproxy_v1_admin_proto_rawDesc), len(file_llmproxy_v1_admin_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ktms_v1_admin_proto_rawDesc), len(file_ktms_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   51,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_llmproxy_v1_admin_proto_goTypes,
-		DependencyIndexes: file_llmproxy_v1_admin_proto_depIdxs,
-		MessageInfos:      file_llmproxy_v1_admin_proto_msgTypes,
+		GoTypes:           file_ktms_v1_admin_proto_goTypes,
+		DependencyIndexes: file_ktms_v1_admin_proto_depIdxs,
+		MessageInfos:      file_ktms_v1_admin_proto_msgTypes,
 	}.Build()
-	File_llmproxy_v1_admin_proto = out.File
-	file_llmproxy_v1_admin_proto_goTypes = nil
-	file_llmproxy_v1_admin_proto_depIdxs = nil
+	File_ktms_v1_admin_proto = out.File
+	file_ktms_v1_admin_proto_goTypes = nil
+	file_ktms_v1_admin_proto_depIdxs = nil
 }

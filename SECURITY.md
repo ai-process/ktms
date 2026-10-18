@@ -1,6 +1,6 @@
 # Security Policy
 
-The security of `llm-proxy` and the integrity of upstream provider credentials stored within it are paramount. We appreciate the responsible disclosure of any potential vulnerabilities.
+The security of `KTMS` and the integrity of upstream provider credentials stored within it are paramount. We appreciate the responsible disclosure of any potential vulnerabilities.
 
 ## Supported Versions
 
@@ -18,10 +18,10 @@ We provide security updates and patches for the following versions:
 Instead, please report potential security vulnerabilities through one of the following private channels:
 
 1. **GitHub Private Vulnerability Reporting:**  
-   Navigate to the [Security Advisories tab](https://github.com/ai-process/llm-proxy/security/advisories/new) of this repository and click **Report a vulnerability**. This allows secure, confidential coordination and tracking.
+   Navigate to the [Security Advisories tab](https://github.com/ai-process/ktms/security/advisories/new) of this repository and click **Report a vulnerability**. This allows secure, confidential coordination and tracking.
 
 2. **Email Disclosure:**  
-   Send an encrypted or confidential email to [security@vasiliy.pro](mailto:security@vasiliy.pro) with the subject prefix `[SECURITY] llm-proxy: <Brief Description>`.
+   Send an encrypted or confidential email to [security@vasiliy.pro](mailto:security@vasiliy.pro) with the subject prefix `[SECURITY] KTMS: <Brief Description>`.
 
 ### What to Include in Your Report
 
@@ -42,10 +42,10 @@ To help us triage and resolve the issue quickly, please provide:
 
 ## Security Architecture & Design Guarantees
 
-`llm-proxy` is designed with defense-in-depth principles:
+`KTMS` is designed with defense-in-depth principles:
 
 1. **Envelope Encryption for Vendor Credentials:**  
-   All upstream provider API keys (OpenAI, Anthropic, Gemini, DeepSeek, Bedrock, etc.) are encrypted at rest in PostgreSQL using AES-256-GCM with versioned keyrings (`LLMPROXY_ENCRYPTION_KEYS`). Plaintext keys are decrypted only into volatile in-memory snapshot caches.
+   All upstream provider API keys (OpenAI, Anthropic, Gemini, DeepSeek, Bedrock, etc.) are encrypted at rest in PostgreSQL using AES-256-GCM with versioned keyrings (`KTMS_ENCRYPTION_KEYS` / `LLMPROXY_ENCRYPTION_KEYS`). Plaintext keys are decrypted only into volatile in-memory snapshot caches.
 
 2. **Zero-Log Secret Guarantee:**  
    The codebase strictly enforces that vendor API keys, client API keys, and encryption master keys are never logged to stdout, file logs, OpenTelemetry traces, Prometheus metrics, Sentry, or gRPC error details.

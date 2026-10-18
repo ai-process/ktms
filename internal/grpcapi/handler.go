@@ -9,16 +9,16 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/apikeys"
-	"github.com/ai-process/llm-proxy/internal/guardrails"
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/registry"
-	"github.com/ai-process/llm-proxy/internal/router"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/guardrails"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
+	"github.com/ai-process/ktms/internal/router"
 )
 
-const defaultActionID = "llmproxy.generate_text"
+const defaultActionID = "ktms.generate_text"
 
 // SnapshotProvider hands out the active config view (the registry Loader in
 // production, a fixed snapshot in tests).
@@ -34,7 +34,7 @@ type TextCache interface {
 
 // ProxyServer implements the data-plane LLMProxyService.
 type ProxyServer struct {
-	pb.UnimplementedLLMProxyServiceServer
+	pb.UnimplementedGatewayServiceServer
 	snapshots       SnapshotProvider
 	throttle        router.Throttle
 	circuitBreaker  router.CircuitBreaker
@@ -219,7 +219,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 }
 
 // GenerateTextStream handles streaming text generation.
-func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stream pb.LLMProxyService_GenerateTextStreamServer) error {
+func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stream pb.GatewayService_GenerateTextStreamServer) error {
 	id := apikeys.IdentityFrom(stream.Context())
 	if id == nil {
 		return status.Error(codes.Unauthenticated, "no identity")
@@ -410,7 +410,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 	return nil
 }
 
-func sendCachedStream(stream pb.LLMProxyService_GenerateTextStreamServer, cached *pb.GenerateTextResponse) error {
+func sendCachedStream(stream pb.GatewayService_GenerateTextStreamServer, cached *pb.GenerateTextResponse) error {
 	var sentFirst bool
 	for _, choice := range cached.Details {
 		if choice.Text != "" {

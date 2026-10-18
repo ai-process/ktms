@@ -6,8 +6,8 @@ import (
 	"hash/fnv"
 	"math/big"
 
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/registry"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 // CanaryKey extracts the stickiness key for canary routing from request attributes.

@@ -7,7 +7,7 @@ COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
-    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/llm-proxy-server ./cmd/server
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/ktms-server ./cmd/server
 
 FROM alpine:3.21 AS runtime
 RUN apk add --no-cache ca-certificates && adduser -D -u 10001 appuser
@@ -18,15 +18,15 @@ RUN apk add --no-cache ffmpeg
 # audio target includes ffmpeg for Gemini speech synthesis raw PCM transcoding (~172 MB)
 FROM audio-runtime AS audio
 WORKDIR /
-COPY --from=builder /out/llm-proxy-server /llm-proxy-server
+COPY --from=builder /out/ktms-server /ktms-server
 USER appuser
 EXPOSE 8080 9090
-ENTRYPOINT ["/llm-proxy-server"]
+ENTRYPOINT ["/ktms-server"]
 
 # slim is the default target: kept as final stage for standard 'docker build .' default (~64 MB)
 FROM runtime AS slim
 WORKDIR /
-COPY --from=builder /out/llm-proxy-server /llm-proxy-server
+COPY --from=builder /out/ktms-server /ktms-server
 USER appuser
 EXPOSE 8080 9090
-ENTRYPOINT ["/llm-proxy-server"]
+ENTRYPOINT ["/ktms-server"]

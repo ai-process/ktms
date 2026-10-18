@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             (unknown)
-// source: llmproxy/v1/llmproxy.proto
+// source: ktms/v1/gateway.proto
 
-package llmproxyv1
+package ktmsv1
 
 import (
 	context "context"
@@ -19,22 +19,22 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LLMProxyService_GenerateText_FullMethodName       = "/llmproxy.v1.LLMProxyService/GenerateText"
-	LLMProxyService_GenerateTextStream_FullMethodName = "/llmproxy.v1.LLMProxyService/GenerateTextStream"
-	LLMProxyService_SynthesizeSpeech_FullMethodName   = "/llmproxy.v1.LLMProxyService/SynthesizeSpeech"
-	LLMProxyService_GenerateImage_FullMethodName      = "/llmproxy.v1.LLMProxyService/GenerateImage"
-	LLMProxyService_Judge_FullMethodName              = "/llmproxy.v1.LLMProxyService/Judge"
-	LLMProxyService_GetEmbeddings_FullMethodName      = "/llmproxy.v1.LLMProxyService/GetEmbeddings"
-	LLMProxyService_JudgeStream_FullMethodName        = "/llmproxy.v1.LLMProxyService/JudgeStream"
-	LLMProxyService_EvaluateRollouts_FullMethodName   = "/llmproxy.v1.LLMProxyService/EvaluateRollouts"
-	LLMProxyService_ListModels_FullMethodName         = "/llmproxy.v1.LLMProxyService/ListModels"
-	LLMProxyService_SubmitBatch_FullMethodName        = "/llmproxy.v1.LLMProxyService/SubmitBatch"
-	LLMProxyService_GetBatch_FullMethodName           = "/llmproxy.v1.LLMProxyService/GetBatch"
-	LLMProxyService_ListBatchResults_FullMethodName   = "/llmproxy.v1.LLMProxyService/ListBatchResults"
-	LLMProxyService_CancelBatch_FullMethodName        = "/llmproxy.v1.LLMProxyService/CancelBatch"
+	GatewayService_GenerateText_FullMethodName       = "/ktms.v1.GatewayService/GenerateText"
+	GatewayService_GenerateTextStream_FullMethodName = "/ktms.v1.GatewayService/GenerateTextStream"
+	GatewayService_SynthesizeSpeech_FullMethodName   = "/ktms.v1.GatewayService/SynthesizeSpeech"
+	GatewayService_GenerateImage_FullMethodName      = "/ktms.v1.GatewayService/GenerateImage"
+	GatewayService_Judge_FullMethodName              = "/ktms.v1.GatewayService/Judge"
+	GatewayService_GetEmbeddings_FullMethodName      = "/ktms.v1.GatewayService/GetEmbeddings"
+	GatewayService_JudgeStream_FullMethodName        = "/ktms.v1.GatewayService/JudgeStream"
+	GatewayService_EvaluateRollouts_FullMethodName   = "/ktms.v1.GatewayService/EvaluateRollouts"
+	GatewayService_ListModels_FullMethodName         = "/ktms.v1.GatewayService/ListModels"
+	GatewayService_SubmitBatch_FullMethodName        = "/ktms.v1.GatewayService/SubmitBatch"
+	GatewayService_GetBatch_FullMethodName           = "/ktms.v1.GatewayService/GetBatch"
+	GatewayService_ListBatchResults_FullMethodName   = "/ktms.v1.GatewayService/ListBatchResults"
+	GatewayService_CancelBatch_FullMethodName        = "/ktms.v1.GatewayService/CancelBatch"
 )
 
-// LLMProxyServiceClient is the client API for LLMProxyService service.
+// GatewayServiceClient is the client API for GatewayService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
@@ -51,7 +51,7 @@ const (
 // "bad_request: <message>" (validation errors, empty batch, duplicate custom_id).
 // UNIMPLEMENTED: "ffmpeg_missing: <hint>" (Gemini speech synthesis without ffmpeg).
 // INTERNAL "vendor_error" = terminal vendor failure.
-type LLMProxyServiceClient interface {
+type GatewayServiceClient interface {
 	GenerateText(ctx context.Context, in *GenerateTextRequest, opts ...grpc.CallOption) (*GenerateTextResponse, error)
 	GenerateTextStream(ctx context.Context, in *GenerateTextStreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GenerateTextChunk], error)
 	// Speech and images route by the same rules as text. They carry no effort of
@@ -84,27 +84,27 @@ type LLMProxyServiceClient interface {
 	CancelBatch(ctx context.Context, in *CancelBatchRequest, opts ...grpc.CallOption) (*CancelBatchResponse, error)
 }
 
-type lLMProxyServiceClient struct {
+type gatewayServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewLLMProxyServiceClient(cc grpc.ClientConnInterface) LLMProxyServiceClient {
-	return &lLMProxyServiceClient{cc}
+func NewGatewayServiceClient(cc grpc.ClientConnInterface) GatewayServiceClient {
+	return &gatewayServiceClient{cc}
 }
 
-func (c *lLMProxyServiceClient) GenerateText(ctx context.Context, in *GenerateTextRequest, opts ...grpc.CallOption) (*GenerateTextResponse, error) {
+func (c *gatewayServiceClient) GenerateText(ctx context.Context, in *GenerateTextRequest, opts ...grpc.CallOption) (*GenerateTextResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GenerateTextResponse)
-	err := c.cc.Invoke(ctx, LLMProxyService_GenerateText_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, GatewayService_GenerateText_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *lLMProxyServiceClient) GenerateTextStream(ctx context.Context, in *GenerateTextStreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GenerateTextChunk], error) {
+func (c *gatewayServiceClient) GenerateTextStream(ctx context.Context, in *GenerateTextStreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GenerateTextChunk], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &LLMProxyService_ServiceDesc.Streams[0], LLMProxyService_GenerateTextStream_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &GatewayService_ServiceDesc.Streams[0], GatewayService_GenerateTextStream_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -119,51 +119,51 @@ func (c *lLMProxyServiceClient) GenerateTextStream(ctx context.Context, in *Gene
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type LLMProxyService_GenerateTextStreamClient = grpc.ServerStreamingClient[GenerateTextChunk]
+type GatewayService_GenerateTextStreamClient = grpc.ServerStreamingClient[GenerateTextChunk]
 
-func (c *lLMProxyServiceClient) SynthesizeSpeech(ctx context.Context, in *SynthesizeSpeechRequest, opts ...grpc.CallOption) (*SynthesizeSpeechResponse, error) {
+func (c *gatewayServiceClient) SynthesizeSpeech(ctx context.Context, in *SynthesizeSpeechRequest, opts ...grpc.CallOption) (*SynthesizeSpeechResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SynthesizeSpeechResponse)
-	err := c.cc.Invoke(ctx, LLMProxyService_SynthesizeSpeech_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, GatewayService_SynthesizeSpeech_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *lLMProxyServiceClient) GenerateImage(ctx context.Context, in *GenerateImageRequest, opts ...grpc.CallOption) (*GenerateImageResponse, error) {
+func (c *gatewayServiceClient) GenerateImage(ctx context.Context, in *GenerateImageRequest, opts ...grpc.CallOption) (*GenerateImageResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GenerateImageResponse)
-	err := c.cc.Invoke(ctx, LLMProxyService_GenerateImage_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, GatewayService_GenerateImage_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *lLMProxyServiceClient) Judge(ctx context.Context, in *JudgeRequest, opts ...grpc.CallOption) (*JudgeResponse, error) {
+func (c *gatewayServiceClient) Judge(ctx context.Context, in *JudgeRequest, opts ...grpc.CallOption) (*JudgeResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(JudgeResponse)
-	err := c.cc.Invoke(ctx, LLMProxyService_Judge_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, GatewayService_Judge_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *lLMProxyServiceClient) GetEmbeddings(ctx context.Context, in *GetEmbeddingsRequest, opts ...grpc.CallOption) (*GetEmbeddingsResponse, error) {
+func (c *gatewayServiceClient) GetEmbeddings(ctx context.Context, in *GetEmbeddingsRequest, opts ...grpc.CallOption) (*GetEmbeddingsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetEmbeddingsResponse)
-	err := c.cc.Invoke(ctx, LLMProxyService_GetEmbeddings_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, GatewayService_GetEmbeddings_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *lLMProxyServiceClient) JudgeStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[JudgeRequest, JudgeResponse], error) {
+func (c *gatewayServiceClient) JudgeStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[JudgeRequest, JudgeResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &LLMProxyService_ServiceDesc.Streams[1], LLMProxyService_JudgeStream_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &GatewayService_ServiceDesc.Streams[1], GatewayService_JudgeStream_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -172,70 +172,70 @@ func (c *lLMProxyServiceClient) JudgeStream(ctx context.Context, opts ...grpc.Ca
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type LLMProxyService_JudgeStreamClient = grpc.BidiStreamingClient[JudgeRequest, JudgeResponse]
+type GatewayService_JudgeStreamClient = grpc.BidiStreamingClient[JudgeRequest, JudgeResponse]
 
-func (c *lLMProxyServiceClient) EvaluateRollouts(ctx context.Context, in *EvaluateRolloutsRequest, opts ...grpc.CallOption) (*EvaluateRolloutsResponse, error) {
+func (c *gatewayServiceClient) EvaluateRollouts(ctx context.Context, in *EvaluateRolloutsRequest, opts ...grpc.CallOption) (*EvaluateRolloutsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EvaluateRolloutsResponse)
-	err := c.cc.Invoke(ctx, LLMProxyService_EvaluateRollouts_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, GatewayService_EvaluateRollouts_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *lLMProxyServiceClient) ListModels(ctx context.Context, in *ListModelsRequest, opts ...grpc.CallOption) (*ListModelsResponse, error) {
+func (c *gatewayServiceClient) ListModels(ctx context.Context, in *ListModelsRequest, opts ...grpc.CallOption) (*ListModelsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListModelsResponse)
-	err := c.cc.Invoke(ctx, LLMProxyService_ListModels_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, GatewayService_ListModels_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *lLMProxyServiceClient) SubmitBatch(ctx context.Context, in *SubmitBatchRequest, opts ...grpc.CallOption) (*SubmitBatchResponse, error) {
+func (c *gatewayServiceClient) SubmitBatch(ctx context.Context, in *SubmitBatchRequest, opts ...grpc.CallOption) (*SubmitBatchResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SubmitBatchResponse)
-	err := c.cc.Invoke(ctx, LLMProxyService_SubmitBatch_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, GatewayService_SubmitBatch_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *lLMProxyServiceClient) GetBatch(ctx context.Context, in *GetBatchRequest, opts ...grpc.CallOption) (*Batch, error) {
+func (c *gatewayServiceClient) GetBatch(ctx context.Context, in *GetBatchRequest, opts ...grpc.CallOption) (*Batch, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Batch)
-	err := c.cc.Invoke(ctx, LLMProxyService_GetBatch_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, GatewayService_GetBatch_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *lLMProxyServiceClient) ListBatchResults(ctx context.Context, in *ListBatchResultsRequest, opts ...grpc.CallOption) (*ListBatchResultsResponse, error) {
+func (c *gatewayServiceClient) ListBatchResults(ctx context.Context, in *ListBatchResultsRequest, opts ...grpc.CallOption) (*ListBatchResultsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListBatchResultsResponse)
-	err := c.cc.Invoke(ctx, LLMProxyService_ListBatchResults_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, GatewayService_ListBatchResults_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *lLMProxyServiceClient) CancelBatch(ctx context.Context, in *CancelBatchRequest, opts ...grpc.CallOption) (*CancelBatchResponse, error) {
+func (c *gatewayServiceClient) CancelBatch(ctx context.Context, in *CancelBatchRequest, opts ...grpc.CallOption) (*CancelBatchResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CancelBatchResponse)
-	err := c.cc.Invoke(ctx, LLMProxyService_CancelBatch_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, GatewayService_CancelBatch_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// LLMProxyServiceServer is the server API for LLMProxyService service.
-// All implementations must embed UnimplementedLLMProxyServiceServer
+// GatewayServiceServer is the server API for GatewayService service.
+// All implementations must embed UnimplementedGatewayServiceServer
 // for forward compatibility.
 //
 // Error contract: retry only on UNAVAILABLE ("vendors_unavailable", or
@@ -251,7 +251,7 @@ func (c *lLMProxyServiceClient) CancelBatch(ctx context.Context, in *CancelBatch
 // "bad_request: <message>" (validation errors, empty batch, duplicate custom_id).
 // UNIMPLEMENTED: "ffmpeg_missing: <hint>" (Gemini speech synthesis without ffmpeg).
 // INTERNAL "vendor_error" = terminal vendor failure.
-type LLMProxyServiceServer interface {
+type GatewayServiceServer interface {
 	GenerateText(context.Context, *GenerateTextRequest) (*GenerateTextResponse, error)
 	GenerateTextStream(*GenerateTextStreamRequest, grpc.ServerStreamingServer[GenerateTextChunk]) error
 	// Speech and images route by the same rules as text. They carry no effort of
@@ -282,356 +282,356 @@ type LLMProxyServiceServer interface {
 	GetBatch(context.Context, *GetBatchRequest) (*Batch, error)
 	ListBatchResults(context.Context, *ListBatchResultsRequest) (*ListBatchResultsResponse, error)
 	CancelBatch(context.Context, *CancelBatchRequest) (*CancelBatchResponse, error)
-	mustEmbedUnimplementedLLMProxyServiceServer()
+	mustEmbedUnimplementedGatewayServiceServer()
 }
 
-// UnimplementedLLMProxyServiceServer must be embedded to have
+// UnimplementedGatewayServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedLLMProxyServiceServer struct{}
+type UnimplementedGatewayServiceServer struct{}
 
-func (UnimplementedLLMProxyServiceServer) GenerateText(context.Context, *GenerateTextRequest) (*GenerateTextResponse, error) {
+func (UnimplementedGatewayServiceServer) GenerateText(context.Context, *GenerateTextRequest) (*GenerateTextResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GenerateText not implemented")
 }
-func (UnimplementedLLMProxyServiceServer) GenerateTextStream(*GenerateTextStreamRequest, grpc.ServerStreamingServer[GenerateTextChunk]) error {
+func (UnimplementedGatewayServiceServer) GenerateTextStream(*GenerateTextStreamRequest, grpc.ServerStreamingServer[GenerateTextChunk]) error {
 	return status.Error(codes.Unimplemented, "method GenerateTextStream not implemented")
 }
-func (UnimplementedLLMProxyServiceServer) SynthesizeSpeech(context.Context, *SynthesizeSpeechRequest) (*SynthesizeSpeechResponse, error) {
+func (UnimplementedGatewayServiceServer) SynthesizeSpeech(context.Context, *SynthesizeSpeechRequest) (*SynthesizeSpeechResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SynthesizeSpeech not implemented")
 }
-func (UnimplementedLLMProxyServiceServer) GenerateImage(context.Context, *GenerateImageRequest) (*GenerateImageResponse, error) {
+func (UnimplementedGatewayServiceServer) GenerateImage(context.Context, *GenerateImageRequest) (*GenerateImageResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GenerateImage not implemented")
 }
-func (UnimplementedLLMProxyServiceServer) Judge(context.Context, *JudgeRequest) (*JudgeResponse, error) {
+func (UnimplementedGatewayServiceServer) Judge(context.Context, *JudgeRequest) (*JudgeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Judge not implemented")
 }
-func (UnimplementedLLMProxyServiceServer) GetEmbeddings(context.Context, *GetEmbeddingsRequest) (*GetEmbeddingsResponse, error) {
+func (UnimplementedGatewayServiceServer) GetEmbeddings(context.Context, *GetEmbeddingsRequest) (*GetEmbeddingsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetEmbeddings not implemented")
 }
-func (UnimplementedLLMProxyServiceServer) JudgeStream(grpc.BidiStreamingServer[JudgeRequest, JudgeResponse]) error {
+func (UnimplementedGatewayServiceServer) JudgeStream(grpc.BidiStreamingServer[JudgeRequest, JudgeResponse]) error {
 	return status.Error(codes.Unimplemented, "method JudgeStream not implemented")
 }
-func (UnimplementedLLMProxyServiceServer) EvaluateRollouts(context.Context, *EvaluateRolloutsRequest) (*EvaluateRolloutsResponse, error) {
+func (UnimplementedGatewayServiceServer) EvaluateRollouts(context.Context, *EvaluateRolloutsRequest) (*EvaluateRolloutsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method EvaluateRollouts not implemented")
 }
-func (UnimplementedLLMProxyServiceServer) ListModels(context.Context, *ListModelsRequest) (*ListModelsResponse, error) {
+func (UnimplementedGatewayServiceServer) ListModels(context.Context, *ListModelsRequest) (*ListModelsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListModels not implemented")
 }
-func (UnimplementedLLMProxyServiceServer) SubmitBatch(context.Context, *SubmitBatchRequest) (*SubmitBatchResponse, error) {
+func (UnimplementedGatewayServiceServer) SubmitBatch(context.Context, *SubmitBatchRequest) (*SubmitBatchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SubmitBatch not implemented")
 }
-func (UnimplementedLLMProxyServiceServer) GetBatch(context.Context, *GetBatchRequest) (*Batch, error) {
+func (UnimplementedGatewayServiceServer) GetBatch(context.Context, *GetBatchRequest) (*Batch, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetBatch not implemented")
 }
-func (UnimplementedLLMProxyServiceServer) ListBatchResults(context.Context, *ListBatchResultsRequest) (*ListBatchResultsResponse, error) {
+func (UnimplementedGatewayServiceServer) ListBatchResults(context.Context, *ListBatchResultsRequest) (*ListBatchResultsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListBatchResults not implemented")
 }
-func (UnimplementedLLMProxyServiceServer) CancelBatch(context.Context, *CancelBatchRequest) (*CancelBatchResponse, error) {
+func (UnimplementedGatewayServiceServer) CancelBatch(context.Context, *CancelBatchRequest) (*CancelBatchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CancelBatch not implemented")
 }
-func (UnimplementedLLMProxyServiceServer) mustEmbedUnimplementedLLMProxyServiceServer() {}
-func (UnimplementedLLMProxyServiceServer) testEmbeddedByValue()                         {}
+func (UnimplementedGatewayServiceServer) mustEmbedUnimplementedGatewayServiceServer() {}
+func (UnimplementedGatewayServiceServer) testEmbeddedByValue()                        {}
 
-// UnsafeLLMProxyServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to LLMProxyServiceServer will
+// UnsafeGatewayServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to GatewayServiceServer will
 // result in compilation errors.
-type UnsafeLLMProxyServiceServer interface {
-	mustEmbedUnimplementedLLMProxyServiceServer()
+type UnsafeGatewayServiceServer interface {
+	mustEmbedUnimplementedGatewayServiceServer()
 }
 
-func RegisterLLMProxyServiceServer(s grpc.ServiceRegistrar, srv LLMProxyServiceServer) {
-	// If the following call panics, it indicates UnimplementedLLMProxyServiceServer was
+func RegisterGatewayServiceServer(s grpc.ServiceRegistrar, srv GatewayServiceServer) {
+	// If the following call panics, it indicates UnimplementedGatewayServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&LLMProxyService_ServiceDesc, srv)
+	s.RegisterService(&GatewayService_ServiceDesc, srv)
 }
 
-func _LLMProxyService_GenerateText_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _GatewayService_GenerateText_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GenerateTextRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LLMProxyServiceServer).GenerateText(ctx, in)
+		return srv.(GatewayServiceServer).GenerateText(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LLMProxyService_GenerateText_FullMethodName,
+		FullMethod: GatewayService_GenerateText_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LLMProxyServiceServer).GenerateText(ctx, req.(*GenerateTextRequest))
+		return srv.(GatewayServiceServer).GenerateText(ctx, req.(*GenerateTextRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LLMProxyService_GenerateTextStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+func _GatewayService_GenerateTextStream_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(GenerateTextStreamRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(LLMProxyServiceServer).GenerateTextStream(m, &grpc.GenericServerStream[GenerateTextStreamRequest, GenerateTextChunk]{ServerStream: stream})
+	return srv.(GatewayServiceServer).GenerateTextStream(m, &grpc.GenericServerStream[GenerateTextStreamRequest, GenerateTextChunk]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type LLMProxyService_GenerateTextStreamServer = grpc.ServerStreamingServer[GenerateTextChunk]
+type GatewayService_GenerateTextStreamServer = grpc.ServerStreamingServer[GenerateTextChunk]
 
-func _LLMProxyService_SynthesizeSpeech_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _GatewayService_SynthesizeSpeech_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SynthesizeSpeechRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LLMProxyServiceServer).SynthesizeSpeech(ctx, in)
+		return srv.(GatewayServiceServer).SynthesizeSpeech(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LLMProxyService_SynthesizeSpeech_FullMethodName,
+		FullMethod: GatewayService_SynthesizeSpeech_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LLMProxyServiceServer).SynthesizeSpeech(ctx, req.(*SynthesizeSpeechRequest))
+		return srv.(GatewayServiceServer).SynthesizeSpeech(ctx, req.(*SynthesizeSpeechRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LLMProxyService_GenerateImage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _GatewayService_GenerateImage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GenerateImageRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LLMProxyServiceServer).GenerateImage(ctx, in)
+		return srv.(GatewayServiceServer).GenerateImage(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LLMProxyService_GenerateImage_FullMethodName,
+		FullMethod: GatewayService_GenerateImage_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LLMProxyServiceServer).GenerateImage(ctx, req.(*GenerateImageRequest))
+		return srv.(GatewayServiceServer).GenerateImage(ctx, req.(*GenerateImageRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LLMProxyService_Judge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _GatewayService_Judge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(JudgeRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LLMProxyServiceServer).Judge(ctx, in)
+		return srv.(GatewayServiceServer).Judge(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LLMProxyService_Judge_FullMethodName,
+		FullMethod: GatewayService_Judge_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LLMProxyServiceServer).Judge(ctx, req.(*JudgeRequest))
+		return srv.(GatewayServiceServer).Judge(ctx, req.(*JudgeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LLMProxyService_GetEmbeddings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _GatewayService_GetEmbeddings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetEmbeddingsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LLMProxyServiceServer).GetEmbeddings(ctx, in)
+		return srv.(GatewayServiceServer).GetEmbeddings(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LLMProxyService_GetEmbeddings_FullMethodName,
+		FullMethod: GatewayService_GetEmbeddings_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LLMProxyServiceServer).GetEmbeddings(ctx, req.(*GetEmbeddingsRequest))
+		return srv.(GatewayServiceServer).GetEmbeddings(ctx, req.(*GetEmbeddingsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LLMProxyService_JudgeStream_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(LLMProxyServiceServer).JudgeStream(&grpc.GenericServerStream[JudgeRequest, JudgeResponse]{ServerStream: stream})
+func _GatewayService_JudgeStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(GatewayServiceServer).JudgeStream(&grpc.GenericServerStream[JudgeRequest, JudgeResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type LLMProxyService_JudgeStreamServer = grpc.BidiStreamingServer[JudgeRequest, JudgeResponse]
+type GatewayService_JudgeStreamServer = grpc.BidiStreamingServer[JudgeRequest, JudgeResponse]
 
-func _LLMProxyService_EvaluateRollouts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _GatewayService_EvaluateRollouts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(EvaluateRolloutsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LLMProxyServiceServer).EvaluateRollouts(ctx, in)
+		return srv.(GatewayServiceServer).EvaluateRollouts(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LLMProxyService_EvaluateRollouts_FullMethodName,
+		FullMethod: GatewayService_EvaluateRollouts_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LLMProxyServiceServer).EvaluateRollouts(ctx, req.(*EvaluateRolloutsRequest))
+		return srv.(GatewayServiceServer).EvaluateRollouts(ctx, req.(*EvaluateRolloutsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LLMProxyService_ListModels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _GatewayService_ListModels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListModelsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LLMProxyServiceServer).ListModels(ctx, in)
+		return srv.(GatewayServiceServer).ListModels(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LLMProxyService_ListModels_FullMethodName,
+		FullMethod: GatewayService_ListModels_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LLMProxyServiceServer).ListModels(ctx, req.(*ListModelsRequest))
+		return srv.(GatewayServiceServer).ListModels(ctx, req.(*ListModelsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LLMProxyService_SubmitBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _GatewayService_SubmitBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SubmitBatchRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LLMProxyServiceServer).SubmitBatch(ctx, in)
+		return srv.(GatewayServiceServer).SubmitBatch(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LLMProxyService_SubmitBatch_FullMethodName,
+		FullMethod: GatewayService_SubmitBatch_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LLMProxyServiceServer).SubmitBatch(ctx, req.(*SubmitBatchRequest))
+		return srv.(GatewayServiceServer).SubmitBatch(ctx, req.(*SubmitBatchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LLMProxyService_GetBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _GatewayService_GetBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetBatchRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LLMProxyServiceServer).GetBatch(ctx, in)
+		return srv.(GatewayServiceServer).GetBatch(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LLMProxyService_GetBatch_FullMethodName,
+		FullMethod: GatewayService_GetBatch_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LLMProxyServiceServer).GetBatch(ctx, req.(*GetBatchRequest))
+		return srv.(GatewayServiceServer).GetBatch(ctx, req.(*GetBatchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LLMProxyService_ListBatchResults_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _GatewayService_ListBatchResults_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListBatchResultsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LLMProxyServiceServer).ListBatchResults(ctx, in)
+		return srv.(GatewayServiceServer).ListBatchResults(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LLMProxyService_ListBatchResults_FullMethodName,
+		FullMethod: GatewayService_ListBatchResults_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LLMProxyServiceServer).ListBatchResults(ctx, req.(*ListBatchResultsRequest))
+		return srv.(GatewayServiceServer).ListBatchResults(ctx, req.(*ListBatchResultsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LLMProxyService_CancelBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _GatewayService_CancelBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CancelBatchRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LLMProxyServiceServer).CancelBatch(ctx, in)
+		return srv.(GatewayServiceServer).CancelBatch(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LLMProxyService_CancelBatch_FullMethodName,
+		FullMethod: GatewayService_CancelBatch_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LLMProxyServiceServer).CancelBatch(ctx, req.(*CancelBatchRequest))
+		return srv.(GatewayServiceServer).CancelBatch(ctx, req.(*CancelBatchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// LLMProxyService_ServiceDesc is the grpc.ServiceDesc for LLMProxyService service.
+// GatewayService_ServiceDesc is the grpc.ServiceDesc for GatewayService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var LLMProxyService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "llmproxy.v1.LLMProxyService",
-	HandlerType: (*LLMProxyServiceServer)(nil),
+var GatewayService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "ktms.v1.GatewayService",
+	HandlerType: (*GatewayServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "GenerateText",
-			Handler:    _LLMProxyService_GenerateText_Handler,
+			Handler:    _GatewayService_GenerateText_Handler,
 		},
 		{
 			MethodName: "SynthesizeSpeech",
-			Handler:    _LLMProxyService_SynthesizeSpeech_Handler,
+			Handler:    _GatewayService_SynthesizeSpeech_Handler,
 		},
 		{
 			MethodName: "GenerateImage",
-			Handler:    _LLMProxyService_GenerateImage_Handler,
+			Handler:    _GatewayService_GenerateImage_Handler,
 		},
 		{
 			MethodName: "Judge",
-			Handler:    _LLMProxyService_Judge_Handler,
+			Handler:    _GatewayService_Judge_Handler,
 		},
 		{
 			MethodName: "GetEmbeddings",
-			Handler:    _LLMProxyService_GetEmbeddings_Handler,
+			Handler:    _GatewayService_GetEmbeddings_Handler,
 		},
 		{
 			MethodName: "EvaluateRollouts",
-			Handler:    _LLMProxyService_EvaluateRollouts_Handler,
+			Handler:    _GatewayService_EvaluateRollouts_Handler,
 		},
 		{
 			MethodName: "ListModels",
-			Handler:    _LLMProxyService_ListModels_Handler,
+			Handler:    _GatewayService_ListModels_Handler,
 		},
 		{
 			MethodName: "SubmitBatch",
-			Handler:    _LLMProxyService_SubmitBatch_Handler,
+			Handler:    _GatewayService_SubmitBatch_Handler,
 		},
 		{
 			MethodName: "GetBatch",
-			Handler:    _LLMProxyService_GetBatch_Handler,
+			Handler:    _GatewayService_GetBatch_Handler,
 		},
 		{
 			MethodName: "ListBatchResults",
-			Handler:    _LLMProxyService_ListBatchResults_Handler,
+			Handler:    _GatewayService_ListBatchResults_Handler,
 		},
 		{
 			MethodName: "CancelBatch",
-			Handler:    _LLMProxyService_CancelBatch_Handler,
+			Handler:    _GatewayService_CancelBatch_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "GenerateTextStream",
-			Handler:       _LLMProxyService_GenerateTextStream_Handler,
+			Handler:       _GatewayService_GenerateTextStream_Handler,
 			ServerStreams: true,
 		},
 		{
 			StreamName:    "JudgeStream",
-			Handler:       _LLMProxyService_JudgeStream_Handler,
+			Handler:       _GatewayService_JudgeStream_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
 	},
-	Metadata: "llmproxy/v1/llmproxy.proto",
+	Metadata: "ktms/v1/gateway.proto",
 }

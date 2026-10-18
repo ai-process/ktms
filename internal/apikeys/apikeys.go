@@ -18,7 +18,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ai-process/llm-proxy/internal/proxydb"
+	"github.com/ai-process/ktms/internal/proxydb"
 )
 
 // Scopes. A key carries a subset; admin implies all of them.
@@ -31,8 +31,10 @@ const (
 
 // KeyPrefix marks our keys so a leaked string is recognisable in a log scan.
 const (
-	KeyPrefix     = "llm_"
-	NodeKeyPrefix = "llm_node_"
+	KeyPrefix           = "ktms_"
+	NodeKeyPrefix       = "ktms_node_"
+	LegacyKeyPrefix     = "llm_"
+	LegacyNodeKeyPrefix = "llm_node_"
 )
 
 var (
@@ -191,7 +193,7 @@ func (v *Verifier) Verify(ctx context.Context, plain string) (*Identity, error) 
 		return &Identity{KeyID: "bootstrap", Name: "bootstrap", Scopes: []string{ScopeAdmin}}, nil
 	}
 
-	if strings.HasPrefix(plain, NodeKeyPrefix) {
+	if strings.HasPrefix(plain, NodeKeyPrefix) || strings.HasPrefix(plain, LegacyNodeKeyPrefix) {
 		row, err := v.store.GetNodeKeyByLookup(ctx, LookupHash(plain))
 		if errors.Is(err, proxydb.ErrNotFound) {
 			return nil, ErrUnauthenticated

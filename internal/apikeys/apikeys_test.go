@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ai-process/llm-proxy/internal/proxydb"
+	"github.com/ai-process/ktms/internal/proxydb"
 )
 
 type fakeStore struct {
@@ -251,9 +251,10 @@ func TestVerifyScope(t *testing.T) {
 
 func TestParseBearer(t *testing.T) {
 	ok := map[string]string{
-		"Bearer llm_abc": "llm_abc",
-		"bearer llm_abc": "llm_abc",
-		"BEARER llm_abc": "llm_abc",
+		"Bearer ktms_abc": "ktms_abc",
+		"bearer ktms_abc": "ktms_abc",
+		"BEARER ktms_abc": "ktms_abc",
+		"Bearer llm_abc":  "llm_abc",
 	}
 	for header, want := range ok {
 		got, err := ParseBearer(header)
@@ -261,7 +262,7 @@ func TestParseBearer(t *testing.T) {
 			t.Errorf("ParseBearer(%q) = %q, %v", header, got, err)
 		}
 	}
-	for _, header := range []string{"", "llm_abc", "Basic llm_abc", "Bearer", "Bearer   "} {
+	for _, header := range []string{"", "ktms_abc", "Basic ktms_abc", "Bearer", "Bearer   "} {
 		if _, err := ParseBearer(header); !errors.Is(err, ErrUnauthenticated) {
 			t.Errorf("ParseBearer(%q) err = %v, want ErrUnauthenticated", header, err)
 		}
@@ -300,4 +301,48 @@ func TestVerifyIsRaceFree(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestNodeKeyAndLegacyNodeKeyVerification(t *testing.T) {
+	store := newFakeStore()
+	v := NewVerifier(store, "")
+
+	// 1. Current prefix (ktms_node_)
+	plainNodeKey, row, err := GenerateNodeKey("node-1", "node-1-id", nil, nil, 1.0, 10)
+	if err != nil {
+		t.Fatalf("GenerateNodeKey: %v", err)
+	}
+	if !strings.HasPrefix(plainNodeKey, NodeKeyPrefix) {
+		t.Fatalf("plainNodeKey %q lacks prefix %q", plainNodeKey, NodeKeyPrefix)
+	}
+	store.nodeRows[row.KeyLookup] = row
+
+	id, err := v.Verify(context.Background(), plainNodeKey)
+	if err != nil {
+		t.Fatalf("Verify ktms_node key failed: %v", err)
+	}
+	if id.NodeID != "node-1-id" || !id.HasScope(ScopeNode) {
+		t.Errorf("unexpected identity: %+v", id)
+	}
+
+	// 2. Legacy prefix (llm_node_)
+	legacyPlain := LegacyNodeKeyPrefix + strings.Repeat("e", 64)
+	legacyRow := &proxydb.NodeKey{
+		ID:             99,
+		NodeID:         "node-legacy-id",
+		Name:           "legacy-node",
+		KeyLookup:      LookupHash(legacyPlain),
+		KeyHash:        VerifyHash(legacyPlain),
+		MaxBaseWeight:  1.0,
+		MaxConcurrency: 5,
+	}
+	store.nodeRows[legacyRow.KeyLookup] = legacyRow
+
+	idLegacy, err := v.Verify(context.Background(), legacyPlain)
+	if err != nil {
+		t.Fatalf("Verify legacy llm_node key failed: %v", err)
+	}
+	if idLegacy.NodeID != "node-legacy-id" || !idLegacy.HasScope(ScopeNode) {
+		t.Errorf("unexpected legacy node identity: %+v", idLegacy)
+	}
 }

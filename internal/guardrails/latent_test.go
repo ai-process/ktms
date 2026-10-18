@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ai-process/llm-proxy/internal/latent"
-	"github.com/ai-process/llm-proxy/internal/llm"
+	"github.com/ai-process/ktms/internal/latent"
+	"github.com/ai-process/ktms/internal/llm"
 )
 
 const testLatentThreshold = 0.70

@@ -14,14 +14,14 @@ import (
 	"github.com/openai/openai-go/v3/option"
 	"github.com/rs/zerolog/log"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
 
-	"github.com/ai-process/llm-proxy/internal/circuitbreaker"
-	"github.com/ai-process/llm-proxy/internal/crypto"
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/llm/adapters"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/registry"
+	"github.com/ai-process/ktms/internal/circuitbreaker"
+	"github.com/ai-process/ktms/internal/crypto"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/llm/adapters"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 type UserRateLimitResolver func(userID, modelID string) *proxydb.UserRateLimit

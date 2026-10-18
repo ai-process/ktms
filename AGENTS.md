@@ -1,4 +1,4 @@
-# Agent Guidelines & Rules for llm-proxy
+# Agent Guidelines & Rules for KTMS (llm-proxy)
 
 Guidelines and invariants for AI agents working in this codebase, synthesized from architecture decisions and code review findings.
 

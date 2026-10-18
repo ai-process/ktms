@@ -3,7 +3,7 @@ package registry
 import (
 	"strings"
 
-	"github.com/ai-process/llm-proxy/internal/proxydb"
+	"github.com/ai-process/ktms/internal/proxydb"
 )
 
 // Vendors the engine can construct adapters for. DeepSeek and Ollama ride

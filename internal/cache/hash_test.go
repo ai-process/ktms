@@ -3,7 +3,7 @@ package cache
 import (
 	"testing"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
 )
 
 func TestComputeKey_Determinism(t *testing.T) {

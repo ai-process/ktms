@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
+	"github.com/ai-process/ktms/internal/llm"
 )
 
 // ErrUpstreamTimeout marks an attempt aborted by the per-attempt upstream watchdog.
