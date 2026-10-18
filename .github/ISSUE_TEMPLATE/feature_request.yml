@@ -1,12 +1,12 @@
 name: Feature Request
-description: Propose a new feature, improvement, or capability for llm-proxy
+description: Propose a new feature, improvement, or capability for KTMS
 title: "feat: "
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        We welcome proposals to expand and improve llm-proxy! Please detail the problem your request addresses and any suggested technical design.
+        We welcome proposals to expand and improve KTMS! Please detail the problem your request addresses and any suggested technical design.
 
   - type: dropdown
     id: component
