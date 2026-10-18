@@ -11,12 +11,12 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/apikeys"
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/registry"
-	"github.com/ai-process/llm-proxy/internal/router"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
+	"github.com/ai-process/ktms/internal/router"
 )
 
 type fakeBatchStore struct {

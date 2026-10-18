@@ -9,8 +9,8 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/crypto"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/crypto"
 )
 
 func testKeyring(t testing.TB) *crypto.Keyring {

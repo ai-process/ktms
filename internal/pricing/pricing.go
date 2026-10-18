@@ -7,8 +7,8 @@ import (
 	"math/bits"
 	"time"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/proxydb"
 )
 
 // Mode selects which of a model's rates apply.

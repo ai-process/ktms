@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/llm/adapters"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/registry"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/llm/adapters"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 func TestPoolAdapter_Judge_Success(t *testing.T) {

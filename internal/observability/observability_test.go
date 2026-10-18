@@ -70,16 +70,16 @@ func TestObservabilityMetrics_Recording(t *testing.T) {
 	metricsOutput := string(body)
 
 	expectedMetrics := []string{
-		"llmproxy_requests_total",
-		"llmproxy_request_duration_seconds",
-		"llmproxy_time_to_first_token_seconds",
-		"llmproxy_tokens_total",
-		"llmproxy_active_requests",
-		"llmproxy_throttled_total",
-		"llmproxy_fallbacks_total",
-		"llmproxy_batch_jobs_total",
-		"llmproxy_batch_items_total",
-		"llmproxy_batch_poll_duration_seconds",
+		"ktms_requests_total",
+		"ktms_request_duration_seconds",
+		"ktms_time_to_first_token_seconds",
+		"ktms_tokens_total",
+		"ktms_active_requests",
+		"ktms_throttled_total",
+		"ktms_fallbacks_total",
+		"ktms_batch_jobs_total",
+		"ktms_batch_items_total",
+		"ktms_batch_poll_duration_seconds",
 	}
 
 	for _, metricName := range expectedMetrics {
@@ -105,7 +105,7 @@ func TestObservabilityTracing_InitAndSpan(t *testing.T) {
 	ctx, span := tr.Start(ctx, "test-operation", trace.WithAttributes(
 		AttrGenAIProviderName.String("test-vendor"),
 		AttrGenAIRequestModel.String("test-model"),
-		AttrLLMProxyEffort.String("high"),
+		AttrKTMSEffort.String("high"),
 	))
 	if !span.SpanContext().IsValid() {
 		// Valid span context created even in headless mode

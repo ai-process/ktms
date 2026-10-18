@@ -5,9 +5,9 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/spendlimit"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/spendlimit"
 )
 
 // Snapshot is one immutable view of the routing config: enabled models and

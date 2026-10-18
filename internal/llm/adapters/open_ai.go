@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/ai-process/llm-proxy/internal/llm"
+	"github.com/ai-process/ktms/internal/llm"
 	"io"
 	"math"
 	"net/http"

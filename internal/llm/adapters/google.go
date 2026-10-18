@@ -15,8 +15,8 @@ import (
 	"google.golang.org/genai"
 	"google.golang.org/grpc/codes"
 
-	"github.com/ai-process/llm-proxy/internal/audio"
-	"github.com/ai-process/llm-proxy/internal/llm"
+	"github.com/ai-process/ktms/internal/audio"
+	"github.com/ai-process/ktms/internal/llm"
 )
 
 // ttsOutputSampleRate is what Gemini TTS produces (16-bit LE mono PCM) when the

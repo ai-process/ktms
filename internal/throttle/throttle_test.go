@@ -8,8 +8,8 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/proxydb"
 )
 
 func newTestThrottle(t *testing.T) (*Redis, *miniredis.Miniredis) {

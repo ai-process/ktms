@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	usagev1 "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1"
+	usagev1 "github.com/ai-process/ktms/internal/usagereport/gen/usage/v1"
 )
 
 // UsageCollectorClient is a client for sending LLM usage events to the usage collector service

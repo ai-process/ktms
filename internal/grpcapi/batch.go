@@ -14,12 +14,12 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/apikeys"
-	"github.com/ai-process/llm-proxy/internal/guardrails"
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/router"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/guardrails"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/router"
 )
 
 // BatchStore abstracts batch persistence operations.

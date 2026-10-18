@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/document"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
+	"github.com/ai-process/ktms/internal/llm"
 )
 
 type mockBedrockClient struct {

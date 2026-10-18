@@ -7,7 +7,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/ai-process/llm-proxy/internal/latent"
+	"github.com/ai-process/ktms/internal/latent"
 )
 
 // LatentCategory is one malicious-intent cluster. Phrases are encoded with

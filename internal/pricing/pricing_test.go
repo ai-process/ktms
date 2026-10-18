@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/proxydb"
 )
 
 func TestCostStandard(t *testing.T) {

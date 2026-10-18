@@ -12,9 +12,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/observability"
-	usagev1 "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/observability"
+	usagev1 "github.com/ai-process/ktms/internal/usagereport/gen/usage/v1"
 )
 
 // TrackingAdapter wraps a ClientAdapter and automatically tracks usage
@@ -78,14 +78,14 @@ func (t *TrackingAdapter) GenerateText(ctx context.Context, chat *llm.ChatContex
 	attrs := []attribute.KeyValue{
 		observability.AttrGenAIProviderName.String(t.vendor),
 		observability.AttrGenAIRequestModel.String(t.model),
-		observability.AttrLLMProxyEffort.String(effort),
+		observability.AttrKTMSEffort.String(effort),
 	}
 	if meta != nil {
 		if r := meta["rule"]; r != "" {
-			attrs = append(attrs, observability.AttrLLMProxyRule.String(r))
+			attrs = append(attrs, observability.AttrKTMSRule.String(r))
 		}
 		if k := meta["api_key"]; k != "" {
-			attrs = append(attrs, observability.AttrLLMProxyClientKey.String(k))
+			attrs = append(attrs, observability.AttrKTMSClientKey.String(k))
 		}
 	}
 
@@ -215,14 +215,14 @@ func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.Chat
 	attrs := []attribute.KeyValue{
 		observability.AttrGenAIProviderName.String(t.vendor),
 		observability.AttrGenAIRequestModel.String(t.model),
-		observability.AttrLLMProxyEffort.String(effort),
+		observability.AttrKTMSEffort.String(effort),
 	}
 	if meta != nil {
 		if r := meta["rule"]; r != "" {
-			attrs = append(attrs, observability.AttrLLMProxyRule.String(r))
+			attrs = append(attrs, observability.AttrKTMSRule.String(r))
 		}
 		if k := meta["api_key"]; k != "" {
-			attrs = append(attrs, observability.AttrLLMProxyClientKey.String(k))
+			attrs = append(attrs, observability.AttrKTMSClientKey.String(k))
 		}
 	}
 
@@ -336,10 +336,10 @@ func (t *TrackingAdapter) SynthesizeSpeech(ctx context.Context, text, language, 
 	}
 	if meta != nil {
 		if r := meta["rule"]; r != "" {
-			attrs = append(attrs, observability.AttrLLMProxyRule.String(r))
+			attrs = append(attrs, observability.AttrKTMSRule.String(r))
 		}
 		if k := meta["api_key"]; k != "" {
-			attrs = append(attrs, observability.AttrLLMProxyClientKey.String(k))
+			attrs = append(attrs, observability.AttrKTMSClientKey.String(k))
 		}
 	}
 
@@ -450,10 +450,10 @@ func (t *TrackingAdapter) GenerateImage(ctx context.Context, prompt, userID stri
 	}
 	if meta != nil {
 		if r := meta["rule"]; r != "" {
-			attrs = append(attrs, observability.AttrLLMProxyRule.String(r))
+			attrs = append(attrs, observability.AttrKTMSRule.String(r))
 		}
 		if k := meta["api_key"]; k != "" {
-			attrs = append(attrs, observability.AttrLLMProxyClientKey.String(k))
+			attrs = append(attrs, observability.AttrKTMSClientKey.String(k))
 		}
 	}
 
@@ -559,10 +559,10 @@ func (t *TrackingAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, user
 	}
 	if meta != nil {
 		if r := meta["rule"]; r != "" {
-			attrs = append(attrs, observability.AttrLLMProxyRule.String(r))
+			attrs = append(attrs, observability.AttrKTMSRule.String(r))
 		}
 		if k := meta["api_key"]; k != "" {
-			attrs = append(attrs, observability.AttrLLMProxyClientKey.String(k))
+			attrs = append(attrs, observability.AttrKTMSClientKey.String(k))
 		}
 	}
 
@@ -591,7 +591,7 @@ func (t *TrackingAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, user
 			status = usagev1.Status_STATUS_ERROR
 		}
 
-		actionID := "llmproxy.judge"
+		actionID := "ktms.judge"
 		if req != nil && req.ActionID != "" {
 			actionID = req.ActionID
 		}
@@ -674,10 +674,10 @@ func (t *TrackingAdapter) EvaluateRollouts(ctx context.Context, req *llm.Evaluat
 	}
 	if meta != nil {
 		if r := meta["rule"]; r != "" {
-			attrs = append(attrs, observability.AttrLLMProxyRule.String(r))
+			attrs = append(attrs, observability.AttrKTMSRule.String(r))
 		}
 		if k := meta["api_key"]; k != "" {
-			attrs = append(attrs, observability.AttrLLMProxyClientKey.String(k))
+			attrs = append(attrs, observability.AttrKTMSClientKey.String(k))
 		}
 	}
 
@@ -706,7 +706,7 @@ func (t *TrackingAdapter) EvaluateRollouts(ctx context.Context, req *llm.Evaluat
 			status = usagev1.Status_STATUS_ERROR
 		}
 
-		actionID := "llmproxy.rollouts"
+		actionID := "ktms.rollouts"
 		if req != nil && req.ActionID != "" {
 			actionID = req.ActionID
 		}
@@ -829,10 +829,10 @@ func (t *TrackingAdapter) CreateEmbeddings(ctx context.Context, req *llm.Embeddi
 	}
 	if meta != nil {
 		if r := meta["rule"]; r != "" {
-			attrs = append(attrs, observability.AttrLLMProxyRule.String(r))
+			attrs = append(attrs, observability.AttrKTMSRule.String(r))
 		}
 		if k := meta["api_key"]; k != "" {
-			attrs = append(attrs, observability.AttrLLMProxyClientKey.String(k))
+			attrs = append(attrs, observability.AttrKTMSClientKey.String(k))
 		}
 	}
 
@@ -861,7 +861,7 @@ func (t *TrackingAdapter) CreateEmbeddings(ctx context.Context, req *llm.Embeddi
 			status = usagev1.Status_STATUS_ERROR
 		}
 
-		actionID := "llmproxy.embeddings"
+		actionID := "ktms.embeddings"
 		if req != nil && req.ActionID != "" {
 			actionID = req.ActionID
 		}

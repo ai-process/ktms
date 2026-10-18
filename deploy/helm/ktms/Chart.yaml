@@ -1,0 +1,21 @@
+apiVersion: v2
+name: ktms
+description: "Official Helm chart for KTMS (Keystone: The Model Switchboard) — high-performance, self-hosted LLM gateway with intelligent routing, circuit breaking, and centralized encryption."
+type: application
+version: 0.1.0
+appVersion: "0.12.0"
+kubeVersion: ">=1.26.0-0"
+keywords:
+  - llm
+  - ai
+  - gateway
+  - proxy
+  - routing
+  - openai
+  - grpc
+home: https://github.com/ai-process/ktms
+sources:
+  - https://github.com/ai-process/ktms
+maintainers:
+  - name: ai-process
+    email: security@vasiliy.pro

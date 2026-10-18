@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package llmproxy.v1;
+package ktms.v1;
 
-option go_package = "github.com/ai-process/llm-proxy/gen/llmproxy/v1;llmproxyv1";
+option go_package = "github.com/ai-process/ktms/gen/ktms/v1;ktmsv1";
 
 enum NodeState {
   NODE_STATE_UNSPECIFIED = 0;
@@ -26,7 +26,7 @@ message NodeResources {
 }
 
 message NodeModelSpec {
-  string model_id = 1; // model id in the llm-proxy registry
+  string model_id = 1; // model id in the ktms registry
   string remote_model_name = 2; // underlying model name on the engine (empty = model_id)
   uint32 context_length = 3;
   bool is_warm = 4; // true when weights are loaded in VRAM

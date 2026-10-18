@@ -1140,9 +1140,9 @@ const file_usage_v1_usage_proto_rawDesc = "" +
 	"\x10RecordUsageEvent\x12!.usage.v1.RecordUsageEventRequest\x1a\".usage.v1.RecordUsageEventResponse\x12\\\n" +
 	"\x11RecordUsageEvents\x12\".usage.v1.RecordUsageEventsRequest\x1a#.usage.v1.RecordUsageEventsResponse\x12V\n" +
 	"\x0fGetUsageSummary\x12 .usage.v1.GetUsageSummaryRequest\x1a!.usage.v1.GetUsageSummaryResponse\x12S\n" +
-	"\x0eGetUsageByMeta\x12\x1f.usage.v1.GetUsageByMetaRequest\x1a .usage.v1.GetUsageByMetaResponseB\xa6\x01\n" +
+	"\x0eGetUsageByMeta\x12\x1f.usage.v1.GetUsageByMetaRequest\x1a .usage.v1.GetUsageByMetaResponseB\xa1\x01\n" +
 	"\fcom.usage.v1B\n" +
-	"UsageProtoP\x01ZIgithub.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1;usagev1\xa2\x02\x03UXX\xaa\x02\bUsage.V1\xca\x02\bUsage\\V1\xe2\x02\x14Usage\\V1\\GPBMetadata\xea\x02\tUsage::V1b\x06proto3"
+	"UsageProtoP\x01ZDgithub.com/ai-process/ktms/internal/usagereport/gen/usage/v1;usagev1\xa2\x02\x03UXX\xaa\x02\bUsage.V1\xca\x02\bUsage\\V1\xe2\x02\x14Usage\\V1\\GPBMetadata\xea\x02\tUsage::V1b\x06proto3"
 
 var (
 	file_usage_v1_usage_proto_rawDescOnce sync.Once

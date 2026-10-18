@@ -1,6 +1,6 @@
-# Contributing to llm-proxy
+# Contributing to KTMS
 
-Thank you for your interest in contributing to `llm-proxy`! `llm-proxy` is a high-performance, self-hosted LLM gateway providing unified routing, fail-fast fallbacks, rate and spend limits, and centralized credential encryption for production AI workflows.
+Thank you for your interest in contributing to `KTMS`! `KTMS (Keystone: The Model Switchboard)` is a high-performance, self-hosted LLM gateway providing unified routing, fail-fast fallbacks, rate and spend limits, and centralized credential encryption for production AI workflows.
 
 We welcome bug reports, documentation enhancements, feature proposals, and code contributions.
 
@@ -18,8 +18,8 @@ We welcome bug reports, documentation enhancements, feature proposals, and code 
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/ai-process/llm-proxy.git
-   cd llm-proxy
+   git clone https://github.com/ai-process/ktms.git
+   cd ktms
    ```
 
 2. **Start backing dependencies (PostgreSQL & Redis):**
@@ -82,9 +82,9 @@ Every pull request is expected to adhere to our core engineering invariants:
 
 ### Reporting Issues
 
-- **Bug Reports:** Use the [Bug Report Template](https://github.com/ai-process/llm-proxy/issues/new?template=bug_report.yml). Please include reproduction steps, environment, and sanitized logs.
-- **Feature Requests:** Use the [Feature Request Template](https://github.com/ai-process/llm-proxy/issues/new?template=feature_request.yml).
-- **New Vendor Adapters:** Use the [Model Provider Template](https://github.com/ai-process/llm-proxy/issues/new?template=model_provider.yml).
+- **Bug Reports:** Use the [Bug Report Template](https://github.com/ai-process/ktms/issues/new?template=bug_report.yml). Please include reproduction steps, environment, and sanitized logs.
+- **Feature Requests:** Use the [Feature Request Template](https://github.com/ai-process/ktms/issues/new?template=feature_request.yml).
+- **New Vendor Adapters:** Use the [Model Provider Template](https://github.com/ai-process/ktms/issues/new?template=model_provider.yml).
 - **Security Vulnerabilities:** Follow our [Security Policy](SECURITY.md). Do not file public issues for vulnerabilities.
 
 ### Pull Request Workflow
@@ -108,4 +108,4 @@ Every pull request is expected to adhere to our core engineering invariants:
 
 ## 4. Community Standards
 
-All contributors and participants in the `llm-proxy` project are expected to uphold the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). Please report any violations to [security@vasiliy.pro](mailto:security@vasiliy.pro).
+All contributors and participants in the `KTMS` project are expected to uphold the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). Please report any violations to [security@vasiliy.pro](mailto:security@vasiliy.pro).

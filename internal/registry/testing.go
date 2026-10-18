@@ -1,8 +1,8 @@
 package registry
 
 import (
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/proxydb"
 )
 
 // NewSnapshotForTest builds a snapshot without a database — for tests only.

@@ -157,7 +157,7 @@ done
 
 # agent release fixtures. modes: good | broken_start (--version fails) | never_registers
 make_agent() { # version mode os arch
-	d="$FX/ai-process/llm-proxy/v$1"
+	d="$FX/ai-process/ktms/v$1"
 	mkdir -p "$d" "$W/pack"
 	case $2 in
 	broken_start) body='[ "$1" = --version ] && exit 1; exit 0' ;;
@@ -166,12 +166,12 @@ make_agent() { # version mode os arch
 exit 0" ;;
 	*) body="[ \"\$1\" = --version ] && { echo $1; exit 0; }; exit 0" ;;
 	esac
-	printf '#!/bin/sh\n%s\n' "$body" >"$W/pack/llm-proxy-node"
-	chmod +x "$W/pack/llm-proxy-node"
-	asset="llm-proxy-node_$1_$3_$4.tar.gz"
-	tar -czf "$d/$asset" -C "$W/pack" llm-proxy-node
+	printf '#!/bin/sh\n%s\n' "$body" >"$W/pack/ktms-node"
+	chmod +x "$W/pack/ktms-node"
+	asset="ktms-node_$1_$3_$4.tar.gz"
+	tar -czf "$d/$asset" -C "$W/pack" ktms-node
 	printf '%s  %s\n' "$(sha "$d/$asset")" "$asset" >>"$d/checksums.txt"
-	printf 'v%s\n' "$1" >"$FX/ai-process/llm-proxy/LATEST"
+	printf 'v%s\n' "$1" >"$FX/ai-process/ktms/LATEST"
 }
 
 fake_ollama_bin() {
@@ -215,7 +215,7 @@ case "$1" in
 stop) rm -f "$FAKE_STATE/running.$2" ;;
 restart)
 	touch "$FAKE_STATE/running.$2"
-	if [ "$2" = llm-proxy-node.service ] && ! grep -q BROKEN "$LLMPROXY_HOME/bin/llm-proxy-node"; then
+	if [ "$2" = ktms-node.service ] && ! grep -q BROKEN "$LLMPROXY_HOME/bin/ktms-node"; then
 		echo "INF node registered successfully endpoint=https://fake-abc.trycloudflare.com interval=5s" >>"$LLMPROXY_HOME/logs/node.log"
 	fi ;;
 is-active) [ -f "$FAKE_STATE/running.$3" ] || exit 3 ;;
@@ -235,7 +235,7 @@ bootout) rm -f "$FAKE_STATE/loaded.${2##*/}" ;;
 bootstrap)
 	l=$(basename "$3" .plist)
 	touch "$FAKE_STATE/loaded.$l"
-	if [ "$l" = com.llm-proxy.node ] && ! grep -q BROKEN "$LLMPROXY_HOME/bin/llm-proxy-node"; then
+	if [ "$l" = com.ktms.node ] && ! grep -q BROKEN "$LLMPROXY_HOME/bin/ktms-node"; then
 		echo "INF node registered successfully endpoint=https://fake-abc.trycloudflare.com interval=5s" >>"$LLMPROXY_HOME/logs/node.log"
 	fi ;;
 esac
@@ -246,7 +246,7 @@ S
 }
 
 run_install() {
-	HOME="$W/home" LLMPROXY_HOME="${TEST_BASE:-$W/home/.llm-proxy-node}" LLMPROXY_SERVICE_DIR="$W/svc" \
+	HOME="$W/home" LLMPROXY_HOME="${TEST_BASE:-$W/home/.ktms-node}" LLMPROXY_SERVICE_DIR="$W/svc" \
 		LLMPROXY_GITHUB="http://127.0.0.1:$P1" LLMPROXY_GITHUB_API="http://127.0.0.1:$P1" \
 		LLMPROXY_OLLAMA_ADDR="127.0.0.1:$P2" LLMPROXY_REGISTER_WAIT=12 LLMPROXY_MEMINFO="$W/meminfo" \
 		FAKE_OS="$FAKE_OS" FAKE_ARCH="$FAKE_ARCH" FAKE_STATE="$STATE" PATH="$W/bin:$PATH" \
@@ -256,9 +256,9 @@ run_install() {
 reset_world() {
 	rm -rf "${W:?}/home" "${W:?}/svc" "${STATE:?}" "${FX:?}" "${W:?}/pack" "${W:?}/pack2"
 	mkdir -p "$W/home" "$STATE" "$FX"
-	printf 'llm_node_test_key\n' >"$W/keyfile"
+	printf 'ktms_node_test_key\n' >"$W/keyfile"
 }
-BASE="$W/home/.llm-proxy-node"
+BASE="$W/home/.ktms-node"
 ARGS="--proxy llm-nodes.example.com --node-id node-9 --model tiny:1b --key-file $W/keyfile"
 count_calls() { grep -c -E "$1" "$STATE/calls" 2>/dev/null || true; }
 mode_of() { if [ "$(uname -s)" = Darwin ]; then stat -f '%Lp' "$1"; else stat -c '%a' "$1"; fi; }
@@ -281,16 +281,16 @@ has "linux: reports the node running" "Node node-9 is running and registered" "$
 hasnt "linux: no macOS login note on Linux" "automatic login" "$OUT"
 has "linux: reports the tunnel address" "https://fake-abc.trycloudflare.com" "$OUT"
 eq "linux: key stored with 0600" 600 "$(mode_of "$BASE/key")"
-eq "linux: key content" "llm_node_test_key" "$(cat "$BASE/key")"
-eq "linux: agent installed" "0.10.0" "$("$BASE/bin/llm-proxy-node" --version)"
+eq "linux: key content" "ktms_node_test_key" "$(cat "$BASE/key")"
+eq "linux: agent installed" "0.10.0" "$("$BASE/bin/ktms-node" --version)"
 if [ -x "$BASE/bin/cloudflared" ]; then ok "linux: cloudflared installed and verified"; else bad "linux: cloudflared installed"; fi
 eq "linux: model pulled" "tiny:1b" "$(cat "$STATE/models")"
-NODE_UNIT=$(cat "$W/svc/llm-proxy-node.service")
-OLL_UNIT=$(cat "$W/svc/llm-proxy-ollama.service")
+NODE_UNIT=$(cat "$W/svc/ktms-node.service")
+OLL_UNIT=$(cat "$W/svc/ktms-ollama.service")
 has "linux: node keeps machine awake" "systemd-inhibit" "$NODE_UNIT"
 has "linux: node uses built-in tunnel" '"--expose" "cloudflared"' "$NODE_UNIT"
 has "linux: node reads key from file" "--node-key-file" "$NODE_UNIT"
-hasnt "linux: key never in the unit" "llm_node_test_key" "$NODE_UNIT"
+hasnt "linux: key never in the unit" "ktms_node_test_key" "$NODE_UNIT"
 has "linux: tls on by default" '"--tls"' "$NODE_UNIT"
 has "linux: node reports only the chosen model" '"--only-model" "tiny:1b"' "$NODE_UNIT"
 has "linux: ollama keeps model loaded" 'OLLAMA_KEEP_ALIVE=-1' "$OLL_UNIT"
@@ -315,20 +315,20 @@ RC=$?
 eq "linux: --doctor passes the stored settings" 0 "$RC"
 
 make_agent 0.11.0 good linux amd64
-OLL_BEFORE=$(count_calls 'restart llm-proxy-ollama')
+OLL_BEFORE=$(count_calls 'restart ktms-ollama')
 OUT=$(run_install $ARGS --max-concurrency 2 --context 4096 --version v0.11.0)
 RC=$?
 eq "linux: upgrade exits 0" 0 "$RC"
-eq "linux: upgraded" "0.11.0" "$("$BASE/bin/llm-proxy-node" --version)"
-eq "linux: upgrade does not restart Ollama" "$OLL_BEFORE" "$(count_calls 'restart llm-proxy-ollama')"
-eq "linux: previous binary kept" "0.10.0" "$("$BASE/bin/llm-proxy-node.prev" --version)"
+eq "linux: upgraded" "0.11.0" "$("$BASE/bin/ktms-node" --version)"
+eq "linux: upgrade does not restart Ollama" "$OLL_BEFORE" "$(count_calls 'restart ktms-ollama')"
+eq "linux: previous binary kept" "0.10.0" "$("$BASE/bin/ktms-node.prev" --version)"
 
 make_agent 0.12.0 broken_start linux amd64
 OUT=$(run_install $ARGS --max-concurrency 2 --context 4096 --version v0.12.0)
 RC=$?
 if [ "$RC" != 0 ]; then ok "linux: blocked binary fails the install"; else bad "linux: blocked binary fails the install"; fi
 has "linux: blocked binary explained" "does not start on this machine" "$OUT"
-eq "linux: blocked binary leaves the working one" "0.11.0" "$("$BASE/bin/llm-proxy-node" --version)"
+eq "linux: blocked binary leaves the working one" "0.11.0" "$("$BASE/bin/ktms-node" --version)"
 
 make_agent 0.13.0 never_registers linux amd64
 OUT=$(run_install $ARGS --max-concurrency 2 --context 4096 --version v0.13.0)
@@ -338,16 +338,16 @@ has "linux: rollback announced" "restoring the previous one" "$OUT"
 has "linux: failed start runs the doctor" "DOCTOR-RAN:doctor --proxy-addr llm-nodes.example.com:443" "$OUT"
 has "linux: doctor gets the model and the key file, never the key" "--model tiny:1b" "$OUT"
 has "linux: doctor reports only the chosen model" "--only-model tiny:1b" "$OUT"
-hasnt "linux: doctor output never shows the key" "llm_node_test_key" "$OUT"
-eq "linux: rolled back to the working version" "0.11.0" "$("$BASE/bin/llm-proxy-node" --version)"
+hasnt "linux: doctor output never shows the key" "ktms_node_test_key" "$OUT"
+eq "linux: rolled back to the working version" "0.11.0" "$("$BASE/bin/ktms-node" --version)"
 
 make_agent 0.14.0 good linux amd64
-printf 'tampered' >>"$FX/ai-process/llm-proxy/v0.14.0/llm-proxy-node_0.14.0_linux_amd64.tar.gz"
+printf 'tampered' >>"$FX/ai-process/ktms/v0.14.0/ktms-node_0.14.0_linux_amd64.tar.gz"
 OUT=$(run_install $ARGS --max-concurrency 2 --context 4096 --version v0.14.0)
 RC=$?
 if [ "$RC" != 0 ]; then ok "linux: tampered download fails"; else bad "linux: tampered download fails"; fi
 has "linux: tampered download named" "checksum mismatch" "$OUT"
-eq "linux: tampered download changes nothing" "0.11.0" "$("$BASE/bin/llm-proxy-node" --version)"
+eq "linux: tampered download changes nothing" "0.11.0" "$("$BASE/bin/ktms-node" --version)"
 
 OUT=$(TEST_BASE="$W/nothing-installed" run_install $ARGS --doctor)
 RC=$?
@@ -357,10 +357,10 @@ has "--doctor without an install says so" "no node is installed" "$OUT"
 OUT=$(run_install --uninstall)
 RC=$?
 eq "linux: uninstall exits 0" 0 "$RC"
-has "linux: uninstall disables the units" "disable llm-proxy-node.service" "$(cat "$STATE/calls")"
-has "linux: uninstall disables ollama too" "disable llm-proxy-ollama.service" "$(cat "$STATE/calls")"
+has "linux: uninstall disables the units" "disable ktms-node.service" "$(cat "$STATE/calls")"
+has "linux: uninstall disables ollama too" "disable ktms-ollama.service" "$(cat "$STATE/calls")"
 if [ ! -e "$BASE" ]; then ok "linux: uninstall removes the install dir and key"; else bad "linux: uninstall removes the install dir"; fi
-if [ ! -e "$W/svc/llm-proxy-node.service" ]; then ok "linux: uninstall removes units"; else bad "linux: uninstall removes units"; fi
+if [ ! -e "$W/svc/ktms-node.service" ]; then ok "linux: uninstall removes units"; else bad "linux: uninstall removes units"; fi
 
 reset_world
 make_deps amd64
@@ -407,11 +407,11 @@ if [ "$(uname -s)" = Darwin ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" 
 	has "mac: reports running" "Node node-9 is running and registered" "$OUT"
 	has "mac: tells an unattended Mac to enable auto-login" "automatic login" "$OUT"
 	if [ -x "$BASE/ollama/ollama" ]; then ok "mac: Ollama downloaded and verified"; else bad "mac: Ollama downloaded"; fi
-	NP=$(cat "$W/svc/com.llm-proxy.node.plist")
-	OP=$(cat "$W/svc/com.llm-proxy.ollama.plist")
+	NP=$(cat "$W/svc/com.ktms.node.plist")
+	OP=$(cat "$W/svc/com.ktms.ollama.plist")
 	has "mac: node wrapped in caffeinate" "/usr/bin/caffeinate" "$NP"
 	has "mac: node name with a space kept" "<string>My Node</string>" "$NP"
-	hasnt "mac: key never in the plist" "llm_node_test_key" "$NP"
+	hasnt "mac: key never in the plist" "ktms_node_test_key" "$NP"
 	has "mac: Ollama forced to the native slice" "<string>-arm64</string>" "$OP"
 	has "mac: Ollama keeps the model loaded" "<key>OLLAMA_KEEP_ALIVE</key><string>-1</string>" "$OP"
 	for f in "$W/svc"/*.plist; do
@@ -426,7 +426,7 @@ if [ "$(uname -s)" = Darwin ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" 
 	OUT=$(run_install $ARGS --name "My Node" --version v0.11.0)
 	RC=$?
 	eq "mac: upgrade exits 0" 0 "$RC"
-	ORDER=$(grep -E 'launchctl (bootout|bootstrap) .*com.llm-proxy.node' "$STATE/calls" | tail -2 | awk '{print $2}' | tr '\n' ' ')
+	ORDER=$(grep -E 'launchctl (bootout|bootstrap) .*com.ktms.node' "$STATE/calls" | tail -2 | awk '{print $2}' | tr '\n' ' ')
 	eq "mac: bootout precedes bootstrap on restart" "bootout bootstrap " "$ORDER"
 else
 	printf 'skip macOS end-to-end (not an Apple Silicon Mac)\n'

@@ -12,12 +12,12 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/ai-process/llm-proxy/internal/circuitbreaker"
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/observability"
-	"github.com/ai-process/llm-proxy/internal/panicsafe"
-	"github.com/ai-process/llm-proxy/internal/pricing"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
+	"github.com/ai-process/ktms/internal/circuitbreaker"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/observability"
+	"github.com/ai-process/ktms/internal/panicsafe"
+	"github.com/ai-process/ktms/internal/pricing"
+	"github.com/ai-process/ktms/internal/proxydb"
 )
 
 const (

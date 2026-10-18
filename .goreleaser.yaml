@@ -1,12 +1,12 @@
 # Release: `git tag vX.Y.Z && git push origin vX.Y.Z` runs .github/workflows/release.yml.
 # macOS signing and the Homebrew tap switch on only when their secrets exist.
 version: 2
-project_name: llm-proxy
+project_name: ktms
 
 builds:
   - id: node
     main: ./cmd/node-agent
-    binary: llm-proxy-node
+    binary: ktms-node
     env: [CGO_ENABLED=0]
     goos: [darwin, linux]
     goarch: [amd64, arm64]
@@ -14,7 +14,7 @@ builds:
     ldflags: ["-s -w -X main.version={{ .Version }}"]
   - id: server
     main: ./cmd/server
-    binary: llm-proxy-server
+    binary: ktms-server
     env: [CGO_ENABLED=0]
     goos: [darwin, linux]
     goarch: [amd64, arm64]
@@ -25,12 +25,12 @@ archives:
   - id: node
     ids: [node]
     formats: [tar.gz]
-    name_template: "llm-proxy-node_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "ktms-node_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files: [LICENSE]
   - id: server
     ids: [server]
     formats: [tar.gz]
-    name_template: "llm-proxy-server_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "ktms-server_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files: [LICENSE]
 
 checksum:
@@ -53,10 +53,10 @@ notarize:
 
 # brew installs do not set the quarantine flag, so unsigned binaries run.
 brews:
-  - name: llm-proxy-node
+  - name: ktms-node
     ids: [node]
-    homepage: https://github.com/ai-process/llm-proxy
-    description: Node agent that registers a local inference engine with llm-proxy
+    homepage: https://github.com/ai-process/ktms
+    description: Node agent that registers a local inference engine with KTMS
     license: MIT
     repository:
       owner: ai-process
@@ -64,7 +64,7 @@ brews:
       token: '{{ if isEnvSet "HOMEBREW_TAP_TOKEN" }}{{ .Env.HOMEBREW_TAP_TOKEN }}{{ end }}'
     skip_upload: '{{ if isEnvSet "HOMEBREW_TAP_TOKEN" }}false{{ else }}true{{ end }}'
     test: |
-      system "#{bin}/llm-proxy-node", "--version"
+      system "#{bin}/ktms-node", "--version"
 
 changelog:
   sort: asc

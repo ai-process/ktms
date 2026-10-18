@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ai-process/llm-proxy/migrations"
+	"github.com/ai-process/ktms/migrations"
 )
 
 const testAPIKeyID = "11111111-1111-1111-1111-111111111111"

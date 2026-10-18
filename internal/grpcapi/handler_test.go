@@ -20,16 +20,16 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/apikeys"
-	"github.com/ai-process/llm-proxy/internal/cache"
-	"github.com/ai-process/llm-proxy/internal/crypto"
-	"github.com/ai-process/llm-proxy/internal/guardrails"
-	usagev1 "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/cache"
+	"github.com/ai-process/ktms/internal/crypto"
+	"github.com/ai-process/ktms/internal/guardrails"
+	usagev1 "github.com/ai-process/ktms/internal/usagereport/gen/usage/v1"
 
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/registry"
-	"github.com/ai-process/llm-proxy/internal/throttle"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
+	"github.com/ai-process/ktms/internal/throttle"
 )
 
 // fakeVendor is an httptest server speaking the OpenAI chat-completions

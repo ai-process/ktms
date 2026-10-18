@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/registry"
-	"github.com/ai-process/llm-proxy/internal/router"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
+	"github.com/ai-process/ktms/internal/router"
 )
 
 func catchAllRule(name, effort string, chain ...string) *proxydb.Rule {

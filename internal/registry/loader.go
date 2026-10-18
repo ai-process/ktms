@@ -8,10 +8,10 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/ai-process/llm-proxy/internal/crypto"
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/panicsafe"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
+	"github.com/ai-process/ktms/internal/crypto"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/panicsafe"
+	"github.com/ai-process/ktms/internal/proxydb"
 )
 
 // Loader keeps the active Snapshot fresh: it polls config_state and rebuilds

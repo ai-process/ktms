@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
+	"github.com/ai-process/ktms/internal/llm"
 )
 
 func TestTypeSafeErrorRetryability(t *testing.T) {

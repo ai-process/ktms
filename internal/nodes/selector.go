@@ -7,8 +7,8 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/registry"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 type Candidate struct {

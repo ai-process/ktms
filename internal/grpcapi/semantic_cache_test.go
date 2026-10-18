@@ -12,13 +12,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/cache"
-	"github.com/ai-process/llm-proxy/internal/guardrails"
-	"github.com/ai-process/llm-proxy/internal/latent"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/registry"
-	"github.com/ai-process/llm-proxy/internal/throttle"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/cache"
+	"github.com/ai-process/ktms/internal/guardrails"
+	"github.com/ai-process/ktms/internal/latent"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
+	"github.com/ai-process/ktms/internal/throttle"
 )
 
 // paraphraseEncoder maps paraphrases onto one direction, as a JEPA encoder would.

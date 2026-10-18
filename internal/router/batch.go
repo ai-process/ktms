@@ -3,8 +3,8 @@ package router
 import (
 	"context"
 
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/registry"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 // ResolveBatchModel resolves the route once for a batch submission:

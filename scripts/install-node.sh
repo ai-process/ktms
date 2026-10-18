@@ -1,18 +1,18 @@
 #!/bin/sh
-# Installs and updates a local llm-proxy inference node: Ollama, cloudflared and
+# Installs and updates a local KTMS inference node: Ollama, cloudflared and
 # the node agent as per-user services. Safe to re-run; see --help.
 set -eu
 
-REPO="ai-process/llm-proxy"
-GITHUB="${LLMPROXY_GITHUB:-https://github.com}"
-GITHUB_API="${LLMPROXY_GITHUB_API:-https://api.github.com}"
-BASE="${LLMPROXY_HOME:-$HOME/.llm-proxy-node}"
+REPO="ai-process/ktms"
+GITHUB="${KTMS_GITHUB:-${LLMPROXY_GITHUB:-https://github.com}}"
+GITHUB_API="${KTMS_GITHUB_API:-${LLMPROXY_GITHUB_API:-https://api.github.com}}"
+BASE="${KTMS_HOME:-${LLMPROXY_HOME:-$HOME/.ktms-node}}"
 case $BASE in "" | / | "$HOME") printf 'ERROR: refusing to use %s as the install directory\n' "'$BASE'" >&2; exit 1 ;; esac
-OLLAMA_ADDR="${LLMPROXY_OLLAMA_ADDR:-127.0.0.1:11435}" # private instance, never clashes with a system Ollama on 11434
-LABEL_NODE="com.llm-proxy.node"
-LABEL_OLLAMA="com.llm-proxy.ollama"
-UNIT_NODE="llm-proxy-node"
-UNIT_OLLAMA="llm-proxy-ollama"
+OLLAMA_ADDR="${KTMS_OLLAMA_ADDR:-${LLMPROXY_OLLAMA_ADDR:-127.0.0.1:11435}}" # private instance, never clashes with a system Ollama on 11434
+LABEL_NODE="com.ktms.node"
+LABEL_OLLAMA="com.ktms.ollama"
+UNIT_NODE="ktms-node"
+UNIT_OLLAMA="ktms-ollama"
 
 say() { printf '%s\n' "$*"; }
 step() { printf '\n==> %s\n' "$*"; }
@@ -25,7 +25,7 @@ Usage: install-node.sh --proxy HOST[:PORT] --node-id ID --model MODEL [options]
        install-node.sh --uninstall
 
 Required:
-  --proxy HOST[:PORT]    llm-proxy gRPC address (port defaults to 443, TLS on)
+  --proxy HOST[:PORT]    KTMS gRPC address (port defaults to 443, TLS on)
   --node-id ID           node id the key was minted for
   --model MODEL          Ollama model to serve, e.g. gemma4:26b-a4b-it-qat
 
@@ -400,7 +400,7 @@ ensure_cloudflared() {
 	rm -rf "$tmp"
 }
 
-# stage_agent downloads, verifies and smoke-tests the agent, leaving it in $BASE/bin/llm-proxy-node.new.
+# stage_agent downloads, verifies and smoke-tests the agent, leaving it in $BASE/bin/ktms-node.new.
 # The running binary is only replaced later, so a bad download or a blocked binary changes nothing.
 stage_agent() {
 	if [ "$VERSION" = latest ]; then
@@ -410,26 +410,36 @@ stage_agent() {
 		case $tag in v*) ;; *) tag="v$tag" ;; esac
 	fi
 	ver=${tag#v}
-	if [ -x "$BASE/bin/llm-proxy-node" ] && [ "$("$BASE/bin/llm-proxy-node" --version 2>/dev/null || true)" = "$ver" ]; then
+	if [ -x "$BASE/bin/ktms-node" ] && [ "$("$BASE/bin/ktms-node" --version 2>/dev/null || true)" = "$ver" ]; then
 		say "Node agent $ver is already installed."
 		AGENT_STAGED=0
 		return 0
 	fi
 	step "Downloading node agent $ver"
-	asset="llm-proxy-node_${ver}_${OS}_${ARCH}.tar.gz"
+	asset="ktms-node_${ver}_${OS}_${ARCH}.tar.gz"
+	legacy_asset="llm-proxy-node_${ver}_${OS}_${ARCH}.tar.gz"
 	tmp=$(mktemp -d "$BASE/dl.XXXXXX")
 	curl -fsSL -o "$tmp/checksums.txt" "$GITHUB/$REPO/releases/download/$tag/checksums.txt" ||
 		die "release $tag has no node agent binaries (they exist from v0.10.0 on); pass --version with a newer release"
 	want=$(awk -v a="$asset" '$2 == a { print $1 }' "$tmp/checksums.txt")
+	if [ -z "$want" ]; then
+		want=$(awk -v a="$legacy_asset" '$2 == a { print $1 }' "$tmp/checksums.txt")
+		asset="$legacy_asset"
+	fi
 	fetch "$GITHUB/$REPO/releases/download/$tag/$asset" "$tmp/$asset"
 	verify_sha "$tmp/$asset" "$want"
-	tar -xzf "$tmp/$asset" -C "$tmp" llm-proxy-node
-	mv "$tmp/llm-proxy-node" "$BASE/bin/llm-proxy-node.new"
+	if tar -tzf "$tmp/$asset" 2>/dev/null | grep -q 'ktms-node'; then
+		tar -xzf "$tmp/$asset" -C "$tmp" ktms-node
+		mv "$tmp/ktms-node" "$BASE/bin/ktms-node.new"
+	else
+		tar -xzf "$tmp/$asset" -C "$tmp" llm-proxy-node
+		mv "$tmp/llm-proxy-node" "$BASE/bin/ktms-node.new"
+	fi
 	rm -rf "$tmp"
-	chmod 755 "$BASE/bin/llm-proxy-node.new"
+	chmod 755 "$BASE/bin/ktms-node.new"
 	[ "$OS" = darwin ] && xattr -dr com.apple.quarantine "$BASE/bin" 2>/dev/null || true
-	got=$("$BASE/bin/llm-proxy-node.new" --version 2>&1) || {
-		rm -f "$BASE/bin/llm-proxy-node.new"
+	got=$("$BASE/bin/ktms-node.new" --version 2>&1) || {
+		rm -f "$BASE/bin/ktms-node.new"
 		die "the new node agent does not start on this machine ($got). The installed one was left untouched."
 	}
 	say "Downloaded and verified node agent $got."
@@ -469,7 +479,7 @@ write_service() { # id program args... (stdin: nothing)
 	id=$1
 	shift
 	out=$(mktemp "$BASE/svc.XXXXXX")
-	if [ "$id" = node ]; then log="$BASE/logs/node.log" envs="" desc="llm-proxy node agent"; else log="$BASE/logs/ollama.log" envs=$(ollama_env) desc="llm-proxy Ollama"; fi
+	if [ "$id" = node ]; then log="$BASE/logs/node.log" envs="" desc="KTMS node agent"; else log="$BASE/logs/ollama.log" envs=$(ollama_env) desc="KTMS Ollama"; fi
 	if [ "$OS" = darwin ]; then render_plist "$(svc_label "$id")" "$log" "$envs" "$@" >"$out"; else render_unit "$desc" "$log" "$envs" "$@" >"$out"; fi
 	SVC_TMP=$out
 }
@@ -485,7 +495,7 @@ run_doctor() {
 	else
 		set -- "$@" --expose cloudflared --cloudflared-path "$BASE/bin/cloudflared"
 	fi
-	"$BASE/bin/llm-proxy-node" "$@"
+	"$BASE/bin/ktms-node" "$@"
 }
 
 registered_in_log() { # start-line
@@ -551,7 +561,7 @@ main() {
 	[ "$UNINSTALL" = 1 ] && { do_uninstall; return 0; }
 	detect_platform
 	if [ "$DOCTOR" = 1 ]; then
-		[ -x "$BASE/bin/llm-proxy-node" ] || die "no node is installed in $BASE; run the installer without --doctor first"
+		[ -x "$BASE/bin/ktms-node" ] || die "no node is installed in $BASE; run the installer without --doctor first"
 		run_doctor
 		return $?
 	fi
@@ -583,7 +593,7 @@ main() {
 	ensure_model
 
 	step "Starting the node"
-	set -- "$BASE/bin/llm-proxy-node" --proxy-addr "$PROXY" --node-id "$NODE_ID" --node-name "$NAME" \
+	set -- "$BASE/bin/ktms-node" --proxy-addr "$PROXY" --node-id "$NODE_ID" --node-name "$NAME" \
 		--engine ollama --engine-url "http://$OLLAMA_ADDR" --only-model "$MODEL" --max-concurrent "$MAXC" --node-key-file "$BASE/key"
 	[ "$PLAINTEXT" = 1 ] || set -- "$@" --tls
 	if [ -n "$ENDPOINT" ]; then
@@ -595,13 +605,13 @@ main() {
 	if [ "$OS" = darwin ]; then
 		set -- /usr/bin/caffeinate -is "$@"
 	elif command -v systemd-inhibit >/dev/null 2>&1; then
-		set -- systemd-inhibit --what=idle:sleep --who=llm-proxy-node --why="Serving LLM requests" --mode=block "$@"
+		set -- systemd-inhibit --what=idle:sleep --who=ktms-node --why="Serving LLM requests" --mode=block "$@"
 	fi
 	node_changed=0
 	if [ "$AGENT_STAGED" = 1 ]; then
 		svc_stop node
-		[ -x "$BASE/bin/llm-proxy-node" ] && cp -p "$BASE/bin/llm-proxy-node" "$BASE/bin/llm-proxy-node.prev"
-		mv "$BASE/bin/llm-proxy-node.new" "$BASE/bin/llm-proxy-node"
+		[ -x "$BASE/bin/ktms-node" ] && cp -p "$BASE/bin/ktms-node" "$BASE/bin/ktms-node.prev"
+		mv "$BASE/bin/ktms-node.new" "$BASE/bin/ktms-node"
 		node_changed=1
 	fi
 	write_service node "$@"
@@ -609,14 +619,14 @@ main() {
 	if [ "$node_changed" = 1 ] || ! svc_running node; then
 		if ! start_node_and_wait; then
 			run_doctor || true # best effort: an older agent may not have it
-			if [ "$AGENT_STAGED" = 1 ] && [ -x "$BASE/bin/llm-proxy-node.prev" ]; then
+			if [ "$AGENT_STAGED" = 1 ] && [ -x "$BASE/bin/ktms-node.prev" ]; then
 				warn "The new node agent did not come up; restoring the previous one."
 				svc_stop node
-				mv "$BASE/bin/llm-proxy-node.prev" "$BASE/bin/llm-proxy-node"
+				mv "$BASE/bin/ktms-node.prev" "$BASE/bin/ktms-node"
 				svc_start node || true
 			fi
 			tail -n 15 "$BASE/logs/node.log" 2>/dev/null >&2 || true
-			die "the node did not register; the diagnosis above says why. Run it again any time: $BASE/bin/llm-proxy-node doctor --help. Log: $BASE/logs/node.log"
+			die "the node did not register; the diagnosis above says why. Run it again any time: $BASE/bin/ktms-node doctor --help. Log: $BASE/logs/node.log"
 		fi
 	fi
 	print_status

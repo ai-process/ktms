@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	TracerName = "github.com/ai-process/llm-proxy"
+	TracerName = "github.com/ai-process/ktms"
 
 	// GenAI Semantic Conventions
 	AttrGenAIProviderName  = attribute.Key("gen_ai.provider.name")
@@ -25,9 +25,9 @@ const (
 	AttrGenAIUsageOutput   = attribute.Key("gen_ai.usage.output_tokens")
 
 	// LLM Proxy routing attributes
-	AttrLLMProxyRule      = attribute.Key("llmproxy.rule")
-	AttrLLMProxyEffort    = attribute.Key("llmproxy.effort")
-	AttrLLMProxyClientKey = attribute.Key("llmproxy.client_key")
+	AttrKTMSRule      = attribute.Key("ktms.rule")
+	AttrKTMSEffort    = attribute.Key("ktms.effort")
+	AttrKTMSClientKey = attribute.Key("ktms.client_key")
 )
 
 // Tracer returns the named tracer for llm-proxy.

@@ -3,7 +3,7 @@ package nodes
 import (
 	"time"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
 )
 
 type NodeMeta struct {

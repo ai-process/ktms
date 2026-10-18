@@ -12,7 +12,7 @@ import (
 
 	"google.golang.org/genai"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
+	"github.com/ai-process/ktms/internal/llm"
 )
 
 func TestParseGenerateContentResponse_MaxTokensTruncation(t *testing.T) {

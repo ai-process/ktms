@@ -11,10 +11,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 
-	"github.com/ai-process/llm-proxy/internal/apikeys"
-	"github.com/ai-process/llm-proxy/internal/crypto"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/registry"
+	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/crypto"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 // Config configures the auto-seeding routine.
@@ -50,11 +50,11 @@ func Run(ctx context.Context, pool *pgxpool.Pool, keyring *crypto.Keyring, cfg C
 	defer conn.Release()
 
 	// Serialize with session advisory lock so only one replica seeds.
-	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock(hashtextextended($1, 0))", "llmproxy:seed"); err != nil {
+	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock(hashtextextended($1, 0))", "ktms:seed"); err != nil {
 		return nil, fmt.Errorf("take seed lock: %w", err)
 	}
 	defer func() {
-		if _, err := conn.Exec(ctx, "SELECT pg_advisory_unlock(hashtextextended($1, 0))", "llmproxy:seed"); err != nil {
+		if _, err := conn.Exec(ctx, "SELECT pg_advisory_unlock(hashtextextended($1, 0))", "ktms:seed"); err != nil {
 			log.Warn().Err(err).Msg("releasing seed lock failed")
 		}
 	}()
@@ -85,7 +85,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, keyring *crypto.Keyring, cfg C
 	plainKey := strings.TrimSpace(cfg.ClientKey)
 	var apiKeyRow *proxydb.APIKey
 	if plainKey != "" {
-		if !strings.HasPrefix(plainKey, apikeys.KeyPrefix) {
+		if !strings.HasPrefix(plainKey, apikeys.KeyPrefix) && !strings.HasPrefix(plainKey, apikeys.LegacyKeyPrefix) {
 			plainKey = apikeys.KeyPrefix + plainKey
 		}
 		apiKeyRow = &proxydb.APIKey{
@@ -103,8 +103,8 @@ func Run(ctx context.Context, pool *pgxpool.Pool, keyring *crypto.Keyring, cfg C
 		}
 	}
 
-	if plainKey == "llm_dev_default_key" {
-		log.Warn().Msg("auto-seed: using default dev client key (llm_dev_default_key); generate a unique key for non-dev environments")
+	if plainKey == "llm_dev_default_key" || plainKey == "ktms_dev_default_key" {
+		log.Warn().Msg("auto-seed: using default dev client key; generate a unique key for non-dev environments")
 	}
 
 	tx, err := conn.Begin(ctx)

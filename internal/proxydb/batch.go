@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/grpc/codes"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
+	"github.com/ai-process/ktms/internal/llm"
 )
 
 // ErrBatchAlreadyExists is returned on idempotency conflict if client resubmitted.

@@ -1,7 +1,7 @@
 package llm
 
 import (
-	usagev1 "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1"
+	usagev1 "github.com/ai-process/ktms/internal/usagereport/gen/usage/v1"
 )
 
 // Caller attributes an LLM request for usage tracking: the internal user id

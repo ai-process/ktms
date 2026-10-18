@@ -1,7 +1,7 @@
 name: Publish Docker image
 
-# Every pushed tag becomes images on Docker Hub: coyl/llm-proxy:<tag> (server slim & audio)
-# and coyl/llm-proxy-node:<tag> (node agent).
+# Every pushed tag becomes images on Docker Hub: coyl/ktms:<tag> (server slim & audio)
+# and coyl/ktms-node:<tag> (node agent).
 # Needs the repository secrets DOCKER_USERNAME and DOCKER_PASSWORD (an access token).
 on:
   push:
@@ -14,24 +14,24 @@ jobs:
     strategy:
       matrix:
         include:
-          - image: coyl/llm-proxy
+          - image: coyl/ktms
             dockerfile: Dockerfile
             target: slim
             flavor_latest: auto
             tag_suffix: ""
-            scope: coyl-llm-proxy-slim
-          - image: coyl/llm-proxy
+            scope: coyl-ktms-slim
+          - image: coyl/ktms
             dockerfile: Dockerfile
             target: audio
             flavor_latest: "false"
             tag_suffix: "-audio"
-            scope: coyl-llm-proxy-audio
-          - image: coyl/llm-proxy-node
+            scope: coyl-ktms-audio
+          - image: coyl/ktms-node
             dockerfile: Dockerfile.node-agent
             target: ""
             flavor_latest: auto
             tag_suffix: ""
-            scope: coyl-llm-proxy-node
+            scope: coyl-ktms-node
     steps:
       - uses: actions/checkout@v4
 
@@ -67,7 +67,7 @@ jobs:
           context: .
           file: ${{ matrix.dockerfile }}
           target: ${{ matrix.target }}
-          build-args: ${{ matrix.image == 'coyl/llm-proxy-node' && format('VERSION={0}', steps.meta.outputs.version) || '' }}
+          build-args: ${{ matrix.image == 'coyl/ktms-node' && format('VERSION={0}', steps.meta.outputs.version) || '' }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

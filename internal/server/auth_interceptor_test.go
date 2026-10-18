@@ -9,9 +9,9 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/apikeys"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/proxydb"
 )
 
 type fakeStore struct {
@@ -62,7 +62,7 @@ func TestUnmappedMethodFailsClosed(t *testing.T) {
 	v := apikeys.NewVerifier(store, "")
 
 	// Even an admin key is refused on a method nobody assigned a scope to.
-	_, err := callWithKey(t, v, "/llmproxy.v1.LLMProxyService/BrandNewMethod", "Bearer "+admin)
+	_, err := callWithKey(t, v, "/ktms.v1.GatewayService/BrandNewMethod", "Bearer "+admin)
 	if status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("code = %v, want PermissionDenied", status.Code(err))
 	}
@@ -70,7 +70,7 @@ func TestUnmappedMethodFailsClosed(t *testing.T) {
 
 func TestMissingAuthorizationIsUnauthenticated(t *testing.T) {
 	v := apikeys.NewVerifier(&fakeStore{rows: map[string]*proxydb.APIKey{}}, "")
-	_, err := callWithKey(t, v, method(pb.LLMProxyService_GenerateText_FullMethodName), "")
+	_, err := callWithKey(t, v, method(pb.GatewayService_GenerateText_FullMethodName), "")
 	if status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("code = %v, want Unauthenticated", status.Code(err))
 	}
@@ -81,7 +81,7 @@ func TestWrongScopeIsPermissionDenied(t *testing.T) {
 	genKey := mintKey(t, store, "generation", apikeys.ScopeGenerate)
 	v := apikeys.NewVerifier(store, "")
 
-	_, err := callWithKey(t, v, method(pb.LLMProxyAdminService_MintAPIKey_FullMethodName), "Bearer "+genKey)
+	_, err := callWithKey(t, v, method(pb.AdminService_MintAPIKey_FullMethodName), "Bearer "+genKey)
 	if status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("code = %v, want PermissionDenied", status.Code(err))
 	}
@@ -92,7 +92,7 @@ func TestValidKeyPassesAndInjectsIdentity(t *testing.T) {
 	genKey := mintKey(t, store, "generation", apikeys.ScopeGenerate)
 	v := apikeys.NewVerifier(store, "")
 
-	id, err := callWithKey(t, v, method(pb.LLMProxyService_GenerateText_FullMethodName), "Bearer "+genKey)
+	id, err := callWithKey(t, v, method(pb.GatewayService_GenerateText_FullMethodName), "Bearer "+genKey)
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -105,7 +105,7 @@ func TestEveryProtoMethodHasAScope(t *testing.T) {
 	// Walked from the generated descriptors, not a hand-written list: a list
 	// silently stops covering the methods nobody remembered to add to it, which
 	// is the exact mistake this test exists to catch.
-	for _, desc := range []grpclib.ServiceDesc{pb.LLMProxyService_ServiceDesc, pb.LLMProxyAdminService_ServiceDesc} {
+	for _, desc := range []grpclib.ServiceDesc{pb.GatewayService_ServiceDesc, pb.AdminService_ServiceDesc} {
 		for _, m := range desc.Methods {
 			full := "/" + desc.ServiceName + "/" + m.MethodName
 			if _, ok := methodScopes[full]; !ok {
@@ -128,7 +128,7 @@ func TestJudgeIsReachableWithAGenerateKey(t *testing.T) {
 	client := mintKey(t, store, "chatbot", apikeys.ScopeGenerate)
 	v := apikeys.NewVerifier(store, "")
 
-	id, err := callWithKey(t, v, pb.LLMProxyService_Judge_FullMethodName, "Bearer "+client)
+	id, err := callWithKey(t, v, pb.GatewayService_Judge_FullMethodName, "Bearer "+client)
 	if err != nil {
 		t.Fatalf("Judge refused for a generate key: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestStreamAuthInterceptor(t *testing.T) {
 		gotIdentity = apikeys.IdentityFrom(stream.Context())
 		return nil
 	}
-	err := authStreamInterceptor(v)(nil, ss, &grpclib.StreamServerInfo{FullMethod: pb.LLMProxyService_GenerateTextStream_FullMethodName}, handler)
+	err := authStreamInterceptor(v)(nil, ss, &grpclib.StreamServerInfo{FullMethod: pb.GatewayService_GenerateTextStream_FullMethodName}, handler)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestStreamAuthInterceptor(t *testing.T) {
 
 	// 2. Missing authorization fails unauthenticated
 	ssNoAuth := &fakeServerStream{ctx: context.Background()}
-	err = authStreamInterceptor(v)(nil, ssNoAuth, &grpclib.StreamServerInfo{FullMethod: pb.LLMProxyService_GenerateTextStream_FullMethodName}, handler)
+	err = authStreamInterceptor(v)(nil, ssNoAuth, &grpclib.StreamServerInfo{FullMethod: pb.GatewayService_GenerateTextStream_FullMethodName}, handler)
 	if status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("got code %v, want Unauthenticated", status.Code(err))
 	}
@@ -178,7 +178,7 @@ func TestStreamAuthInterceptor(t *testing.T) {
 	otherKey := mintKey(t, store, "other-only", "other")
 	ctxOther := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer "+otherKey))
 	ssOther := &fakeServerStream{ctx: ctxOther}
-	err = authStreamInterceptor(v)(nil, ssOther, &grpclib.StreamServerInfo{FullMethod: pb.LLMProxyService_GenerateTextStream_FullMethodName}, handler)
+	err = authStreamInterceptor(v)(nil, ssOther, &grpclib.StreamServerInfo{FullMethod: pb.GatewayService_GenerateTextStream_FullMethodName}, handler)
 	if status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("got code %v, want PermissionDenied", status.Code(err))
 	}

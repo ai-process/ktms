@@ -2,16 +2,16 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "llm-proxy.fullname" . }}
+  name: {{ include "ktms.fullname" . }}
   labels:
-    {{- include "llm-proxy.labels" . | nindent 4 }}
+    {{- include "ktms.labels" . | nindent 4 }}
     {{- with .Values.metrics.serviceMonitor.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
   selector:
     matchLabels:
-      {{- include "llm-proxy.selectorLabels" . | nindent 6 }}
+      {{- include "ktms.selectorLabels" . | nindent 6 }}
   endpoints:
     - port: metrics
       path: /metrics

@@ -16,13 +16,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/guardrails"
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/registry"
-	"github.com/ai-process/llm-proxy/internal/router"
-	"github.com/ai-process/llm-proxy/internal/safefetch"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/guardrails"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
+	"github.com/ai-process/ktms/internal/router"
+	"github.com/ai-process/ktms/internal/safefetch"
 )
 
 const modalityJudge = "judge"
@@ -389,7 +389,7 @@ func judgeTypeToProto(t string) pb.JudgeType {
 
 // JudgeStream provides bidirectional streaming decisions for real-time
 // agent evaluation and robotics control loops.
-func (s *ProxyServer) JudgeStream(stream pb.LLMProxyService_JudgeStreamServer) error {
+func (s *ProxyServer) JudgeStream(stream pb.GatewayService_JudgeStreamServer) error {
 	ctx := stream.Context()
 	for {
 		req, err := stream.Recv()

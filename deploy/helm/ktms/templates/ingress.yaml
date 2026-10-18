@@ -2,9 +2,9 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "llm-proxy.fullname" . }}
+  name: {{ include "ktms.fullname" . }}
   labels:
-    {{- include "llm-proxy.labels" . | nindent 4 }}
+    {{- include "ktms.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -33,7 +33,7 @@ spec:
             pathType: {{ .pathType }}
             backend:
               service:
-                name: {{ include "llm-proxy.fullname" $ }}
+                name: {{ include "ktms.fullname" $ }}
                 port:
                   number: {{ .port | default $.Values.service.httpPort }}
           {{- end }}
@@ -44,9 +44,9 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "llm-proxy.fullname" . }}-grpc
+  name: {{ include "ktms.fullname" . }}-grpc
   labels:
-    {{- include "llm-proxy.labels" . | nindent 4 }}
+    {{- include "ktms.labels" . | nindent 4 }}
   {{- with .Values.ingress.grpc.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -75,7 +75,7 @@ spec:
             pathType: {{ .pathType }}
             backend:
               service:
-                name: {{ include "llm-proxy.fullname" $ }}
+                name: {{ include "ktms.fullname" $ }}
                 port:
                   number: {{ .port | default $.Values.service.grpcPort }}
           {{- end }}

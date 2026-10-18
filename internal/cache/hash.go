@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strconv"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
 )
 
 // ComputeKey returns a deterministic hash key for an exact-match request.

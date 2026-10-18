@@ -9,7 +9,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/ai-process/llm-proxy/internal/rediskeys"
+	"github.com/ai-process/ktms/internal/rediskeys"
 )
 
 type nodeCapacityError struct {

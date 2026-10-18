@@ -18,10 +18,10 @@ import (
 	"github.com/openai/openai-go/v3/option"
 	"google.golang.org/genai"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/llm/adapters"
-	"github.com/ai-process/llm-proxy/internal/pricing"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/llm/adapters"
+	"github.com/ai-process/ktms/internal/pricing"
+	"github.com/ai-process/ktms/internal/proxydb"
 )
 
 // NodePoolResolver builds an adapter for a local node pool model.

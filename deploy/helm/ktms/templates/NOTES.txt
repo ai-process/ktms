@@ -1,4 +1,4 @@
-llm-proxy has been successfully deployed!
+KTMS has been successfully deployed!
 
 Release: {{ .Release.Name }}
 Namespace: {{ .Release.Namespace }}
@@ -15,7 +15,7 @@ Namespace: {{ .Release.Namespace }}
       -d '{"model":"auto","messages":[{"role":"user","content":"Hello"}]}'
 {{- else }}
   Forward port to localhost:
-    kubectl port-forward svc/{{ include "llm-proxy.fullname" . }} {{ .Values.service.httpPort }}:{{ .Values.service.httpPort }} -n {{ .Release.Namespace }}
+    kubectl port-forward svc/{{ include "ktms.fullname" . }} {{ .Values.service.httpPort }}:{{ .Values.service.httpPort }} -n {{ .Release.Namespace }}
   Test health probe:
     curl http://localhost:{{ .Values.service.httpPort }}/readyz
 {{- end }}
@@ -28,10 +28,10 @@ Namespace: {{ .Release.Namespace }}
     grpcurl {{ $grpcHost }}:443 list
 {{- else }}
   Forward port to localhost:
-    kubectl port-forward svc/{{ include "llm-proxy.fullname" . }} {{ .Values.service.grpcPort }}:{{ .Values.service.grpcPort }} -n {{ .Release.Namespace }}
+    kubectl port-forward svc/{{ include "ktms.fullname" . }} {{ .Values.service.grpcPort }}:{{ .Values.service.grpcPort }} -n {{ .Release.Namespace }}
   Inspect gRPC services with grpcurl:
     grpcurl -plaintext localhost:{{ .Values.service.grpcPort }} list
 {{- end }}
 
 For administrative setup, model configuration, and routing rules, see:
-https://github.com/ai-process/llm-proxy
+https://github.com/ai-process/ktms

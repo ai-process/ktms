@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/registry"
-	"github.com/ai-process/llm-proxy/internal/router"
-	usagev1 "github.com/ai-process/llm-proxy/internal/usagereport/gen/usage/v1"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
+	"github.com/ai-process/ktms/internal/router"
+	usagev1 "github.com/ai-process/ktms/internal/usagereport/gen/usage/v1"
 )
 
 type fakePollerDB struct {

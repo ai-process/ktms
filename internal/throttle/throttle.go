@@ -11,13 +11,13 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 
-	"github.com/ai-process/llm-proxy/internal/llm"
-	"github.com/ai-process/llm-proxy/internal/panicsafe"
-	"github.com/ai-process/llm-proxy/internal/pricing"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/rediskeys"
-	"github.com/ai-process/llm-proxy/internal/router"
-	"github.com/ai-process/llm-proxy/internal/spendlimit"
+	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/panicsafe"
+	"github.com/ai-process/ktms/internal/pricing"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/rediskeys"
+	"github.com/ai-process/ktms/internal/router"
+	"github.com/ai-process/ktms/internal/spendlimit"
 )
 
 const (

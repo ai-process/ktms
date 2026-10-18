@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/ai-process/llm-proxy/internal/nodeagent"
+	"github.com/ai-process/ktms/internal/nodeagent"
 )
 
 func main() {

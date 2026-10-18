@@ -3,7 +3,7 @@ package seed
 import (
 	"testing"
 
-	"github.com/ai-process/llm-proxy/internal/registry"
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 func TestDefaultModelsAndRulesValidation(t *testing.T) {

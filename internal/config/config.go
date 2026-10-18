@@ -127,7 +127,7 @@ type Config struct {
 func Load() *Config {
 	return &Config{
 		DatabaseURL:                     getEnv("DATABASE_URL", ""),
-		EncryptionKeys:                  getEnv("LLMPROXY_ENCRYPTION_KEYS", ""),
+		EncryptionKeys:                  getEnvFirst([]string{"KTMS_ENCRYPTION_KEYS", "LLMPROXY_ENCRYPTION_KEYS"}, ""),
 		GRPCAddr:                        getEnv("GRPC_ADDR", ":9090"),
 		GRPCMaxRecvMsgSize:              getIntEnv("GRPC_MAX_RECV_MSG_SIZE", 16*1024*1024),
 		HTTPAddr:                        getEnv("HTTP_ADDR", ":8080"),
@@ -169,7 +169,7 @@ func Load() *Config {
 		CircuitBreakerCooldown:          getDurationEnv("CIRCUIT_BREAKER_COOLDOWN", 30*time.Second),
 		UpstreamRequestTimeout:          getDurationEnv("UPSTREAM_REQUEST_TIMEOUT", 0),
 		MetricsAddr:                     getEnv("METRICS_ADDR", ":9091"),
-		OTELServiceName:                 getEnv("OTEL_SERVICE_NAME", "llm-proxy"),
+		OTELServiceName:                 getEnv("OTEL_SERVICE_NAME", "ktms"),
 		OTELExporterOTLPEndpoint:        getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
 		CacheEnabled:                    getBoolEnv("CACHE_ENABLED", false),
 		CacheTTL:                        getDurationEnv("CACHE_TTL", 1*time.Hour),
@@ -251,6 +251,15 @@ func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
 	if value := os.Getenv(key); value != "" {
 		if d, err := time.ParseDuration(value); err == nil {
 			return d
+		}
+	}
+	return defaultValue
+}
+
+func getEnvFirst(keys []string, defaultValue string) string {
+	for _, k := range keys {
+		if v := os.Getenv(k); v != "" {
+			return v
 		}
 	}
 	return defaultValue

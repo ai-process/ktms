@@ -16,15 +16,15 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/apikeys"
-	"github.com/ai-process/llm-proxy/internal/audio"
-	"github.com/ai-process/llm-proxy/internal/proxydb"
-	"github.com/ai-process/llm-proxy/internal/router"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/audio"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/router"
 )
 
 type fakeProxy struct {
-	pb.UnimplementedLLMProxyServiceServer
+	pb.UnimplementedGatewayServiceServer
 	text           *pb.GenerateTextRequest
 	textErr        error
 	respDetails    []*pb.Choice
@@ -64,7 +64,7 @@ func (f *fakeProxy) GenerateText(_ context.Context, r *pb.GenerateTextRequest) (
 	return resp, nil
 }
 
-func (f *fakeProxy) GenerateTextStream(r *pb.GenerateTextStreamRequest, s pb.LLMProxyService_GenerateTextStreamServer) error {
+func (f *fakeProxy) GenerateTextStream(r *pb.GenerateTextStreamRequest, s pb.GatewayService_GenerateTextStreamServer) error {
 	f.text = r.Request
 	if f.textErr != nil {
 		return f.textErr
@@ -1423,3 +1423,69 @@ func TestDecisionsMultimodalInput(t *testing.T) {
 		}
 	}
 }
+
+func TestHeaderCompatibilityAndDeprecation(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	fp.respPlacement = "nodes_first"
+	fp.respRouteMode = "auto-effort"
+
+	// 1. Inbound request using legacy X-LLM-Proxy-Placement
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"auto","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-LLM-Proxy-Placement", "cloud_only")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if fp.text.Placement != "cloud_only" {
+		t.Errorf("expected placement cloud_only, got %s", fp.text.Placement)
+	}
+
+	// Verify dual emission of response headers
+	if rec.Header().Get("X-KTMS-Vendor") != "openai" || rec.Header().Get("X-LLM-Proxy-Vendor") != "openai" {
+		t.Errorf("expected vendor headers openai, got ktms=%q, legacy=%q",
+			rec.Header().Get("X-KTMS-Vendor"), rec.Header().Get("X-LLM-Proxy-Vendor"))
+	}
+	if rec.Header().Get("X-KTMS-Rule") != "default" || rec.Header().Get("X-LLM-Proxy-Rule") != "default" {
+		t.Errorf("expected rule headers default, got ktms=%q, legacy=%q",
+			rec.Header().Get("X-KTMS-Rule"), rec.Header().Get("X-LLM-Proxy-Rule"))
+	}
+	if rec.Header().Get("X-KTMS-Placement") != "nodes_first" || rec.Header().Get("X-LLM-Proxy-Placement") != "nodes_first" {
+		t.Errorf("expected placement headers nodes_first, got ktms=%q, legacy=%q",
+			rec.Header().Get("X-KTMS-Placement"), rec.Header().Get("X-LLM-Proxy-Placement"))
+	}
+	if rec.Header().Get("X-KTMS-Route-Mode") != "auto-effort" || rec.Header().Get("X-LLM-Proxy-Route-Mode") != "auto-effort" {
+		t.Errorf("expected route mode auto-effort, got ktms=%q, legacy=%q",
+			rec.Header().Get("X-KTMS-Route-Mode"), rec.Header().Get("X-LLM-Proxy-Route-Mode"))
+	}
+
+	// Verify RFC 8594 / RFC 7234 Deprecation headers
+	if rec.Header().Get("Deprecation") != "true" {
+		t.Errorf("expected Deprecation: true, got %q", rec.Header().Get("Deprecation"))
+	}
+	if rec.Header().Get("Sunset") != "Sun, 01 Mar 2027 00:00:00 GMT" {
+		t.Errorf("expected Sunset header, got %q", rec.Header().Get("Sunset"))
+	}
+	if !strings.Contains(rec.Header().Get("Warning"), "299 - \"X-LLM-Proxy-* response headers are deprecated") {
+		t.Errorf("expected Warning header with deprecation message, got %q", rec.Header().Get("Warning"))
+	}
+
+	// 2. Inbound request using new X-KTMS-Placement
+	req2 := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"auto","messages":[{"role":"user","content":"hi"}]}`))
+	req2.Header.Set("Authorization", "Bearer "+key)
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("X-KTMS-Placement", "nodes_only")
+	rec2 := httptest.NewRecorder()
+	h.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec2.Code, rec2.Body.String())
+	}
+	if fp.text.Placement != "nodes_only" {
+		t.Errorf("expected placement nodes_only, got %s", fp.text.Placement)
+	}
+}
+

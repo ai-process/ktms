@@ -1,4 +1,4 @@
-module github.com/ai-process/llm-proxy
+module github.com/ai-process/ktms
 
 go 1.26.0
 

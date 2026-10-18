@@ -26,11 +26,12 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	pb "github.com/ai-process/llm-proxy/gen/llmproxy/v1"
-	"github.com/ai-process/llm-proxy/internal/apikeys"
-	"github.com/ai-process/llm-proxy/internal/panicsafe"
-	"github.com/ai-process/llm-proxy/internal/router"
-	"github.com/ai-process/llm-proxy/internal/safefetch"
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/observability"
+	"github.com/ai-process/ktms/internal/panicsafe"
+	"github.com/ai-process/ktms/internal/router"
+	"github.com/ai-process/ktms/internal/safefetch"
 )
 
 const maxRequestBytes = 16 << 20
@@ -39,22 +40,22 @@ const maxRequestBytes = 16 << 20
 // the same handlers as gRPC after the same key and scope check, so routing,
 // throttling and usage reporting behave identically on both transports.
 type OpenAIAPI struct {
-	proxy    pb.LLMProxyServiceServer
+	proxy    pb.GatewayServiceServer
 	verifier *apikeys.Verifier
 }
 
-func NewOpenAIAPI(proxy pb.LLMProxyServiceServer, verifier *apikeys.Verifier) *OpenAIAPI {
+func NewOpenAIAPI(proxy pb.GatewayServiceServer, verifier *apikeys.Verifier) *OpenAIAPI {
 	return &OpenAIAPI{proxy: proxy, verifier: verifier}
 }
 
 // Register mounts the routes under /v1.
 func (a *OpenAIAPI) Register(mux *http.ServeMux) {
-	chat := method(pb.LLMProxyService_GenerateText_FullMethodName)
-	speech := method(pb.LLMProxyService_SynthesizeSpeech_FullMethodName)
-	image := method(pb.LLMProxyService_GenerateImage_FullMethodName)
-	judge := method(pb.LLMProxyService_Judge_FullMethodName)
-	embeddings := method(pb.LLMProxyService_GetEmbeddings_FullMethodName)
-	models := method(pb.LLMProxyService_ListModels_FullMethodName)
+	chat := method(pb.GatewayService_GenerateText_FullMethodName)
+	speech := method(pb.GatewayService_SynthesizeSpeech_FullMethodName)
+	image := method(pb.GatewayService_GenerateImage_FullMethodName)
+	judge := method(pb.GatewayService_Judge_FullMethodName)
+	embeddings := method(pb.GatewayService_GetEmbeddings_FullMethodName)
+	models := method(pb.GatewayService_ListModels_FullMethodName)
 
 	mux.HandleFunc("POST /v1/chat/completions", a.wrap(chat, a.chatCompletions))
 	mux.HandleFunc("POST /v1/audio/speech", a.wrap(speech, a.audioSpeech))
@@ -675,14 +676,14 @@ func (a *OpenAIAPI) chatCompletions(ctx context.Context, w http.ResponseWriter, 
 	if err := decodeBody(r, &req); err != nil {
 		return err
 	}
-	preq, err := req.toProto(ctx, r.Header.Get("X-LLM-Proxy-Placement"))
+	preq, err := req.toProto(ctx, getPlacementHeader(r))
 	if err != nil {
 		return err
 	}
 	var enableCache bool
 	if req.EnableCache != nil {
 		enableCache = *req.EnableCache
-	} else if h := r.Header.Get("X-LLM-Proxy-Cache"); h != "" {
+	} else if h := getCacheHeader(r); h != "" {
 		enableCache = h == "true" || h == "1"
 	}
 	preq.EnableCache = enableCache
@@ -699,22 +700,22 @@ func (a *OpenAIAPI) chatCompletions(ctx context.Context, w http.ResponseWriter, 
 	}
 	setResolvedHeaders(w, resp.ResolvedVendor, resp.MatchedRule)
 	if resp.Placement != "" {
-		w.Header().Set("X-LLM-Proxy-Placement", resp.Placement)
+		setObservabilityHeader(w, "Placement", resp.Placement)
 	}
 	if resp.RouteMode != "" {
-		w.Header().Set("X-LLM-Proxy-Route-Mode", resp.RouteMode)
+		setObservabilityHeader(w, "Route-Mode", resp.RouteMode)
 	}
 	if resp.JudgeScore > 0 {
-		w.Header().Set("X-LLM-Proxy-Judge-Score", fmt.Sprintf("%.2f", resp.JudgeScore))
+		setObservabilityHeader(w, "Judge-Score", fmt.Sprintf("%.2f", resp.JudgeScore))
 	}
 	if resp.JudgeModel != "" {
-		w.Header().Set("X-LLM-Proxy-Judge-Model", resp.JudgeModel)
+		setObservabilityHeader(w, "Judge-Model", resp.JudgeModel)
 	}
 	if preq.EnableCache {
 		if resp.Cached {
-			w.Header().Set("X-LLM-Proxy-Cache", "HIT")
+			setObservabilityHeader(w, "Cache", "HIT")
 		} else {
-			w.Header().Set("X-LLM-Proxy-Cache", "MISS")
+			setObservabilityHeader(w, "Cache", "MISS")
 		}
 	}
 
@@ -849,23 +850,23 @@ func (s *httpStreamAdapter) ensureHeaders(chunk *pb.GenerateTextChunk) {
 	if chunk != nil {
 		setResolvedHeaders(s.w, chunk.ResolvedVendor, chunk.MatchedRule)
 		if chunk.Placement != "" {
-			s.w.Header().Set("X-LLM-Proxy-Placement", chunk.Placement)
+			setObservabilityHeader(s.w, "Placement", chunk.Placement)
 		}
 		if chunk.RouteMode != "" {
-			s.w.Header().Set("X-LLM-Proxy-Route-Mode", chunk.RouteMode)
+			setObservabilityHeader(s.w, "Route-Mode", chunk.RouteMode)
 		}
 		if chunk.JudgeScore > 0 {
-			s.w.Header().Set("X-LLM-Proxy-Judge-Score", fmt.Sprintf("%.2f", chunk.JudgeScore))
+			setObservabilityHeader(s.w, "Judge-Score", fmt.Sprintf("%.2f", chunk.JudgeScore))
 		}
 		if chunk.JudgeModel != "" {
-			s.w.Header().Set("X-LLM-Proxy-Judge-Model", chunk.JudgeModel)
+			setObservabilityHeader(s.w, "Judge-Model", chunk.JudgeModel)
 		}
 	}
 	if s.enableCache {
 		if s.cacheHit {
-			s.w.Header().Set("X-LLM-Proxy-Cache", "HIT")
+			setObservabilityHeader(s.w, "Cache", "HIT")
 		} else {
-			s.w.Header().Set("X-LLM-Proxy-Cache", "MISS")
+			setObservabilityHeader(s.w, "Cache", "MISS")
 		}
 	}
 	s.w.Header().Set("Content-Type", "text/event-stream")
@@ -952,13 +953,56 @@ func usageJSON(u *pb.TokensUsage) map[string]any {
 	}
 }
 
+const (
+	headerDeprecation = "Deprecation"
+	headerSunset      = "Sunset"
+	headerWarning     = "Warning"
+	sunsetDate        = "Sun, 01 Mar 2027 00:00:00 GMT"
+	deprecationWarn   = `299 - "X-LLM-Proxy-* response headers are deprecated; migrate to X-KTMS-* before Sunset"`
+)
+
+// setObservabilityHeader sets both the canonical X-KTMS-* and legacy X-LLM-Proxy-* headers,
+// annotating legacy usage with RFC 8594 / RFC 7234 Deprecation, Sunset, and Warning headers.
+func setObservabilityHeader(w http.ResponseWriter, suffix, value string) {
+	if value == "" {
+		return
+	}
+	w.Header().Set("X-KTMS-"+suffix, value)
+	w.Header().Set("X-LLM-Proxy-"+suffix, value)
+	w.Header().Set(headerDeprecation, "true")
+	w.Header().Set(headerSunset, sunsetDate)
+	w.Header().Set(headerWarning, deprecationWarn)
+}
+
 func setResolvedHeaders(w http.ResponseWriter, vendor, rule string) {
 	if vendor != "" {
-		w.Header().Set("X-LLM-Proxy-Vendor", vendor)
+		setObservabilityHeader(w, "Vendor", vendor)
 	}
 	if rule != "" {
-		w.Header().Set("X-LLM-Proxy-Rule", rule)
+		setObservabilityHeader(w, "Rule", rule)
 	}
+}
+
+func getPlacementHeader(r *http.Request) string {
+	if v := r.Header.Get("X-KTMS-Placement"); v != "" {
+		return v
+	}
+	if v := r.Header.Get("X-LLM-Proxy-Placement"); v != "" {
+		observability.LegacyHeadersRequestsTotal.WithLabelValues("X-LLM-Proxy-Placement").Inc()
+		return v
+	}
+	return ""
+}
+
+func getCacheHeader(r *http.Request) string {
+	if v := r.Header.Get("X-KTMS-Cache"); v != "" {
+		return v
+	}
+	if v := r.Header.Get("X-LLM-Proxy-Cache"); v != "" {
+		observability.LegacyHeadersRequestsTotal.WithLabelValues("X-LLM-Proxy-Cache").Inc()
+		return v
+	}
+	return ""
 }
 
 // ---- speech ----
@@ -996,7 +1040,7 @@ func (a *OpenAIAPI) audioSpeech(ctx context.Context, w http.ResponseWriter, r *h
 		return err
 	}
 	setResolvedHeaders(w, resp.ResolvedVendor, resp.MatchedRule)
-	w.Header().Set("X-LLM-Proxy-Model", resp.ResolvedModel)
+	setObservabilityHeader(w, "Model", resp.ResolvedModel)
 	mime := resp.MimeType
 	if mime == "" {
 		mime = "audio/ogg"
@@ -1048,7 +1092,7 @@ func (a *OpenAIAPI) imageGenerations(ctx context.Context, w http.ResponseWriter,
 		return err
 	}
 	setResolvedHeaders(w, resp.ResolvedVendor, resp.MatchedRule)
-	w.Header().Set("X-LLM-Proxy-Model", resp.ResolvedModel)
+	setObservabilityHeader(w, "Model", resp.ResolvedModel)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"created": time.Now().Unix(),
 		"data":    []map[string]any{{"b64_json": base64.StdEncoding.EncodeToString(resp.Image)}},
@@ -1411,7 +1455,7 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 
 	setResolvedHeaders(w, resp.ResolvedVendor, resp.MatchedRule)
-	w.Header().Set("X-LLM-Proxy-Model", resp.ResolvedModel)
+	setObservabilityHeader(w, "Model", resp.ResolvedModel)
 	writeJSON(w, http.StatusOK, decisionsResponseOut{
 		Model:   resp.ResolvedModel,
 		Answers: answers,
@@ -1501,7 +1545,7 @@ func (a *OpenAIAPI) embeddings(ctx context.Context, w http.ResponseWriter, r *ht
 	}
 
 	if resp.ResolvedModel != "" {
-		w.Header().Set("X-LLM-Proxy-Model", resp.ResolvedModel)
+		setObservabilityHeader(w, "Model", resp.ResolvedModel)
 	}
 	setResolvedHeaders(w, resp.ResolvedVendor, resp.MatchedRule)
 
@@ -1823,7 +1867,7 @@ func (a *OpenAIAPI) decisionsRollouts(ctx context.Context, w http.ResponseWriter
 	}
 
 	setResolvedHeaders(w, resp.ResolvedVendor, resp.MatchedRule)
-	w.Header().Set("X-LLM-Proxy-Model", resp.ResolvedModel)
+	setObservabilityHeader(w, "Model", resp.ResolvedModel)
 	writeJSON(w, http.StatusOK, decisionsRolloutResponseOut{
 		Model:           resp.ResolvedModel,
 		BestCandidateID: resp.BestCandidateId,
