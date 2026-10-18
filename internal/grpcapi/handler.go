@@ -116,6 +116,10 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		return nil, status.Error(codes.InvalidArgument, "bad_request: no messages or instructions")
 	}
 
+	if req.GetAttributes() != nil {
+		req.Attributes = router.SanitizeAttributes(req.GetAttributes())
+	}
+
 	snap := s.snapshots.Snapshot()
 	if !snap.Configured() {
 		return nil, router.ToStatus(router.ErrNotConfigured)
@@ -143,6 +147,10 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 			return nil, guardrailStatus(err)
 		}
 	}
+	var shadowEvaluator func(context.Context, *proxydb.Model, *proxydb.Model, *llm.Response, *llm.Response)
+	if plan.shadowEval {
+		shadowEvaluator = s.makeShadowEvaluator(id, chat, req.GetAttributes())
+	}
 	resp, model, err := router.Execute(ctx, s.throttle, router.Request{
 		Chain:            plan.models,
 		KeyName:          id.Name,
@@ -155,6 +163,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		SoftSchema:       registry.SoftSchema,
 		ShadowModel:      plan.shadowModel,
 		ShadowPercentage: plan.shadowPercentage,
+		ShadowEvaluator:  shadowEvaluator,
 	})
 	if err != nil {
 		return nil, router.ToStatus(err)
@@ -223,6 +232,10 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		return status.Error(codes.InvalidArgument, "bad_request: no messages or instructions")
 	}
 
+	if inner.GetAttributes() != nil {
+		inner.Attributes = router.SanitizeAttributes(inner.GetAttributes())
+	}
+
 	snap := s.snapshots.Snapshot()
 	if !snap.Configured() {
 		return router.ToStatus(router.ErrNotConfigured)
@@ -263,6 +276,10 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		streamModel     string
 		streamVendor    string
 	)
+	var shadowEvaluator func(context.Context, *proxydb.Model, *proxydb.Model, *llm.Response, *llm.Response)
+	if plan.shadowEval {
+		shadowEvaluator = s.makeShadowEvaluator(id, chat, inner.GetAttributes())
+	}
 	_, err = router.ExecuteStream(stream.Context(), s.throttle, router.Request{
 		Chain:            plan.models,
 		KeyName:          id.Name,
@@ -275,6 +292,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		SoftSchema:       registry.SoftSchema,
 		ShadowModel:      plan.shadowModel,
 		ShadowPercentage: plan.shadowPercentage,
+		ShadowEvaluator:  shadowEvaluator,
 	}, func(m *proxydb.Model, chunk llm.StreamChunk) error {
 		streamModel = m.ID
 		streamVendor = m.Vendor

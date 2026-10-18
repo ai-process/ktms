@@ -56,6 +56,7 @@ func TestValidateAcceptsShadowRules(t *testing.T) {
 	models, rules := baseConfig()
 	rules[0].ShadowModel = "mid"
 	rules[0].ShadowPercentage = 25.5
+	rules[0].ShadowEval = true
 	if err := Validate(models, rules); err != nil {
 		t.Fatalf("Validate with shadow routing: %v", err)
 	}
@@ -175,6 +176,12 @@ func TestValidateRejections(t *testing.T) {
 				r[0].ShadowPercentage = 50
 				return m, r
 			}, "shadow percentage requires shadow model"},
+		"shadow eval without model": {
+			func(m []*proxydb.Model, r []*proxydb.Rule) ([]*proxydb.Model, []*proxydb.Rule) {
+				r[0].ShadowModel = ""
+				r[0].ShadowEval = true
+				return m, r
+			}, "shadow evaluation requires shadow model"},
 	}
 
 	for name, tc := range cases {
@@ -537,5 +544,27 @@ func TestSnapshotSpendLimitWildcard(t *testing.T) {
 	var nilSnap *Snapshot
 	if nilSnap.SpendLimit("user", "x", "month") != 0 {
 		t.Error("nil snapshot must have no limits")
+	}
+}
+
+func TestValidateRule_ReservedAttributes(t *testing.T) {
+	m := model("m1", VendorOpenAI, EffortLow, EffortMedium, EffortHigh)
+	catchAll := &proxydb.Rule{
+		Name:    "catch-all",
+		Use:     []string{"m1"},
+		Enabled: true,
+	}
+
+	for _, reservedKey := range []string{"shadow", "is_shadow", "shadow_eval"} {
+		rule := &proxydb.Rule{
+			Name:       "bad-rule-" + reservedKey,
+			Use:        []string{"m1"},
+			Enabled:    true,
+			Attributes: map[string]string{reservedKey: "true"},
+		}
+		err := Validate([]*proxydb.Model{m}, []*proxydb.Rule{rule, catchAll})
+		if err == nil {
+			t.Errorf("expected error for rule filtering on reserved attribute %q, got nil", reservedKey)
+		}
 	}
 }

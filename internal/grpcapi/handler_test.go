@@ -141,6 +141,7 @@ type fakeTracker struct {
 
 type trackedEvent struct {
 	userID, actionID, vendor, model string
+	cost                            int64
 	status                          usagev1.Status
 	meta                            map[string]string
 }
@@ -149,7 +150,7 @@ func (f *fakeTracker) RecordUsage(userID, actionID, vendor, model string,
 	inputTokens, outputTokens int, durationMs, costNanoUSD int64, status usagev1.Status, meta map[string]string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.events = append(f.events, trackedEvent{userID, actionID, vendor, model, status, meta})
+	f.events = append(f.events, trackedEvent{userID, actionID, vendor, model, costNanoUSD, status, meta})
 	return nil
 }
 
@@ -1016,6 +1017,9 @@ func TestGenerateText_ShadowRouting(t *testing.T) {
 			hasPrimary = true
 		}
 		if e.model == "m2" && e.meta["is_shadow"] == "true" {
+			if e.cost != 0 {
+				t.Fatalf("shadow event has non-zero cost: %d", e.cost)
+			}
 			hasShadow = true
 		}
 	}
@@ -1075,6 +1079,9 @@ func TestGenerateTextStream_ShadowRouting(t *testing.T) {
 	var hasShadow bool
 	for _, e := range events {
 		if e.model == "m2" && e.meta["is_shadow"] == "true" {
+			if e.cost != 0 {
+				t.Fatalf("shadow stream event has non-zero cost: %d", e.cost)
+			}
 			hasShadow = true
 		}
 	}
@@ -1092,5 +1099,158 @@ func TestWithUpstreamTimeout(t *testing.T) {
 	server = server.WithUpstreamTimeout(30 * time.Second)
 	if server.upstreamTimeout != 30*time.Second {
 		t.Fatalf("expected configured 30s, got %v", server.upstreamTimeout)
+	}
+}
+func TestGenerateText_CanaryRoutingDeterministic(t *testing.T) {
+	vendor := &fakeVendor{reply: "hello canary"}
+	srv := httptest.NewServer(http.HandlerFunc(vendor.handler))
+	defer srv.Close()
+
+	tracker := &fakeTracker{}
+	models := []*proxydb.Model{
+		testModel("m1", registry.VendorOpenAI, srv.URL, registry.EffortLow, registry.EffortMedium, registry.EffortHigh),
+		testModel("m2", registry.VendorDeepSeek, srv.URL, registry.EffortLow, registry.EffortMedium, registry.EffortHigh),
+	}
+	rules := []*proxydb.Rule{{
+		Name:     "weighted-rule",
+		Priority: 0,
+		Effort:   "",
+		Enabled:  true,
+		Use:      []string{"m1", "m2"},
+		Weights:  []int32{50, 50},
+	}}
+	s := newTestServer(t, models, rules, tracker)
+
+	reqA := &pb.GenerateTextRequest{
+		Effort: pb.Effort_EFFORT_LOW,
+		Messages: []*pb.ChatMessage{
+			{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: "hi"},
+		},
+		Attributes: map[string]string{"canary_key": "user-stable-123"},
+	}
+	resp1, err := s.GenerateText(testIdentity(), reqA)
+	if err != nil {
+		t.Fatalf("GenerateText 1: %v", err)
+	}
+	for i := 0; i < 10; i++ {
+		respN, err := s.GenerateText(testIdentity(), reqA)
+		if err != nil {
+			t.Fatalf("GenerateText %d: %v", i+2, err)
+		}
+		if respN.ResolvedModel != resp1.ResolvedModel {
+			t.Fatalf("canary_key returned inconsistent model: %s vs %s", respN.ResolvedModel, resp1.ResolvedModel)
+		}
+	}
+}
+
+func TestGenerateText_ShadowEval(t *testing.T) {
+	evalCalled := make(chan struct{}, 1)
+	vendor := &fakeVendor{reply: "evaluated text"}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "decisions") {
+			select {
+			case evalCalled <- struct{}{}:
+			default:
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"answers": [
+					{"name": "preference", "type": "choice", "choice": "primary"},
+					{"name": "primary_quality", "type": "score", "score": 0.95},
+					{"name": "shadow_quality", "type": "score", "score": 0.85}
+				]
+			}`))
+			return
+		}
+		vendor.handler(w, r)
+	}))
+	defer srv.Close()
+
+	tracker := &fakeTracker{}
+	mJudge := testModel("mJudge", registry.VendorOpenAI, srv.URL, registry.EffortLow, registry.EffortMedium, registry.EffortHigh)
+	mJudge.Capabilities = []string{registry.CapabilityJudge}
+	models := []*proxydb.Model{
+		testModel("m1", registry.VendorOpenAI, srv.URL, registry.EffortLow, registry.EffortMedium, registry.EffortHigh),
+		testModel("m2", registry.VendorDeepSeek, srv.URL, registry.EffortLow, registry.EffortMedium, registry.EffortHigh),
+		mJudge,
+	}
+	rules := []*proxydb.Rule{
+		{
+			Name:       "judge-rule",
+			Priority:   10,
+			Effort:     registry.EffortLow,
+			Attributes: map[string]string{"modality": "judge"},
+			Enabled:    true,
+			Use:        []string{"mJudge"},
+		},
+		{
+			Name:             "text-rule",
+			Priority:         0,
+			Effort:           "",
+			Enabled:          true,
+			Use:              []string{"m1"},
+			ShadowModel:      "m2",
+			ShadowPercentage: 100,
+			ShadowEval:       true,
+		},
+	}
+	s := newTestServer(t, models, rules, tracker)
+
+	resp, err := s.GenerateText(testIdentity(), &pb.GenerateTextRequest{
+		Effort: pb.Effort_EFFORT_LOW,
+		Messages: []*pb.ChatMessage{
+			{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: "evaluate me"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("GenerateText: %v", err)
+	}
+	if resp.ResolvedModel != "m1" {
+		t.Fatalf("resolved model = %s, want m1", resp.ResolvedModel)
+	}
+
+	select {
+	case <-evalCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for shadow judge evaluation call")
+	}
+}
+
+func TestSanitizeClientAttributesMediaEndpoints(t *testing.T) {
+	tracker := &fakeTracker{}
+	mJudge := testModel("mJudge", registry.VendorOpenAI, "http://localhost", registry.EffortLow)
+	mJudge.Capabilities = []string{registry.CapabilityJudge}
+	models := []*proxydb.Model{mJudge}
+	rules := []*proxydb.Rule{
+		{
+			Name:       "judge-rule",
+			Priority:   10,
+			Effort:     registry.EffortLow,
+			Attributes: map[string]string{"modality": "judge"},
+			Enabled:    true,
+			Use:        []string{"mJudge"},
+		},
+	}
+	s := newTestServer(t, models, rules, tracker)
+
+	dirtyAttrs := map[string]string{
+		"client_tag":  "valid",
+		"shadow":      "true",
+		"is_shadow":   "true",
+		"shadow_eval": "true",
+	}
+
+	plan, err := s.planMedia(testIdentity(), dirtyAttrs, "", modalityJudge, registry.CapabilityJudge)
+	if err != nil {
+		t.Fatalf("planMedia: %v", err)
+	}
+	if plan.attrs["shadow"] != "" || plan.attrs["is_shadow"] != "" || plan.attrs["shadow_eval"] != "" {
+		t.Fatalf("reserved attributes leaked into plan.attrs: %+v", plan.attrs)
+	}
+	if plan.meta["shadow"] != "" || plan.meta["is_shadow"] != "" || plan.meta["shadow_eval"] != "" {
+		t.Fatalf("reserved attributes leaked into plan.meta: %+v", plan.meta)
+	}
+	if plan.attrs["client_tag"] != "valid" {
+		t.Fatalf("legitimate attribute lost: %+v", plan.attrs)
 	}
 }

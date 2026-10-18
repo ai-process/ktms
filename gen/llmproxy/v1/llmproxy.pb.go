@@ -1242,10 +1242,10 @@ type GenerateTextRequest struct {
 	Effort Effort                 `protobuf:"varint,1,opt,name=effort,proto3,enum=llmproxy.v1.Effort" json:"effort,omitempty"`
 	// Opaque routing/usage attributes: "subject", "user_id", "task", ...
 	// Matched by equality in rules and forwarded to usage meta.
-	// Two names are reserved: "user_id" attributes the call to an end user, and
-	// "usage_project" names the usage-collector project for callers that front
-	// many tenants (e.g. a chat platform serving many bots from one process).
-	// Without it the project is the api key's name.
+	// Reserved names: "user_id" attributes the call to an end user (and provides default canary stickiness);
+	// "canary_key" overrides the sticky routing key; "canary_mode" set to "random" disables stickiness;
+	// "usage_project" names the usage-collector project for callers that front many tenants.
+	// Internal billing/evaluation attributes "shadow", "is_shadow", "shadow_eval" are reserved and stripped.
 	Attributes            map[string]string `protobuf:"bytes,2,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Messages              []*ChatMessage    `protobuf:"bytes,3,rep,name=messages,proto3" json:"messages,omitempty"`
 	BaseSystemInstruction string            `protobuf:"bytes,4,opt,name=base_system_instruction,json=baseSystemInstruction,proto3" json:"base_system_instruction,omitempty"` // persistent, joined upstream

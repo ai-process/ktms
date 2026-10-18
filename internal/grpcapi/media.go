@@ -176,8 +176,9 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 
 	// The modality is the proxy's to state, not the caller's: rules match on it
 	// and a caller could otherwise route image work to a speech chain.
-	routing := make(map[string]string, len(attrs)+1)
-	for k, v := range attrs {
+	clean := router.SanitizeAttributes(attrs)
+	routing := make(map[string]string, len(clean)+1)
+	for k, v := range clean {
 		routing[k] = v
 	}
 	routing[ModalityAttribute] = modality
@@ -197,7 +198,8 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 			return nil, status.Errorf(codes.FailedPrecondition,
 				"no_capable_model: no %s rule configured", modality)
 		}
-		chain = router.ResolveChain(rule)
+		canaryKey := router.CanaryKey(routing)
+		chain = router.ResolveChain(rule, canaryKey)
 		ruleName = rule.Name
 	}
 

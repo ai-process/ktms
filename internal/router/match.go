@@ -3,15 +3,46 @@ package router
 
 import (
 	"crypto/rand"
+	"hash/fnv"
 	"math/big"
 
 	"github.com/ai-process/llm-proxy/internal/proxydb"
 	"github.com/ai-process/llm-proxy/internal/registry"
 )
 
+// CanaryKey extracts the stickiness key for canary routing from request attributes.
+// When canary_mode is "random", stickiness is disabled.
+// Otherwise, it checks for an explicit "canary_key", falling back to "user_id".
+func CanaryKey(attrs map[string]string) string {
+	if attrs == nil || attrs["canary_mode"] == "random" {
+		return ""
+	}
+	if k := attrs["canary_key"]; k != "" {
+		return k
+	}
+	return attrs["user_id"]
+}
+
+// SanitizeAttributes strips reserved internal attributes (shadow, is_shadow, shadow_eval)
+// to prevent client forgery of billing exemption or automated evaluation.
+func SanitizeAttributes(attrs map[string]string) map[string]string {
+	if attrs == nil {
+		return nil
+	}
+	cleaned := make(map[string]string, len(attrs))
+	for k, v := range attrs {
+		if k == "shadow" || k == "is_shadow" || k == "shadow_eval" {
+			continue
+		}
+		cleaned[k] = v
+	}
+	return cleaned
+}
+
 // ResolveChain returns the model chain for a rule, selecting the primary
 // candidate via weights when defined while retaining remaining fallbacks in order.
-func ResolveChain(rule *proxydb.Rule) []string {
+// If a non-empty hashKey is provided, canary distribution is deterministic per key.
+func ResolveChain(rule *proxydb.Rule, hashKey string) []string {
 	if rule == nil {
 		return nil
 	}
@@ -29,12 +60,18 @@ func ResolveChain(rule *proxydb.Rule) []string {
 		return rule.Use
 	}
 
-	n, err := rand.Int(rand.Reader, big.NewInt(totalWeight))
-	if err != nil {
-		return rule.Use
+	var val int64
+	if hashKey != "" {
+		h := fnv.New64a()
+		_, _ = h.Write([]byte(rule.Name + ":" + hashKey))
+		val = int64(h.Sum64() % uint64(totalWeight))
+	} else {
+		n, err := rand.Int(rand.Reader, big.NewInt(totalWeight))
+		if err != nil {
+			return rule.Use
+		}
+		val = n.Int64()
 	}
-
-	val := n.Int64()
 	var cumulative int64
 	selectedIdx := 0
 	for i, w := range rule.Weights {

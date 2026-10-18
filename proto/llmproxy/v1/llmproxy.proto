@@ -130,10 +130,10 @@ message GenerateTextRequest {
   Effort effort = 1;
   // Opaque routing/usage attributes: "subject", "user_id", "task", ...
   // Matched by equality in rules and forwarded to usage meta.
-  // Two names are reserved: "user_id" attributes the call to an end user, and
-  // "usage_project" names the usage-collector project for callers that front
-  // many tenants (e.g. a chat platform serving many bots from one process).
-  // Without it the project is the api key's name.
+  // Reserved names: "user_id" attributes the call to an end user (and provides default canary stickiness);
+  // "canary_key" overrides the sticky routing key; "canary_mode" set to "random" disables stickiness;
+  // "usage_project" names the usage-collector project for callers that front many tenants.
+  // Internal billing/evaluation attributes "shadow", "is_shadow", "shadow_eval" are reserved and stripped.
   map<string, string> attributes = 2;
   repeated ChatMessage messages = 3;
   string base_system_instruction = 4; // persistent, joined upstream

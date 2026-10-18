@@ -198,8 +198,19 @@ func Validate(models []*proxydb.Model, rules []*proxydb.Rule) error {
 			if _, ok := byID[r.ShadowModel]; !ok {
 				return fmt.Errorf("rule %s: unknown shadow model %s", r.Name, r.ShadowModel)
 			}
-		} else if r.ShadowPercentage > 0 {
-			return fmt.Errorf("rule %s: shadow percentage requires shadow model", r.Name)
+		} else {
+			if r.ShadowPercentage > 0 {
+				return fmt.Errorf("rule %s: shadow percentage requires shadow model", r.Name)
+			}
+			if r.ShadowEval {
+				return fmt.Errorf("rule %s: shadow evaluation requires shadow model", r.Name)
+			}
+		}
+
+		for attrKey := range r.Attributes {
+			if attrKey == "shadow" || attrKey == "is_shadow" || attrKey == "shadow_eval" {
+				return fmt.Errorf("rule %s: attribute %q is reserved for shadow routing and evaluation", r.Name, attrKey)
+			}
 		}
 
 		seen := map[string]bool{}
