@@ -101,6 +101,8 @@ message GetConfigResponse {
 message MintAPIKeyRequest {
   string name = 1;
   repeated string scopes = 2; // "generate" | "admin"
+  string org_id = 3;
+  string team_id = 4;
 }
 
 message MintAPIKeyResponse {
@@ -120,6 +122,8 @@ message APIKeyInfo {
   repeated string scopes = 2;
   google.protobuf.Timestamp created_at = 3;
   bool disabled = 4;
+  string org_id = 5;
+  string team_id = 6;
 }
 
 message ListAPIKeysResponse {
@@ -267,6 +271,85 @@ message ListSpendLimitsResponse {
   repeated SpendLimitSpec spend_limits = 1;
 }
 
+message Organization {
+  string id = 1;
+  string name = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message Team {
+  string id = 1;
+  string org_id = 2;
+  string name = 3;
+  double monthly_budget_usd = 4;
+  repeated string allowed_models = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message CreateOrganizationRequest {
+  string name = 1;
+}
+
+message CreateOrganizationResponse {
+  Organization organization = 1;
+}
+
+message ListOrganizationsRequest {}
+
+message ListOrganizationsResponse {
+  repeated Organization organizations = 1;
+}
+
+message DeleteOrganizationRequest {
+  string id = 1;
+}
+
+message DeleteOrganizationResponse {}
+
+message CreateTeamRequest {
+  string org_id = 1;
+  string name = 2;
+  double monthly_budget_usd = 3;
+  repeated string allowed_models = 4;
+}
+
+message CreateTeamResponse {
+  Team team = 1;
+}
+
+message GetTeamRequest {
+  string id = 1;
+}
+
+message GetTeamResponse {
+  Team team = 1;
+}
+
+message ListTeamsRequest {
+  string org_id = 1; // optional filter
+}
+
+message ListTeamsResponse {
+  repeated Team teams = 1;
+}
+
+message UpdateTeamRequest {
+  string id = 1;
+  string name = 2;
+  double monthly_budget_usd = 3;
+  repeated string allowed_models = 4;
+}
+
+message UpdateTeamResponse {
+  Team team = 1;
+}
+
+message DeleteTeamRequest {
+  string id = 1;
+}
+
+message DeleteTeamResponse {}
+
 // All admin RPCs require the "admin" scope. Every config mutation validates
 // the resulting full config in one transaction and bumps the config version.
 service AdminService {
@@ -291,4 +374,13 @@ service AdminService {
   rpc SetSpendLimit(SetSpendLimitRequest) returns (SetSpendLimitResponse);
   rpc DeleteSpendLimit(DeleteSpendLimitRequest) returns (DeleteSpendLimitResponse);
   rpc ListSpendLimits(ListSpendLimitsRequest) returns (ListSpendLimitsResponse);
+
+  rpc CreateOrganization(CreateOrganizationRequest) returns (CreateOrganizationResponse);
+  rpc ListOrganizations(ListOrganizationsRequest) returns (ListOrganizationsResponse);
+  rpc DeleteOrganization(DeleteOrganizationRequest) returns (DeleteOrganizationResponse);
+  rpc CreateTeam(CreateTeamRequest) returns (CreateTeamResponse);
+  rpc GetTeam(GetTeamRequest) returns (GetTeamResponse);
+  rpc ListTeams(ListTeamsRequest) returns (ListTeamsResponse);
+  rpc UpdateTeam(UpdateTeamRequest) returns (UpdateTeamResponse);
+  rpc DeleteTeam(DeleteTeamRequest) returns (DeleteTeamResponse);
 }

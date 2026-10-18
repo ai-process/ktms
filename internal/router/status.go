@@ -22,9 +22,10 @@ const InsufficientQuota = "insufficient_quota"
 
 // Sentinels for the documented error contract (see llmproxy.proto).
 var (
-	ErrNotConfigured  = errors.New("not_configured")
-	ErrNoCapableModel = errors.New("no_capable_model")
-	ErrNoVendorKey    = errors.New("no_vendor_key")
+	ErrNotConfigured     = errors.New("not_configured")
+	ErrNoCapableModel    = errors.New("no_capable_model")
+	ErrNoVendorKey       = errors.New("no_vendor_key")
+	ErrModelAccessDenied = errors.New("model_access_denied")
 )
 
 // ChainExhausted reports a chain walked to the end without a response.
@@ -59,6 +60,8 @@ func ToStatus(err error) error {
 	switch {
 	case errors.Is(err, ErrNotConfigured):
 		return status.Error(codes.FailedPrecondition, "not_configured")
+	case errors.Is(err, ErrModelAccessDenied):
+		return status.Error(codes.PermissionDenied, "model access denied by team policy")
 	case errors.Is(err, ErrNoCapableModel), errors.Is(err, llm.ErrJudgmentUnsupported), errors.Is(err, llm.ErrEmbeddingUnsupported):
 		return status.Error(codes.FailedPrecondition, "no_capable_model")
 	case errors.Is(err, ErrNoVendorKey):

@@ -56,6 +56,7 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 		Chain:   plan.chain,
 		KeyName: plan.identity.Name,
 		UserID:  router.UserID(plan.attrs, plan.identity.Name),
+		TeamID:  plan.identity.TeamID,
 		// Input-side estimate only; Settle replaces it with what the vendor
 		// billed, which for speech is audio tokens and far larger.
 		Estimate:        int64(len([]rune(speechText))/4 + 1),
@@ -120,6 +121,7 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 		Chain:   plan.chain,
 		KeyName: plan.identity.Name,
 		UserID:  router.UserID(plan.attrs, plan.identity.Name),
+		TeamID:  plan.identity.TeamID,
 		// Input-side estimate only; image output tokens dwarf it, so Settle is
 		// what makes the budget accounting true.
 		Estimate:        int64(len([]rune(prompt))/4 + 1),
@@ -189,6 +191,9 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 	var chain []string
 	var ruleName string
 	if override != "" {
+		if !id.CanAccessModel(override) {
+			return nil, status.Errorf(codes.PermissionDenied, "model %q not allowed for team", override)
+		}
 		if _, ok := snap.Models[override]; !ok {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: unknown model %q", override)
 		}
@@ -211,11 +216,30 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 		return nil, router.ToStatus(err)
 	}
 
-	meta := make(map[string]string, len(routing)+2)
+	if len(id.TeamAllowedModels) > 0 {
+		var allowed []*proxydb.Model
+		for _, m := range models {
+			if id.CanAccessModel(m.ID) {
+				allowed = append(allowed, m)
+			}
+		}
+		if len(allowed) == 0 {
+			return nil, status.Error(codes.PermissionDenied, "no models in chain allowed for team")
+		}
+		models = allowed
+	}
+
+	meta := make(map[string]string, len(routing)+4)
 	for k, v := range routing {
 		meta[k] = v
 	}
 	meta[APIKeyAttribute] = id.Name
+	if id.OrgID != "" {
+		meta["org_id"] = id.OrgID
+	}
+	if id.TeamID != "" {
+		meta["team_id"] = id.TeamID
+	}
 	if ruleName != "" {
 		meta["rule"] = ruleName
 	}

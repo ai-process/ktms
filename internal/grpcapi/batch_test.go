@@ -466,7 +466,7 @@ type fakeBatchThrottle struct {
 	trippedReason  string
 }
 
-func (f *fakeBatchThrottle) CheckDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string) string {
+func (f *fakeBatchThrottle) CheckDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID, teamID string) string {
 	f.checkedKeyName = keyName
 	f.checkedUserID = userID
 	return f.trippedReason

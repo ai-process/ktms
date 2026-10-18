@@ -93,12 +93,12 @@ func TestReserveOverLimitRestoresCounter(t *testing.T) {
 	day := time.Now().UTC().Format("20060102")
 	key := th.keys.BudgetKey("gen", m.ID, day)
 
-	res, tripped := th.Reserve(ctx, m, "gen", "", 60, 0)
+	res, tripped := th.Reserve(ctx, m, "gen", "", "", 60, 0)
 	if tripped != "" || len(res.Keys) != 1 {
 		t.Fatalf("res=%v tripped=%q", res, tripped)
 	}
 	// 60 + 60 > 100 without grace margin: refused, and the counter must roll back to 60.
-	res2, tripped := th.Reserve(ctx, m, "gen", "", 60, 0)
+	res2, tripped := th.Reserve(ctx, m, "gen", "", "", 60, 0)
 	if res2 != nil || tripped != "budget_key" {
 		t.Fatalf("res=%v tripped=%q, want budget_key", res2, tripped)
 	}
@@ -120,7 +120,7 @@ func TestReserveBudgetGraceMargin(t *testing.T) {
 	key := th.keys.BudgetKey("gen", m.ID, day)
 
 	// 1. Used = 90 (below 100 limit)
-	res, tripped := th.Reserve(ctx, m, "gen", "", 90, 0)
+	res, tripped := th.Reserve(ctx, m, "gen", "", "", 90, 0)
 	if tripped != "" || res == nil {
 		t.Fatalf("initial reservation failed: %s", tripped)
 	}
@@ -128,7 +128,7 @@ func TestReserveBudgetGraceMargin(t *testing.T) {
 	// 2. Next request: estimate 25.
 	// Used before was 90 < 100.
 	// New total = 115 <= 120 (within 20% grace). Must be allowed!
-	res2, tripped2 := th.Reserve(ctx, m, "gen", "", 25, 0)
+	res2, tripped2 := th.Reserve(ctx, m, "gen", "", "", 25, 0)
 	if tripped2 != "" || res2 == nil {
 		t.Fatalf("call within grace margin must pass, got: %s", tripped2)
 	}
@@ -138,7 +138,7 @@ func TestReserveBudgetGraceMargin(t *testing.T) {
 	}
 
 	// 3. Now used = 115 >= 100. Balance is exhausted. Even a request of size 1 must be refused!
-	res3, tripped3 := th.Reserve(ctx, m, "gen", "", 1, 0)
+	res3, tripped3 := th.Reserve(ctx, m, "gen", "", "", 1, 0)
 	if tripped3 != "budget_key" || res3 != nil {
 		t.Fatalf("subsequent call once exhausted must fail, got: %s", tripped3)
 	}
@@ -156,19 +156,19 @@ func TestReserveUserBudget(t *testing.T) {
 	m := model(0, 0, 50)
 
 	// Without a user id the user budget simply never applies.
-	res, tripped := th.Reserve(ctx, m, "gen", "", 999, 0)
+	res, tripped := th.Reserve(ctx, m, "gen", "", "", 999, 0)
 	if tripped != "" || res != nil && len(res.Keys) != 0 {
 		t.Fatalf("res=%v tripped=%q, want no enforcement", res, tripped)
 	}
 
-	if _, tripped = th.Reserve(ctx, m, "gen", "u1", 40, 0); tripped != "" {
+	if _, tripped = th.Reserve(ctx, m, "gen", "u1", "", 40, 0); tripped != "" {
 		t.Fatalf("first user reserve tripped: %q", tripped)
 	}
-	if _, tripped = th.Reserve(ctx, m, "gen", "u1", 40, 0); tripped != "budget_user" {
+	if _, tripped = th.Reserve(ctx, m, "gen", "u1", "", 40, 0); tripped != "budget_user" {
 		t.Fatalf("tripped=%q, want budget_user", tripped)
 	}
 	// A different user has their own budget.
-	if _, tripped = th.Reserve(ctx, m, "gen", "u2", 40, 0); tripped != "" {
+	if _, tripped = th.Reserve(ctx, m, "gen", "u2", "", 40, 0); tripped != "" {
 		t.Fatalf("other user tripped: %q", tripped)
 	}
 }
@@ -179,7 +179,7 @@ func TestReserveTripsSecondBudgetUndoesFirst(t *testing.T) {
 	m := model(0, 1000, 50) // key budget generous, user budget tight
 	day := time.Now().UTC().Format("20060102")
 
-	res, tripped := th.Reserve(ctx, m, "gen", "u1", 60, 0)
+	res, tripped := th.Reserve(ctx, m, "gen", "u1", "", 60, 0)
 	if res != nil || tripped != "budget_user" {
 		t.Fatalf("res=%v tripped=%q", res, tripped)
 	}
@@ -197,14 +197,14 @@ func TestSettleAdjustsToActuals(t *testing.T) {
 	day := time.Now().UTC().Format("20060102")
 	key := th.keys.BudgetKey("gen", m.ID, day)
 
-	res, _ := th.Reserve(ctx, m, "gen", "", 100, 0)
+	res, _ := th.Reserve(ctx, m, "gen", "", "", 100, 0)
 
 	// Actuals higher than the estimate: counter goes up.
 	th.Settle(res, llm.TokensUsage{Input: 90, Output: 60})
 	waitFor(t, func() bool { v, _ := mr.Get(key); return v == "150" })
 
 	// Failure path: zero actuals release the whole reservation.
-	res2, _ := th.Reserve(ctx, m, "gen", "", 100, 0)
+	res2, _ := th.Reserve(ctx, m, "gen", "", "", 100, 0)
 	th.Settle(res2, llm.TokensUsage{})
 	waitFor(t, func() bool { v, _ := mr.Get(key); return v == "150" })
 }
@@ -220,7 +220,7 @@ func TestFailOpenWhenRedisDown(t *testing.T) {
 	if !th.AllowRPM(ctx, "gen", "", m) {
 		t.Fatal("rpm must fail open")
 	}
-	res, tripped := th.Reserve(ctx, m, "gen", "", 50, 0)
+	res, tripped := th.Reserve(ctx, m, "gen", "", "", 50, 0)
 	if tripped != "" {
 		t.Fatalf("reserve tripped %q, must fail open", tripped)
 	}
@@ -234,7 +234,7 @@ func TestNilClientAllowsEverything(t *testing.T) {
 	if !th.AllowRPM(ctx, "gen", "", m) {
 		t.Fatal("nil client must allow")
 	}
-	if res, tripped := th.Reserve(ctx, m, "gen", "u", 999, 0); res != nil || tripped != "" {
+	if res, tripped := th.Reserve(ctx, m, "gen", "u", "", 999, 0); res != nil || tripped != "" {
 		t.Fatal("nil client must not reserve or trip")
 	}
 	th.Settle(nil, llm.TokensUsage{})
@@ -286,12 +286,12 @@ func TestReserveGraceMarginDisabled(t *testing.T) {
 	day := time.Now().UTC().Format("20060102")
 	key := th.keys.BudgetKey("gen", m.ID, day)
 
-	res, tripped := th.Reserve(ctx, m, "gen", "", 90, 0)
+	res, tripped := th.Reserve(ctx, m, "gen", "", "", 90, 0)
 	if tripped != "" || res == nil {
 		t.Fatalf("first reserve failed: %s", tripped)
 	}
 
-	res2, tripped2 := th.Reserve(ctx, m, "gen", "", 25, 0)
+	res2, tripped2 := th.Reserve(ctx, m, "gen", "", "", 25, 0)
 	if tripped2 != "budget_key" || res2 != nil {
 		t.Fatalf("call exceeding limit with grace disabled must fail, got res=%v tripped=%s", res2, tripped2)
 	}

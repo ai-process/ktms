@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -56,14 +57,17 @@ type Store interface {
 
 // Identity is the authenticated caller.
 type Identity struct {
-	KeyID         string
-	Name          string
-	Scopes        []string
-	NodeID        string
-	AllowedCIDRs  []string
-	AllowedModels []string
-	MaxBaseWeight float64
-	MaxConcurrent int32
+	KeyID             string
+	Name              string
+	Scopes            []string
+	NodeID            string
+	AllowedCIDRs      []string
+	AllowedModels     []string
+	MaxBaseWeight     float64
+	MaxConcurrent     int32
+	OrgID             string
+	TeamID            string
+	TeamAllowedModels []string
 }
 
 // HasScope reports whether the caller may perform an action needing want.
@@ -74,6 +78,17 @@ func (i *Identity) HasScope(want string) bool {
 		}
 	}
 	return false
+}
+
+// CanAccessModel reports whether the identity is permitted to invoke modelID.
+func (i *Identity) CanAccessModel(modelID string) bool {
+	if i == nil {
+		return false
+	}
+	if len(i.TeamAllowedModels) == 0 {
+		return true
+	}
+	return slices.Contains(i.TeamAllowedModels, modelID)
 }
 
 // LookupHash is the indexed sha256 hex of a plain key.
@@ -286,7 +301,21 @@ func (v *Verifier) lookup(ctx context.Context, plain, lookup string) (*Identity,
 		return nil, ErrUnauthenticated
 	}
 
-	return &Identity{KeyID: row.ID, Name: row.Name, Scopes: row.Scopes}, nil
+	var orgID, teamID string
+	if row.OrgID != nil {
+		orgID = *row.OrgID
+	}
+	if row.TeamID != nil {
+		teamID = *row.TeamID
+	}
+	return &Identity{
+		KeyID:             row.ID,
+		Name:              row.Name,
+		Scopes:            row.Scopes,
+		OrgID:             orgID,
+		TeamID:            teamID,
+		TeamAllowedModels: row.TeamAllowedModels,
+	}, nil
 }
 
 // VerifyScope authenticates and authorises in one step.

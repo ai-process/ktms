@@ -135,6 +135,12 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 	}
 
 	cleanAttrs := router.SanitizeAttributes(req.GetAttributes())
+	if id.OrgID != "" {
+		cleanAttrs["org_id"] = id.OrgID
+	}
+	if id.TeamID != "" {
+		cleanAttrs["team_id"] = id.TeamID
+	}
 	rule := router.Match(snap, effort, cleanAttrs)
 	if rule == nil {
 		return nil, router.ToStatus(router.ErrNotConfigured)
@@ -142,7 +148,7 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 
 	canaryKey := router.CanaryKey(cleanAttrs)
 	userID := router.UserID(cleanAttrs, id.Name)
-	model, err := router.ResolveBatchModel(ctx, snap, s.throttle, router.ResolveChain(rule, canaryKey), id.KeyID, id.Name, userID)
+	model, err := router.ResolveBatchModel(ctx, snap, s.throttle, router.ResolveChain(rule, canaryKey), id.KeyID, id.Name, userID, id.TeamID, id.CanAccessModel)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}

@@ -121,7 +121,7 @@ type fakeThrottle struct {
 	chargedTokens map[string]int64
 }
 
-func (th *fakeThrottle) ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string, usage llm.TokensUsage) {
+func (th *fakeThrottle) ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID, teamID string, usage llm.TokensUsage) {
 	if th.chargedTokens == nil {
 		th.chargedTokens = make(map[string]int64)
 	}

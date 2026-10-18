@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -210,7 +212,7 @@ func (s *AdminServer) ListUserRateLimits(ctx context.Context, req *pb.ListUserRa
 
 func validateSpendScope(subjectType, subjectID, period string) error {
 	if !spendlimit.ValidSubject(subjectType) {
-		return status.Error(codes.InvalidArgument, `subject_type must be "key" or "user"`)
+		return status.Error(codes.InvalidArgument, `subject_type must be "key", "user", or "team"`)
 	}
 	if subjectID == "" {
 		return status.Error(codes.InvalidArgument, "subject_id is required")
@@ -287,6 +289,13 @@ func validateConfig(models []*proxydb.Model, rules []*proxydb.Rule) error {
 	return nil
 }
 
+func parseUUID(id, fieldName string) error {
+	if _, err := uuid.Parse(id); err != nil {
+		return status.Errorf(codes.InvalidArgument, "%s must be a valid UUID: %v", fieldName, err)
+	}
+	return nil
+}
+
 // mutationStatus maps a failed config mutation: validation failures are the
 // caller's to fix, everything else is storage trouble.
 func mutationStatus(err error) error {
@@ -300,7 +309,10 @@ func mutationStatus(err error) error {
 	if errors.As(err, &pgErr) {
 		// FK/unique violations are config mistakes (unknown model id in a
 		// chain, duplicate), not infrastructure failures.
-		if pgErr.Code == "23503" || pgErr.Code == "23505" {
+		if pgErr.Code == "23505" {
+			return status.Error(codes.AlreadyExists, pgErr.Message)
+		}
+		if pgErr.Code == "23503" {
 			return status.Error(codes.InvalidArgument, pgErr.Message)
 		}
 	}
@@ -322,6 +334,47 @@ func (s *AdminServer) MintAPIKey(ctx context.Context, req *pb.MintAPIKeyRequest)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "key generation failed")
 	}
+
+	var orgID, teamID *string
+	if req.GetOrgId() != "" {
+		if err := parseUUID(req.GetOrgId(), "org_id"); err != nil {
+			return nil, err
+		}
+		v := req.GetOrgId()
+		orgID = &v
+	}
+	if req.GetTeamId() != "" {
+		if err := parseUUID(req.GetTeamId(), "team_id"); err != nil {
+			return nil, err
+		}
+		v := req.GetTeamId()
+		teamID = &v
+	}
+	if teamID != nil {
+		team, err := s.db.GetTeam(ctx, *teamID)
+		if err != nil {
+			if errors.Is(err, proxydb.ErrNotFound) {
+				return nil, status.Error(codes.InvalidArgument, "team not found")
+			}
+			return nil, dbStatus(err)
+		}
+		if orgID != nil && team.OrgID != *orgID {
+			return nil, status.Error(codes.InvalidArgument, "team does not belong to specified organization")
+		}
+		if orgID == nil {
+			orgID = &team.OrgID
+		}
+	} else if orgID != nil {
+		if _, err := s.db.GetOrganization(ctx, *orgID); err != nil {
+			if errors.Is(err, proxydb.ErrNotFound) {
+				return nil, status.Error(codes.InvalidArgument, "organization not found")
+			}
+			return nil, dbStatus(err)
+		}
+	}
+	row.OrgID = orgID
+	row.TeamID = teamID
+
 	if err := s.db.InsertAPIKey(ctx, row); err != nil {
 		return nil, dbStatus(err)
 	}
@@ -343,12 +396,19 @@ func (s *AdminServer) ListAPIKeys(ctx context.Context, _ *pb.ListAPIKeysRequest)
 	}
 	out := make([]*pb.APIKeyInfo, 0, len(keys))
 	for _, k := range keys {
-		out = append(out, &pb.APIKeyInfo{
+		info := &pb.APIKeyInfo{
 			Name:      k.Name,
 			Scopes:    k.Scopes,
 			CreatedAt: timestamppb.New(k.CreatedAt),
 			Disabled:  !k.Active(),
-		})
+		}
+		if k.OrgID != nil {
+			info.OrgId = *k.OrgID
+		}
+		if k.TeamID != nil {
+			info.TeamId = *k.TeamID
+		}
+		out = append(out, info)
 	}
 	return &pb.ListAPIKeysResponse{Keys: out}, nil
 }
@@ -447,4 +507,228 @@ func dbStatus(err error) error {
 		observability.DependencyErrorsTotal.WithLabelValues("postgres", "admin").Inc()
 	}
 	return status.Error(codes.Unavailable, "storage unavailable")
+}
+
+// --- organizations and teams ---
+
+func (s *AdminServer) CreateOrganization(ctx context.Context, req *pb.CreateOrganizationRequest) (*pb.CreateOrganizationResponse, error) {
+	if req.GetName() == "" {
+		return nil, status.Error(codes.InvalidArgument, "name is required")
+	}
+	org := &proxydb.Organization{
+		ID:        uuid.NewString(),
+		Name:      req.GetName(),
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := s.db.CreateOrganization(ctx, org); err != nil {
+		return nil, mutationStatus(err)
+	}
+	return &pb.CreateOrganizationResponse{Organization: orgToProto(org)}, nil
+}
+
+func (s *AdminServer) ListOrganizations(ctx context.Context, _ *pb.ListOrganizationsRequest) (*pb.ListOrganizationsResponse, error) {
+	orgs, err := s.db.ListOrganizations(ctx)
+	if err != nil {
+		return nil, dbStatus(err)
+	}
+	out := make([]*pb.Organization, 0, len(orgs))
+	for _, o := range orgs {
+		out = append(out, orgToProto(o))
+	}
+	return &pb.ListOrganizationsResponse{Organizations: out}, nil
+}
+
+func (s *AdminServer) DeleteOrganization(ctx context.Context, req *pb.DeleteOrganizationRequest) (*pb.DeleteOrganizationResponse, error) {
+	if req.GetId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "id is required")
+	}
+	if err := parseUUID(req.GetId(), "id"); err != nil {
+		return nil, err
+	}
+	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {
+		return proxydb.DeleteOrganizationTx(ctx, tx, req.GetId())
+	}, nil)
+	if err != nil {
+		return nil, mutationStatus(err)
+	}
+	s.onChange()
+	return &pb.DeleteOrganizationResponse{}, nil
+}
+
+func (s *AdminServer) CreateTeam(ctx context.Context, req *pb.CreateTeamRequest) (*pb.CreateTeamResponse, error) {
+	if req.GetOrgId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "org_id is required")
+	}
+	if err := parseUUID(req.GetOrgId(), "org_id"); err != nil {
+		return nil, err
+	}
+	if req.GetName() == "" {
+		return nil, status.Error(codes.InvalidArgument, "name is required")
+	}
+	if req.GetMonthlyBudgetUsd() < 0 {
+		return nil, status.Error(codes.InvalidArgument, "monthly_budget_usd must be non-negative")
+	}
+	if _, err := s.db.GetOrganization(ctx, req.GetOrgId()); err != nil {
+		if errors.Is(err, proxydb.ErrNotFound) {
+			return nil, status.Error(codes.InvalidArgument, "organization not found")
+		}
+		return nil, dbStatus(err)
+	}
+	allowed := req.GetAllowedModels()
+	if allowed == nil {
+		allowed = []string{}
+	}
+	team := &proxydb.Team{
+		ID:               uuid.NewString(),
+		OrgID:            req.GetOrgId(),
+		Name:             req.GetName(),
+		MonthlyBudgetUSD: req.GetMonthlyBudgetUsd(),
+		AllowedModels:    allowed,
+		CreatedAt:        time.Now().UTC(),
+	}
+	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {
+		if err := proxydb.CreateTeamTx(ctx, tx, team); err != nil {
+			return err
+		}
+		if team.MonthlyBudgetUSD > 0 {
+			limitNano := int64(math.Round(team.MonthlyBudgetUSD * 1e9))
+			return proxydb.UpsertSpendLimit(ctx, tx, &proxydb.SpendLimit{
+				SubjectType:  spendlimit.SubjectTeam,
+				SubjectID:    team.ID,
+				Period:       spendlimit.PeriodMonth,
+				LimitNanoUSD: limitNano,
+			})
+		}
+		return nil
+	}, nil)
+	if err != nil {
+		return nil, mutationStatus(err)
+	}
+	s.onChange()
+	return &pb.CreateTeamResponse{Team: teamToProto(team)}, nil
+}
+
+func (s *AdminServer) GetTeam(ctx context.Context, req *pb.GetTeamRequest) (*pb.GetTeamResponse, error) {
+	if req.GetId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "id is required")
+	}
+	if err := parseUUID(req.GetId(), "id"); err != nil {
+		return nil, err
+	}
+	team, err := s.db.GetTeam(ctx, req.GetId())
+	if err != nil {
+		return nil, dbStatus(err)
+	}
+	return &pb.GetTeamResponse{Team: teamToProto(team)}, nil
+}
+
+func (s *AdminServer) ListTeams(ctx context.Context, req *pb.ListTeamsRequest) (*pb.ListTeamsResponse, error) {
+	if req.GetOrgId() != "" {
+		if err := parseUUID(req.GetOrgId(), "org_id"); err != nil {
+			return nil, err
+		}
+	}
+	teams, err := s.db.ListTeams(ctx, req.GetOrgId())
+	if err != nil {
+		return nil, dbStatus(err)
+	}
+	out := make([]*pb.Team, 0, len(teams))
+	for _, t := range teams {
+		out = append(out, teamToProto(t))
+	}
+	return &pb.ListTeamsResponse{Teams: out}, nil
+}
+
+func (s *AdminServer) UpdateTeam(ctx context.Context, req *pb.UpdateTeamRequest) (*pb.UpdateTeamResponse, error) {
+	if req.GetId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "id is required")
+	}
+	if err := parseUUID(req.GetId(), "id"); err != nil {
+		return nil, err
+	}
+	if req.GetName() == "" {
+		return nil, status.Error(codes.InvalidArgument, "name is required")
+	}
+	if req.GetMonthlyBudgetUsd() < 0 {
+		return nil, status.Error(codes.InvalidArgument, "monthly_budget_usd must be non-negative")
+	}
+	allowed := req.GetAllowedModels()
+	if allowed == nil {
+		allowed = []string{}
+	}
+	t := &proxydb.Team{
+		ID:               req.GetId(),
+		Name:             req.GetName(),
+		MonthlyBudgetUSD: req.GetMonthlyBudgetUsd(),
+		AllowedModels:    allowed,
+	}
+	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {
+		if err := proxydb.UpdateTeamTx(ctx, tx, t); err != nil {
+			return err
+		}
+		if t.MonthlyBudgetUSD > 0 {
+			limitNano := int64(math.Round(t.MonthlyBudgetUSD * 1e9))
+			return proxydb.UpsertSpendLimit(ctx, tx, &proxydb.SpendLimit{
+				SubjectType:  spendlimit.SubjectTeam,
+				SubjectID:    t.ID,
+				Period:       spendlimit.PeriodMonth,
+				LimitNanoUSD: limitNano,
+			})
+		}
+		return proxydb.DeleteSpendLimit(ctx, tx, spendlimit.SubjectTeam, t.ID, spendlimit.PeriodMonth)
+	}, nil)
+	if err != nil {
+		return nil, mutationStatus(err)
+	}
+	s.onChange()
+	updated, err := s.db.GetTeam(ctx, req.GetId())
+	if err != nil {
+		return nil, dbStatus(err)
+	}
+	return &pb.UpdateTeamResponse{Team: teamToProto(updated)}, nil
+}
+
+func (s *AdminServer) DeleteTeam(ctx context.Context, req *pb.DeleteTeamRequest) (*pb.DeleteTeamResponse, error) {
+	if req.GetId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "id is required")
+	}
+	if err := parseUUID(req.GetId(), "id"); err != nil {
+		return nil, err
+	}
+	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {
+		if err := proxydb.DeleteTeamTx(ctx, tx, req.GetId()); err != nil {
+			return err
+		}
+		return proxydb.DeleteSpendLimit(ctx, tx, spendlimit.SubjectTeam, req.GetId(), spendlimit.PeriodMonth)
+	}, nil)
+	if err != nil {
+		return nil, mutationStatus(err)
+	}
+	s.onChange()
+	return &pb.DeleteTeamResponse{}, nil
+}
+
+func orgToProto(o *proxydb.Organization) *pb.Organization {
+	if o == nil {
+		return nil
+	}
+	return &pb.Organization{
+		Id:        o.ID,
+		Name:      o.Name,
+		CreatedAt: timestamppb.New(o.CreatedAt),
+	}
+}
+
+func teamToProto(t *proxydb.Team) *pb.Team {
+	if t == nil {
+		return nil
+	}
+	return &pb.Team{
+		Id:               t.ID,
+		OrgId:            t.OrgID,
+		Name:             t.Name,
+		MonthlyBudgetUsd: t.MonthlyBudgetUSD,
+		AllowedModels:    t.AllowedModels,
+		CreatedAt:        timestamppb.New(t.CreatedAt),
+	}
 }

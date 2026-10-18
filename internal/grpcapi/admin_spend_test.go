@@ -17,12 +17,13 @@ func TestSpendLimitAdminValidation(t *testing.T) {
 
 	bad := []*pb.SpendLimitSpec{
 		nil,
-		{SubjectType: "team", SubjectId: "t1", Period: "month", LimitNanousd: 1},
+		{SubjectType: "unknown", SubjectId: "t1", Period: "month", LimitNanousd: 1},
 		{SubjectType: "org", SubjectId: "x", Period: "day", LimitNanousd: 1},
 		{SubjectType: "key", SubjectId: "", Period: "day", LimitNanousd: 1},
 		{SubjectType: "key", SubjectId: "k", Period: "week", LimitNanousd: 1},
 		{SubjectType: "key", SubjectId: "k", Period: "day", LimitNanousd: 0},
 		{SubjectType: "user", SubjectId: "u", Period: "month", LimitNanousd: -5},
+		{SubjectType: "team", SubjectId: "t", Period: "year", LimitNanousd: 100},
 	}
 	for _, spec := range bad {
 		_, err := s.SetSpendLimit(ctx, &pb.SetSpendLimitRequest{SpendLimit: spec})

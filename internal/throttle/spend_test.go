@@ -65,7 +65,7 @@ func TestSpendReserveThenSettleToActualCost(t *testing.T) {
 	th.SetSpendLimitResolver(limits{{"key", "gen", "day"}: 10_000_000}.resolve)
 	key := dayKey(th, "k", "gen", now)
 
-	res, tripped := th.Reserve(context.Background(), pricedModel(), "gen", "", 1000, 1000)
+	res, tripped := th.Reserve(context.Background(), pricedModel(), "gen", "", "", 1000, 1000)
 	if tripped != "" || res == nil || res.Spend == nil {
 		t.Fatalf("res=%+v tripped=%q", res, tripped)
 	}
@@ -94,11 +94,11 @@ func TestSpendRefusesCrossingCapAndRollsBackTokens(t *testing.T) {
 	spendKey := dayKey(th, "k", "gen", now)
 	tokenKey := th.keys.BudgetKey("gen", m.ID, now.Format("20060102"))
 
-	if _, tripped := th.Reserve(ctx, m, "gen", "", 1000, 1000); tripped != "" {
+	if _, tripped := th.Reserve(ctx, m, "gen", "", "", 1000, 1000); tripped != "" {
 		t.Fatalf("first call tripped %q", tripped)
 	}
 	// 3M booked; another 3M would reach 6M > 5M.
-	res, tripped := th.Reserve(ctx, m, "gen", "", 1000, 1000)
+	res, tripped := th.Reserve(ctx, m, "gen", "", "", 1000, 1000)
 	if res != nil || tripped != "spend_key_daily" {
 		t.Fatalf("res=%v tripped=%q, want spend_key_daily", res, tripped)
 	}
@@ -110,7 +110,7 @@ func TestSpendRefusesCrossingCapAndRollsBackTokens(t *testing.T) {
 	}
 
 	// A cheaper call that still fits is admitted: limits are hard, not sticky.
-	if _, tripped := th.Reserve(ctx, m, "gen", "", 1000, 500); tripped != "" {
+	if _, tripped := th.Reserve(ctx, m, "gen", "", "", 1000, 500); tripped != "" {
 		t.Fatalf("2M call into 2M headroom tripped %q", tripped)
 	}
 }
@@ -131,7 +131,7 @@ func TestSpendIsAllOrNothingAcrossCounters(t *testing.T) {
 		{"user", "svc:x", "day"}: 1,
 	}.resolve)
 
-	res, tripped := th.Reserve(context.Background(), pricedModel(), "gen", "u1", 1000, 1000)
+	res, tripped := th.Reserve(context.Background(), pricedModel(), "gen", "u1", "", 1000, 1000)
 	if res != nil || tripped != "spend_user_monthly" {
 		t.Fatalf("res=%v tripped=%q, want spend_user_monthly", res, tripped)
 	}
@@ -141,7 +141,7 @@ func TestSpendIsAllOrNothingAcrossCounters(t *testing.T) {
 		}
 	}
 
-	res, tripped = th.Reserve(context.Background(), pricedModel(), "gen", "u2", 1000, 1000)
+	res, tripped = th.Reserve(context.Background(), pricedModel(), "gen", "u2", "", 1000, 1000)
 	if tripped != "" || len(res.Spend.Keys) != 3 {
 		t.Fatalf("u2: res=%+v tripped=%q, want 3 counters booked", res, tripped)
 	}
@@ -154,7 +154,7 @@ func TestSpendDefaultOutputReserve(t *testing.T) {
 	th.SetSpendLimitResolver(limits{{"key", "gen", "day"}: 1_000_000_000}.resolve)
 	th.SetDefaultOutputReserve(100)
 
-	if _, tripped := th.Reserve(context.Background(), pricedModel(), "gen", "", 10, 0); tripped != "" {
+	if _, tripped := th.Reserve(context.Background(), pricedModel(), "gen", "", "", 10, 0); tripped != "" {
 		t.Fatalf("tripped %q", tripped)
 	}
 	if got := counter(t, mr, dayKey(th, "k", "gen", now)); got != 10*1000+100*2000 {
@@ -189,7 +189,7 @@ func TestSpendConcurrentReservationsNeverOvershoot(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			res, tripped := th.Reserve(ctx, m, "gen", "u1", 1000, 1000)
+			res, tripped := th.Reserve(ctx, m, "gen", "u1", "", 1000, 1000)
 			switch tripped {
 			case "":
 				admitted.Add(1)
@@ -243,8 +243,8 @@ func TestSpendFailModes(t *testing.T) {
 		mr.Close() // Redis just died
 
 		ctx := context.Background()
-		res, tripped := th.Reserve(ctx, pricedModel(), "gen", "", 10, 10)
-		check := th.CheckDailyBudget(ctx, pricedModel(), "gen", "")
+		res, tripped := th.Reserve(ctx, pricedModel(), "gen", "", "", 10, 10)
+		check := th.CheckDailyBudget(ctx, pricedModel(), "gen", "", "")
 		if closed {
 			if res != nil || tripped != spendlimit.ReasonUnavailable || check != spendlimit.ReasonUnavailable {
 				t.Fatalf("closed: res=%v tripped=%q check=%q, want spend_unavailable", res, tripped, check)
@@ -271,7 +271,7 @@ func TestSpendFailClosedIgnoresCallsWithoutLimits(t *testing.T) {
 	th.SetSpendFailClosed(true)
 	mr.Close()
 
-	if _, tripped := th.Reserve(context.Background(), pricedModel(), "gen", "u1", 10, 10); tripped != "" {
+	if _, tripped := th.Reserve(context.Background(), pricedModel(), "gen", "u1", "", 10, 10); tripped != "" {
 		t.Fatalf("no limit applies, yet tripped %q", tripped)
 	}
 }
@@ -282,7 +282,7 @@ func TestSpendSettleAcrossMidnightHitsReservedWindow(t *testing.T) {
 	th.now = fixedNow(before)
 	th.SetSpendLimitResolver(limits{{"key", "gen", "day"}: 1_000_000_000}.resolve)
 
-	res, tripped := th.Reserve(context.Background(), pricedModel(), "gen", "", 1000, 1000)
+	res, tripped := th.Reserve(context.Background(), pricedModel(), "gen", "", "", 1000, 1000)
 	if tripped != "" {
 		t.Fatalf("tripped %q", tripped)
 	}
@@ -304,7 +304,7 @@ func TestSpendReleaseNeverGoesNegativeOrResurrects(t *testing.T) {
 	key := dayKey(th, "k", "gen", now)
 	ctx := context.Background()
 
-	res, tripped := th.Reserve(ctx, pricedModel(), "gen", "", 1000, 1000)
+	res, tripped := th.Reserve(ctx, pricedModel(), "gen", "", "", 1000, 1000)
 	if tripped != "" {
 		t.Fatalf("tripped %q", tripped)
 	}
@@ -315,7 +315,7 @@ func TestSpendReleaseNeverGoesNegativeOrResurrects(t *testing.T) {
 	th.Settle(res, llm.TokensUsage{})
 	waitFor(t, func() bool { return counter(t, mr, key) == 0 })
 
-	res, tripped = th.Reserve(ctx, pricedModel(), "gen", "", 1000, 1000)
+	res, tripped = th.Reserve(ctx, pricedModel(), "gen", "", "", 1000, 1000)
 	if tripped != "" {
 		t.Fatalf("tripped %q", tripped)
 	}
@@ -338,16 +338,50 @@ func TestSpendCheckAndChargeForBatches(t *testing.T) {
 	ctx := context.Background()
 	key := monthKey(th, "u", "u1", now)
 
-	if tripped := th.CheckDailyBudget(ctx, m, "gen", "u1"); tripped != "" {
+	if tripped := th.CheckDailyBudget(ctx, m, "gen", "u1", ""); tripped != "" {
 		t.Fatalf("fresh month tripped %q", tripped)
 	}
 	// 1000 in * 500 + 500 out * 1000 = 1M at the batch rate.
-	th.ChargeDailyBudget(ctx, m, "gen", "u1", llm.TokensUsage{Input: 1000, Output: 500})
+	th.ChargeDailyBudget(ctx, m, "gen", "u1", "", llm.TokensUsage{Input: 1000, Output: 500})
 	waitFor(t, func() bool { return counter(t, mr, key) == 1_000_000 })
 	if mr.TTL(key) <= 0 {
 		t.Fatal("charged counter has no TTL")
 	}
-	if tripped := th.CheckDailyBudget(ctx, m, "gen", "u1"); tripped != "spend_user_monthly" {
+	if tripped := th.CheckDailyBudget(ctx, m, "gen", "u1", ""); tripped != "spend_user_monthly" {
 		t.Fatalf("exhausted month: tripped %q, want spend_user_monthly", tripped)
 	}
 }
+
+func TestSpendTeamMonthly(t *testing.T) {
+	th, mr := newTestThrottle(t)
+	now := time.Now().UTC()
+	th.now = fixedNow(now)
+	th.SetSpendLimitResolver(limits{
+		{"team", "t1", "month"}: 5_000_000,
+	}.resolve)
+	m := pricedModel()
+	ctx := context.Background()
+
+	// 1000 in * 1000 + 1000 out * 2000 = 3M worst case.
+	res, tripped := th.Reserve(ctx, m, "gen", "u1", "t1", 1000, 1000)
+	if tripped != "" || res == nil {
+		t.Fatalf("first reserve tripped: %s", tripped)
+	}
+	th.Settle(res, llm.TokensUsage{Input: 1000, Output: 1000})
+
+	key := monthKey(th, "t", "t1", now)
+	waitFor(t, func() bool { return counter(t, mr, key) == 3_000_000 })
+
+	// Second request: 3M more would exceed 5M limit -> refused with spend_team_monthly.
+	res2, tripped2 := th.Reserve(ctx, m, "gen", "u1", "t1", 1000, 1000)
+	if res2 != nil || tripped2 != "spend_team_monthly" {
+		t.Fatalf("expected spend_team_monthly refusal, got res=%v tripped=%q", res2, tripped2)
+	}
+
+	// Another team without limits is unaffected and passes.
+	res3, tripped3 := th.Reserve(ctx, m, "gen", "u1", "t2", 1000, 1000)
+	if tripped3 != "" {
+		t.Fatalf("other team must pass, got: %s (res=%v)", tripped3, res3)
+	}
+}
+

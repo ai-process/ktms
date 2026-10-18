@@ -12,14 +12,32 @@ var (
 	ErrAlreadyExists = errors.New("proxydb: already exists")
 )
 
+type Organization struct {
+	ID        string
+	Name      string
+	CreatedAt time.Time
+}
+
+type Team struct {
+	ID               string
+	OrgID            string
+	Name             string
+	MonthlyBudgetUSD float64
+	AllowedModels    []string
+	CreatedAt        time.Time
+}
+
 type APIKey struct {
-	ID         string
-	Name       string
-	KeyLookup  string
-	KeyHash    string
-	Scopes     []string
-	DisabledAt *time.Time
-	CreatedAt  time.Time
+	ID                string
+	Name              string
+	KeyLookup         string
+	KeyHash           string
+	Scopes            []string
+	DisabledAt        *time.Time
+	CreatedAt         time.Time
+	OrgID             *string
+	TeamID            *string
+	TeamAllowedModels []string
 }
 
 func (k *APIKey) Active() bool { return k.DisabledAt == nil }

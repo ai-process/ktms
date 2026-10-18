@@ -135,6 +135,7 @@ func (s *ProxyServer) judgeEffort(ctx context.Context, attrs map[string]string, 
 		Chain:           plan.chain,
 		KeyName:         plan.identity.Name,
 		UserID:          router.UserID(plan.attrs, plan.identity.Name),
+		TeamID:          plan.identity.TeamID,
 		Estimate:        50,
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,
@@ -210,6 +211,9 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 	switch {
 	case req.GetModelOverride() != "":
 		routeMode = router.RouteModeOverride
+		if !id.CanAccessModel(req.GetModelOverride()) {
+			return nil, status.Errorf(codes.PermissionDenied, "model %q not allowed for team", req.GetModelOverride())
+		}
 		m, ok := snap.Models[req.GetModelOverride()]
 		if !ok {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: unknown model %q", req.GetModelOverride())
@@ -267,6 +271,19 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 		return nil, router.ToStatus(err)
 	}
 
+	if len(id.TeamAllowedModels) > 0 {
+		var allowed []*proxydb.Model
+		for _, m := range models {
+			if id.CanAccessModel(m.ID) {
+				allowed = append(allowed, m)
+			}
+		}
+		if len(allowed) == 0 {
+			return nil, status.Error(codes.PermissionDenied, "no models in chain allowed for team")
+		}
+		models = allowed
+	}
+
 	if placement != "" {
 		models, err = router.ApplyPlacement(models, placement)
 		if err != nil {
@@ -279,7 +296,7 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 		shadowPct   float64
 		shadowEval  bool
 	)
-	if rule.ShadowModel != "" && rule.ShadowPercentage > 0 {
+	if rule.ShadowModel != "" && rule.ShadowPercentage > 0 && id.CanAccessModel(rule.ShadowModel) {
 		shadowChain, sErr := router.FilterChain(snap, []string{rule.ShadowModel}, id.KeyID, effort, req.GetEnableGoogleSearch(), reqCaps...)
 		if sErr == nil && len(shadowChain) > 0 {
 			if placement != "" {

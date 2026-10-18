@@ -341,7 +341,8 @@ func (p *Poller) completeBatch(
 
 	if p.throttle != nil && total.Input+total.Output > 0 {
 		userID := router.UserID(b.Attributes, b.KeyName)
-		p.throttle.ChargeDailyBudget(ctx, m, b.KeyName, userID, total)
+		teamID := b.Attributes["team_id"]
+		p.throttle.ChargeDailyBudget(ctx, m, b.KeyName, userID, teamID, total)
 	}
 
 	return nil

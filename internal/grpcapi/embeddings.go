@@ -72,6 +72,7 @@ func (s *ProxyServer) GetEmbeddings(ctx context.Context, req *pb.GetEmbeddingsRe
 		Chain:           plan.chain,
 		KeyName:         plan.identity.Name,
 		UserID:          router.UserID(plan.attrs, plan.identity.Name),
+		TeamID:          plan.identity.TeamID,
 		Estimate:        int64(totalRunes/4 + 1),
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,

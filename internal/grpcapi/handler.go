@@ -157,6 +157,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		Chain:            plan.models,
 		KeyName:          id.Name,
 		UserID:           router.UserID(req.GetAttributes(), id.Name),
+		TeamID:           id.TeamID,
 		Estimate:         estimateTokens(req),
 		Chat:             chat,
 		CircuitBreaker:   s.circuitBreaker,
@@ -287,6 +288,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		Chain:            plan.models,
 		KeyName:          id.Name,
 		UserID:           router.UserID(inner.GetAttributes(), id.Name),
+		TeamID:           id.TeamID,
 		Estimate:         estimateTokens(inner),
 		Chat:             chat,
 		CircuitBreaker:   s.circuitBreaker,
@@ -623,11 +625,17 @@ func buildChat(req *pb.GenerateTextRequest, id *apikeys.Identity, ruleName, effo
 	// Attributes flow into usage meta, plus what the proxy resolved. A caller's
 	// own usage_project survives the copy — it names the usage project, with
 	// the api key as the fallback (resolver in cmd/server/main.go).
-	meta := make(map[string]string, len(req.GetAttributes())+3)
+	meta := make(map[string]string, len(req.GetAttributes())+5)
 	for k, v := range req.GetAttributes() {
 		meta[k] = v
 	}
 	meta[APIKeyAttribute] = id.Name
+	if id.OrgID != "" {
+		meta["org_id"] = id.OrgID
+	}
+	if id.TeamID != "" {
+		meta["team_id"] = id.TeamID
+	}
 	meta["effort"] = effort
 	if ruleName != "" {
 		meta["rule"] = ruleName

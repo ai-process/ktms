@@ -21,7 +21,7 @@ type judgeThrottle struct {
 	router.Throttle
 }
 
-func (j judgeThrottle) Reserve(context.Context, *proxydb.Model, string, string, int64, int64) (*router.Reservation, string) {
+func (j judgeThrottle) Reserve(context.Context, *proxydb.Model, string, string, string, int64, int64) (*router.Reservation, string) {
 	return nil, ""
 }
 
@@ -126,6 +126,7 @@ func (s *ProxyServer) evaluateShadowJudge(ctx context.Context, id *apikeys.Ident
 		Chain:          plan.chain,
 		KeyName:        plan.identity.Name,
 		UserID:         router.UserID(plan.attrs, plan.identity.Name),
+		TeamID:         plan.identity.TeamID,
 		Estimate:       estTokens,
 		CircuitBreaker: s.circuitBreaker,
 		Cooldown:       plan.cooldown,

@@ -28,19 +28,26 @@ type querier interface {
 
 func (d *DB) GetAPIKeyByLookup(ctx context.Context, lookup string) (*APIKey, error) {
 	return scanAPIKey(d.pool.QueryRow(ctx,
-		`SELECT id, name, key_lookup, key_hash, scopes, disabled_at, created_at
-		 FROM api_key WHERE key_lookup = $1`, lookup))
+		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
+		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}')
+		 FROM api_key k
+		 LEFT JOIN team t ON t.id = k.team_id
+		 WHERE k.key_lookup = $1`, lookup))
 }
 
 func (d *DB) GetAPIKeyByName(ctx context.Context, name string) (*APIKey, error) {
 	return scanAPIKey(d.pool.QueryRow(ctx,
-		`SELECT id, name, key_lookup, key_hash, scopes, disabled_at, created_at
-		 FROM api_key WHERE name = $1`, name))
+		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
+		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}')
+		 FROM api_key k
+		 LEFT JOIN team t ON t.id = k.team_id
+		 WHERE k.name = $1`, name))
 }
 
 func scanAPIKey(row pgx.Row) (*APIKey, error) {
 	var k APIKey
-	err := row.Scan(&k.ID, &k.Name, &k.KeyLookup, &k.KeyHash, &k.Scopes, &k.DisabledAt, &k.CreatedAt)
+	err := row.Scan(&k.ID, &k.Name, &k.KeyLookup, &k.KeyHash, &k.Scopes, &k.DisabledAt, &k.CreatedAt,
+		&k.OrgID, &k.TeamID, &k.TeamAllowedModels)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -52,8 +59,8 @@ func scanAPIKey(row pgx.Row) (*APIKey, error) {
 
 func (d *DB) InsertAPIKey(ctx context.Context, k *APIKey) error {
 	_, err := d.pool.Exec(ctx,
-		`INSERT INTO api_key (id, name, key_lookup, key_hash, scopes) VALUES ($1, $2, $3, $4, $5)`,
-		k.ID, k.Name, k.KeyLookup, k.KeyHash, k.Scopes)
+		`INSERT INTO api_key (id, name, key_lookup, key_hash, scopes, org_id, team_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		k.ID, k.Name, k.KeyLookup, k.KeyHash, k.Scopes, k.OrgID, k.TeamID)
 	return err
 }
 
@@ -71,8 +78,11 @@ func (d *DB) DisableAPIKey(ctx context.Context, name string) error {
 
 func (d *DB) ListAPIKeys(ctx context.Context) ([]*APIKey, error) {
 	rows, err := d.pool.Query(ctx,
-		`SELECT id, name, key_lookup, key_hash, scopes, disabled_at, created_at
-		 FROM api_key ORDER BY created_at`)
+		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
+		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}')
+		 FROM api_key k
+		 LEFT JOIN team t ON t.id = k.team_id
+		 ORDER BY k.created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -413,6 +423,179 @@ func DeleteSpendLimit(ctx context.Context, tx pgx.Tx, subjectType, subjectID, pe
 	tag, err := tx.Exec(ctx,
 		`DELETE FROM spend_limit WHERE subject_type = $1 AND subject_id = $2 AND period = $3`,
 		subjectType, subjectID, period)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// --- organizations and teams ---
+
+func (d *DB) CreateOrganization(ctx context.Context, org *Organization) error {
+	_, err := d.pool.Exec(ctx,
+		`INSERT INTO organization (id, name, created_at) VALUES ($1, $2, $3)`,
+		org.ID, org.Name, org.CreatedAt)
+	return err
+}
+
+func (d *DB) ListOrganizations(ctx context.Context) ([]*Organization, error) {
+	rows, err := d.pool.Query(ctx,
+		`SELECT id, name, created_at FROM organization ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Organization
+	for rows.Next() {
+		var o Organization
+		if err := rows.Scan(&o.ID, &o.Name, &o.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &o)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) GetOrganization(ctx context.Context, id string) (*Organization, error) {
+	var o Organization
+	err := d.pool.QueryRow(ctx,
+		`SELECT id, name, created_at FROM organization WHERE id = $1`, id).
+		Scan(&o.ID, &o.Name, &o.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &o, nil
+}
+
+func DeleteOrganizationTx(ctx context.Context, tx pgx.Tx, id string) error {
+	tag, err := tx.Exec(ctx, `DELETE FROM organization WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (d *DB) DeleteOrganization(ctx context.Context, id string) error {
+	tag, err := d.pool.Exec(ctx, `DELETE FROM organization WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func CreateTeamTx(ctx context.Context, tx pgx.Tx, team *Team) error {
+	_, err := tx.Exec(ctx,
+		`INSERT INTO team (id, org_id, name, monthly_budget_usd, allowed_models, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)`,
+		team.ID, team.OrgID, team.Name, team.MonthlyBudgetUSD, team.AllowedModels, team.CreatedAt)
+	return err
+}
+
+func (d *DB) CreateTeam(ctx context.Context, team *Team) error {
+	_, err := d.pool.Exec(ctx,
+		`INSERT INTO team (id, org_id, name, monthly_budget_usd, allowed_models, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)`,
+		team.ID, team.OrgID, team.Name, team.MonthlyBudgetUSD, team.AllowedModels, team.CreatedAt)
+	return err
+}
+
+func (d *DB) GetTeam(ctx context.Context, id string) (*Team, error) {
+	var t Team
+	err := d.pool.QueryRow(ctx,
+		`SELECT id, org_id, name, monthly_budget_usd, allowed_models, created_at
+		 FROM team WHERE id = $1`, id).
+		Scan(&t.ID, &t.OrgID, &t.Name, &t.MonthlyBudgetUSD, &t.AllowedModels, &t.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (d *DB) ListTeams(ctx context.Context, orgID string) ([]*Team, error) {
+	var (
+		rows pgx.Rows
+		err  error
+	)
+	if orgID != "" {
+		rows, err = d.pool.Query(ctx,
+			`SELECT id, org_id, name, monthly_budget_usd, allowed_models, created_at
+			 FROM team WHERE org_id = $1 ORDER BY created_at DESC`, orgID)
+	} else {
+		rows, err = d.pool.Query(ctx,
+			`SELECT id, org_id, name, monthly_budget_usd, allowed_models, created_at
+			 FROM team ORDER BY created_at DESC`)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Team
+	for rows.Next() {
+		var t Team
+		if err := rows.Scan(&t.ID, &t.OrgID, &t.Name, &t.MonthlyBudgetUSD, &t.AllowedModels, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &t)
+	}
+	return out, rows.Err()
+}
+
+func UpdateTeamTx(ctx context.Context, tx pgx.Tx, team *Team) error {
+	tag, err := tx.Exec(ctx,
+		`UPDATE team SET name = $2, monthly_budget_usd = $3, allowed_models = $4
+		 WHERE id = $1`,
+		team.ID, team.Name, team.MonthlyBudgetUSD, team.AllowedModels)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (d *DB) UpdateTeam(ctx context.Context, team *Team) error {
+	tag, err := d.pool.Exec(ctx,
+		`UPDATE team SET name = $2, monthly_budget_usd = $3, allowed_models = $4
+		 WHERE id = $1`,
+		team.ID, team.Name, team.MonthlyBudgetUSD, team.AllowedModels)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func DeleteTeamTx(ctx context.Context, tx pgx.Tx, id string) error {
+	tag, err := tx.Exec(ctx, `DELETE FROM team WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (d *DB) DeleteTeam(ctx context.Context, id string) error {
+	tag, err := d.pool.Exec(ctx, `DELETE FROM team WHERE id = $1`, id)
 	if err != nil {
 		return err
 	}
