@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a reproducible bug or unexpected behavior in llm-proxy
+description: Report a reproducible bug or unexpected behavior in KTMS
 title: "fix: "
 labels: ["bug"]
 body:
@@ -11,8 +11,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: llm-proxy Version / Commit
-      description: What version or git commit of llm-proxy are you running? (e.g., v0.12.0 or commit SHA)
+      label: KTMS Version / Commit
+      description: What version or git commit of KTMS are you running? (e.g., v0.12.0 or commit SHA)
       placeholder: "v0.12.0"
     validations:
       required: true
@@ -40,7 +40,7 @@ body:
         - Inference Nodes & Local Pool (internal/nodes)
         - Rate Limiting & Spend Limits (internal/throttle, internal/spendlimit)
         - OpenAI-compatible HTTP Gateway (/v1/chat/completions, etc.)
-        - gRPC APIs (LLMProxyService, LLMProxyAdminService)
+        - gRPC APIs (GatewayService, AdminService)
         - Circuit Breaker (internal/circuitbreaker)
         - Auto-Seed & Quickstart (internal/seed)
         - Database & Migrations (Postgres, migrations/)
