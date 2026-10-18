@@ -127,13 +127,15 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 		return nil, status.Error(codes.InvalidArgument, "bad_request: effort is required")
 	}
 
-	rule := router.Match(snap, effort, req.GetAttributes())
+	cleanAttrs := router.SanitizeAttributes(req.GetAttributes())
+	rule := router.Match(snap, effort, cleanAttrs)
 	if rule == nil {
 		return nil, router.ToStatus(router.ErrNotConfigured)
 	}
 
-	userID := router.UserID(req.GetAttributes(), id.Name)
-	model, err := router.ResolveBatchModel(ctx, snap, s.throttle, router.ResolveChain(rule), id.KeyID, id.Name, userID)
+	canaryKey := router.CanaryKey(cleanAttrs)
+	userID := router.UserID(cleanAttrs, id.Name)
+	model, err := router.ResolveBatchModel(ctx, snap, s.throttle, router.ResolveChain(rule, canaryKey), id.KeyID, id.Name, userID)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
@@ -199,7 +201,7 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 		TotalCount:    int32(len(items)),
 		DoneCount:     0,
 		FailedCount:   0,
-		Attributes:    req.GetAttributes(),
+		Attributes:    cleanAttrs,
 		ActionID:      actionID,
 		CreatedAt:     time.Now().UTC(),
 	}

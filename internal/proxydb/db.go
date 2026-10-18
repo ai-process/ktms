@@ -124,7 +124,7 @@ func (d *DB) LoadRules(ctx context.Context) ([]*Rule, error) { return loadRules(
 func loadRules(ctx context.Context, q querier) ([]*Rule, error) {
 	rows, err := q.Query(ctx,
 		`SELECT r.id, r.name, r.priority, r.effort, r.attributes, r.enabled,
-		        r.shadow_model, r.shadow_percentage,
+		        r.shadow_model, r.shadow_percentage, r.shadow_eval,
 		        COALESCE(array_agg(rm.model_id ORDER BY rm.position)
 		                 FILTER (WHERE rm.model_id IS NOT NULL), '{}'),
 		        COALESCE(array_agg(rm.weight ORDER BY rm.position)
@@ -142,7 +142,7 @@ func loadRules(ctx context.Context, q querier) ([]*Rule, error) {
 		var attrs []byte
 		var weights []int32
 		if err := rows.Scan(&r.ID, &r.Name, &r.Priority, &r.Effort, &attrs, &r.Enabled,
-			&r.ShadowModel, &r.ShadowPercentage, &r.Use, &weights); err != nil {
+			&r.ShadowModel, &r.ShadowPercentage, &r.ShadowEval, &r.Use, &weights); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(attrs, &r.Attributes); err != nil {
@@ -323,9 +323,9 @@ func ReplaceRules(ctx context.Context, tx pgx.Tx, rules []*Rule) error {
 			return err
 		}
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO rule (id, name, priority, effort, attributes, enabled, shadow_model, shadow_percentage)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-			r.ID, r.Name, r.Priority, r.Effort, attrs, r.Enabled, r.ShadowModel, r.ShadowPercentage); err != nil {
+			`INSERT INTO rule (id, name, priority, effort, attributes, enabled, shadow_model, shadow_percentage, shadow_eval)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			r.ID, r.Name, r.Priority, r.Effort, attrs, r.Enabled, r.ShadowModel, r.ShadowPercentage, r.ShadowEval); err != nil {
 			return err
 		}
 		for pos, modelID := range r.Use {

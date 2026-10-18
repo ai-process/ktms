@@ -162,6 +162,7 @@ type Rule struct {
 	Weights          []int32  // optional traffic weights per model in Use
 	ShadowModel      string   // optional shadow model for async traffic mirroring
 	ShadowPercentage float64  // 0.0 to 100.0 percent of traffic mirrored to ShadowModel
+	ShadowEval       bool     // optional automated quality evaluation using Judge
 }
 
 type VendorKey struct {

@@ -23,6 +23,22 @@ const (
 	ChatContextVersion2      = 2
 )
 
+type shadowContextKey struct{}
+
+// WithShadowTraffic marks context as shadow/evaluation traffic.
+func WithShadowTraffic(ctx context.Context) context.Context {
+	return context.WithValue(ctx, shadowContextKey{}, true)
+}
+
+// IsShadowTraffic checks if context is marked as shadow traffic.
+func IsShadowTraffic(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	v, ok := ctx.Value(shadowContextKey{}).(bool)
+	return ok && v
+}
+
 type ContentPartType string
 
 const (
@@ -212,6 +228,11 @@ func (c *ChatContext) GetRequestInstruction() string {
 	instruction := c.perRequestSystemInstruction
 	c.perRequestSystemInstruction = "" // Clear after reading
 	return instruction
+}
+
+// PeekRequestInstruction returns the current per-request instruction without clearing it.
+func (c *ChatContext) PeekRequestInstruction() string {
+	return c.perRequestSystemInstruction
 }
 
 // GetBaseSystemInstruction returns the persistent base system instruction

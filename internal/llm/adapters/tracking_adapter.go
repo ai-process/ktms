@@ -46,7 +46,10 @@ func (t *TrackingAdapter) WithPricer(p Pricer) *TrackingAdapter {
 	return t
 }
 
-func (t *TrackingAdapter) cost(in, out int, startedAt time.Time) int64 {
+func (t *TrackingAdapter) cost(ctx context.Context, in, out int, startedAt time.Time) int64 {
+	if llm.IsShadowTraffic(ctx) {
+		return 0
+	}
 	if t.pricer == nil {
 		return 0
 	}
@@ -133,7 +136,7 @@ func (t *TrackingAdapter) GenerateText(ctx context.Context, chat *llm.ChatContex
 				resp.Usage.Input,
 				resp.Usage.Output,
 				durationMs,
-				t.cost(resp.Usage.Input, resp.Usage.Output, startTime),
+				t.cost(ctx, resp.Usage.Input, resp.Usage.Output, startTime),
 				status,
 				meta,
 			); trackErr != nil {
@@ -296,7 +299,7 @@ func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.Chat
 			lastUsage.Input,
 			lastUsage.Output,
 			durationMs,
-			t.cost(lastUsage.Input, lastUsage.Output, startTime),
+			t.cost(ctx, lastUsage.Input, lastUsage.Output, startTime),
 			status,
 			meta,
 		); trackErr != nil {
@@ -409,7 +412,7 @@ func (t *TrackingAdapter) SynthesizeSpeech(ctx context.Context, text, language, 
 			inTokens,
 			outTokens,
 			durationMs,
-			t.cost(inTokens, outTokens, startTime),
+			t.cost(ctx, inTokens, outTokens, startTime),
 			status,
 			trackMeta,
 		); trackErr != nil {
@@ -518,7 +521,7 @@ func (t *TrackingAdapter) GenerateImage(ctx context.Context, prompt, userID stri
 			inTokens,
 			outTokens,
 			durationMs,
-			t.cost(inTokens, outTokens, startTime),
+			t.cost(ctx, inTokens, outTokens, startTime),
 			status,
 			trackMeta,
 		); trackErr != nil {
@@ -633,7 +636,7 @@ func (t *TrackingAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, user
 			inTokens,
 			outTokens,
 			durationMs,
-			t.cost(inTokens, outTokens, startTime),
+			t.cost(ctx, inTokens, outTokens, startTime),
 			status,
 			trackMeta,
 		); trackErr != nil {
@@ -747,7 +750,7 @@ func (t *TrackingAdapter) EvaluateRollouts(ctx context.Context, req *llm.Evaluat
 			inTokens,
 			outTokens,
 			durationMs,
-			t.cost(inTokens, outTokens, startTime),
+			t.cost(ctx, inTokens, outTokens, startTime),
 			status,
 			trackMeta,
 		); trackErr != nil {
@@ -902,7 +905,7 @@ func (t *TrackingAdapter) CreateEmbeddings(ctx context.Context, req *llm.Embeddi
 			inTokens,
 			0,
 			durationMs,
-			t.cost(inTokens, 0, startTime),
+			t.cost(ctx, inTokens, 0, startTime),
 			status,
 			trackMeta,
 		); trackErr != nil {
