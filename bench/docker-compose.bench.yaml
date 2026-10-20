@@ -1,0 +1,81 @@
+# Benchmark stack: KTMS and LiteLLM in front of the same deterministic mock upstream.
+# Driven by scripts/run_all.sh, which starts one gateway at a time; see bench/README.md.
+#
+# BIND_ADDR is where gateway ports are published: 127.0.0.1 locally, the private
+# LAN address on the cloud SUT so the runner VM can reach them.
+
+name: ktms-bench
+
+services:
+  mock-upstream:
+    build: ./mock-upstream
+    environment:
+      MOCK_LATENCY_MS: "0"
+      MOCK_CHUNKS: "20"
+      MOCK_CHUNK_DELAY_MS: "15"
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:8000:8000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/readyz"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ktms
+      POSTGRES_PASSWORD: ktms
+      POSTGRES_DB: ktms
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ktms -d ktms"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+
+  ktms:
+    build:
+      context: ..
+      target: slim
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      mock-upstream: { condition: service_healthy }
+    environment:
+      DATABASE_URL: "postgres://ktms:ktms@db:5432/ktms?sslmode=disable"
+      KTMS_ENCRYPTION_KEYS: "1:LS1kZXYtb25seS1rZXktLWRldi1vbmx5LWtleS0tISE="
+      BOOTSTRAP_ADMIN_KEY: "bench-admin"
+      REDIS_ADDR: "redis:6379"
+      REDIS_KEY_PREFIX: bench
+      AUTO_SEED: "true"
+      SEED_CLIENT_KEY: "ktms_bench_key"
+      SEED_OPENAI_KEY: "mock-key"
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:8080:8080"
+
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.83.14-stable
+    depends_on:
+      mock-upstream: { condition: service_healthy }
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml:ro
+    # One worker per SUT core, the documented way to use all cores (KTMS does so in one process).
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "${LITELLM_WORKERS:-4}"]
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:4000:4000"
+
+  # Local mode only: the cloud runner VM runs the same image with host networking.
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: ["k6"]
+    volumes:
+      - ./k6:/k6:ro
+      - ./results:/results
