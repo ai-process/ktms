@@ -1,0 +1,27 @@
+#cloud-config
+# Runner: Docker plus a pre-pulled k6 image (version must match run_all.sh).
+package_update: true
+packages: [curl]
+
+users:
+  - default
+  - name: ${ssh_user}
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    ssh_authorized_keys: ["${ssh_public_key}"]
+
+write_files:
+  - path: /etc/sysctl.d/99-bench.conf
+    content: |
+      net.core.somaxconn = 65535
+      net.ipv4.ip_local_port_range = 1024 65535
+      net.ipv4.tcp_tw_reuse = 1
+      fs.file-max = 2097152
+
+runcmd:
+  - sysctl --system
+  - curl -fsSL https://get.docker.com | sh
+  - systemctl enable --now docker
+  - usermod -aG docker ${ssh_user}
+  - docker pull grafana/k6:2.3.0
+  - install -d -o ${ssh_user} /opt/bench /opt/bench/results

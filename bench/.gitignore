@@ -1,0 +1,7 @@
+results/
+.env
+terraform/.terraform/
+terraform/*.tfstate*
+terraform/*.tfplan
+terraform/.ssh/
+__pycache__/

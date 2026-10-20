@@ -1,0 +1,15 @@
+# LiteLLM in its leanest proxy mode: master key only, no database, no callbacks.
+model_list:
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_base: http://mock-upstream:8000/v1
+      api_key: mock-key
+
+general_settings:
+  master_key: sk-litellm-bench
+
+litellm_settings:
+  drop_params: true
+  telemetry: false
+  num_retries: 0
