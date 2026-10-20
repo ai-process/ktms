@@ -32,7 +32,7 @@ type TextCache interface {
 	Set(ctx context.Context, apiKeyID string, configVersion int64, req *pb.GenerateTextRequest, resp *pb.GenerateTextResponse) error
 }
 
-// ProxyServer implements the data-plane LLMProxyService.
+// ProxyServer implements the data-plane GatewayService.
 type ProxyServer struct {
 	pb.UnimplementedGatewayServiceServer
 	snapshots       SnapshotProvider

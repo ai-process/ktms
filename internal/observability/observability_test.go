@@ -91,7 +91,7 @@ func TestObservabilityMetrics_Recording(t *testing.T) {
 
 func TestObservabilityTracing_InitAndSpan(t *testing.T) {
 	ctx := context.Background()
-	shutdown, err := InitTracing(ctx, "test-llm-proxy", "")
+	shutdown, err := InitTracing(ctx, "test-ktms", "")
 	if err != nil {
 		t.Fatalf("InitTracing: %v", err)
 	}

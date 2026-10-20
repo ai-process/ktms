@@ -121,7 +121,7 @@ mem_total_mb() {
 		bytes=$(sysctl -n hw.memsize 2>/dev/null || true)
 		echo $((${bytes:-0} / 1048576))
 	else
-		kb=$(awk '/^MemTotal:/ { print $2 }' "${LLMPROXY_MEMINFO:-/proc/meminfo}" 2>/dev/null || true)
+		kb=$(awk '/^MemTotal:/ { print $2 }' "${KTMS_MEMINFO:-${LLMPROXY_MEMINFO:-/proc/meminfo}}" 2>/dev/null || true)
 		echo $((${kb:-0} / 1024))
 	fi
 }
@@ -284,7 +284,7 @@ render_unit() {
 
 UID_NUM=$(id -u)
 svc_dir() {
-	if [ "$OS" = darwin ]; then echo "${LLMPROXY_SERVICE_DIR:-$HOME/Library/LaunchAgents}"; else echo "${LLMPROXY_SERVICE_DIR:-$HOME/.config/systemd/user}"; fi
+	if [ "$OS" = darwin ]; then echo "${KTMS_SERVICE_DIR:-${LLMPROXY_SERVICE_DIR:-$HOME/Library/LaunchAgents}}"; else echo "${KTMS_SERVICE_DIR:-${LLMPROXY_SERVICE_DIR:-$HOME/.config/systemd/user}}"; fi
 }
 svc_file() { # id: node|ollama
 	if [ "$OS" = darwin ]; then
@@ -511,7 +511,7 @@ start_node_and_wait() {
 	svc_start node
 	say "Waiting for the node to register (the tunnel can take up to two minutes)..."
 	i=0
-	while [ $i -lt "${LLMPROXY_REGISTER_WAIT:-150}" ]; do
+	while [ $i -lt "${KTMS_REGISTER_WAIT:-${LLMPROXY_REGISTER_WAIT:-150}}" ]; do
 		registered_in_log "$start" && return 0
 		svc_running node || { [ $i -gt 5 ] && return 1; }
 		sleep 1

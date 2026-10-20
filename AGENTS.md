@@ -1,4 +1,4 @@
-# Agent Guidelines & Rules for KTMS (llm-proxy)
+# Agent Guidelines & Rules for KTMS
 
 Guidelines and invariants for AI agents working in this codebase, synthesized from architecture decisions and code review findings.
 
@@ -33,5 +33,5 @@ Guidelines and invariants for AI agents working in this codebase, synthesized fr
 - **Verification:** Always run `go vet ./...` and `go test ./... -race` before committing.
 
 ## 7. Tasks & Issue Tracking
-- **Centralized Issue Tracking:** All tasks, issues, and feature requests for all repositories must be created exclusively in the private repository `docs` (`ai-process/docs`). Never open tasks or issues in public service repositories (`llm-proxy`, `light-tokenmeter`, `blog`, etc.).
+- **Centralized Issue Tracking:** All tasks, issues, and feature requests for all repositories must be created exclusively in the private repository `docs` (`ai-process/docs`). Never open tasks or issues in public service repositories (`ktms`, `light-tokenmeter`, `blog`, etc.).
 

@@ -20,7 +20,7 @@ import (
 // InsufficientQuota is the OpenAI-compatible code for an exhausted spend limit.
 const InsufficientQuota = "insufficient_quota"
 
-// Sentinels for the documented error contract (see llmproxy.proto).
+// Sentinels for the documented error contract (see proto/ktms/v1/gateway.proto).
 var (
 	ErrNotConfigured  = errors.New("not_configured")
 	ErrNoCapableModel = errors.New("no_capable_model")
@@ -64,7 +64,7 @@ func ToStatus(err error) error {
 	case errors.Is(err, llm.ErrOutputTruncated):
 		return status.Error(codes.FailedPrecondition, "output_truncated")
 	case errors.Is(err, audio.ErrFFmpegMissing):
-		return status.Error(codes.Unimplemented, "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/llm-proxy:audio' container image")
+		return status.Error(codes.Unimplemented, "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/ktms:audio' container image")
 	// Streaming mid-stream stalls cannot fall back once chunks have emitted,
 	// returning directly to the caller as Unavailable rather than ChainExhausted.
 	case errors.Is(err, circuitbreaker.ErrUpstreamTimeout):

@@ -24,7 +24,7 @@ import (
 	"github.com/ai-process/ktms/internal/spendlimit"
 )
 
-// AdminServer implements LLMProxyAdminService.
+// AdminServer implements AdminService.
 type AdminServer struct {
 	pb.UnimplementedAdminServiceServer
 	db      *proxydb.DB

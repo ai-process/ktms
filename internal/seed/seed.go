@@ -505,7 +505,7 @@ func printBanner(clientKey, keyName string, vendors []string) {
 	}
 	banner := fmt.Sprintf(`
 ================================================================================
-[llm-proxy] Quickstart Auto-Seed Completed!
+[ktms] Quickstart Auto-Seed Completed!
 Client Key:    %s (name: %s)
 Vendor Keys:   %s
 

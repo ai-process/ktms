@@ -215,8 +215,8 @@ case "$1" in
 stop) rm -f "$FAKE_STATE/running.$2" ;;
 restart)
 	touch "$FAKE_STATE/running.$2"
-	if [ "$2" = ktms-node.service ] && ! grep -q BROKEN "$LLMPROXY_HOME/bin/ktms-node"; then
-		echo "INF node registered successfully endpoint=https://fake-abc.trycloudflare.com interval=5s" >>"$LLMPROXY_HOME/logs/node.log"
+	if [ "$2" = ktms-node.service ] && ! grep -q BROKEN "${KTMS_HOME:-$LLMPROXY_HOME}/bin/ktms-node"; then
+		echo "INF node registered successfully endpoint=https://fake-abc.trycloudflare.com interval=5s" >>"${KTMS_HOME:-$LLMPROXY_HOME}/logs/node.log"
 	fi ;;
 is-active) [ -f "$FAKE_STATE/running.$3" ] || exit 3 ;;
 esac
@@ -235,8 +235,8 @@ bootout) rm -f "$FAKE_STATE/loaded.${2##*/}" ;;
 bootstrap)
 	l=$(basename "$3" .plist)
 	touch "$FAKE_STATE/loaded.$l"
-	if [ "$l" = com.ktms.node ] && ! grep -q BROKEN "$LLMPROXY_HOME/bin/ktms-node"; then
-		echo "INF node registered successfully endpoint=https://fake-abc.trycloudflare.com interval=5s" >>"$LLMPROXY_HOME/logs/node.log"
+	if [ "$l" = com.ktms.node ] && ! grep -q BROKEN "${KTMS_HOME:-$LLMPROXY_HOME}/bin/ktms-node"; then
+		echo "INF node registered successfully endpoint=https://fake-abc.trycloudflare.com interval=5s" >>"${KTMS_HOME:-$LLMPROXY_HOME}/logs/node.log"
 	fi ;;
 esac
 exit 0
@@ -246,9 +246,9 @@ S
 }
 
 run_install() {
-	HOME="$W/home" LLMPROXY_HOME="${TEST_BASE:-$W/home/.ktms-node}" LLMPROXY_SERVICE_DIR="$W/svc" \
-		LLMPROXY_GITHUB="http://127.0.0.1:$P1" LLMPROXY_GITHUB_API="http://127.0.0.1:$P1" \
-		LLMPROXY_OLLAMA_ADDR="127.0.0.1:$P2" LLMPROXY_REGISTER_WAIT=12 LLMPROXY_MEMINFO="$W/meminfo" \
+	HOME="$W/home" KTMS_HOME="${TEST_BASE:-$W/home/.ktms-node}" KTMS_SERVICE_DIR="$W/svc" \
+		KTMS_GITHUB="http://127.0.0.1:$P1" KTMS_GITHUB_API="http://127.0.0.1:$P1" \
+		KTMS_OLLAMA_ADDR="127.0.0.1:$P2" KTMS_REGISTER_WAIT=12 KTMS_MEMINFO="$W/meminfo" \
 		FAKE_OS="$FAKE_OS" FAKE_ARCH="$FAKE_ARCH" FAKE_STATE="$STATE" PATH="$W/bin:$PATH" \
 		sh "$SCRIPT" "$@" 2>&1
 }
@@ -464,6 +464,7 @@ while time.time() < deadline:
 sys.stdout.write(buf.decode(errors="replace"))
 sys.exit(3 if secret.encode() in buf else 0)
 PY
+# Legacy LLMPROXY_* names keep working; this case covers the fallback.
 OUT=$(HOME="$W/home" LLMPROXY_HOME="$BASE" LLMPROXY_SERVICE_DIR="$W/svc" LLMPROXY_GITHUB="http://127.0.0.1:$P1" LLMPROXY_GITHUB_API="http://127.0.0.1:$P1" LLMPROXY_OLLAMA_ADDR="127.0.0.1:$P2" LLMPROXY_REGISTER_WAIT=12 FAKE_OS=Linux FAKE_ARCH=x86_64 FAKE_STATE="$STATE" PATH="$W/bin:$PATH" python3 -I "$W/keydrive.py" llm_node_typed_secret "$SCRIPT" --proxy llm-nodes.example.com --node-id node-9 --model tiny:1b 2>&1)
 RC=$?
 eq "prompt: key typed at the terminal is not echoed" 0 "$RC"

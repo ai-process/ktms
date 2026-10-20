@@ -129,28 +129,28 @@ G="grpcurl -plaintext -H"
 
 # 1. Mint a client API key (plaintext is returned once)
 $G "$ADMIN" -d '{"name":"my-app","scopes":["generate"]}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/MintAPIKey
+  localhost:9090 ktms.v1.AdminService/MintAPIKey
 
 # 2. Assign vendor credential to the client key
 $G "$ADMIN" -d '{"api_key_name":"my-app","vendor":"openai","plain_key":"sk-..."}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/SetVendorKey
+  localhost:9090 ktms.v1.AdminService/SetVendorKey
 
 # 3. Register a model
 $G "$ADMIN" -d '{"model":{"id":"gpt-4o-mini","vendor":"openai",
   "efforts":["EFFORT_LOW","EFFORT_MEDIUM","EFFORT_HIGH"],
   "price_in_per_mtok":0.15,"price_out_per_mtok":0.60,"enabled":true}}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/UpsertModel
+  localhost:9090 ktms.v1.AdminService/UpsertModel
 
 # 4. Set routing rules (catch-all for each effort tier is mandatory)
 $G "$ADMIN" -d '{"rules":[
   {"name":"default","priority":1,"use":["gpt-4o-mini"],"enabled":true}]}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/ReplaceRules
+  localhost:9090 ktms.v1.AdminService/ReplaceRules
 
 # 5. Call gRPC GenerateText with your client key
 $G "authorization: Bearer llm_<your key>" -d '{
   "effort":"EFFORT_LOW",
   "messages":[{"role":"MESSAGE_ROLE_USER","text":"Say hi in three words."}]}' \
-  localhost:9090 llmproxy.v1.LLMProxyService/GenerateText
+  localhost:9090 ktms.v1.GatewayService/GenerateText
 ```
 
 Once real keys exist in production, unset `BOOTSTRAP_ADMIN_KEY`.
@@ -415,7 +415,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 
 ## Setting it up: keys, models, rules
 
-All of this is done with the admin service (`LLMProxyAdminService`) using a key that has
+All of this is done with the admin service (`ktms.v1.AdminService`) using a key that has
 the `admin` scope. Mutations are validated in a transaction together with the existing
 config, so an invalid state can never become active. Prefer a browser to `grpcurl`? See the
 [web console](#web-console).
@@ -425,7 +425,7 @@ config, so an invalid state can never become active. Prefer a browser to `grpcur
 ```bash
 grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
   -d '{"name":"billing-service","scopes":["generate"]}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/MintAPIKey
+  localhost:9090 ktms.v1.AdminService/MintAPIKey
 ```
 
 Keys look like `llm_<hex>`. Only a hash is stored, and the plaintext is returned once.
@@ -442,7 +442,7 @@ client can call them.
 ```bash
 grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
   -d '{"api_key_name":"billing-service","vendor":"google","plain_key":"AIza..."}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/SetVendorKey
+  localhost:9090 ktms.v1.AdminService/SetVendorKey
 ```
 
 Vendors: `openai`, `anthropic`, `google`, `deepseek` (OpenAI-compatible API, default endpoint
@@ -507,7 +507,7 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"rules":[
    "use":["deepseek-chat","gpt-4o-mini"], "enabled":true},
   {"name":"anything-else", "priority":1,
    "use":["gpt-4o-mini"], "enabled":true}
-]}' localhost:9090 llmproxy.v1.LLMProxyAdminService/ReplaceRules
+]}' localhost:9090 ktms.v1.AdminService/ReplaceRules
 ```
 
 - The **highest priority** matching rule wins; priorities and names are unique.
@@ -517,7 +517,7 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"rules":[
   is throttled or its vendor is unavailable, the next is tried.
 - `weights` (optional) enables **weighted traffic routing** (Canary or A/B testing). If specified, `weights` must contain exactly one positive integer per model in `use` (e.g. `[90, 10]`). When an explicit `canary_key` or `user_id` attribute is provided, distribution is deterministic and sticky per key (salted per rule name). If omitted or when `canary_mode: "random"` is passed, routing uses weighted random distribution. When `weights` is omitted, routing is strictly deterministic (100% on `use[0]`).
 - `shadow_model` and `shadow_percentage` (optional) enable **Shadow Routing (Request Mirroring)**: asynchronously duplicates a sample (0.0–100.0%) of incoming traffic to a candidate shadow model in the background without affecting caller latency or responses. Shadow calls are non-billable to end-users (recorded at 0 nano-USD cost in usage events), carry `is_shadow: "true"` and `shadow: "true"` metadata, do not count against caller spend limits or daily token budgets, respect model RPM limits and global concurrency semaphores (512 for shadow, 256 for evaluation) to protect proxy resources and upstream providers, and never trip circuit breakers for primary traffic.
-- `shadow_eval` (optional boolean, requires `shadow_model`): enables automated quality evaluation comparing primary vs shadow model outputs using an internal `Judge` model asynchronously in the background. The judge evaluates preference (`primary`, `shadow`, or `tie`) and quality scores without adding latency to the primary caller, respects judge model RPM and circuit breakers without consuming caller spend limits, and exports results via Prometheus metrics (`llmproxy_shadow_judge_evaluations_total` and `llmproxy_shadow_judge_scores`).
+- `shadow_eval` (optional boolean, requires `shadow_model`): enables automated quality evaluation comparing primary vs shadow model outputs using an internal `Judge` model asynchronously in the background. The judge evaluates preference (`primary`, `shadow`, or `tie`) and quality scores without adding latency to the primary caller, respects judge model RPM and circuit breakers without consuming caller spend limits, and exports results via Prometheus metrics (`ktms_shadow_judge_evaluations_total` and `ktms_shadow_judge_scores`).
 - Validation requires a **catch-all** (no attribute predicates) for every effort, so no
   request can ever fall through. `anything-else` above covers all three at once.
 - `ReplaceRules` swaps the whole set atomically; there is no per-rule CRUD.
@@ -533,10 +533,10 @@ drift. Calls are priced from the model's `price_*_per_mtok` (peak and batch rate
 # $50 a day for the "support-bot" key, and $20 a month for every end user by default.
 grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"spend_limit":
   {"subject_type":"key","subject_id":"support-bot","period":"day","limit_nanousd":50000000000}}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/SetSpendLimit
+  localhost:9090 ktms.v1.AdminService/SetSpendLimit
 grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"spend_limit":
   {"subject_type":"user","subject_id":"*","period":"month","limit_nanousd":20000000000}}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/SetSpendLimit
+  localhost:9090 ktms.v1.AdminService/SetSpendLimit
 ```
 
 - `subject_type` is `key` (API key name) or `user` (`attributes["user_id"]`, or
@@ -587,7 +587,7 @@ drop `-plaintext` for a proxy behind TLS):
 ```bash
 # admin, once per machine
 $G "$ADMIN" -d '{"name":"anna-mac","node_id":"anna-mac"}' \
-  proxy.example.com:443 llmproxy.v1.LLMProxyAdminService/MintNodeKey      # plain_key shown once
+  proxy.example.com:443 ktms.v1.AdminService/MintNodeKey      # plain_key shown once
 
 # admin, once per model; no_thinking turns Gemma's reasoning off
 $G "$ADMIN" -d '{"model":{"id":"gemma4:26b-a4b-it-qat","vendor":"local",
@@ -779,7 +779,7 @@ grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
       }
     }
   ]
-}' localhost:9090 llmproxy.v1.LLMProxyService/SubmitBatch
+}' localhost:9090 ktms.v1.GatewayService/SubmitBatch
 ```
 
 Returns a `Batch` with status `BATCH_STATE_PENDING` (or `BATCH_STATE_RUNNING`), total item count, model, and creation timestamp.
@@ -791,7 +791,7 @@ Polls batch state (`PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `EX
 ```bash
 grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
   "batch_id": "0199c0a0-6228-7e10-91b5-685d996cbfa1"
-}' localhost:9090 llmproxy.v1.LLMProxyService/GetBatch
+}' localhost:9090 ktms.v1.GatewayService/GetBatch
 ```
 
 #### ListBatchResults
@@ -802,7 +802,7 @@ Pages through completed items with `page_token` (and `next_page_token`). Each it
 grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
   "batch_id": "0199c0a0-6228-7e10-91b5-685d996cbfa1",
   "page_size": 100
-}' localhost:9090 llmproxy.v1.LLMProxyService/ListBatchResults
+}' localhost:9090 ktms.v1.GatewayService/ListBatchResults
 ```
 
 #### CancelBatch
@@ -812,7 +812,7 @@ Requests cancellation of an unfinished batch job at the vendor. The batch remain
 ```bash
 grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
   "batch_id": "0199c0a0-6228-7e10-91b5-685d996cbfa1"
-}' localhost:9090 llmproxy.v1.LLMProxyService/CancelBatch
+}' localhost:9090 ktms.v1.GatewayService/CancelBatch
 ```
 
 ### SynthesizeSpeech, GenerateImage
@@ -861,7 +861,7 @@ Vector representations of text. Vector space isolation is strictly enforced: `au
 grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
   "model": "text-embedding-3-small",
   "inputs": ["Hello world", "Search document"]
-}' localhost:9090 llmproxy.v1.LLMProxyService/GetEmbeddings
+}' localhost:9090 ktms.v1.GatewayService/GetEmbeddings
 ```
 
 ### ListModels

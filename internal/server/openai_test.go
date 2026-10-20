@@ -467,7 +467,7 @@ func TestErrorMapping(t *testing.T) {
 		{status.Error(codes.Unavailable, "vendors_unavailable"), 503, "vendors_unavailable"},
 		{status.Error(codes.FailedPrecondition, "output_truncated"), 400, "output_truncated"},
 		{status.Error(codes.InvalidArgument, "guardrail_violation: PII detected (email)"), 400, "guardrail_violation"},
-		{status.Error(codes.Unimplemented, "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/llm-proxy:audio' container image"), 501, "ffmpeg_missing"},
+		{status.Error(codes.Unimplemented, "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/ktms:audio' container image"), 501, "ffmpeg_missing"},
 		{status.Error(codes.Internal, "vendor_error"), 502, "vendor_error"},
 		{status.Error(codes.Internal, "pq: password for user x"), 500, ""},
 	}
@@ -655,7 +655,7 @@ func TestSpeechAndImage(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &errResp); err != nil {
 		t.Fatalf("unmarshal error resp: %v", err)
 	}
-	wantMsg := "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/llm-proxy:audio' container image"
+	wantMsg := "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/ktms:audio' container image"
 	if errResp.Error.Message != wantMsg {
 		t.Errorf("speech error message = %q, want %q", errResp.Error.Message, wantMsg)
 	}

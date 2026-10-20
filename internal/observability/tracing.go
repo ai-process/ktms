@@ -24,13 +24,13 @@ const (
 	AttrGenAIUsageInput    = attribute.Key("gen_ai.usage.input_tokens")
 	AttrGenAIUsageOutput   = attribute.Key("gen_ai.usage.output_tokens")
 
-	// LLM Proxy routing attributes
+	// KTMS routing attributes
 	AttrKTMSRule      = attribute.Key("ktms.rule")
 	AttrKTMSEffort    = attribute.Key("ktms.effort")
 	AttrKTMSClientKey = attribute.Key("ktms.client_key")
 )
 
-// Tracer returns the named tracer for llm-proxy.
+// Tracer returns the named tracer for ktms.
 func Tracer() trace.Tracer {
 	return otel.GetTracerProvider().Tracer(TracerName)
 }

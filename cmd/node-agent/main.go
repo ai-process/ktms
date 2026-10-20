@@ -64,7 +64,7 @@ func newSettings(name string) *settings {
 	s := &settings{
 		fs:            fs,
 		showVersion:   fs.Bool("version", false, "Print the version and exit"),
-		proxyAddr:     fs.String("proxy-addr", "127.0.0.1:50051", "LLM-proxy gRPC address (host:port)"),
+		proxyAddr:     fs.String("proxy-addr", "127.0.0.1:50051", "KTMS gRPC address (host:port)"),
 		useTLS:        fs.Bool("tls", false, "Connect to the proxy over TLS (system CA roots)"),
 		expose:        fs.String("expose", nodeagent.ExposeNone, "How the proxy reaches this node: "+nodeagent.ExposeCloudflared+" (built-in gateway + quick tunnel) or "+nodeagent.ExposeNone+" (you supply --endpoint)"),
 		cloudflared:   fs.String("cloudflared-path", "", "cloudflared binary for --expose=cloudflared (default: from PATH)"),

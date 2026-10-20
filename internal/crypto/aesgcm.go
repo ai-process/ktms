@@ -1,6 +1,6 @@
 // Package crypto encrypts vendor LLM keys at rest with AES-256-GCM.
 //
-// The keyring is parsed from LLMPROXY_ENCRYPTION_KEYS ("1:<base64 32B>,2:...").
+// The keyring is parsed from KTMS_ENCRYPTION_KEYS ("1:<base64 32B>,2:...").
 // Every ciphertext records the key version that sealed it, so rotation is:
 // add a higher version to the env, redeploy, re-encrypt all rows, drop the old
 // version. Direct GCM rather than envelope encryption — this guards a few dozen

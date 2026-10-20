@@ -146,7 +146,7 @@ func (d *Doctor) checkEngine(ctx context.Context) (models []*pb.NodeModelSpec, f
 	if err != nil {
 		return nil, []Finding{{"Engine", LevelProblem,
 			fmt.Sprintf("The inference engine does not answer at %s.", d.Cfg.EngineURL),
-			"Start it, or point --engine-url at it. With install-node.sh: macOS `launchctl print gui/$(id -u)/com.llm-proxy.ollama`, Linux `systemctl --user status llm-proxy-ollama`; its Ollama listens on 127.0.0.1:11435, a stock Ollama on 11434. (" + shortErr(err) + ")"}}, false
+			"Start it, or point --engine-url at it. With install-node.sh: macOS `launchctl print gui/$(id -u)/com.ktms.ollama`, Linux `systemctl --user status ktms-ollama`; its Ollama listens on 127.0.0.1:11435, a stock Ollama on 11434. (" + shortErr(err) + ")"}}, false
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))

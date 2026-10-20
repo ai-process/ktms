@@ -153,7 +153,7 @@ func Load() *Config {
 		BootstrapAdminKey:               getEnv("BOOTSTRAP_ADMIN_KEY", ""),
 		UsageCollectorHost:              getEnv("USAGE_COLLECTOR_HOST", ""),
 		UsageCollectorTLS:               getBoolEnv("USAGE_COLLECTOR_TLS", false),
-		UsageProjectID:                  getEnv("USAGE_PROJECT_ID", "llm-proxy"),
+		UsageProjectID:                  getEnv("USAGE_PROJECT_ID", "ktms"),
 		BatchMaxItems:                   getIntEnv("BATCH_MAX_ITEMS", 10000),
 		BatchPollInterval:               time.Duration(getIntEnv("BATCH_POLL_SECONDS", 60)) * time.Second,
 		ResultsRetention:                getRetentionEnv("RESULTS_RETENTION_DAYS", 7*24*time.Hour),

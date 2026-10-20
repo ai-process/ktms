@@ -75,7 +75,7 @@ func main() {
 	}
 	keyring, err := crypto.ParseKeyring(cfg.EncryptionKeys)
 	if err != nil {
-		log.Fatal().Err(err).Msg("LLMPROXY_ENCRYPTION_KEYS is required and must parse")
+		log.Fatal().Err(err).Msg("KTMS_ENCRYPTION_KEYS (or legacy LLMPROXY_ENCRYPTION_KEYS) is required and must parse")
 	}
 
 	poolCfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
