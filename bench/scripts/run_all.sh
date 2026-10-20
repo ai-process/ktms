@@ -126,9 +126,10 @@ bench_target() {
 
   if [[ "$target" != direct ]]; then
     log "${target}: cold start"
-    record arch arch arch "$svc"
+    # Prepare first: `compose run` in the arch check would create bind-mount dirs as root.
     prepare="$(gw "$target" prepare)"
     [[ -n "$prepare" ]] && sut "$prepare"
+    record arch arch arch "$svc"
     record cold_start ms cold-start "$svc"
     sut smoke "$svc"
     sleep "$SETTLE_S"
