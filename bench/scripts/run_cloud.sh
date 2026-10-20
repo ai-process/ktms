@@ -14,21 +14,28 @@ export TF_VAR_project="$GCP_PROJECT"
 SSH_CIDR="${SSH_CIDR:-$(curl -fsS --max-time 10 https://checkip.amazonaws.com | tr -d '[:space:]')/32}"
 [[ "$SSH_CIDR" =~ ^[0-9.]+/[0-9]+$ ]] || { echo "cannot detect public IP; set SSH_CIDR" >&2; exit 1; }
 export TF_VAR_ssh_allowed_cidrs="[\"${SSH_CIDR}\"]"
+# One workspace per prefix, so stands with different TF_VAR_prefix can run in parallel.
+export TF_VAR_prefix="${TF_VAR_prefix:-ktms-bench}"
 
 if [[ -n "$(git -C "$REPO_DIR" status --porcelain -- . ':!bench/results')" ]]; then
   echo "warning: uncommitted changes are not shipped; benchmarking HEAD $(git -C "$REPO_DIR" rev-parse --short HEAD)" >&2
 fi
 
+"${TF[@]}" init -input=false >/dev/null
+# TF_WORKSPACE instead of `workspace select`: selection is a shared file in .terraform/.
+TF_WORKSPACE='' "${TF[@]}" workspace new "$TF_VAR_prefix" >/dev/null 2>&1 || true
+export TF_WORKSPACE="$TF_VAR_prefix"
+
 destroy() {
   if [[ "${KEEP:-0}" == 1 ]]; then
-    echo "KEEP=1: stand left running; destroy with: TF_VAR_project=${GCP_PROJECT} TF_VAR_ssh_allowed_cidrs='[]' terraform -chdir=${BENCH_DIR}/terraform destroy" >&2
+    echo "KEEP=1: stand left running; destroy with: TF_WORKSPACE=${TF_WORKSPACE} TF_VAR_prefix=${TF_VAR_prefix}" \
+      "TF_VAR_project=${GCP_PROJECT} TF_VAR_ssh_allowed_cidrs='[]' terraform -chdir=${BENCH_DIR}/terraform destroy" >&2
     return
   fi
   "${TF[@]}" destroy -auto-approve -input=false
 }
 trap destroy EXIT
 
-"${TF[@]}" init -input=false >/dev/null
 "${TF[@]}" apply -auto-approve -input=false
 out() { "${TF[@]}" output -raw "$1"; }
 user="$(out ssh_user)"
@@ -46,7 +53,7 @@ for host in "$SUT" "$RUNNER"; do
   ssh "${ssh_opts[@]}" "$host" 'docker version -f "{{.Server.Version}}"'
   git -C "$REPO_DIR" archive --format=tar HEAD | ssh "${ssh_opts[@]}" "$host" "tar -x -C ${REMOTE_DIR}"
 done
-ssh "${ssh_opts[@]}" "$SUT" "printf 'BIND_ADDR=%s\nLITELLM_WORKERS=%s\n' ${SUT_IP} \$(nproc) > ${REMOTE_DIR}/bench/.env"
+ssh "${ssh_opts[@]}" "$SUT" "printf 'BIND_ADDR=%s\nSUT_CPUS=%s\n' ${SUT_IP} \$(nproc) > ${REMOTE_DIR}/bench/.env"
 
 SUT_SSH="$SUT" RUNNER_SSH="$RUNNER" SUT_IP="$SUT_IP" SSH_OPTS="$SSH_OPTS" REMOTE_DIR="$REMOTE_DIR" \
   ENV_NOTE="$(out description)" "${BENCH_DIR}/scripts/run_all.sh"

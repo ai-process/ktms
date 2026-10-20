@@ -11,6 +11,11 @@ users:
     ssh_authorized_keys: ["${ssh_public_key}"]
 
 write_files:
+  # Classic overlay2 store: with the containerd store, `docker image inspect .Size`
+  # also counts compressed layers, which inflated reported image sizes.
+  - path: /etc/docker/daemon.json
+    content: |
+      {"features": {"containerd-snapshotter": false}}
   - path: /etc/sysctl.d/99-bench.conf
     content: |
       net.core.somaxconn = 65535
@@ -20,6 +25,8 @@ write_files:
       fs.file-max = 2097152
 
 runcmd:
+  # Cost guard: powers off even if the orchestrator dies before terraform destroy.
+  - shutdown -h +300
   - sysctl --system
   - curl -fsSL https://get.docker.com | sh
   - systemctl enable --now docker

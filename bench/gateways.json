@@ -1,0 +1,91 @@
+{
+  "ktms": {
+    "label": "KTMS",
+    "port": 8080,
+    "ready": "/readyz",
+    "key": "ktms_bench_key",
+    "prepare": "prepare-ktms",
+    "deps": [
+      "db",
+      "redis"
+    ],
+    "note": "Postgres and Redis (its config and limit stores) run as separate containers and are not counted."
+  },
+  "litellm": {
+    "label": "LiteLLM",
+    "port": 4000,
+    "ready": "/health/readiness",
+    "key": "sk-litellm-bench",
+    "note": "One Uvicorn worker per core, master key only, no database."
+  },
+  "bifrost": {
+    "label": "Bifrost",
+    "port": 8081,
+    "key": "unused",
+    "auth": false,
+    "prepare": "prepare-bifrost",
+    "note": "Client keys are not enforced in this setup. Pricing datasheets are served from local files."
+  },
+  "portkey": {
+    "label": "Portkey",
+    "port": 8787,
+    "key": "mock-key",
+    "auth": false,
+    "headers": {
+      "x-portkey-provider": "openai",
+      "x-portkey-custom-host": "http://mock-upstream:8000/v1"
+    },
+    "note": "One Node.js process as shipped (no cluster mode); using all cores would take one replica per core behind a load balancer. Provider is chosen by request headers; the client key is forwarded upstream. Its per-request log handler cannot be turned off."
+  },
+  "kong": {
+    "label": "Kong AI Gateway",
+    "port": 8001,
+    "key": "sk-kong-bench",
+    "note": "Kong Gateway OSS 3.9 (the last open-source line), DB-less, ai-proxy plus key-auth, response buffering off."
+  },
+  "apisix": {
+    "label": "Apache APISIX",
+    "port": 9080,
+    "key": "sk-apisix-bench",
+    "note": "Standalone YAML mode, ai-proxy plus key-auth."
+  },
+  "higress": {
+    "label": "Higress",
+    "port": 8082,
+    "key": "sk-higress-bench",
+    "prepare": "prepare-higress",
+    "note": "All-in-one image: its memory includes the bundled control plane (API server, controller, pilot) next to Envoy."
+  },
+  "aigw": {
+    "label": "Envoy AI Gateway",
+    "port": 1975,
+    "key": "unused",
+    "auth": false,
+    "note": "Standalone `aigw run`. Client API-key auth fails in v1.2.0 standalone, so it runs without client auth."
+  },
+  "agentgateway": {
+    "label": "agentgateway",
+    "port": 4001,
+    "key": "agw-bench-key",
+    "note": "Strict API-key auth, access log off."
+  },
+  "newapi": {
+    "label": "New API",
+    "port": 3000,
+    "ready": "/api/status",
+    "key": "sk-newapibenchkey0000000000000000000000000000000000",
+    "prepare": "prepare-newapi",
+    "deps": [
+      "db",
+      "redis"
+    ],
+    "note": "Release-candidate tag (no newer stable release). Per-request consume logs and the CPU overload guard are off. Its access log cannot be turned off."
+  },
+  "plano": {
+    "label": "Plano",
+    "port": 12000,
+    "key": "unused",
+    "auth": false,
+    "note": "No client auth. Requests pass Envoy, brightstaff and a WASM filter. Its access log cannot be turned off."
+  }
+}

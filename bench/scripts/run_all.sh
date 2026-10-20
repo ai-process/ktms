@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Benchmarks direct, KTMS and LiteLLM one at a time into results/<run-id>/REPORT.md.
+# Benchmarks the direct baseline and every gateway in gateways.json, one at a time,
+# into results/<run-id>/REPORT.md.
 # Local: [PROFILE=quick] ./scripts/run_all.sh. Cloud: run_cloud.sh sets SUT_SSH/RUNNER_SSH/SUT_IP.
 set -euo pipefail
 
 BENCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROFILE="${PROFILE:-full}"
-TARGETS="${TARGETS:-direct ktms litellm}"
+TARGETS="${TARGETS:-direct $("${BENCH_DIR}/scripts/gw.py" names)}"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-${PROFILE}}"
 OUT="${BENCH_DIR}/results/${RUN_ID}"
 SUT_SSH="${SUT_SSH:-}"
@@ -22,7 +23,7 @@ case "$PROFILE" in
     : "${SAT_HOLD_S:=10}" "${SAT_RAMP_S:=3}" "${SETTLE_S:=5}" "${COOLDOWN_S:=15}" ;;
   full)
     : "${LAT_RATE:=200}" "${LAT_DURATION:=60s}" "${STREAM_VUS:=50}" "${STREAM_DURATION:=60s}"
-    : "${SOAK_RATE:=200}" "${SOAK_DURATION:=5m}" "${SAT_STEPS:=250,500,1000,1500,2000}"
+    : "${SOAK_RATE:=200}" "${SOAK_DURATION:=5m}" "${SAT_STEPS:=250,500,1000,1500,2000,3000,4000}"
     : "${SAT_HOLD_S:=20}" "${SAT_RAMP_S:=5}" "${SETTLE_S:=10}" "${COOLDOWN_S:=30}" ;;
   *) echo "PROFILE must be quick or full" >&2; exit 2 ;;
 esac
@@ -41,7 +42,8 @@ sut() {
 # (thresholds crossed) is a measured result, e.g. errors under load; anything else aborts.
 k6run() {
   local name=$1 script=$2; shift 2
-  local envs=(-e "TARGET=${target}" -e "BASE_URL=${base}" -e "API_KEY=${key}"
+  local envs=(-e "TARGET=${target}" -e "BASE_URL=${base}" -e "API_KEY=${key}" -e "MODEL=${model}"
+    -e "CHAT_PATH=${path}" -e "HEADERS=${headers}"
     -e "SUMMARY_PATH=/results/${RUN_ID}/${target}.${name}.json")
   for kv in "$@"; do envs+=(-e "$kv"); done
   log "${target}: ${name}"
@@ -49,7 +51,7 @@ k6run() {
   if [[ -n "$RUNNER_SSH" ]]; then
     ssh "${SSH_OPTS[@]}" "$RUNNER_SSH" "mkdir -p ${REMOTE_DIR}/results/${RUN_ID} && docker run --rm --network host -u \$(id -u):\$(id -g) \
       --ulimit nofile=1048576:1048576 -v ${REMOTE_DIR}/bench/k6:/k6:ro -v ${REMOTE_DIR}/results:/results \
-      ${envs[*]} ${K6_IMAGE} run --quiet /k6/scenarios/${script}" || rc=$?
+      $(printf '%q ' "${envs[@]}") ${K6_IMAGE} run --quiet /k6/scenarios/${script}" || rc=$?
   else
     docker compose -f "${BENCH_DIR}/docker-compose.bench.yaml" --profile k6 run --rm --no-deps \
       --user "$(id -u):$(id -g)" "${envs[@]}" k6 run --quiet "/k6/scenarios/${script}" || rc=$?
@@ -59,6 +61,8 @@ k6run() {
     exit "$rc"
   fi
 }
+
+gw() { "${BENCH_DIR}/scripts/gw.py" "$@"; }
 
 endpoint() {
   local host=$1 port=$2
@@ -79,11 +83,12 @@ record() {
 current=setup
 res=/dev/null
 sampler=
+job=
 finish() {
   local rc=$?
   set +e
   trap - EXIT
-  [[ -n "$sampler" ]] && kill "$sampler" 2>/dev/null
+  [[ -n "$job" ]] && kill "$job" 2>/dev/null
   [[ $rc -ne 0 ]] && echo "{\"target\":\"${current}\",\"exit\":${rc}}" >"${OUT}/aborted.json"
   [[ "$current" != setup ]] && sut stop-gateways
   if [[ -n "$RUNNER_SSH" ]]; then
@@ -104,24 +109,29 @@ printf '{"run_id":"%s","profile":"%s","mode":"%s","note":"%s","git_sha":"%s","st
   "$(git -C "$BENCH_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)" "$(date -u +%FT%TZ)" \
   "$sut_env" >"${OUT}/env.json"
 
-for target in $TARGETS; do
+# One target per subshell: a gateway that fails is recorded in failed.jsonl and the
+# run moves on. It runs in the background because set -e is ignored in a subshell
+# that is tested with || or if.
+bench_target() {
+  trap '[[ -n "$sampler" ]] && kill "$sampler" 2>/dev/null' EXIT
   case "$target" in
-    direct) svc=mock-upstream; key=mock-key; base="$(endpoint mock-upstream 8000)" ;;
-    ktms) svc=ktms; key=ktms_bench_key; base="$(endpoint ktms 8080)" ;;
-    litellm) svc=litellm; key=sk-litellm-bench; base="$(endpoint litellm 4000)" ;;
-    *) echo "unknown target ${target}" >&2; exit 2 ;;
+    direct) svc=mock-upstream key=mock-key model=gpt-4o-mini path=/v1/chat/completions headers='{}'
+      base="$(endpoint mock-upstream 8000)" ;;
+    *) svc="$target" key="$(gw "$target" key)" model="$(gw "$target" model)" path="$(gw "$target" path)"
+      headers="$(gw "$target" headers)" base="$(endpoint "$target" "$(gw "$target" port)")" ;;
   esac
-  current="$target"
   res="${OUT}/${target}.resources.jsonl"
   : >"$res"
   sut stop-gateways
 
   if [[ "$target" != direct ]]; then
     log "${target}: cold start"
+    # Prepare first: `compose run` in the arch check would create bind-mount dirs as root.
+    prepare="$(gw "$target" prepare)"
+    [[ -n "$prepare" ]] && sut "$prepare"
     record arch arch arch "$svc"
-    [[ "$target" == ktms ]] && sut prepare-ktms
     record cold_start ms cold-start "$svc"
-    sut smoke "$svc" "$key"
+    sut smoke "$svc"
     sleep "$SETTLE_S"
     record idle m metrics "$svc"
   fi
@@ -150,6 +160,20 @@ for target in $TARGETS; do
   k6run saturation 03_concurrency.js "STEPS=${SAT_STEPS}" "HOLD_S=${SAT_HOLD_S}" "RAMP_S=${SAT_RAMP_S}"
   if [[ "$target" != direct ]]; then
     record after_saturation m metrics "$svc"
+  fi
+}
+
+for target in $TARGETS; do
+  current="$target"
+  rc=0
+  bench_target &
+  job=$!
+  wait "$job" || rc=$?
+  job=
+  if [[ $rc -ne 0 ]]; then
+    echo "{\"target\":\"${target}\",\"exit\":${rc}}" >>"${OUT}/failed.jsonl"
+    log "${target}: failed (exit ${rc}), continuing with the next target"
+    sut stop-gateways || true
   fi
 done
 current=finished

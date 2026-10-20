@@ -5,3 +5,5 @@ terraform/*.tfstate*
 terraform/*.tfplan
 terraform/.ssh/
 __pycache__/
+gateways/bifrost/run/
+gateways/higress/run/
