@@ -162,6 +162,8 @@ config:
   circuitBreakerEnabled: true
   circuitBreakerFailThreshold: 5
   circuitBreakerCooldown: "30s"
+  # Longest pause honoured when a vendor answers 429/503 with Retry-After; "0" disables pauses.
+  vendorCooldownMax: "5m"
   # Spend limits fail mode: "closed" (fail-safe refusal if Redis is unreachable) or "open" (unmetered bypass).
   # Note: The standalone app defaults to "open"; the Helm chart defaults to "closed" for production fail-safety.
   spendLimitsFailMode: "closed"
