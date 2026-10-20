@@ -65,3 +65,19 @@ func TestSweepDropsExpired(t *testing.T) {
 		t.Fatalf("after sweep %d entries remain, want 1", n)
 	}
 }
+
+func TestIdleTracksLivePauses(t *testing.T) {
+	s, now := newTestStore(time.Minute)
+	if !s.Idle() {
+		t.Fatal("new store must be idle")
+	}
+	s.Pause("k", time.Second)
+	if s.Idle() {
+		t.Fatal("store with a pause reported idle")
+	}
+	*now = now.Add(time.Second)
+	s.Remaining("k")
+	if !s.Idle() {
+		t.Fatal("store must be idle once its only pause expired")
+	}
+}

@@ -515,7 +515,7 @@ func TestVendorCooldownSetsRetryAfter(t *testing.T) {
 	fp, h, key := newTestAPI(t)
 	body := `{"messages":[{"role":"user","content":"x"}]}`
 
-	fp.textErr = router.ToStatus(&router.ChainExhausted{Last: &router.CoolingDown{Model: "m", Remaining: 2500 * time.Millisecond}})
+	fp.textErr = router.ToStatus(&router.ChainExhausted{Last: &router.CoolingDown{Model: "m", Remaining: 2500 * time.Millisecond}, RetryAfter: 2500 * time.Millisecond})
 	rec := do(h, "POST", "/v1/chat/completions", key, body)
 	if e := errBody(t, rec); rec.Code != http.StatusServiceUnavailable || e["code"] != "vendors_unavailable" {
 		t.Fatalf("got %d %v", rec.Code, e)

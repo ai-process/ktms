@@ -34,6 +34,8 @@ type ChainExhausted struct {
 	ThrottleKind     string // "rpm" | "budget_key" | "budget_user" | spendlimit reasons
 	AllCircuitBroken bool   // every model skipped because circuit breaker is open
 	AnyCircuitBroken bool   // observed at least one open circuit in chain; retained for telemetry and tests
+	// RetryAfter is the shortest vendor pause met on the walk, zero for none.
+	RetryAfter time.Duration
 }
 
 func (e *ChainExhausted) Error() string {
@@ -79,24 +81,24 @@ func ToStatus(err error) error {
 			return throttledStatus(exhausted.ThrottleKind, time.Now())
 		}
 		if llm.IsRetryableError(exhausted.Last) || llm.ShouldSkipToNextModel(exhausted.Last) {
-			return unavailableStatus(exhausted.Last)
+			return unavailableStatus(exhausted)
 		}
 		return status.Error(codes.Internal, "vendor_error")
 	}
 	return status.Error(codes.Internal, "vendor_error")
 }
 
-// unavailableStatus passes a vendor's Retry-After on to the caller when the
-// chain ended on a paused model, so clients wait instead of hammering.
-func unavailableStatus(last error) error {
+// unavailableStatus passes on when the first paused model frees up, so
+// clients wait instead of hammering. With an open circuit in the chain that
+// time is unknown (the breaker may recover sooner), so none is promised.
+func unavailableStatus(exhausted *ChainExhausted) error {
 	st := status.New(codes.Unavailable, "vendors_unavailable")
-	var cd *CoolingDown
-	if !errors.As(last, &cd) || cd.Remaining <= 0 {
+	if exhausted.RetryAfter <= 0 || exhausted.AnyCircuitBroken {
 		return st.Err()
 	}
-	withInfo, err := st.WithDetails(&errdetails.RetryInfo{RetryDelay: durationpb.New(cd.Remaining)})
+	withInfo, err := st.WithDetails(&errdetails.RetryInfo{RetryDelay: durationpb.New(exhausted.RetryAfter)})
 	if err != nil {
-		log.Error().Err(err).Str("model", cd.Model).Msg("attach retry info to vendor cooldown")
+		log.Error().Err(err).Msg("attach retry info to vendor cooldown")
 		return st.Err()
 	}
 	return withInfo.Err()

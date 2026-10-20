@@ -71,6 +71,19 @@ func pauseOnRetryAfter(cd Cooldown, m *proxydb.Model, err error) error {
 	return &CoolingDown{Model: m.ID, Remaining: d, Err: err}
 }
 
+// shortestPause keeps the soonest a paused model in the chain frees up, which
+// is what the caller is told to wait when the whole chain fails.
+func shortestPause(cur time.Duration, err error) time.Duration {
+	var cd *CoolingDown
+	if !errors.As(err, &cd) || cd.Remaining <= 0 {
+		return cur
+	}
+	if cur == 0 || cd.Remaining < cur {
+		return cd.Remaining
+	}
+	return cur
+}
+
 func nextModelID(chain []*proxydb.Model, i int) string {
 	if i+1 < len(chain) {
 		return chain[i+1].ID

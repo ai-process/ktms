@@ -23,6 +23,9 @@ import (
 const (
 	perModelAttempts = 2
 	attemptBackoff   = 500 * time.Millisecond
+	// maxInPlaceWait: a vendor Retry-After up to this long is waited out on the
+	// same model; longer ones pause the model and move the chain on.
+	maxInPlaceWait = time.Second
 	// schemaAttempts: one retry when a soft-schema model answers in the wrong
 	// shape. Models that cannot hold a shape rarely find it on a third go.
 	schemaAttempts = 2
@@ -296,6 +299,7 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 		throttledCount   = 0
 		throttleKind     = "rpm"
 		shadowDispatched bool
+		soonest          time.Duration // shortest vendor pause seen on the walk
 	)
 
 	var primaryCh chan *primaryResult
@@ -310,13 +314,11 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 			observability.FallbacksTotal.WithLabelValues(m.ID, nextModelID(r.Chain, i), "cooldown").Inc()
 			allThrottled, allCircuitBroken = false, false
 			lastErr = cd
+			soonest = shortestPause(soonest, cd)
 			continue
 		}
 		if r.CircuitBreaker != nil && !r.CircuitBreaker.Allow(m.Vendor, m.ID) {
-			var nextModel string
-			if i+1 < len(r.Chain) {
-				nextModel = r.Chain[i+1].ID
-			}
+			nextModel := nextModelID(r.Chain, i)
 			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, "circuit_broken").Inc()
 			observability.CircuitBreakerRejectionsTotal.WithLabelValues(m.Vendor, m.ID).Inc()
 			log.Warn().Str("model", m.ID).Str("vendor", m.Vendor).
@@ -375,6 +377,7 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 			}
 		}
 		err = pauseOnRetryAfter(r.Cooldown, m, err)
+		soonest = shortestPause(soonest, err)
 		if err == nil {
 			if primaryCh != nil {
 				primaryCh <- &primaryResult{Model: m, Response: resp}
@@ -391,10 +394,7 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 		}
 		var schemaErr *SchemaFailure
 		if errors.As(err, &schemaErr) {
-			var nextModel string
-			if i+1 < len(r.Chain) {
-				nextModel = r.Chain[i+1].ID
-			}
+			nextModel := nextModelID(r.Chain, i)
 			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, "schema_failure").Inc()
 			// The vendor answered; it just could not hold the shape. Another
 			// model may, so this advances the chain instead of ending it.
@@ -409,10 +409,10 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 		}
 	}
 
-	return nil, nil, exhaustedError(len(r.Chain), allCircuitBroken, allThrottled, anyCircuitBroken, throttledCount, throttleKind, lastErr)
+	return nil, nil, exhaustedError(len(r.Chain), allCircuitBroken, allThrottled, anyCircuitBroken, throttledCount, throttleKind, lastErr, soonest)
 }
 
-func exhaustedError(chainLen int, allCircuitBroken, allThrottled, anyCircuitBroken bool, throttledCount int, throttleKind string, lastErr error) *ChainExhausted {
+func exhaustedError(chainLen int, allCircuitBroken, allThrottled, anyCircuitBroken bool, throttledCount int, throttleKind string, lastErr error, soonest time.Duration) *ChainExhausted {
 	if chainLen > 0 && allCircuitBroken {
 		return &ChainExhausted{AllCircuitBroken: true}
 	}
@@ -429,7 +429,7 @@ func exhaustedError(chainLen int, allCircuitBroken, allThrottled, anyCircuitBrok
 		}
 		return &ChainExhausted{AllCircuitBroken: true}
 	}
-	return &ChainExhausted{Last: lastErr, AnyCircuitBroken: anyCircuitBroken}
+	return &ChainExhausted{Last: lastErr, AnyCircuitBroken: anyCircuitBroken, RetryAfter: soonest}
 }
 
 // ExecuteStream walks the model chain for streaming requests. Pre-stream failures
@@ -446,6 +446,7 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 		throttledCount   = 0
 		throttleKind     = "rpm"
 		shadowDispatched bool
+		soonest          time.Duration // shortest vendor pause seen on the walk
 	)
 
 	var primaryCh chan *primaryResult
@@ -460,13 +461,11 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			observability.FallbacksTotal.WithLabelValues(m.ID, nextModelID(r.Chain, i), "cooldown").Inc()
 			allThrottled, allCircuitBroken = false, false
 			lastErr = cd
+			soonest = shortestPause(soonest, cd)
 			continue
 		}
 		if r.CircuitBreaker != nil && !r.CircuitBreaker.Allow(m.Vendor, m.ID) {
-			var nextModel string
-			if i+1 < len(r.Chain) {
-				nextModel = r.Chain[i+1].ID
-			}
+			nextModel := nextModelID(r.Chain, i)
 			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, "circuit_broken").Inc()
 			observability.CircuitBreakerRejectionsTotal.WithLabelValues(m.Vendor, m.ID).Inc()
 			log.Warn().Str("model", m.ID).Str("vendor", m.Vendor).
@@ -549,7 +548,7 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			streamFullText strings.Builder
 		)
 
-		streamErr := func() error {
+		attemptStream := func() error {
 			streamCtx := ctx
 			var stopWatchdog func()
 			var pauseWatchdog func()
@@ -636,15 +635,18 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 				}
 			}
 			return callErr
-		}()
-		err = streamErr
+		}
+		// Only a stream that has sent nothing yet can be retried on the same model.
+		for attempt := 1; ; attempt++ {
+			err = attemptStream()
+			if err == nil || firstChunkSent || !retrySameModel(ctx, err, attempt, m.ID) {
+				break
+			}
+		}
 
 		if soft && err == nil {
 			if checkErr := llm.CheckResponseSchema(fullText.String(), schema); checkErr != nil {
-				var nextModel string
-				if i+1 < len(r.Chain) {
-					nextModel = r.Chain[i+1].ID
-				}
+				nextModel := nextModelID(r.Chain, i)
 				observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, "schema_failure").Inc()
 				log.Error().Err(checkErr).Str("model", m.ID).Str("vendor", m.Vendor).
 					Msg("stream reply did not match requested schema, trying next in chain")
@@ -709,6 +711,7 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			r.CircuitBreaker.Report(ctx, m.Vendor, m.ID, err)
 		}
 		err = pauseOnRetryAfter(r.Cooldown, m, err)
+		soonest = shortestPause(soonest, err)
 
 		if err == nil {
 			if primaryCh != nil {
@@ -753,7 +756,7 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 		}
 	}
 
-	return nil, exhaustedError(len(r.Chain), allCircuitBroken, allThrottled, anyCircuitBroken, throttledCount, throttleKind, lastErr)
+	return nil, exhaustedError(len(r.Chain), allCircuitBroken, allThrottled, anyCircuitBroken, throttledCount, throttleKind, lastErr, soonest)
 }
 
 // callAndCheck runs one model and, when that model cannot be handed a schema
@@ -795,19 +798,10 @@ func (r Request) callAndCheck(ctx context.Context, adapter llm.ClientAdapter, m 
 	return nil, &SchemaFailure{Model: m.ID, Err: lastCheck}
 }
 
-// callWithRetries retries retryable vendor errors (429/5xx) on the same
-// model before Execute moves down the chain.
+// callWithRetries retries retryable vendor errors (429/5xx, transport failures)
+// on the same model before Execute moves down the chain.
 func callWithRetries(ctx context.Context, adapter llm.ClientAdapter, chat *llm.ChatContext, modelID string, upstreamTimeout time.Duration) (*llm.Response, error) {
-	var lastErr error
-	for attempt := 0; attempt < perModelAttempts; attempt++ {
-		if attempt > 0 {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(attemptBackoff * time.Duration(attempt)):
-			}
-		}
-
+	for attempt := 1; ; attempt++ {
 		resp, err := func() (*llm.Response, error) {
 			attemptCtx := ctx
 			if upstreamTimeout > 0 {
@@ -828,24 +822,42 @@ func callWithRetries(ctx context.Context, adapter llm.ClientAdapter, chat *llm.C
 			}
 			return r, callErr
 		}()
-
 		if err == nil {
 			return resp, nil
 		}
-		lastErr = err
-		if llm.ShouldSkipToNextModel(err) {
+		if !retrySameModel(ctx, err, attempt, modelID) {
 			return nil, err
 		}
-		if !llm.IsRetryableError(err) {
-			return nil, err
-		}
-		// A named wait outlasts the fixed backoff; the chain moves on and pauses the model.
-		if _, ok := llm.RetryAfter(err); ok {
-			return nil, err
-		}
-		log.Warn().Err(err).Str("model", modelID).Int("attempt", attempt+1).Msg("retryable vendor error")
 	}
-	return nil, lastErr
+}
+
+// retrySameModel decides whether a failed attempt gets another go on the same
+// model and waits for it: the vendor's short Retry-After, else the fixed
+// backoff. A longer Retry-After returns false so the chain pauses the model.
+func retrySameModel(ctx context.Context, err error, attempt int, modelID string) bool {
+	if attempt >= perModelAttempts || ctx.Err() != nil || llm.ShouldSkipToNextModel(err) || !llm.IsRetryableError(err) {
+		return false
+	}
+	// These are "retryable" only so the chain advances; the same model answers alike.
+	if errors.Is(err, llm.ErrNoAudioContent) || errors.Is(err, llm.ErrJudgmentUnsupported) || errors.Is(err, llm.ErrEmbeddingUnsupported) {
+		return false
+	}
+	wait := attemptBackoff * time.Duration(attempt)
+	if hint, ok := llm.RetryAfter(err); ok {
+		if hint > maxInPlaceWait {
+			return false
+		}
+		wait = hint
+	}
+	log.Warn().Err(err).Str("model", modelID).Int("attempt", attempt).Dur("wait", wait).Msg("retryable vendor error")
+	t := time.NewTimer(wait)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
 }
 
 // MediaRequest is the chain walk for the speech and image RPCs. They share the
@@ -878,19 +890,18 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 	anyCircuitBroken := false
 	throttledCount := 0
 	throttleKind := "rpm"
+	var soonest time.Duration // shortest vendor pause seen on the walk
 
 	for i, m := range r.Chain {
 		if cd, ok := coolingDown(r.Cooldown, m); ok {
 			observability.FallbacksTotal.WithLabelValues(m.ID, nextModelID(r.Chain, i), "cooldown").Inc()
 			allThrottled, allCircuitBroken = false, false
 			lastErr = cd
+			soonest = shortestPause(soonest, cd)
 			continue
 		}
 		if r.CircuitBreaker != nil && !r.CircuitBreaker.Allow(m.Vendor, m.ID) {
-			var nextModel string
-			if i+1 < len(r.Chain) {
-				nextModel = r.Chain[i+1].ID
-			}
+			nextModel := nextModelID(r.Chain, i)
 			observability.FallbacksTotal.WithLabelValues(m.ID, nextModel, "circuit_broken").Inc()
 			observability.CircuitBreakerRejectionsTotal.WithLabelValues(m.Vendor, m.ID).Inc()
 			log.Warn().Str("model", m.ID).Str("vendor", m.Vendor).
@@ -932,7 +943,7 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 			continue
 		}
 
-		spent, err := func() (llm.TokensUsage, error) {
+		attemptCall := func() (llm.TokensUsage, error) {
 			attemptCtx := ctx
 			if r.UpstreamTimeout > 0 {
 				var cancel context.CancelFunc
@@ -946,12 +957,24 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 				}
 			}
 			return sp, callErr
-		}()
+		}
+		var spent llm.TokensUsage
+		for attempt := 1; ; attempt++ {
+			sp, callErr := attemptCall()
+			// Failed attempts can still be billed (partial media), so usage adds up.
+			spent.Input += sp.Input
+			spent.Output += sp.Output
+			err = callErr
+			if err == nil || !retrySameModel(ctx, err, attempt, m.ID) {
+				break
+			}
+		}
 		th.Settle(res, spent)
 		if r.CircuitBreaker != nil {
 			r.CircuitBreaker.Report(ctx, m.Vendor, m.ID, err)
 		}
 		err = pauseOnRetryAfter(r.Cooldown, m, err)
+		soonest = shortestPause(soonest, err)
 		if err == nil {
 			return m, nil
 		}
@@ -970,5 +993,5 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 			Msg("media call failed, trying next in chain")
 	}
 
-	return nil, exhaustedError(len(r.Chain), allCircuitBroken, allThrottled, anyCircuitBroken, throttledCount, throttleKind, lastErr)
+	return nil, exhaustedError(len(r.Chain), allCircuitBroken, allThrottled, anyCircuitBroken, throttledCount, throttleKind, lastErr, soonest)
 }

@@ -133,6 +133,7 @@ func (l *Loader) build(ctx context.Context, version int64) (*Snapshot, error) {
 		Version:        version,
 		Models:         map[string]*proxydb.Model{},
 		vendorKeys:     map[string]map[string]string{},
+		vendorKeyFPs:   map[string]map[string]string{},
 		UserRateLimits: map[string]map[string]*proxydb.UserRateLimit{},
 		SpendLimits:    map[string]map[string]int64{},
 		tracker:        l.tracker,
@@ -169,8 +170,10 @@ func (l *Loader) build(ctx context.Context, version int64) (*Snapshot, error) {
 		}
 		if snap.vendorKeys[vk.APIKeyID] == nil {
 			snap.vendorKeys[vk.APIKeyID] = map[string]string{}
+			snap.vendorKeyFPs[vk.APIKeyID] = map[string]string{}
 		}
 		snap.vendorKeys[vk.APIKeyID][vk.Vendor] = plain
+		snap.vendorKeyFPs[vk.APIKeyID][vk.Vendor] = fingerprint(plain)
 	}
 	return snap, nil
 }

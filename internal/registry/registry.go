@@ -21,6 +21,9 @@ type Snapshot struct {
 	Rules   []*proxydb.Rule           // enabled only, sorted by priority desc
 	// vendorKeys[apiKeyID][vendor] = decrypted credential.
 	vendorKeys map[string]map[string]string
+	// vendorKeyFPs mirrors vendorKeys with fingerprints, hashed once per load
+	// instead of on every routed request.
+	vendorKeyFPs map[string]map[string]string
 	// UserRateLimits[userID][modelID] = user rate limit overrides.
 	UserRateLimits map[string]map[string]*proxydb.UserRateLimit
 	// SpendLimits[subjectType+"\x00"+subjectID][period] = cap in nano-USD.
@@ -89,10 +92,17 @@ func (s *Snapshot) VendorKey(apiKeyID, vendor string) (string, bool) {
 // VendorKeyFingerprint names the client's credential for vendor without
 // revealing it, so clients sharing one vendor key share its rate limits.
 func (s *Snapshot) VendorKeyFingerprint(apiKeyID, vendor string) string {
+	if fp, ok := s.vendorKeyFPs[apiKeyID][vendor]; ok {
+		return fp
+	}
 	key, ok := s.vendorKeys[apiKeyID][vendor]
 	if !ok {
 		return ""
 	}
+	return fingerprint(key)
+}
+
+func fingerprint(key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:8])
 }

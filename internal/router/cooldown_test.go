@@ -140,8 +140,144 @@ func TestExecuteAllPausedReturnsRetryInfo(t *testing.T) {
 			delay = ri.GetRetryDelay().AsDuration()
 		}
 	}
-	if delay != 7*time.Second {
-		t.Fatalf("RetryInfo delay = %v, want the last model's 7s", delay)
+	if delay != 3*time.Second {
+		t.Fatalf("RetryInfo delay = %v, want the soonest pause, 3s", delay)
+	}
+}
+
+func TestExecutePauseWithOpenCircuitPromisesNoDelay(t *testing.T) {
+	cd := newFakeCooldown()
+	chain := cooldownChain()
+	cd.Pause(chain[0], time.Minute)
+	_, _, err := Execute(context.Background(), NoopThrottle{}, Request{
+		Chain:          chain,
+		Chat:           llm.NewChatContext(),
+		Cooldown:       cd,
+		CircuitBreaker: openBreaker{},
+		Adapter:        func(*proxydb.Model) (llm.ClientAdapter, error) { return nil, errors.New("unused") },
+	})
+	st := status.Convert(ToStatus(err))
+	if st.Code() != codes.Unavailable {
+		t.Fatalf("status = %v, want Unavailable", st.Code())
+	}
+	for _, d := range st.Details() {
+		if _, ok := d.(*errdetails.RetryInfo); ok {
+			t.Fatal("an open circuit may recover before the pause ends; no RetryInfo expected")
+		}
+	}
+}
+
+// openBreaker rejects every model.
+type openBreaker struct{}
+
+func (openBreaker) Allow(string, string) bool                     { return false }
+func (openBreaker) Report(context.Context, string, string, error) {}
+func (openBreaker) Release(string, string)                        {}
+func (openBreaker) IsClosed(string, string) bool                  { return false }
+
+func vendor429Ms(ms string) error {
+	err := vendor429("").(*openai.Error)
+	err.Response.Header.Set("Retry-After-Ms", ms)
+	return err
+}
+
+func TestExecuteShortRetryAfterIsWaitedInPlace(t *testing.T) {
+	limited := &fakeAdapter{responses: []func() (*llm.Response, error){fail(vendor429Ms("20")), ok("after the wait")}}
+	cd := newFakeCooldown()
+	start := time.Now()
+	_, m, err := Execute(context.Background(), NoopThrottle{}, Request{
+		Chain:    cooldownChain()[:1],
+		Chat:     llm.NewChatContext(),
+		Cooldown: cd,
+		Adapter:  func(*proxydb.Model) (llm.ClientAdapter, error) { return limited, nil },
+	})
+	if err != nil || m.ID != "primary" || limited.calls != 2 {
+		t.Fatalf("m=%v err=%v calls=%d, want the same model retried", m, err, limited.calls)
+	}
+	if waited := time.Since(start); waited < 20*time.Millisecond || waited >= attemptBackoff {
+		t.Fatalf("waited %v, want the vendor's 20ms instead of the fixed backoff", waited)
+	}
+	if len(cd.until) != 0 {
+		t.Fatalf("a short wait that was honoured in place must not pause: %v", cd.until)
+	}
+}
+
+type resetErr struct{}
+
+func (resetErr) Error() string   { return "read: connection reset by peer" }
+func (resetErr) Timeout() bool   { return false }
+func (resetErr) Temporary() bool { return true }
+
+func TestExecuteTransportFailureFallsBack(t *testing.T) {
+	broken := &fakeAdapter{responses: []func() (*llm.Response, error){fail(resetErr{})}}
+	backup := &fakeAdapter{responses: []func() (*llm.Response, error){ok("from backup")}}
+	adapters := map[string]llm.ClientAdapter{"primary": broken, "backup": backup}
+	_, m, err := Execute(context.Background(), NoopThrottle{}, Request{
+		Chain:   cooldownChain(),
+		Chat:    llm.NewChatContext(),
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) { return adapters[m.ID], nil },
+	})
+	if err != nil || m.ID != "backup" {
+		t.Fatalf("m=%v err=%v: a reset connection must fall back, not end the chain", m, err)
+	}
+	if broken.calls != 2 {
+		t.Fatalf("reset retried %d times on the same model, want 2 attempts", broken.calls)
+	}
+}
+
+func TestExecuteStreamRetriesBeforeFirstChunk(t *testing.T) {
+	calls := 0
+	flaky := &fakeStreamAdapter{stream: func(_ context.Context, _ *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+		calls++
+		if calls == 1 {
+			return vendor500()
+		}
+		return onChunk(llm.StreamChunk{Delta: "ok", Usage: &llm.TokensUsage{Input: 1, Output: 1}})
+	}}
+	m, err := ExecuteStream(context.Background(), NoopThrottle{}, Request{
+		Chain:   cooldownChain()[:1],
+		Chat:    llm.NewChatContext(),
+		Adapter: func(*proxydb.Model) (llm.ClientAdapter, error) { return flaky, nil },
+	}, func(*proxydb.Model, llm.StreamChunk) error { return nil })
+	if err != nil || m.ID != "primary" || calls != 2 {
+		t.Fatalf("m=%v err=%v calls=%d, want one same-model retry", m, err, calls)
+	}
+}
+
+func TestExecuteStreamDoesNotRetryAfterFirstChunk(t *testing.T) {
+	calls := 0
+	dropping := &fakeStreamAdapter{stream: func(_ context.Context, _ *llm.ChatContext, onChunk func(llm.StreamChunk) error) error {
+		calls++
+		if err := onChunk(llm.StreamChunk{Delta: "partial"}); err != nil {
+			return err
+		}
+		return vendor500()
+	}}
+	_, err := ExecuteStream(context.Background(), NoopThrottle{}, Request{
+		Chain:   cooldownChain()[:1],
+		Chat:    llm.NewChatContext(),
+		Adapter: func(*proxydb.Model) (llm.ClientAdapter, error) { return dropping, nil },
+	}, func(*proxydb.Model, llm.StreamChunk) error { return nil })
+	if err == nil || calls != 1 {
+		t.Fatalf("err=%v calls=%d: a stream that already sent text must not be replayed", err, calls)
+	}
+}
+
+func TestExecuteMediaRetriesSameModel(t *testing.T) {
+	calls := 0
+	m, err := ExecuteMedia(context.Background(), NoopThrottle{}, MediaRequest{
+		Chain:   cooldownChain()[:1],
+		Adapter: func(*proxydb.Model) (llm.ClientAdapter, error) { return &fakeAdapter{}, nil },
+		Call: func(context.Context, *proxydb.Model, llm.ClientAdapter) (llm.TokensUsage, error) {
+			calls++
+			if calls == 1 {
+				return llm.TokensUsage{}, vendor500()
+			}
+			return llm.TokensUsage{Input: 1}, nil
+		},
+	})
+	if err != nil || m.ID != "primary" || calls != 2 {
+		t.Fatalf("m=%v err=%v calls=%d, want one same-model retry", m, err, calls)
 	}
 }
 
