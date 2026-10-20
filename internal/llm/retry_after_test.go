@@ -1,12 +1,17 @@
 package llm
 
 import (
+	"context"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/openai/openai-go/v3"
+	"google.golang.org/genai"
 )
 
 func TestParseRetryAfter(t *testing.T) {
@@ -25,6 +30,9 @@ func TestParseRetryAfter(t *testing.T) {
 		{"zero", map[string]string{"Retry-After": "0"}, 0, false},
 		{"garbage", map[string]string{"Retry-After": "soon"}, 0, false},
 		{"absent", nil, 0, false},
+		{"huge seconds are clamped", map[string]string{"Retry-After": "1e12"}, maxRetryAfter, true},
+		{"infinite ms are clamped", map[string]string{"Retry-After-Ms": "Inf"}, maxRetryAfter, true},
+		{"NaN is ignored", map[string]string{"Retry-After": "NaN"}, 0, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -51,5 +59,32 @@ func TestRetryAfterOnlyFor429And503(t *testing.T) {
 		if ok != tc.ok || (ok && d != 7*time.Second) {
 			t.Fatalf("status %d: RetryAfter = %v, %v; want ok=%v", tc.status, d, ok, tc.ok)
 		}
+	}
+}
+
+func TestRetryAfterFromGeminiRetryInfo(t *testing.T) {
+	err := fmt.Errorf("wrapped: %w", genai.APIError{Code: 429, Status: "RESOURCE_EXHAUSTED", Details: []map[string]any{
+		{"@type": "type.googleapis.com/google.rpc.QuotaFailure"},
+		{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "17s"},
+	}})
+	if d, ok := RetryAfter(err); !ok || d != 17*time.Second {
+		t.Fatalf("RetryAfter = %v, %v; want 17s", d, ok)
+	}
+	if _, ok := RetryAfter(genai.APIError{Code: 500, Details: []map[string]any{
+		{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "17s"},
+	}}); ok {
+		t.Fatal("RetryInfo on a 500 must be ignored")
+	}
+}
+
+func TestTransportFailuresAreRetryable(t *testing.T) {
+	if !IsRetryableError(fmt.Errorf("post: %w", io.ErrUnexpectedEOF)) {
+		t.Fatal("unexpected EOF on a reused connection must be retryable")
+	}
+	if !IsRetryableError(&net.OpError{Op: "read", Err: syscall.ECONNRESET}) {
+		t.Fatal("connection reset must be retryable")
+	}
+	if IsRetryableError(fmt.Errorf("post: %w", context.Canceled)) {
+		t.Fatal("a cancelled caller must not be retried")
 	}
 }

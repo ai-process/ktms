@@ -1,8 +1,12 @@
 package llm
 
 import (
+	"context"
 	"errors"
+	"io"
+	"net"
 	"strings"
+	"syscall"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/openai/openai-go/v3"
@@ -54,7 +58,8 @@ func ExtractHTTPStatusCode(err error) (int, bool) {
 }
 
 // IsRetryableError returns true if the error is from an LLM API and has a retryable
-// HTTP status code (429 Too Many Requests or 5xx server errors).
+// HTTP status code (429 Too Many Requests or 5xx server errors), or is a transport
+// failure (reset, refused, EOF on a reused connection) that never got a status.
 func IsRetryableError(err error) bool {
 	if err == nil {
 		return false
@@ -75,7 +80,21 @@ func IsRetryableError(err error) bool {
 			return true
 		}
 	}
-	return false
+	return isTransportFailure(err)
+}
+
+// isTransportFailure covers what vendor SDKs used to retry on their own. Caller
+// cancellations and deadlines are excluded: retrying them only wastes the slot.
+func isTransportFailure(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.EPIPE) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr)
 }
 
 // SkipToNextModel is implemented by errors that should bypass model-level retries

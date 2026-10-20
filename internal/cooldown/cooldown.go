@@ -4,19 +4,26 @@ package cooldown
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-// sweepAt bounds the map: expired entries are dropped once it grows past this.
-const sweepAt = 1024
+// Past sweepAt entries, expired ones are dropped at most once per sweepEvery,
+// so a 429 storm does not turn every Pause into a scan under the lock.
+const (
+	sweepAt    = 1024
+	sweepEvery = time.Second
+)
 
 // Store is a per-replica set of pauses. Like the circuit breaker it is not
 // shared: each replica pays at most one rejected call per pause window.
 type Store struct {
-	mu    sync.Mutex
-	until map[string]time.Time
-	max   time.Duration
-	now   func() time.Time
+	mu        sync.Mutex
+	until     map[string]time.Time
+	lastSweep time.Time
+	live      atomic.Int64 // len(until), read without the lock on the hot path
+	max       time.Duration
+	now       func() time.Time
 }
 
 // New returns a store that honours Retry-After up to max, or nil when max is
@@ -45,19 +52,26 @@ func (s *Store) Pause(key string, d time.Duration) time.Duration {
 		until = cur
 	}
 	s.until[key] = until
-	if len(s.until) > sweepAt {
+	if len(s.until) > sweepAt && now.Sub(s.lastSweep) >= sweepEvery {
+		s.lastSweep = now
 		for k, t := range s.until {
 			if !t.After(now) {
 				delete(s.until, k)
 			}
 		}
 	}
+	s.live.Store(int64(len(s.until)))
 	return until.Sub(now)
+}
+
+// Idle reports that nothing is paused, letting callers skip building keys.
+func (s *Store) Idle() bool {
+	return s == nil || s.live.Load() == 0
 }
 
 // Remaining is how long key stays paused, zero when it is not.
 func (s *Store) Remaining(key string) time.Duration {
-	if s == nil {
+	if s.Idle() {
 		return 0
 	}
 	s.mu.Lock()
@@ -69,6 +83,7 @@ func (s *Store) Remaining(key string) time.Duration {
 	d := until.Sub(s.now())
 	if d <= 0 {
 		delete(s.until, key)
+		s.live.Store(int64(len(s.until)))
 		return 0
 	}
 	return d

@@ -1964,11 +1964,16 @@ func writeAPIError(w http.ResponseWriter, err error) {
 	if st.Code() == codes.Internal && errCode == nil {
 		msg = "internal error"
 	}
-	if st.Code() == codes.Unavailable && hasRetryInfo(st) {
-		w.Header().Set("Retry-After", retryAfterSeconds(st))
+	if secs, ok := retryAfterSeconds(st); ok && st.Code() == codes.Unavailable {
+		w.Header().Set("Retry-After", secs)
 	}
 	if st.Code() == codes.ResourceExhausted {
-		w.Header().Set("Retry-After", retryAfterSeconds(st))
+		// Other throttles clear within a second or so.
+		secs, ok := retryAfterSeconds(st)
+		if !ok {
+			secs = "1"
+		}
+		w.Header().Set("Retry-After", secs)
 		if quotaExhausted(st) {
 			typ, errCode = router.InsufficientQuota, router.InsufficientQuota
 		}
@@ -1981,28 +1986,19 @@ func writeAPIError(w http.ResponseWriter, err error) {
 	}})
 }
 
-// retryAfterSeconds honours a RetryInfo on the status (spend limits wait for
-// their period to reset); other throttles clear within a second or so.
-func retryAfterSeconds(st *status.Status) string {
+// retryAfterSeconds reads a RetryInfo on the status: spend limits wait for
+// their period to reset, paused vendors for their Retry-After.
+func retryAfterSeconds(st *status.Status) (string, bool) {
 	for _, d := range st.Details() {
 		if ri, ok := d.(*errdetails.RetryInfo); ok && ri.GetRetryDelay() != nil {
 			secs := int64(math.Ceil(ri.GetRetryDelay().AsDuration().Seconds()))
 			if secs < 1 {
 				secs = 1
 			}
-			return strconv.FormatInt(secs, 10)
+			return strconv.FormatInt(secs, 10), true
 		}
 	}
-	return "1"
-}
-
-func hasRetryInfo(st *status.Status) bool {
-	for _, d := range st.Details() {
-		if _, ok := d.(*errdetails.RetryInfo); ok {
-			return true
-		}
-	}
-	return false
+	return "", false
 }
 
 func quotaExhausted(st *status.Status) bool {

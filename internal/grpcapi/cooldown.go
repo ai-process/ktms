@@ -41,6 +41,9 @@ func (c vendorCooldown) key(m *proxydb.Model) (string, bool) {
 }
 
 func (c vendorCooldown) Remaining(m *proxydb.Model) time.Duration {
+	if c.store.Idle() {
+		return 0
+	}
 	k, ok := c.key(m)
 	if !ok {
 		return 0

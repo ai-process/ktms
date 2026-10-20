@@ -39,7 +39,9 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // Error contract: retry only on UNAVAILABLE ("vendors_unavailable", or
-// "throttled:spend_unavailable" when spend limits fail closed).
+// "throttled:spend_unavailable" when spend limits fail closed). When the
+// chain ended on models a vendor paused with Retry-After, "vendors_unavailable"
+// carries RetryInfo with the soonest one frees up: wait that long first.
 // RESOURCE_EXHAUSTED = throttled ("throttled:rpm" | "throttled:budget_key" |
 // "throttled:budget_user") — back off, do not hot-retry; or a spend limit
 // ("throttled:spend_<key|user>_<daily|monthly>") with ErrorInfo
@@ -239,7 +241,9 @@ func (c *gatewayServiceClient) CancelBatch(ctx context.Context, in *CancelBatchR
 // for forward compatibility.
 //
 // Error contract: retry only on UNAVAILABLE ("vendors_unavailable", or
-// "throttled:spend_unavailable" when spend limits fail closed).
+// "throttled:spend_unavailable" when spend limits fail closed). When the
+// chain ended on models a vendor paused with Retry-After, "vendors_unavailable"
+// carries RetryInfo with the soonest one frees up: wait that long first.
 // RESOURCE_EXHAUSTED = throttled ("throttled:rpm" | "throttled:budget_key" |
 // "throttled:budget_user") — back off, do not hot-retry; or a spend limit
 // ("throttled:spend_<key|user>_<daily|monthly>") with ErrorInfo
