@@ -1,6 +1,8 @@
 package registry
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"sync"
@@ -82,6 +84,17 @@ func spendKey(subjectType, subjectID string) string { return subjectType + "\x00
 func (s *Snapshot) VendorKey(apiKeyID, vendor string) (string, bool) {
 	key, ok := s.vendorKeys[apiKeyID][vendor]
 	return key, ok
+}
+
+// VendorKeyFingerprint names the client's credential for vendor without
+// revealing it, so clients sharing one vendor key share its rate limits.
+func (s *Snapshot) VendorKeyFingerprint(apiKeyID, vendor string) string {
+	key, ok := s.vendorKeys[apiKeyID][vendor]
+	if !ok {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:8])
 }
 
 // CanCall reports whether the client may use m. Local models reach nodes with

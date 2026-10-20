@@ -1,0 +1,55 @@
+package llm
+
+import (
+	"fmt"
+	"net/http"
+	"testing"
+	"time"
+
+	"github.com/openai/openai-go/v3"
+)
+
+func TestParseRetryAfter(t *testing.T) {
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name    string
+		headers map[string]string
+		want    time.Duration
+		ok      bool
+	}{
+		{"seconds", map[string]string{"Retry-After": "5"}, 5 * time.Second, true},
+		{"fractional seconds", map[string]string{"Retry-After": "1.5"}, 1500 * time.Millisecond, true},
+		{"milliseconds win", map[string]string{"Retry-After-Ms": "250", "Retry-After": "5"}, 250 * time.Millisecond, true},
+		{"http date", map[string]string{"Retry-After": now.Add(30 * time.Second).Format(http.TimeFormat)}, 30 * time.Second, true},
+		{"date in the past", map[string]string{"Retry-After": now.Add(-time.Minute).Format(http.TimeFormat)}, 0, false},
+		{"zero", map[string]string{"Retry-After": "0"}, 0, false},
+		{"garbage", map[string]string{"Retry-After": "soon"}, 0, false},
+		{"absent", nil, 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := http.Header{}
+			for k, v := range tc.headers {
+				h.Set(k, v)
+			}
+			got, ok := ParseRetryAfter(h, now)
+			if ok != tc.ok || got != tc.want {
+				t.Fatalf("ParseRetryAfter = %v, %v; want %v, %v", got, ok, tc.want, tc.ok)
+			}
+		})
+	}
+}
+
+func TestRetryAfterOnlyFor429And503(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		ok     bool
+	}{{429, true}, {503, true}, {500, false}, {400, false}} {
+		resp := &http.Response{StatusCode: tc.status, Header: http.Header{"Retry-After": {"7"}}}
+		err := fmt.Errorf("wrapped: %w", &openai.Error{StatusCode: tc.status, Response: resp})
+		d, ok := RetryAfter(err)
+		if ok != tc.ok || (ok && d != 7*time.Second) {
+			t.Fatalf("status %d: RetryAfter = %v, %v; want ok=%v", tc.status, d, ok, tc.ok)
+		}
+	}
+}

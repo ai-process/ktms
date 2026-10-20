@@ -100,12 +100,13 @@ func ConfigureOpenAI(a *adapters.OpenAIAdapter, m *proxydb.Model, engine string)
 }
 
 // buildAdapter constructs the raw vendor adapter. In-process throttles are
-// no-ops: RPM and budgets are enforced in Redis, shared across replicas.
+// no-ops: RPM and budgets are enforced in Redis, shared across replicas. SDK
+// retries are off: the router retries and falls back, one call per attempt.
 func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 	noThrottle := llm.NewThrottleControl(0, 60)
 	switch m.Vendor {
 	case VendorOpenAI, VendorDeepSeek, VendorOllama, VendorGroq, VendorMistral:
-		opts := []option.RequestOption{option.WithAPIKey(key), option.WithHTTPClient(llm.VendorHTTPClient())}
+		opts := []option.RequestOption{option.WithAPIKey(key), option.WithHTTPClient(llm.VendorHTTPClient()), option.WithMaxRetries(0)}
 		endpoint := m.Endpoint
 		if endpoint == "" {
 			switch m.Vendor {
@@ -148,6 +149,7 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 			azure.WithEndpoint(endpoint, apiVersion),
 			azure.WithAPIKey(key),
 			option.WithHTTPClient(llm.VendorHTTPClient()),
+			option.WithMaxRetries(0),
 		}
 		client := openai.NewClient(opts...)
 		adapter := adapters.NewOpenAIAdapter(&client, m.ID, noThrottle)
@@ -178,7 +180,7 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		}
 		return adapters.NewTypeSafeAdapter(endpoint, key, m.ID), nil
 	case VendorAnthropic:
-		opts := []anthropicoption.RequestOption{anthropicoption.WithAPIKey(key), anthropicoption.WithHTTPClient(llm.VendorHTTPClient())}
+		opts := []anthropicoption.RequestOption{anthropicoption.WithAPIKey(key), anthropicoption.WithHTTPClient(llm.VendorHTTPClient()), anthropicoption.WithMaxRetries(0)}
 		endpoint := m.Endpoint
 		if endpoint == "" {
 			endpoint = AnthropicDefaultEndpoint
@@ -206,6 +208,7 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		cfg, err := config.LoadDefaultConfig(context.Background(),
 			config.WithRegion(region),
 			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, sessionToken)),
+			config.WithRetryMaxAttempts(1),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("bedrock aws config: %w", err)

@@ -61,6 +61,7 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 		Estimate:        int64(len([]rune(speechText))/4 + 1),
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,
+		Cooldown:        plan.cooldown,
 		Adapter:         plan.adapter,
 		Call: func(callCtx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			synth, ok := adapter.(llm.SpeechSynthesizer)
@@ -124,6 +125,7 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 		Estimate:        int64(len([]rune(prompt))/4 + 1),
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,
+		Cooldown:        plan.cooldown,
 		Adapter:         plan.adapter,
 		Call: func(callCtx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			gen, ok := adapter.(llm.ImageGenerator)
@@ -162,6 +164,7 @@ type mediaPlan struct {
 	attrs    map[string]string
 	meta     map[string]string
 	adapter  func(m *proxydb.Model) (llm.ClientAdapter, error)
+	cooldown router.Cooldown
 }
 
 func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, override, modality string, capabilities ...string) (*mediaPlan, error) {
@@ -224,5 +227,6 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 		attrs:    routing,
 		meta:     meta,
 		adapter:  func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
+		cooldown: s.cooldownFor(snap, id),
 	}, nil
 }

@@ -1964,6 +1964,9 @@ func writeAPIError(w http.ResponseWriter, err error) {
 	if st.Code() == codes.Internal && errCode == nil {
 		msg = "internal error"
 	}
+	if st.Code() == codes.Unavailable && hasRetryInfo(st) {
+		w.Header().Set("Retry-After", retryAfterSeconds(st))
+	}
 	if st.Code() == codes.ResourceExhausted {
 		w.Header().Set("Retry-After", retryAfterSeconds(st))
 		if quotaExhausted(st) {
@@ -1991,6 +1994,15 @@ func retryAfterSeconds(st *status.Status) string {
 		}
 	}
 	return "1"
+}
+
+func hasRetryInfo(st *status.Status) bool {
+	for _, d := range st.Details() {
+		if _, ok := d.(*errdetails.RetryInfo); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func quotaExhausted(st *status.Status) bool {

@@ -83,6 +83,8 @@ type Config struct {
 	// UpstreamRequestTimeout bounds each attempt against an upstream vendor.
 	// Stalls beyond this duration trip circuit breakers and advance fallback chains.
 	UpstreamRequestTimeout time.Duration
+	// VendorCooldownMax caps the pause taken from a vendor Retry-After; 0 disables pauses.
+	VendorCooldownMax time.Duration
 
 	MetricsAddr              string
 	OTELServiceName          string
@@ -168,6 +170,7 @@ func Load() *Config {
 		CircuitBreakerFailThreshold:     getIntEnv("CIRCUIT_BREAKER_FAIL_THRESHOLD", 5),
 		CircuitBreakerCooldown:          getDurationEnv("CIRCUIT_BREAKER_COOLDOWN", 30*time.Second),
 		UpstreamRequestTimeout:          getDurationEnv("UPSTREAM_REQUEST_TIMEOUT", 0),
+		VendorCooldownMax:               getDurationEnv("VENDOR_COOLDOWN_MAX", 5*time.Minute),
 		MetricsAddr:                     getEnv("METRICS_ADDR", ":9091"),
 		OTELServiceName:                 getEnv("OTEL_SERVICE_NAME", "ktms"),
 		OTELExporterOTLPEndpoint:        getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
