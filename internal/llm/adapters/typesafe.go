@@ -29,7 +29,7 @@ func NewTypeSafeAdapter(endpoint, apiKey, model string) *TypeSafeAdapter {
 	return &TypeSafeAdapter{
 		// No client-level Timeout: the per-request context carries the deadline,
 		// and a client timeout would override a caller's shorter one.
-		http:     &http.Client{},
+		http:     llm.VendorHTTPClient(),
 		endpoint: strings.TrimSuffix(endpoint, "/"),
 		apiKey:   apiKey,
 		model:    model,

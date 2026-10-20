@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/ai-process/ktms/internal/llm"
 )
 
 // executeJudgeRequest issues a POST with a Bearer token, enforcing a 1MB response limit
 // and capping error snippets at 300 characters to prevent memory and log bloat.
 func executeJudgeRequest(ctx context.Context, client *http.Client, url, apiKey string, body []byte) ([]byte, int, error) {
 	if client == nil {
-		client = &http.Client{}
+		client = llm.VendorHTTPClient()
 	}
 	ctx, cancel := context.WithTimeout(ctx, judgeTimeout)
 	defer cancel()
