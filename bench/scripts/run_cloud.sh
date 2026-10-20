@@ -38,8 +38,10 @@ read -r -a ssh_opts <<<"$SSH_OPTS"
 
 for host in "$SUT" "$RUNNER"; do
   for _ in $(seq 1 60); do ssh "${ssh_opts[@]}" "$host" true 2>/dev/null && break; sleep 5; done
-  # Exit 2 means "done with recoverable warnings"; docker must work either way.
-  ssh "${ssh_opts[@]}" "$host" 'cloud-init status --wait >/dev/null; docker version -f "{{.Server.Version}}"'
+  # Exit 2 means "done with recoverable warnings"; docker must work either way. A new
+  # session is needed for docker: cloud-init adds the user to its group after login works.
+  ssh "${ssh_opts[@]}" "$host" 'cloud-init status --wait >/dev/null' || true
+  ssh "${ssh_opts[@]}" "$host" 'docker version -f "{{.Server.Version}}"'
   git -C "$REPO_DIR" archive --format=tar HEAD | ssh "${ssh_opts[@]}" "$host" "tar -x -C ${REMOTE_DIR}"
 done
 ssh "${ssh_opts[@]}" "$SUT" "printf 'BIND_ADDR=%s\nLITELLM_WORKERS=%s\n' ${SUT_IP} \$(nproc) > ${REMOTE_DIR}/bench/.env"
