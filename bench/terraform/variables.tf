@@ -42,9 +42,8 @@ variable "subnet_cidr" {
 }
 
 variable "ssh_allowed_cidrs" {
-  description = "Sources allowed to SSH into the stand"
+  description = "Sources allowed to SSH into the stand; run_cloud.sh passes the caller's /32"
   type        = list(string)
-  default     = ["0.0.0.0/0"]
 }
 
 variable "ssh_user" {

@@ -1,9 +1,6 @@
-// Command mock-upstream is a deterministic OpenAI-compatible upstream for
-// gateway benchmarks: fixed response bodies, configurable latency, SSE streaming.
-//
-// Timing is configured by env defaults and can be overridden per request by a
-// directive inside any message, e.g. "[mock latency_ms=50 chunks=20 chunk_delay_ms=15]".
-// The directive lives in the prompt so it survives any proxy, unlike headers.
+// Command mock-upstream is a deterministic OpenAI-compatible upstream for gateway benchmarks.
+// Timing comes from a "[mock latency_ms=50 chunks=20 chunk_delay_ms=15]" directive in any
+// message: prompts survive every proxy unchanged, custom headers do not.
 package main
 
 import (

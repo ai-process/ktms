@@ -77,14 +77,14 @@ def streaming(out):
             "ttft_p50": ttft["med"], "ttft_p95": ttft["p(95)"], "ttft_p99": ttft["p(99)"],
             "total_p50": total["med"], "streams": value(s, "http_reqs", "count"),
             "lost_chunks": value(s, "lost_chunks", "count") or 0,
-            "checks": value(s, "checks", "rate"),
+            "failed": value(s, "stream_failed", "rate"),
         }
         if base and t != "direct" and trend(base, "ttft"):
             r["ttft_overhead_p50"] = ttft["med"] - trend(base, "ttft")["med"]
         res[t] = r
         rows.append([LABELS[t], fmt(r["ttft_p50"], " ms"), fmt(r["ttft_p95"], " ms"), fmt(r["ttft_p99"], " ms"),
                      fmt(r.get("ttft_overhead_p50"), " ms"), fmt(r["total_p50"], " ms"), int(r["lost_chunks"]),
-                     fmt((1 - r["checks"]) * 100, " %")])
+                     fmt(None if r["failed"] is None else r["failed"] * 100, " %")])
     md = table(["Target", "TTFT p50", "TTFT p95", "TTFT p99", "+TTFT p50 vs direct", "Stream total p50",
                 "Lost chunks", "Failed"], rows)
     return res, md
@@ -189,6 +189,7 @@ def main():
     lat, lat_md = latency(out)
     st, st_md = streaming(out)
     sat, sat_md = saturation(out)
+    sat_p = (load(out, "direct.saturation.json") or load(out, "ktms.saturation.json") or {}).get("params", {})
     rs, rs_md = resources(out, env)
     sut = env.get("sut", {})
     images = ", ".join(f"`{v['image']}`" for v in sut.get("images", {}).values())
@@ -225,7 +226,7 @@ TTFT is time to first byte; the mock sends headers with the first token. Stream 
 
 ## 3. Saturation
 
-Stepped arrival rate, 10 ms upstream latency. A step is sustained when achieved RPS is at least 95% of
+Stepped arrival rate, {sat_p.get('latency_ms')} ms upstream latency, {sat_p.get('hold_s')} s per step. A step is sustained when achieved RPS is at least 95% of
 offered and fewer than 1% of requests fail.
 
 {sat_md}

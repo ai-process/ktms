@@ -1,8 +1,5 @@
-# Benchmark stack: KTMS and LiteLLM in front of the same deterministic mock upstream.
-# Driven by scripts/run_all.sh, which starts one gateway at a time; see bench/README.md.
-#
-# BIND_ADDR is where gateway ports are published: 127.0.0.1 locally, the private
-# LAN address on the cloud SUT so the runner VM can reach them.
+# Benchmark stack driven by scripts/run_all.sh, one gateway at a time (see README.md).
+# BIND_ADDR publishes ports on 127.0.0.1 locally and on the SUT's private IP in the cloud.
 
 name: ktms-bench
 

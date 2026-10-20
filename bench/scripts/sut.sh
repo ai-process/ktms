@@ -80,11 +80,25 @@ PY
 }
 
 # Prints the service's cgroup v2 counters as one JSON object (bytes, microseconds).
+# Reads from the host so the probe is not charged to the measured cgroup; Docker
+# Desktop hides host cgroups, so there it falls back to exec inside the container.
 metrics() {
-  compose exec -T "$1" sh -c 'cd /sys/fs/cgroup && cat memory.stat cpu.stat &&
-    echo "current $(cat memory.current)" && echo "peak $(cat memory.peak 2>/dev/null || echo 0)"' |
-    awk '$1=="anon"{a=$2} $1=="usage_usec"{u=$2} $1=="current"{c=$2} $1=="peak"{p=$2}
-      END{if(u==""){exit 1}; printf "{\"anon\":%d,\"current\":%d,\"peak\":%d,\"cpu_usec\":%d}\n",a,c,p,u}'
+  local cid dir
+  cid="$(docker ps -q --no-trunc --filter label=com.docker.compose.project=ktms-bench \
+    --filter "label=com.docker.compose.service=$1" | head -1)"
+  [[ -n "$cid" ]] || { echo "metrics: $1 is not running" >&2; return 1; }
+  for dir in "/sys/fs/cgroup/system.slice/docker-${cid}.scope" "/sys/fs/cgroup/docker/${cid}" ""; do
+    [[ -z "$dir" || -r "$dir/memory.stat" ]] && break
+  done
+  if [[ -n "$dir" ]]; then
+    cat "$dir/memory.stat" "$dir/cpu.stat"
+    echo "current $(cat "$dir/memory.current")"
+    echo "peak $(cat "$dir/memory.peak" 2>/dev/null || echo 0)"
+  else
+    docker exec "$cid" sh -c 'cd /sys/fs/cgroup && cat memory.stat cpu.stat &&
+      echo "current $(cat memory.current)" && echo "peak $(cat memory.peak 2>/dev/null || echo 0)"'
+  fi | awk '$1=="anon"{a=$2} $1=="usage_usec"{u=$2} $1=="current"{c=$2} $1=="peak"{p=$2}
+    END{if(u==""){exit 1}; printf "{\"anon\":%d,\"current\":%d,\"peak\":%d,\"cpu_usec\":%d}\n",a,c,p,u}'
 }
 
 # One real request through the target; fails loudly instead of benchmarking errors.

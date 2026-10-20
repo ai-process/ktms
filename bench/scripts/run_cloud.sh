@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# Full cloud cycle: create the stand on GCP, ship the current commit, run the
-# suite from the runner VM against the SUT over the private subnet, collect the
-# report and destroy everything (set KEEP=1 to keep the stand for debugging).
-#
-#   GCP_PROJECT=my-project ./scripts/run_cloud.sh
+# GCP_PROJECT=... ./scripts/run_cloud.sh: creates the stand, ships HEAD, runs the suite
+# from the runner VM against the SUT over the private subnet, collects the report and
+# always destroys the stand (KEEP=1 keeps it for debugging).
 set -euo pipefail
 
 BENCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,6 +10,10 @@ TF=(terraform -chdir="${BENCH_DIR}/terraform")
 REMOTE_DIR=/opt/bench
 : "${GCP_PROJECT:?set GCP_PROJECT to the GCP project id}"
 export TF_VAR_project="$GCP_PROJECT"
+# SSH is opened only to this machine; set SSH_CIDR when egress differs (VPN, CI).
+SSH_CIDR="${SSH_CIDR:-$(curl -fsS --max-time 10 https://checkip.amazonaws.com | tr -d '[:space:]')/32}"
+[[ "$SSH_CIDR" =~ ^[0-9.]+/[0-9]+$ ]] || { echo "cannot detect public IP; set SSH_CIDR" >&2; exit 1; }
+export TF_VAR_ssh_allowed_cidrs="[\"${SSH_CIDR}\"]"
 
 if [[ -n "$(git -C "$REPO_DIR" status --porcelain -- . ':!bench/results')" ]]; then
   echo "warning: uncommitted changes are not shipped; benchmarking HEAD $(git -C "$REPO_DIR" rev-parse --short HEAD)" >&2
@@ -19,7 +21,7 @@ fi
 
 destroy() {
   if [[ "${KEEP:-0}" == 1 ]]; then
-    echo "KEEP=1: stand left running; destroy with: GCP_PROJECT=${GCP_PROJECT} terraform -chdir=${BENCH_DIR}/terraform destroy" >&2
+    echo "KEEP=1: stand left running; destroy with: TF_VAR_project=${GCP_PROJECT} TF_VAR_ssh_allowed_cidrs='[]' terraform -chdir=${BENCH_DIR}/terraform destroy" >&2
     return
   fi
   "${TF[@]}" destroy -auto-approve -input=false

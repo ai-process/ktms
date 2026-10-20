@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
-# Runs the suite against the direct baseline, KTMS and LiteLLM, one gateway at a
-# time, and writes results/<run-id>/REPORT.md.
-#
-#   ./scripts/run_all.sh                  # local Docker, full profile
-#   PROFILE=quick ./scripts/run_all.sh    # ~10 min smoke run
-#
-# Cloud mode is driven by run_cloud.sh, which sets SUT_SSH, RUNNER_SSH and SUT_IP.
+# Benchmarks direct, KTMS and LiteLLM one at a time into results/<run-id>/REPORT.md.
+# Local: [PROFILE=quick] ./scripts/run_all.sh. Cloud: run_cloud.sh sets SUT_SSH/RUNNER_SSH/SUT_IP.
 set -euo pipefail
 
 BENCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -42,8 +37,8 @@ sut() {
   fi
 }
 
-# k6 exits 99 when thresholds fail: that is a measured result (e.g. errors under
-# load), recorded in the summary. Any other non-zero exit aborts the run.
+# k6 runs as the invoking user so it can write summaries into the results dir. Exit 99
+# (thresholds crossed) is a measured result, e.g. errors under load; anything else aborts.
 k6run() {
   local name=$1 script=$2; shift 2
   local envs=(-e "TARGET=${target}" -e "BASE_URL=${base}" -e "API_KEY=${key}"
@@ -52,12 +47,12 @@ k6run() {
   log "${target}: ${name}"
   local rc=0
   if [[ -n "$RUNNER_SSH" ]]; then
-    ssh "${SSH_OPTS[@]}" "$RUNNER_SSH" "mkdir -p ${REMOTE_DIR}/results/${RUN_ID} && docker run --rm --network host \
+    ssh "${SSH_OPTS[@]}" "$RUNNER_SSH" "mkdir -p ${REMOTE_DIR}/results/${RUN_ID} && docker run --rm --network host -u \$(id -u):\$(id -g) \
       --ulimit nofile=1048576:1048576 -v ${REMOTE_DIR}/bench/k6:/k6:ro -v ${REMOTE_DIR}/results:/results \
       ${envs[*]} ${K6_IMAGE} run --quiet /k6/scenarios/${script}" || rc=$?
   else
     docker compose -f "${BENCH_DIR}/docker-compose.bench.yaml" --profile k6 run --rm --no-deps \
-      "${envs[@]}" k6 run --quiet "/k6/scenarios/${script}" || rc=$?
+      --user "$(id -u):$(id -g)" "${envs[@]}" k6 run --quiet "/k6/scenarios/${script}" || rc=$?
   fi
   if [[ $rc -ne 0 && $rc -ne 99 ]]; then
     echo "k6 ${script} failed for ${target} (exit ${rc})" >&2
@@ -83,10 +78,12 @@ record() {
 # Always collect and report what was measured; an abort is marked for report.py.
 current=setup
 res=/dev/null
+sampler=
 finish() {
   local rc=$?
   set +e
   trap - EXIT
+  [[ -n "$sampler" ]] && kill "$sampler" 2>/dev/null
   [[ $rc -ne 0 ]] && echo "{\"target\":\"${current}\",\"exit\":${rc}}" >"${OUT}/aborted.json"
   [[ "$current" != setup ]] && sut stop-gateways
   if [[ -n "$RUNNER_SSH" ]]; then
@@ -117,10 +114,10 @@ for target in $TARGETS; do
   current="$target"
   res="${OUT}/${target}.resources.jsonl"
   : >"$res"
+  sut stop-gateways
 
   if [[ "$target" != direct ]]; then
     log "${target}: cold start"
-    sut stop-gateways
     record arch arch arch "$svc"
     [[ "$target" == ktms ]] && sut prepare-ktms
     record cold_start ms cold-start "$svc"
@@ -142,6 +139,7 @@ for target in $TARGETS; do
     k6run soak 04_soak.js "RATE=${SOAK_RATE}" "DURATION=${SOAK_DURATION}"
     kill "$sampler" 2>/dev/null || true
     wait "$sampler" 2>/dev/null || true
+    sampler=
     record soak_end m metrics "$svc"
     record upstream_end u upstream-stats
     sleep "$COOLDOWN_S"
