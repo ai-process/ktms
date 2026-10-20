@@ -47,6 +47,7 @@ helm install ktms ./deploy/helm/ktms \
 | `secrets.existingSecret` | Name of existing Secret with `DATABASE_URL`, `KTMS_ENCRYPTION_KEYS`, `BOOTSTRAP_ADMIN_KEY`, `REDIS_PASSWORD` | `""` |
 | `config.routingReloadSeconds` | Replicas config poll interval in seconds | `60` |
 | `config.redisAddr` | Optional Redis address for rate limiting | `""` |
+| `config.vendorCooldownMax` | Longest pause honoured when a vendor answers `429`/`503` with `Retry-After` (`"0"` disables pauses) | `5m` |
 | `config.spendLimitsFailMode` | Spend limit fail mode (`closed` fails safe, `open` allows unmetered; chart defaults to `closed` for production safety) | `closed` |
 | `config.logLevel` | Application log level (`debug`, `info`, `warn`, `error`) | `info` |
 | `probes.startup.enabled` | Startup probe to accommodate database schema migrations | `true` |
