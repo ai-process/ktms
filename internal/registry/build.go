@@ -105,7 +105,7 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 	noThrottle := llm.NewThrottleControl(0, 60)
 	switch m.Vendor {
 	case VendorOpenAI, VendorDeepSeek, VendorOllama, VendorGroq, VendorMistral:
-		opts := []option.RequestOption{option.WithAPIKey(key)}
+		opts := []option.RequestOption{option.WithAPIKey(key), option.WithHTTPClient(llm.VendorHTTPClient())}
 		endpoint := m.Endpoint
 		if endpoint == "" {
 			switch m.Vendor {
@@ -147,13 +147,14 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		opts := []option.RequestOption{
 			azure.WithEndpoint(endpoint, apiVersion),
 			azure.WithAPIKey(key),
+			option.WithHTTPClient(llm.VendorHTTPClient()),
 		}
 		client := openai.NewClient(opts...)
 		adapter := adapters.NewOpenAIAdapter(&client, m.ID, noThrottle)
 		ConfigureOpenAI(adapter, m, "")
 		return adapter, nil
 	case VendorGoogle:
-		config := &genai.ClientConfig{APIKey: key, Backend: genai.BackendGeminiAPI}
+		config := &genai.ClientConfig{APIKey: key, Backend: genai.BackendGeminiAPI, HTTPClient: llm.VendorHTTPClient()}
 		if m.Endpoint != "" {
 			config.HTTPOptions = genai.HTTPOptions{BaseURL: m.Endpoint}
 		}
@@ -177,7 +178,7 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		}
 		return adapters.NewTypeSafeAdapter(endpoint, key, m.ID), nil
 	case VendorAnthropic:
-		opts := []anthropicoption.RequestOption{anthropicoption.WithAPIKey(key)}
+		opts := []anthropicoption.RequestOption{anthropicoption.WithAPIKey(key), anthropicoption.WithHTTPClient(llm.VendorHTTPClient())}
 		endpoint := m.Endpoint
 		if endpoint == "" {
 			endpoint = AnthropicDefaultEndpoint
