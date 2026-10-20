@@ -186,6 +186,10 @@ def warnings(env, rs, aborted, failed):
         if "upstream_hits" in r and r["upstream_hits"] < r["soak_requests"]:
             out.append(f"- ⚠️ {LABELS[t]}: {r['upstream_hits']} upstream hits for {r['soak_requests']} soak "
                        "requests; some responses did not come from the mock.")
+    for m in env.get("merged", []):
+        out.append(f"- ℹ️ {LABELS.get(m['target'], m['target'])} comes from rerun `{m['run_id']}` (commit `{m['git_sha']}`) "
+                   f"on a separate stand of the same shape; its direct baseline there was p50 {fmt(m['direct_p50_ms'], ' ms')}, "
+                   f"p99 {fmt(m['direct_p99_ms'], ' ms')}.")
     if env.get("mode") == "local":
         out.append("- Local mode: k6 and the gateways share one machine. Use it for regressions, "
                    "not for published numbers.")

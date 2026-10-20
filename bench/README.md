@@ -107,4 +107,8 @@ roughly 10x slower. The report detects this and warns that those numbers are not
 (hardware, kernel, image sizes, commit). Durations and rates can be overridden through the
 variables at the top of `scripts/run_all.sh`, e.g. `LAT_RATE=500 SAT_STEPS=500,1000,3000`.
 
+To replace some targets with a rerun (for example after fixing one gateway), rerun them together with
+`direct` and merge: `scripts/merge_runs.py results/final results/<base> ktms=results/<rerun>`. The
+report then marks every replaced target with its run, commit and direct baseline.
+
 `go test ./bench/...` covers the mock upstream.
