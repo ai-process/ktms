@@ -229,9 +229,9 @@ func TestSnapshotClientModels(t *testing.T) {
 			"b-openai": model("b-openai", VendorOpenAI, EffortLow),
 			"c-deep":   model("c-deep", VendorDeepSeek, EffortLow),
 		},
-		vendorKeys: map[string]map[string]string{
+		vendorKeys: credsFrom(map[string]map[string]string{
 			"key1": {VendorGoogle: "g-secret", VendorDeepSeek: "d-secret"},
-		},
+		}),
 	}
 
 	got := snap.ClientModels("key1")
@@ -505,7 +505,7 @@ func TestSnapshotClientModelsIncludesLocalWithoutKey(t *testing.T) {
 			"a-google": model("a-google", VendorGoogle, EffortLow),
 			"b-local":  model("b-local", VendorLocal, EffortLow),
 		},
-		vendorKeys: map[string]map[string]string{"key1": {VendorGoogle: "g-secret"}, "bare": {}},
+		vendorKeys: credsFrom(map[string]map[string]string{"key1": {VendorGoogle: "g-secret"}, "bare": {}}),
 	}
 	if got := snap.ClientModels("bare"); len(got) != 1 || got[0].ID != "b-local" {
 		t.Fatalf("a client with no keys should still list local models, got %v", got)

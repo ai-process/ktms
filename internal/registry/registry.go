@@ -19,11 +19,8 @@ type Snapshot struct {
 	Version int64
 	Models  map[string]*proxydb.Model // enabled only
 	Rules   []*proxydb.Rule           // enabled only, sorted by priority desc
-	// vendorKeys[apiKeyID][vendor] = decrypted credential.
-	vendorKeys map[string]map[string]string
-	// vendorKeyFPs mirrors vendorKeys with fingerprints, hashed once per load
-	// instead of on every routed request.
-	vendorKeyFPs map[string]map[string]string
+	// vendorKeys[apiKeyID][vendor] = decrypted credential and its fingerprint.
+	vendorKeys map[string]map[string]vendorCred
 	// UserRateLimits[userID][modelID] = user rate limit overrides.
 	UserRateLimits map[string]map[string]*proxydb.UserRateLimit
 	// SpendLimits[subjectType+"\x00"+subjectID][period] = cap in nano-USD.
@@ -83,28 +80,40 @@ func (s *Snapshot) SpendLimit(subjectType, subjectID, period string) int64 {
 
 func spendKey(subjectType, subjectID string) string { return subjectType + "\x00" + subjectID }
 
+// vendorCred carries the fingerprint next to the key, hashed once per load
+// instead of on every routed request.
+type vendorCred struct {
+	plain string
+	fp    string
+}
+
+func newVendorCred(plain string) vendorCred {
+	sum := sha256.Sum256([]byte(plain))
+	return vendorCred{plain: plain, fp: hex.EncodeToString(sum[:8])}
+}
+
+// credsFrom wraps plain credentials keyed [apiKeyID][vendor].
+func credsFrom(plain map[string]map[string]string) map[string]map[string]vendorCred {
+	out := make(map[string]map[string]vendorCred, len(plain))
+	for id, byVendor := range plain {
+		out[id] = make(map[string]vendorCred, len(byVendor))
+		for vendor, key := range byVendor {
+			out[id][vendor] = newVendorCred(key)
+		}
+	}
+	return out
+}
+
 // VendorKey returns the calling client's decrypted credential for a vendor.
 func (s *Snapshot) VendorKey(apiKeyID, vendor string) (string, bool) {
-	key, ok := s.vendorKeys[apiKeyID][vendor]
-	return key, ok
+	cred, ok := s.vendorKeys[apiKeyID][vendor]
+	return cred.plain, ok
 }
 
 // VendorKeyFingerprint names the client's credential for vendor without
 // revealing it, so clients sharing one vendor key share its rate limits.
 func (s *Snapshot) VendorKeyFingerprint(apiKeyID, vendor string) string {
-	if fp, ok := s.vendorKeyFPs[apiKeyID][vendor]; ok {
-		return fp
-	}
-	key, ok := s.vendorKeys[apiKeyID][vendor]
-	if !ok {
-		return ""
-	}
-	return fingerprint(key)
-}
-
-func fingerprint(key string) string {
-	sum := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(sum[:8])
+	return s.vendorKeys[apiKeyID][vendor].fp
 }
 
 // CanCall reports whether the client may use m. Local models reach nodes with

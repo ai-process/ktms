@@ -8,12 +8,9 @@ import (
 	"time"
 )
 
-// Past sweepAt entries, expired ones are dropped at most once per sweepEvery,
-// so a 429 storm does not turn every Pause into a scan under the lock.
-const (
-	sweepAt    = 1024
-	sweepEvery = time.Second
-)
+// Expired entries are dropped at most once per sweepEvery, so a 429 storm does
+// not turn every call into a scan under the lock, and Idle recovers soon after.
+const sweepEvery = time.Second
 
 // Store is a per-replica set of pauses. Like the circuit breaker it is not
 // shared: each replica pays at most one rejected call per pause window.
@@ -52,7 +49,14 @@ func (s *Store) Pause(key string, d time.Duration) time.Duration {
 		until = cur
 	}
 	s.until[key] = until
-	if len(s.until) > sweepAt && now.Sub(s.lastSweep) >= sweepEvery {
+	s.sweepLocked(now)
+	return until.Sub(now)
+}
+
+// sweepLocked drops expired pauses, including those of keys never asked about
+// again (a rotated vendor key), and refreshes the lock-free live count.
+func (s *Store) sweepLocked(now time.Time) {
+	if now.Sub(s.lastSweep) >= sweepEvery {
 		s.lastSweep = now
 		for k, t := range s.until {
 			if !t.After(now) {
@@ -61,7 +65,6 @@ func (s *Store) Pause(key string, d time.Duration) time.Duration {
 		}
 	}
 	s.live.Store(int64(len(s.until)))
-	return until.Sub(now)
 }
 
 // Idle reports that nothing is paused, letting callers skip building keys.
@@ -76,14 +79,15 @@ func (s *Store) Remaining(key string) time.Duration {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	now := s.now()
+	defer s.sweepLocked(now)
 	until, ok := s.until[key]
 	if !ok {
 		return 0
 	}
-	d := until.Sub(s.now())
+	d := until.Sub(now)
 	if d <= 0 {
 		delete(s.until, key)
-		s.live.Store(int64(len(s.until)))
 		return 0
 	}
 	return d

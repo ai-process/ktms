@@ -2,10 +2,13 @@ package llm
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"syscall"
 	"testing"
 	"time"
@@ -86,5 +89,14 @@ func TestTransportFailuresAreRetryable(t *testing.T) {
 	}
 	if IsRetryableError(fmt.Errorf("post: %w", context.Canceled)) {
 		t.Fatal("a cancelled caller must not be retried")
+	}
+	if IsRetryableError(&url.Error{Op: "Post", URL: "https://typo.invalid", Err: &net.DNSError{Err: "no such host", Name: "typo.invalid", IsNotFound: true}}) {
+		t.Fatal("an unknown host is a misconfiguration, not worth a retry")
+	}
+	if IsRetryableError(&url.Error{Op: "Post", URL: "https://self-signed.example", Err: x509.UnknownAuthorityError{}}) {
+		t.Fatal("a TLS verification failure is not worth a retry")
+	}
+	if !IsRetryableError(&url.Error{Op: "Post", URL: "https://api.example.com", Err: &net.OpError{Op: "dial", Err: os.ErrDeadlineExceeded}}) {
+		t.Fatal("a dial timeout must be retryable")
 	}
 }

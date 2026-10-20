@@ -326,3 +326,58 @@ func TestExecuteMediaRetryAfterPauses(t *testing.T) {
 		t.Fatalf("pause = %v, want 4s", got)
 	}
 }
+
+func TestExecutePartlyPausedChainPromisesNoDelay(t *testing.T) {
+	cd := newFakeCooldown()
+	chain := cooldownChain()
+	cd.Pause(chain[0], 5*time.Minute)
+	broken := &fakeAdapter{responses: []func() (*llm.Response, error){fail(vendor500())}}
+	_, _, err := Execute(context.Background(), NoopThrottle{}, Request{
+		Chain:    chain,
+		Chat:     llm.NewChatContext(),
+		Cooldown: cd,
+		Adapter:  func(*proxydb.Model) (llm.ClientAdapter, error) { return broken, nil },
+	})
+	st := status.Convert(ToStatus(err))
+	if st.Code() != codes.Unavailable {
+		t.Fatalf("status = %v, want Unavailable", st.Code())
+	}
+	for _, d := range st.Details() {
+		if _, ok := d.(*errdetails.RetryInfo); ok {
+			t.Fatal("the unpaused model may serve the next request; no RetryInfo expected")
+		}
+	}
+}
+
+func TestExecuteLongRetryAfterWithoutCooldownStillRetries(t *testing.T) {
+	limited := &fakeAdapter{responses: []func() (*llm.Response, error){fail(vendor429("30")), ok("second try")}}
+	_, m, err := Execute(context.Background(), NoopThrottle{}, Request{
+		Chain:   cooldownChain()[:1],
+		Chat:    llm.NewChatContext(),
+		Adapter: func(*proxydb.Model) (llm.ClientAdapter, error) { return limited, nil },
+	})
+	if err != nil || m.ID != "primary" || limited.calls != 2 {
+		t.Fatalf("m=%v err=%v calls=%d: with pauses off the old same-model retry applies", m, err, limited.calls)
+	}
+}
+
+func TestExecuteStopsWhenCallerLeavesDuringBackoff(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	broken := &fakeAdapter{responses: []func() (*llm.Response, error){func() (*llm.Response, error) {
+		cancel()
+		return nil, vendor500()
+	}}}
+	backup := &fakeAdapter{responses: []func() (*llm.Response, error){ok("unreachable")}}
+	adapters := map[string]llm.ClientAdapter{"primary": broken, "backup": backup}
+	_, _, err := Execute(ctx, NoopThrottle{}, Request{
+		Chain:   cooldownChain(),
+		Chat:    llm.NewChatContext(),
+		Adapter: func(m *proxydb.Model) (llm.ClientAdapter, error) { return adapters[m.ID], nil },
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want the caller's cancellation", err)
+	}
+	if backup.calls != 0 {
+		t.Fatalf("chain walked on after the caller left: backup called %d times", backup.calls)
+	}
+}

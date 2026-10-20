@@ -11,7 +11,7 @@ func NewSnapshotForTest(models []*proxydb.Model, rules []*proxydb.Rule,
 	vendorKeys map[string]map[string]string, tracker llm.UsageTracker) *Snapshot {
 	snap := &Snapshot{
 		Models:     map[string]*proxydb.Model{},
-		vendorKeys: vendorKeys,
+		vendorKeys: credsFrom(vendorKeys),
 		tracker:    tracker,
 	}
 	for _, m := range models {

@@ -51,11 +51,11 @@ func TestVendorSDKsDoNotRetry(t *testing.T) {
 }
 
 func TestVendorKeyFingerprint(t *testing.T) {
-	snap := &Snapshot{vendorKeys: map[string]map[string]string{
+	snap := &Snapshot{vendorKeys: credsFrom(map[string]map[string]string{
 		"a": {VendorOpenAI: "sk-shared"},
 		"b": {VendorOpenAI: "sk-shared"},
 		"c": {VendorOpenAI: "sk-other"},
-	}}
+	})}
 	fa, fb, fc := snap.VendorKeyFingerprint("a", VendorOpenAI), snap.VendorKeyFingerprint("b", VendorOpenAI), snap.VendorKeyFingerprint("c", VendorOpenAI)
 	if fa == "" || fa != fb {
 		t.Fatalf("clients sharing a vendor key must share a fingerprint: %q %q", fa, fb)
