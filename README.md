@@ -376,6 +376,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `CIRCUIT_BREAKER_FAIL_THRESHOLD` | `5` | Consecutive upstream failures (5xx, network timeouts) before tripping circuit to Open. |
 | `CIRCUIT_BREAKER_COOLDOWN` | `30s` | Cooldown period before allowing a single probe request in Half-Open state. |
 | `UPSTREAM_REQUEST_TIMEOUT` | `0` (disabled) | Upstream vendor timeout (total per-attempt deadline for unary/media; per-chunk idle watchdog for streaming). Stalls trip breaker and advance fallback chains. |
+| `VENDOR_COOLDOWN_MAX` | `5m` | Longest pause honoured when a vendor answers `429`/`503` with `Retry-After`. `0` disables pauses. |
 | `BATCH_POLL_SECONDS` | `60` | Background polling interval in seconds for checking unfinished batch jobs. |
 | `BATCH_MAX_ITEMS` | `10000` | Maximum number of items allowed in a single batch submission. |
 | `RESULTS_RETENTION_DAYS` | `7` | Retention period for completed batch results before cleanup (accepts integer days, e.g. `7`, or Go duration string, e.g. `168h`). |
@@ -1023,6 +1024,13 @@ purpose travels in free-form attributes, so the proxy knows nothing about your p
 - Requests skip degraded upstream models immediately, without a network round trip.
 - After `CIRCUIT_BREAKER_COOLDOWN` (default 30s), transitions to `HALF_OPEN` and admits a single probe request. Success restores `CLOSED`; failure re-opens the circuit.
 - If all models in the chain have open circuits, the caller receives `UNAVAILABLE vendors_unavailable`.
+
+**Vendor back-off (`Retry-After`):**
+- Vendor SDKs run with their built-in retries off, so one router attempt is exactly one vendor call. Text generation retries a `429`/`5xx` once on the same model before falling back.
+- When a vendor answers `429` or `503` with `Retry-After` (or `retry-after-ms`), the router does not retry that model. It pauses it for that client's vendor credential, up to `VENDOR_COOLDOWN_MAX`, and moves down the chain. Clients sharing one vendor key share the pause; other credentials are unaffected.
+- Paused models are skipped without a network round trip (`ktms_fallbacks_total{reason="cooldown"}`; pauses started are counted in `ktms_vendor_cooldowns_total`). Pauses live in each replica's memory, like circuit breakers, so each replica learns of a pause from its own first rejected call.
+- If the chain ends on a paused model, the caller receives `UNAVAILABLE vendors_unavailable` with a gRPC `RetryInfo`; the OpenAI-compatible HTTP API returns it as a `Retry-After` header.
+- Local node models are never paused: the node pool has its own admission control.
 
 **Usage reporting.** When `USAGE_COLLECTOR_HOST` is set, every call emits an event (vendor,
 model, tokens, duration, status, `action_id`, rule name and your attributes as metadata) to a

@@ -79,11 +79,27 @@ func ToStatus(err error) error {
 			return throttledStatus(exhausted.ThrottleKind, time.Now())
 		}
 		if llm.IsRetryableError(exhausted.Last) || llm.ShouldSkipToNextModel(exhausted.Last) {
-			return status.Error(codes.Unavailable, "vendors_unavailable")
+			return unavailableStatus(exhausted.Last)
 		}
 		return status.Error(codes.Internal, "vendor_error")
 	}
 	return status.Error(codes.Internal, "vendor_error")
+}
+
+// unavailableStatus passes a vendor's Retry-After on to the caller when the
+// chain ended on a paused model, so clients wait instead of hammering.
+func unavailableStatus(last error) error {
+	st := status.New(codes.Unavailable, "vendors_unavailable")
+	var cd *CoolingDown
+	if !errors.As(last, &cd) || cd.Remaining <= 0 {
+		return st.Err()
+	}
+	withInfo, err := st.WithDetails(&errdetails.RetryInfo{RetryDelay: durationpb.New(cd.Remaining)})
+	if err != nil {
+		log.Error().Err(err).Str("model", cd.Model).Msg("attach retry info to vendor cooldown")
+		return st.Err()
+	}
+	return withInfo.Err()
 }
 
 // throttledStatus carries a RetryInfo until the period resets for spend

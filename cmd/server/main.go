@@ -19,6 +19,7 @@ import (
 	"github.com/ai-process/ktms/internal/cache"
 	"github.com/ai-process/ktms/internal/circuitbreaker"
 	"github.com/ai-process/ktms/internal/config"
+	"github.com/ai-process/ktms/internal/cooldown"
 	"github.com/ai-process/ktms/internal/crypto"
 	"github.com/ai-process/ktms/internal/grpcapi"
 	"github.com/ai-process/ktms/internal/guardrails"
@@ -215,6 +216,7 @@ func main() {
 	})
 	proxySrv := grpcapi.NewProxyServer(loader, limiter).
 		WithCircuitBreaker(cb).
+		WithCooldown(cooldown.New(cfg.VendorCooldownMax)).
 		WithUpstreamTimeout(cfg.UpstreamRequestTimeout).
 		WithBatch(db, cfg.BatchMaxItems)
 	if cfg.CacheEnabled && redisClient != nil {
