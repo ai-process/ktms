@@ -1,0 +1,26 @@
+routes:
+  - id: chat
+    uri: /v1/chat/completions
+    methods: [POST]
+    plugins:
+      key-auth:
+        header: Authorization
+        hide_credentials: true
+      ai-proxy:
+        provider: openai-compatible
+        auth:
+          header:
+            Authorization: "Bearer mock-key"
+        options:
+          model: gpt-4o-mini
+        override:
+          endpoint: http://mock-upstream:8000/v1/chat/completions
+        ssl_verify: false
+        keepalive_pool: 1000
+        streaming_flush_interval_ms: 0
+consumers:
+  - username: bench
+    plugins:
+      key-auth:
+        key: "Bearer sk-apisix-bench"
+#END

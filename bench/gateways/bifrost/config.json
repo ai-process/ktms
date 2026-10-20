@@ -1,0 +1,46 @@
+{
+  "$schema": "https://www.getbifrost.ai/schema",
+  "client": {
+    "initial_pool_size": 1000,
+    "drop_excess_requests": false,
+    "enable_logging": false,
+    "disable_content_logging": true
+  },
+  "providers": {
+    "openai": {
+      "keys": [
+        {
+          "name": "mock",
+          "value": "mock-key",
+          "models": [
+            "*"
+          ],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "http://mock-upstream:8000",
+        "max_retries": 0,
+        "default_request_timeout_in_seconds": 60,
+        "allow_private_network": true
+      },
+      "concurrency_and_buffer_size": {
+        "concurrency": 4000,
+        "buffer_size": 8000
+      }
+    }
+  },
+  "config_store": {
+    "enabled": false
+  },
+  "logs_store": {
+    "enabled": false
+  },
+  "framework": {
+    "pricing": {
+      "pricing_url": "file:///app/data/pricing.json",
+      "model_parameters_url": "file:///app/data/model-parameters.json",
+      "mcp_library_sync_interval": 0
+    }
+  }
+}

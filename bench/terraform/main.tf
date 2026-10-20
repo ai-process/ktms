@@ -28,7 +28,7 @@ locals {
   tag     = var.prefix
   sut_ip  = cidrhost(var.subnet_cidr, 10)
   run_ip  = cidrhost(var.subnet_cidr, 20)
-  ssh_key = "${path.module}/.ssh/id_ed25519"
+  ssh_key = "${path.module}/.ssh/${var.prefix}_ed25519"
 }
 
 # Throwaway key per stand, injected only into these VMs; nothing outlives destroy.

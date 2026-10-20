@@ -6,6 +6,10 @@ export const BASE_URL = __ENV.BASE_URL || 'http://ktms:8080';
 export const API_KEY = __ENV.API_KEY || 'ktms_bench_key';
 export const TARGET = __ENV.TARGET || 'unknown';
 export const SUMMARY_PATH = __ENV.SUMMARY_PATH || '/results/summary.json';
+export const MODEL = __ENV.MODEL || 'gpt-4o-mini';
+export const CHAT_PATH = __ENV.CHAT_PATH || '/v1/chat/completions';
+// Some gateways pick the provider from request headers instead of the model name.
+const EXTRA_HEADERS = JSON.parse(__ENV.HEADERS || '{}');
 
 export const TREND_STATS = ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'];
 
@@ -13,15 +17,15 @@ export const TREND_STATS = ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max
 export function chat(directive, stream, timeout) {
   const tags = Object.entries(directive).map(([k, v]) => `${k}=${v}`).join(' ');
   const body = {
-    model: 'gpt-4o-mini',
+    model: MODEL,
     messages: [{ role: 'user', content: `Benchmark request [mock ${tags}]` }],
     stream: stream,
   };
   if (stream) {
     body.stream_options = { include_usage: true };
   }
-  return http.post(`${BASE_URL}/v1/chat/completions`, JSON.stringify(body), {
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
+  return http.post(`${BASE_URL}${CHAT_PATH}`, JSON.stringify(body), {
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}`, ...EXTRA_HEADERS },
     timeout: timeout || '30s',
   });
 }
