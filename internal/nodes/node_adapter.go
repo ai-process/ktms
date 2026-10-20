@@ -272,6 +272,7 @@ func (pa *PoolAdapter) buildNodeClient(cand *Candidate) (*openai.Client, string,
 		option.WithBaseURL(endpoint),
 		option.WithAPIKey(plainAuthToken),
 		option.WithMaxRetries(0), // No SDK internal retries
+		option.WithHTTPClient(llm.VendorHTTPClient()),
 	}
 
 	cl := openai.NewClient(opts...)
