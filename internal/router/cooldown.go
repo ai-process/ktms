@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -61,27 +62,51 @@ func pauseOnRetryAfter(cd Cooldown, m *proxydb.Model, err error) error {
 	if !ok {
 		return err
 	}
+	fresh := cd.Remaining(m) == 0
 	d := cd.Pause(m, wait)
 	if d <= 0 {
 		return err
 	}
-	observability.VendorCooldownsTotal.WithLabelValues(m.Vendor, m.ID).Inc()
+	if fresh {
+		observability.VendorCooldownsTotal.WithLabelValues(m.Vendor, m.ID).Inc()
+	}
 	log.Warn().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).Dur("retry_after", wait).Dur("paused", d).
 		Msg("vendor asked to back off, pausing model")
 	return &CoolingDown{Model: m.ID, Remaining: d, Err: err}
 }
 
-// shortestPause keeps the soonest a paused model in the chain frees up, which
-// is what the caller is told to wait when the whole chain fails.
-func shortestPause(cur time.Duration, err error) time.Duration {
+// pauseTally counts paused models on one chain walk. The caller is promised a
+// wait only when every model was paused: anything else may clear sooner.
+type pauseTally struct {
+	n       int
+	soonest time.Duration
+}
+
+func (p *pauseTally) note(err error) {
 	var cd *CoolingDown
 	if !errors.As(err, &cd) || cd.Remaining <= 0 {
-		return cur
+		return
 	}
-	if cur == 0 || cd.Remaining < cur {
-		return cd.Remaining
+	p.n++
+	if p.soonest == 0 || cd.Remaining < p.soonest {
+		p.soonest = cd.Remaining
 	}
-	return cur
+}
+
+func (p pauseTally) retryAfter(chainLen int) time.Duration {
+	if chainLen == 0 || p.n < chainLen {
+		return 0
+	}
+	return p.soonest
+}
+
+// callerGone reports the caller's own cancellation instead of the vendor
+// error it interrupted, so the chain stops rather than walking on dead.
+func callerGone(ctx context.Context, err error) error {
+	if err != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
 }
 
 func nextModelID(chain []*proxydb.Model, i int) string {

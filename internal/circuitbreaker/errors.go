@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strings"
-	"syscall"
 	"time"
 
 	"github.com/ai-process/ktms/internal/llm"
@@ -109,33 +107,11 @@ func IsTrippingError(ctx context.Context, err error) bool {
 		return code >= 500 && code < 600
 	}
 
+	// Every network error trips, including misconfigurations that are not worth
+	// retrying; the retryable transport failures are a subset of these.
 	var netErr net.Error
 	if errors.As(err, &netErr) {
 		return true
 	}
-	var syscallErr syscall.Errno
-	if errors.As(err, &syscallErr) {
-		if syscallErr == syscall.ECONNREFUSED || syscallErr == syscall.ECONNRESET || syscallErr == syscall.ETIMEDOUT {
-			return true
-		}
-	}
-
-	msg := strings.ToLower(safeErrorString(err))
-	return strings.Contains(msg, "connection refused") ||
-		strings.Contains(msg, "connection reset") ||
-		strings.Contains(msg, "tls handshake timeout") ||
-		strings.Contains(msg, "i/o timeout") ||
-		strings.Contains(msg, "broken pipe")
-}
-
-func safeErrorString(err error) (s string) {
-	if err == nil {
-		return ""
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			s = ""
-		}
-	}()
-	return err.Error()
+	return llm.IsTransportFailure(err)
 }

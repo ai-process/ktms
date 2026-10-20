@@ -34,7 +34,7 @@ type ChainExhausted struct {
 	ThrottleKind     string // "rpm" | "budget_key" | "budget_user" | spendlimit reasons
 	AllCircuitBroken bool   // every model skipped because circuit breaker is open
 	AnyCircuitBroken bool   // observed at least one open circuit in chain; retained for telemetry and tests
-	// RetryAfter is the shortest vendor pause met on the walk, zero for none.
+	// RetryAfter is when the first model frees up if every one was paused, else zero.
 	RetryAfter time.Duration
 }
 
@@ -89,11 +89,10 @@ func ToStatus(err error) error {
 }
 
 // unavailableStatus passes on when the first paused model frees up, so
-// clients wait instead of hammering. With an open circuit in the chain that
-// time is unknown (the breaker may recover sooner), so none is promised.
+// clients wait instead of hammering a chain that is entirely paused.
 func unavailableStatus(exhausted *ChainExhausted) error {
 	st := status.New(codes.Unavailable, "vendors_unavailable")
-	if exhausted.RetryAfter <= 0 || exhausted.AnyCircuitBroken {
+	if exhausted.RetryAfter <= 0 {
 		return st.Err()
 	}
 	withInfo, err := st.WithDetails(&errdetails.RetryInfo{RetryDelay: durationpb.New(exhausted.RetryAfter)})

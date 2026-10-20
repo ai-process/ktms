@@ -56,13 +56,25 @@ func TestDisabledStoreIsNoop(t *testing.T) {
 
 func TestSweepDropsExpired(t *testing.T) {
 	s, now := newTestStore(time.Minute)
-	for i := 0; i <= sweepAt; i++ {
+	for i := 0; i < 100; i++ {
 		s.Pause(fmt.Sprint(i), time.Second)
 	}
 	*now = now.Add(2 * time.Second)
 	s.Pause("fresh", time.Second)
 	if n := len(s.until); n != 1 {
 		t.Fatalf("after sweep %d entries remain, want 1", n)
+	}
+}
+
+// A pause on a key nobody asks about again (a rotated vendor key) must not
+// keep the store off its idle fast path.
+func TestIdleRecoversFromAbandonedKey(t *testing.T) {
+	s, now := newTestStore(time.Minute)
+	s.Pause("rotated-away", time.Second)
+	*now = now.Add(2 * time.Second)
+	s.Remaining("some-other-key")
+	if !s.Idle() {
+		t.Fatal("expired abandoned pause kept the store busy")
 	}
 }
 
