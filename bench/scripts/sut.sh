@@ -5,21 +5,17 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 if [[ -f .env ]]; then set -a; . ./.env; set +a; fi
 BIND_ADDR="${BIND_ADDR:-127.0.0.1}"
-GATEWAYS=(ktms litellm)
+read -r -a GATEWAYS <<<"$(scripts/gw.py names)"
+gw() { scripts/gw.py "$@"; }
 
 compose() { docker compose -f docker-compose.bench.yaml "$@"; }
 
 port_of() {
-  case "$1" in
-    ktms) echo 8080 ;; litellm) echo 4000 ;; mock-upstream) echo 8000 ;;
-    *) echo "unknown service $1" >&2; return 1 ;;
-  esac
+  if [[ "$1" == mock-upstream ]]; then echo 8000; else gw "$1" port; fi
 }
 
 ready_url() {
-  local path=/readyz
-  [[ "$1" == litellm ]] && path=/health/readiness
-  echo "http://${BIND_ADDR}:$(port_of "$1")${path}"
+  echo "http://${BIND_ADDR}:$(port_of "$1")$(gw "$1" ready)"
 }
 
 wait_ready() {
@@ -56,27 +52,99 @@ prepare_ktms() {
 }
 
 # Prints milliseconds from `docker start` of a freshly created container to the
-# first 200 from its readiness endpoint. Container creation is excluded.
+# first successful chat completion through it. Health endpoints are not used: on
+# some gateways they turn green before routes are loaded.
 cold_start() {
   compose rm -sf "$1" >/dev/null 2>&1
   compose create "$1" >/dev/null 2>&1
   local cid; cid="$(compose ps -aq "$1")"
-  python3 - "$cid" "$(ready_url "$1")" "${READY_TIMEOUT_S:-300}" <<'PY'
-import subprocess, sys, time, urllib.request
-cid, url, timeout = sys.argv[1], sys.argv[2], int(sys.argv[3])
+  python3 - "$cid" "http://${BIND_ADDR}:$(port_of "$1")$(gw "$1" path)" "$(gw "$1" key)" "$(gw "$1" model)" \
+    "$(gw "$1" headers)" "${READY_TIMEOUT_S:-300}" <<'PY'
+import json, subprocess, sys, time, urllib.request
+cid, url, key, model, headers, timeout = sys.argv[1:6] + [int(sys.argv[6])]
+body = json.dumps({"model": model, "messages": [{"role": "user", "content": "ready [mock latency_ms=0]"}]}).encode()
+hdrs = {"Authorization": f"Bearer {key}", "Content-Type": "application/json", **json.loads(headers)}
 t0 = time.monotonic()
 subprocess.run(["docker", "start", cid], check=True, stdout=subprocess.DEVNULL)
 while time.monotonic() - t0 < timeout:
     try:
-        with urllib.request.urlopen(url, timeout=1) as r:
-            if r.status == 200:
+        with urllib.request.urlopen(urllib.request.Request(url, body, hdrs), timeout=1) as r:
+            if r.status == 200 and json.load(r).get("choices"):
                 print(int((time.monotonic() - t0) * 1000))
                 sys.exit(0)
     except Exception:
         pass
     time.sleep(0.005)
-sys.exit(f"{url} not ready after {timeout}s")
+sys.exit(f"{url} not serving after {timeout}s")
 PY
+}
+
+# Checked from the image, before start: some arm64 variants ship amd64 binaries (emulated).
+# Distroless images have no uname, so those fall back to the image's declared platform.
+arch_of() {
+  local m
+  m="$(compose run --rm --no-deps -T --entrypoint uname "$1" -m 2>/dev/null | tr -d '\r')" || m=
+  if [[ -z "$m" ]]; then
+    m="$(docker image inspect -f '{{.Architecture}}' "$(compose config --images "$1" | head -1)" 2>/dev/null)"
+    m="${m/amd64/x86_64}" m="${m/arm64/aarch64}"
+  fi
+  printf '"%s"\n' "$m"
+}
+
+up_deps() {
+  local deps=() g d
+  for g in "${GATEWAYS[@]}"; do
+    for d in $(gw "$g" deps); do deps+=("$d"); done
+  done
+  compose up -d --wait mock-upstream "${deps[@]}" >/dev/null
+}
+
+# Bifrost downloads pricing datasheets at boot and fails without them; serving
+# local copies keeps the network out of cold start.
+prepare_bifrost() {
+  local run=gateways/bifrost/run
+  mkdir -p "$run" && chmod 777 "$run"
+  cp gateways/bifrost/config.json "$run/config.json"
+  [[ -s "$run/pricing.json" ]] || curl -fsSL https://getbifrost.ai/datasheet -o "$run/pricing.json"
+  [[ -s "$run/model-parameters.json" ]] ||
+    curl -fsSL https://getbifrost.ai/datasheet/model-parameters -o "$run/model-parameters.json"
+}
+
+# Higress keeps its control-plane state in the mounted dir, so each run starts from seed.
+prepare_higress() {
+  rm -rf gateways/higress/run
+  cp -R gateways/higress/seed gateways/higress/run
+  chmod -R a+rwX gateways/higress/run
+}
+
+# New API is configured through its admin API: a channel to the mock, the
+# overload guard and per-request consume logs off (KTMS records no usage
+# here either), and a token whose key is then pinned to the one in gateways.json.
+prepare_newapi() {
+  compose exec -T db psql -U ktms -d ktms -qc 'DROP DATABASE IF EXISTS newapi' -c 'CREATE DATABASE newapi' >/dev/null
+  compose exec -T redis redis-cli -n 1 FLUSHDB >/dev/null
+  compose up -d newapi >/dev/null
+  wait_ready newapi
+  local b="http://${BIND_ADDR}:3000" p='BenchRoot#2026' t key
+  key="$(gw newapi key)"
+  ok() { python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('success'), d; print($1)"; }
+  curl -s "$b/api/setup" -H 'Content-Type: application/json' -d "{\"username\":\"root\",\"password\":\"$p\",
+    \"confirmPassword\":\"$p\",\"SelfUseModeEnabled\":true,\"DemoSiteEnabled\":false}" | ok '""' >/dev/null
+  t="$(curl -s "$b/api/user/login" -H 'Content-Type: application/json' \
+    -d "{\"username\":\"root\",\"password\":\"$p\"}" | ok 'd["data"]["access_token"]')"
+  local h=(-H "Authorization: Bearer $t" -H "New-Api-User: 1" -H 'Content-Type: application/json')
+  for opt in performance_setting.monitor_enabled LogConsumeEnabled; do
+    curl -s -X PUT "${h[@]}" "$b/api/option/" -d "{\"key\":\"$opt\",\"value\":\"false\"}" | ok '""' >/dev/null
+  done
+  # base_url has no /v1: the OpenAI channel appends /v1/chat/completions itself.
+  curl -s "${h[@]}" "$b/api/channel/" -d '{"mode":"single","channel":{"type":1,"name":"mock","key":"mock-key",
+    "base_url":"http://mock-upstream:8000","models":"gpt-4o-mini","group":"default","status":1}}' | ok '""' >/dev/null
+  curl -s "${h[@]}" "$b/api/token/" -d '{"name":"bench","remain_quota":0,"unlimited_quota":true,"expired_time":-1}' |
+    ok '""' >/dev/null
+  compose exec -T db psql -U ktms -d newapi -v ON_ERROR_STOP=1 -qc \
+    "UPDATE tokens SET key = '${key#sk-}' WHERE name = 'bench'" >/dev/null
+  # Stopped here; cold-start restarts it, which also drops the in-memory caches.
+  compose stop newapi >/dev/null
 }
 
 # Prints the service's cgroup v2 counters as one JSON object (bytes, microseconds).
@@ -103,11 +171,13 @@ metrics() {
 
 # One real request through the target; fails loudly instead of benchmarking errors.
 smoke() {
-  local svc=$1 key=$2 before after body
+  local svc=$1 before after body hdrs=()
+  while IFS= read -r h; do [[ -n "$h" ]] && hdrs+=(-H "$h"); done < <(gw "$svc" headers |
+    python3 -c 'import json,sys; [print(f"{k}: {v}") for k, v in json.load(sys.stdin).items()]')
   before="$(curl -sf "http://${BIND_ADDR}:8000/stats")"
-  body="$(curl -sS -w '\n%{http_code}' "http://${BIND_ADDR}:$(port_of "$svc")/v1/chat/completions" \
-    -H "Authorization: Bearer ${key}" -H 'Content-Type: application/json' \
-    -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"smoke [mock latency_ms=0]"}]}')"
+  body="$(curl -sS -w '\n%{http_code}' "http://${BIND_ADDR}:$(port_of "$svc")$(gw "$svc" path)" \
+    -H "Authorization: Bearer $(gw "$svc" key)" -H 'Content-Type: application/json' ${hdrs[@]+"${hdrs[@]}"} \
+    -d "{\"model\":\"$(gw "$svc" model)\",\"messages\":[{\"role\":\"user\",\"content\":\"smoke [mock latency_ms=0]\"}]}")"
   after="$(curl -sf "http://${BIND_ADDR}:8000/stats")"
   if [[ "${body##*$'\n'}" != 200 || "$before" == "$after" ]]; then
     echo "smoke $svc failed: ${body}" >&2
@@ -121,27 +191,29 @@ import json, subprocess, sys
 cfg = json.load(sys.stdin)
 info = json.loads(subprocess.run(["docker", "info", "-f", "{{json .}}"], capture_output=True, check=True).stdout)
 images, project = {}, cfg["name"]
-for svc in ("mock-upstream", "ktms", "litellm"):
+for svc in ["mock-upstream"] + sys.argv[1].split():
     # Built services have no image field; compose names them <project>-<service>.
     img = cfg["services"][svc].get("image") or f"{project}-{svc}"
     size = subprocess.run(["docker", "image", "inspect", "-f", "{{.Size}}", img], capture_output=True, text=True).stdout.strip()
     images[svc] = {"image": img, "bytes": int(size or 0)}
 print(json.dumps({"cpus": info["NCPU"], "mem_bytes": info["MemTotal"], "arch": info["Architecture"],
-                  "kernel": info["KernelVersion"], "docker": info["ServerVersion"], "images": images}))'
+                  "kernel": info["KernelVersion"], "docker": info["ServerVersion"], "images": images}))' "${GATEWAYS[*]}"
 }
 
 case "${1:-}" in
-  build) compose build -q mock-upstream ktms && compose pull -q db redis litellm ;;
-  up-deps) compose up -d --wait db redis mock-upstream >/dev/null ;;
+  build) compose build -q && compose pull -q --ignore-buildable ;;
+  up-deps) up_deps ;;
   stop-gateways) compose rm -sf "${GATEWAYS[@]}" >/dev/null 2>&1 ;;
   prepare-ktms) prepare_ktms ;;
+  prepare-bifrost) prepare_bifrost ;;
+  prepare-higress) prepare_higress ;;
+  prepare-newapi) prepare_newapi ;;
   cold-start) cold_start "$2" ;;
   metrics) metrics "$2" ;;
-  # Checked from the image, before start: some arm64 variants ship amd64 binaries (emulated).
-  arch) printf '"%s"\n' "$(compose run --rm --no-deps -T --entrypoint uname "$2" -m 2>/dev/null | tr -d '\r')" ;;
-  smoke) smoke "$2" "$3" ;;
+  arch) arch_of "$2" ;;
+  smoke) smoke "$2" ;;
   upstream-stats) curl -sf "http://${BIND_ADDR}:8000/stats" ;;
   env) environment ;;
   down) compose --profile k6 down -v --remove-orphans ;;
-  *) echo "usage: $0 build|up-deps|stop-gateways|prepare-ktms|cold-start SVC|metrics SVC|arch SVC|smoke SVC KEY|upstream-stats|env|down" >&2; exit 2 ;;
+  *) echo "usage: $0 build|up-deps|stop-gateways|prepare-ktms|prepare-bifrost|prepare-higress|prepare-newapi|cold-start SVC|metrics SVC|arch SVC|smoke SVC|upstream-stats|env|down" >&2; exit 2 ;;
 esac

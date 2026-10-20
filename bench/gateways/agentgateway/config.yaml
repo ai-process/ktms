@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://agentgateway.dev/schema/config
+config:
+  workerThreads: 4             # default = CPU count; WORKER_THREADS env also works
+  readinessAddr: 0.0.0.0:15021 # GET /healthz/ready
+  statsAddr: 0.0.0.0:15020     # Prometheus /metrics
+  adminAddr: "off"             # admin UI, localhost:15000 by default
+frontendPolicies:
+  accessLog:
+    filter: "false"            # per-request stdout access log is on by default
+llm:
+  port: 4000
+  policies:
+    apiKey:
+      mode: strict
+      keys: [{ key: agw-bench-key }]
+      location: { header: { name: authorization, prefix: "Bearer " } }
+  models:
+  - name: gpt-4o-mini
+    provider: openAI
+    params:
+      baseUrl: http://mock-upstream:8000/v1   # path is kept: -> /v1/chat/completions
+      apiKey: mock-key

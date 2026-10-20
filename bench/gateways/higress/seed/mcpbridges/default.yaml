@@ -1,0 +1,14 @@
+apiVersion: networking.higress.io/v1
+kind: McpBridge
+metadata:
+  name: default
+  namespace: higress-system
+  resourceVersion: "1"
+spec:
+  registries:
+  # Higress rejects single-label DNS names: give mock-upstream a dotted network alias.
+  - name: mock-upstream
+    type: dns
+    protocol: http
+    domain: mock-upstream.bench
+    port: 8000

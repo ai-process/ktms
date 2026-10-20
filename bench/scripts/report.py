@@ -7,9 +7,10 @@ import sys
 from pathlib import Path
 
 MIB = 1024 * 1024
-GATEWAYS = ["ktms", "litellm"]
+REGISTRY = json.loads((Path(__file__).resolve().parent.parent / "gateways.json").read_text())
+GATEWAYS = list(REGISTRY)
 TARGETS = ["direct"] + GATEWAYS
-LABELS = {"direct": "Direct (no gateway)", "ktms": "KTMS", "litellm": "LiteLLM"}
+LABELS = {"direct": "Direct (no gateway)", **{g: v["label"] for g, v in REGISTRY.items()}}
 MACHINE = {"amd64": "x86_64", "arm64": "aarch64"}  # docker info arch -> uname -m
 
 
@@ -164,9 +165,17 @@ def resources(out, env):
     return res, md
 
 
-def warnings(env, rs, aborted):
+def gateways_table(env, out):
+    images = env.get("sut", {}).get("images", {})
+    rows = [[LABELS[g], f"`{images.get(g, {}).get('image', '–')}`", "yes" if REGISTRY[g].get("auth", True) else "no",
+             REGISTRY[g].get("note", "")] for g in GATEWAYS if (out / f"{g}.latency.json").exists()]
+    return table(["Gateway", "Image", "Client auth", "Notes"], rows)
+
+
+def warnings(env, rs, aborted, failed):
     host = MACHINE.get(env.get("sut", {}).get("arch"), env.get("sut", {}).get("arch"))
-    out = []
+    out = [f"- ⛔ {LABELS.get(f['target'], f['target'])} failed (exit {f['exit']}) and was skipped; "
+           "its rows are partial or missing." for f in failed]
     if aborted:
         out.append(f"- ⛔ Run aborted during `{aborted['target']}` (exit {aborted['exit']}); "
                    "tables below hold only what was measured before that.")
@@ -177,6 +186,10 @@ def warnings(env, rs, aborted):
         if "upstream_hits" in r and r["upstream_hits"] < r["soak_requests"]:
             out.append(f"- ⚠️ {LABELS[t]}: {r['upstream_hits']} upstream hits for {r['soak_requests']} soak "
                        "requests; some responses did not come from the mock.")
+    for m in env.get("merged", []):
+        out.append(f"- ℹ️ {LABELS.get(m['target'], m['target'])} comes from rerun `{m['run_id']}` (commit `{m['git_sha']}`) "
+                   f"on a separate stand of the same shape; its direct baseline there was p50 {fmt(m['direct_p50_ms'], ' ms')}, "
+                   f"p99 {fmt(m['direct_p99_ms'], ' ms')}.")
     if env.get("mode") == "local":
         out.append("- Local mode: k6 and the gateways share one machine. Use it for regressions, "
                    "not for published numbers.")
@@ -189,15 +202,17 @@ def main():
     lat, lat_md = latency(out)
     st, st_md = streaming(out)
     sat, sat_md = saturation(out)
-    sat_p = (load(out, "direct.saturation.json") or load(out, "ktms.saturation.json") or {}).get("params", {})
+    sat_p = next((s["params"] for t in TARGETS if (s := load(out, f"{t}.saturation.json"))), {})
     rs, rs_md = resources(out, env)
     sut = env.get("sut", {})
     images = ", ".join(f"`{v['image']}`" for v in sut.get("images", {}).values())
     lat_p = (load(out, "direct.latency.json") or {}).get("params", {})
     st_p = (load(out, "direct.streaming.json") or {}).get("params", {})
-    soak_p = (load(out, "ktms.soak.json") or {}).get("params", {})
+    soak_p = next((s["params"] for g in GATEWAYS if (s := load(out, f"{g}.soak.json"))), {})
 
-    warn = warnings(env, rs, load(out, "aborted.json"))
+    failed_path = out / "failed.jsonl"
+    failed = [json.loads(l) for l in failed_path.read_text().splitlines() if l.strip()] if failed_path.exists() else []
+    warn = warnings(env, rs, load(out, "aborted.json"), failed)
     note = f" ({env['note']})" if env.get("note") else ""
 
     report = f"""# Gateway benchmark report
@@ -208,6 +223,13 @@ SUT: {sut.get('cpus')} CPUs ({sut.get('arch')}), {fmt((sut.get('mem_bytes') or 0
 Images: {images}.
 
 {warn}
+
+## 0. Gateways
+
+Every gateway points at the same mock with retries and caching off, and access logs and telemetry off
+wherever the gateway allows it (see notes).
+
+{gateways_table(env, out)}
 
 ## 1. Latency overhead
 
@@ -234,7 +256,7 @@ offered and fewer than 1% of requests fail.
 ## 4. Resources
 
 RSS is cgroup `anon` memory of the gateway container (dependencies such as Postgres and Redis are
-excluded). Soak: {soak_p.get('rate')} RPS for {soak_p.get('duration')}. Drift compares the first
+excluded). Cold start is `docker start` to the first successful chat completion through the gateway. Soak: {soak_p.get('rate')} RPS for {soak_p.get('duration')}. Drift compares the first
 and last quarter of soak samples. CPU per 1k requests is cgroup CPU time over the soak.
 
 {rs_md}
