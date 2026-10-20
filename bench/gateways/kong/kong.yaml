@@ -1,0 +1,34 @@
+_format_version: "3.0"
+services:
+  - name: llm
+    url: http://mock-upstream:8000   # placeholder; ai-proxy targets upstream_url
+    retries: 0
+    routes:
+      - name: chat
+        paths: ["/v1/chat/completions"]
+        strip_path: false
+        response_buffering: false
+        methods: ["POST"]
+        plugins:
+          - name: ai-proxy
+            config:
+              route_type: llm/v1/chat
+              auth:
+                header_name: Authorization
+                header_value: Bearer mock-key
+              logging:
+                log_statistics: false
+                log_payloads: false
+              model:
+                provider: openai
+                name: gpt-4o-mini
+                options:
+                  upstream_url: http://mock-upstream:8000/v1/chat/completions
+          - name: key-auth
+            config:
+              key_names: ["Authorization"]
+              hide_credentials: true
+consumers:
+  - username: bench
+    keyauth_credentials:
+      - key: "Bearer sk-kong-bench"

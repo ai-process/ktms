@@ -1,0 +1,31 @@
+apiVersion: extensions.higress.io/v1alpha1
+kind: WasmPlugin
+metadata:
+  name: key-auth.internal
+  namespace: higress-system
+  resourceVersion: "1"
+  labels:
+    higress.io/resource-definer: higress
+    higress.io/wasm-plugin-built-in: "true"
+    higress.io/wasm-plugin-name: key-auth
+    higress.io/wasm-plugin-version: 2.0.0
+spec:
+  defaultConfig:
+    global_auth: false
+    consumers:
+    - name: bench
+      credential: "Bearer sk-higress-bench"
+    keys: ["Authorization"]
+    in_header: true
+    in_query: false
+  defaultConfigDisable: false
+  matchRules:
+  - ingress:
+    - ai-route-mock
+    configDisable: false
+    config:
+      allow: ["bench"]
+  failStrategy: FAIL_CLOSE
+  phase: AUTHN
+  priority: 310
+  url: http://localhost:8002/plugins/key-auth/2.0.0/plugin.wasm

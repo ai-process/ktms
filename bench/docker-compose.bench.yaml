@@ -10,6 +10,10 @@ services:
       MOCK_LATENCY_MS: "0"
       MOCK_CHUNKS: "20"
       MOCK_CHUNK_DELAY_MS: "15"
+    networks:
+      default:
+        # Higress rejects single-label DNS names in its registry.
+        aliases: [mock-upstream.bench]
     ports:
       - "${BIND_ADDR:-127.0.0.1}:8000:8000"
     healthcheck:
@@ -59,15 +63,121 @@ services:
       - "${BIND_ADDR:-127.0.0.1}:8080:8080"
 
   litellm:
-    image: ghcr.io/berriai/litellm:v1.83.14-stable
+    image: ghcr.io/berriai/litellm:v1.106.0
+    depends_on:
+      mock-upstream: { condition: service_healthy }
+    environment:
+      LITELLM_LOG: ERROR
+    volumes:
+      - ./gateways/litellm/config.yaml:/app/config.yaml:ro
+    # One worker per SUT core, the documented way to use all cores (KTMS does so in one process).
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "${SUT_CPUS:-4}"]
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:4000:4000"
+
+  # Competitors below: each config disables retries, caching, access logs and
+  # telemetry, and points at the mock; see gateways/<name>/ and README.md.
+  bifrost:
+    image: maximhq/bifrost:v2.3.1
+    depends_on:
+      mock-upstream: { condition: service_healthy }
+    environment: { APP_HOST: "0.0.0.0", APP_PORT: "8080", LOG_LEVEL: warn }
+    # prepare-bifrost fills run/ with the config and local pricing datasheets.
+    volumes:
+      - ./gateways/bifrost/run:/app/data
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:8081:8080"
+
+  portkey:
+    image: portkeyai/gateway:1.15.2
+    depends_on:
+      mock-upstream: { condition: service_healthy }
+    environment: { NODE_ENV: production, TRUSTED_CUSTOM_HOSTS: mock-upstream }
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:8787:8787"
+
+  kong:
+    image: kong:3.9.4
+    depends_on:
+      mock-upstream: { condition: service_healthy }
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yaml
+      KONG_ANONYMOUS_REPORTS: "off"
+      KONG_NGINX_WORKER_PROCESSES: auto
+      KONG_PROXY_ACCESS_LOG: "off"
+      KONG_ADMIN_LISTEN: "off"
+      KONG_STATUS_LISTEN: 0.0.0.0:8100
+    volumes:
+      - ./gateways/kong/kong.yaml:/kong/kong.yaml:ro
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:8001:8000"
+
+  apisix:
+    image: apache/apisix:3.19.0-debian
     depends_on:
       mock-upstream: { condition: service_healthy }
     volumes:
-      - ./litellm_config.yaml:/app/config.yaml:ro
-    # One worker per SUT core, the documented way to use all cores (KTMS does so in one process).
-    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "${LITELLM_WORKERS:-4}"]
+      - ./gateways/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./gateways/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
     ports:
-      - "${BIND_ADDR:-127.0.0.1}:4000:4000"
+      - "${BIND_ADDR:-127.0.0.1}:9080:9080"
+
+  higress:
+    image: higress-registry.us-west-1.cr.aliyuncs.com/higress/all-in-one:2.2.5
+    depends_on:
+      mock-upstream: { condition: service_healthy }
+    environment: { MODE: gateway, GATEWAY_CONCURRENCY: "${SUT_CPUS:-4}" }
+    # Writable state; prepare-higress resets it from seed/ before every run.
+    volumes:
+      - ./gateways/higress/run:/data
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:8082:8080"
+
+  aigw:
+    image: envoyproxy/ai-gateway-cli:v1.2.0
+    depends_on:
+      mock-upstream: { condition: service_healthy }
+    command: ["run", "/config/aigw.yaml"]
+    volumes:
+      - ./gateways/aigw/aigw.yaml:/config/aigw.yaml:ro
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:1975:1975"
+
+  agentgateway:
+    image: cr.agentgateway.dev/agentgateway:v1.6.0
+    depends_on:
+      mock-upstream: { condition: service_healthy }
+    command: ["-f", "/config.yaml"]
+    volumes:
+      - ./gateways/agentgateway/config.yaml:/config.yaml:ro
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:4001:4000"
+
+  newapi:
+    image: calciumion/new-api:v1.0.0-rc.45
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      mock-upstream: { condition: service_healthy }
+    environment:
+      SQL_DSN: "postgresql://ktms:ktms@db:5432/newapi"
+      REDIS_CONN_STRING: "redis://redis:6379/1"
+      MEMORY_CACHE_ENABLED: "true"
+      BATCH_UPDATE_ENABLED: "true"
+      SESSION_SECRET: "bench-session-secret-0123456789abcdef"
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:3000:3000"
+
+  plano:
+    image: katanemo/plano:0.4.37
+    depends_on:
+      mock-upstream: { condition: service_healthy }
+    environment: { LOG_LEVEL: warn }
+    volumes:
+      - ./gateways/plano/config.yaml:/app/plano_config.yaml:ro
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:12000:12000"
 
   # Local mode only: the cloud runner VM runs the same image with host networking.
   k6:

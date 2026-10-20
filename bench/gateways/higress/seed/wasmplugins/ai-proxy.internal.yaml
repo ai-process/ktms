@@ -1,0 +1,26 @@
+apiVersion: extensions.higress.io/v1alpha1
+kind: WasmPlugin
+metadata:
+  name: ai-proxy.internal
+  namespace: higress-system
+  resourceVersion: "1"
+  labels:
+    higress.io/resource-definer: higress
+    higress.io/wasm-plugin-built-in: "true"
+    higress.io/wasm-plugin-name: ai-proxy
+    higress.io/wasm-plugin-version: 2.0.3
+spec:
+  defaultConfigDisable: true
+  matchRules:
+  - ingress:
+    - ai-route-mock
+    configDisable: false
+    config:
+      provider:
+        type: openai
+        apiTokens: ["mock-key"]
+        openaiCustomUrl: http://mock-upstream:8000/v1/chat/completions
+  failStrategy: FAIL_CLOSE
+  phase: UNSPECIFIED_PHASE
+  priority: 100
+  url: http://localhost:8002/plugins/ai-proxy/2.0.3/plugin.wasm
