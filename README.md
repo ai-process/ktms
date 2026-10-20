@@ -185,11 +185,11 @@ RSS; Postgres and Redis are not counted. Two independent runs agreed within ~10%
 Release images are published to Docker Hub for `linux/amd64` and `linux/arm64` in two variants:
 
 - **`coyl/ktms:latest`** (also tagged **`:slim`** or pinned `:<version>` / `:<version>-slim`): default lightweight image (~65 MB uncompressed, ~21 MB download). A clean Alpine container without `ffmpeg`, optimized for text generation, chat, reasoning, embeddings, and OpenAI TTS.
-- **`coyl/ktms:audio`** (or pinned `:<version>-audio`): extended image (~172 MB uncompressed) with `ffmpeg` installed for Gemini speech synthesis (transcoding raw PCM into OGG/Opus voice messages).
+- **`coyl/ktms:audio`** (or pinned `:<version>-audio`): extended image (~195 MB uncompressed, ~69 MB download) with `ffmpeg` installed for Gemini speech synthesis (transcoding raw PCM into OGG/Opus voice messages).
 
 ```bash
 docker pull coyl/ktms:latest      # default lightweight image (~65 MB)
-docker pull coyl/ktms:audio       # with ffmpeg for Gemini speech synthesis (~172 MB)
+docker pull coyl/ktms:audio       # with ffmpeg for Gemini speech synthesis (~195 MB)
 ```
 
 If Gemini TTS is requested without ffmpeg available (e.g. on the default slim image), the proxy returns gRPC `Codes.Unimplemented` / HTTP 501 Not Implemented: `ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/ktms:audio' container image`. OpenAI TTS produces native Opus directly and works on both variants without ffmpeg.
@@ -1013,7 +1013,7 @@ purpose travels in free-form attributes, so the proxy knows nothing about your p
 **Upstream Circuit Breaker:**
 - Monitors consecutive upstream failures (5xx server errors, network connection drops, connect/TLS handshake timeouts, and upstream timeouts via `UPSTREAM_REQUEST_TIMEOUT`) per `(vendor, model)`. Caller client aborts and overall client deadline cancellations do not trip the circuit breaker, but vendor stalls beyond `UPSTREAM_REQUEST_TIMEOUT` (total duration for unary/media, per-chunk idle watchdog for streaming) reliably trip it and trigger immediate fallback to the next candidate model.
 - When consecutive failures reach `CIRCUIT_BREAKER_FAIL_THRESHOLD` (default 5), the circuit trips to `OPEN`.
-- Requests skip degraded upstream models immediately (<1ms) without network latency.
+- Requests skip degraded upstream models immediately, without a network round trip.
 - After `CIRCUIT_BREAKER_COOLDOWN` (default 30s), transitions to `HALF_OPEN` and admits a single probe request. Success restores `CLOSED`; failure re-opens the circuit.
 - If all models in the chain have open circuits, the caller receives `UNAVAILABLE vendors_unavailable`.
 
@@ -1039,9 +1039,9 @@ lexical hash encoder that folds case, homoglyphs, zero-width and spaced-out lett
 - **Latent guardrails.** Each prompt is scored against category centroids; the nearest one at
   `GUARDRAILS_LATENT_THRESHOLD` blocks (or logs) with `guardrail_violation: latent <category>
   intent detected`. An unreachable encoder fails open after the regex checks have run.
-- **Overhead.** With the local encoder a short prompt adds ~15µs of screening and a 256-entry
-  semantic lookup ~2ms, well under 15ms (`go test -bench . ./internal/latent ./internal/guardrails ./internal/cache`);
-  a remote encoder adds its own latency, bounded by `LATENT_ENCODER_TIMEOUT`.
+- **Overhead.** The local encoder runs in-process; measure screening and semantic lookup cost on
+  your hardware with `go test -bench . ./internal/latent ./internal/guardrails ./internal/cache`.
+  A remote encoder adds its own latency, bounded by `LATENT_ENCODER_TIMEOUT`.
 
 ## Error contract
 
