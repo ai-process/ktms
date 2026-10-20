@@ -23,7 +23,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 - **OpenAI-compatible HTTP API.** Point any OpenAI SDK or tool at `http://host:8080/v1`
   and get routing, fallbacks and limits for free.
 - **Usage reporting.** Optionally forwards one event per call to a gRPC usage sink.
-- **Small footprint.** Single Go binary: ~64 MB image, ~25–35 MiB idle RAM, ready in under 60 ms.
+- **Small footprint.** Single Go binary: ~65 MB image, ~7 MiB idle RAM, under 1 ms of added latency.
 - **Web console.** [ktms-admin](#web-console) manages models, rules and keys in the browser.
 
 ## Contents
@@ -157,20 +157,26 @@ Once real keys exist in production, unset `BOOTSTRAP_ADMIN_KEY`.
 
 ## Resource footprint
 
-Compiled as a single Go binary without a runtime interpreter, KTMS delivers
-high-throughput LLM gateway capabilities at a fraction of the memory, disk, and
-startup overhead of Python-based gateways like LiteLLM Proxy.
+KTMS is a single Go process with no interpreter, so it adds less than a millisecond per request and
+needs tens of megabytes where Python gateways such as LiteLLM Proxy need gigabytes.
 
-| Metric | KTMS (Go) | LiteLLM Proxy (Python) | Difference |
+| Metric | KTMS (Go) | LiteLLM Proxy (Python, 4 workers) | Difference |
 |---|---|---|---|
-| Docker image size (uncompressed) | ~64 MB (slim) / ~172 MB (audio) | ~2.2 GB | ~92–97% smaller disk footprint |
-| Idle memory (cgroup memory.current) | ~25–35 MiB | ~400–600 MiB | ~11–24x less idle memory |
-| Active load memory (1k RPS) | ~45–80 MiB | ~1.2–2.0 GiB (4 workers) | ~15–46x less memory under load |
-| Time to readiness (`/readyz` 200) | ~30–60 ms | 8–15 s (`/health/readiness`) | ~130–500x faster readiness |
-| Concurrency model | Native goroutines in 1 process | Multiple OS processes + asyncio | Single process uses all cores; no per-worker memory duplication |
-| Recommended container memory limit | 256–512 MiB (Helm default limit 512 MiB) | ~2.5–3 GiB | ~5–12x lower memory reservation |
+| Docker image, linux/amd64 (uncompressed / pull) | ~65 MB / ~21 MB (slim) | ~2.0 GB / ~570 MB | ~30x smaller |
+| Idle memory (RSS) | ~7 MiB | ~3.3 GiB | ~480x less |
+| Memory at a steady 200 RPS | ~20 MiB, no drift | ~3.5 GiB | ~180x less |
+| Peak memory over the whole run (up to 2,000 RPS) | < 80 MiB | ~3.7 GiB | ~50x less |
+| Added latency, p50 / p99 | ~0.6 ms / ~1.1 ms | ~7.5 ms / ~30 ms | ~12x lower p50 |
+| Added time to first token (streaming), p50 | ~0.8 ms | ~150 ms | no chunk buffering in either |
+| Max sustained throughput (< 1% errors) | ≥ 2,000 RPS (highest step tested) | ~250 RPS | ≥ 8x higher |
+| CPU time per 1,000 requests | ~0.7 s | ~7 s | ~10x less |
+| Time to readiness (container start → first 200) | ~170 ms | ~32 s | ~190x faster |
 
-*Measurements from synthetic k6 benchmarks (October 2026, 1,000 RPS against a 10 ms mock upstream, 4 Uvicorn workers on `ghcr.io/berriai/litellm:main-latest`) on Linux x86_64, 4 vCPU, 8 GB RAM; readiness assumes warm DB with migrations applied.*
+*Measured in October 2026 on Google Cloud: the gateway on a dedicated `c3-standard-4` (4 vCPU, 16 GB,
+x86_64), k6 on a second VM, and a mock OpenAI upstream (0 ms for latency, 10 ms for throughput). LiteLLM
+`v1.83.14-stable` ran with master key only and no database. Memory is the gateway container's cgroup
+RSS; Postgres and Redis are not counted. Two independent runs agreed within ~10%. The stand is in
+[`bench/`](bench/) and reproduces these numbers with one command.*
 
 ## Installation
 
@@ -178,11 +184,11 @@ startup overhead of Python-based gateways like LiteLLM Proxy.
 
 Release images are published to Docker Hub for `linux/amd64` and `linux/arm64` in two variants:
 
-- **`coyl/ktms:latest`** (also tagged **`:slim`** or pinned `:<version>` / `:<version>-slim`): default lightweight image (~64 MB uncompressed, ~18 MB download). A clean Alpine container without `ffmpeg`, optimized for text generation, chat, reasoning, embeddings, and OpenAI TTS.
+- **`coyl/ktms:latest`** (also tagged **`:slim`** or pinned `:<version>` / `:<version>-slim`): default lightweight image (~65 MB uncompressed, ~21 MB download). A clean Alpine container without `ffmpeg`, optimized for text generation, chat, reasoning, embeddings, and OpenAI TTS.
 - **`coyl/ktms:audio`** (or pinned `:<version>-audio`): extended image (~172 MB uncompressed) with `ffmpeg` installed for Gemini speech synthesis (transcoding raw PCM into OGG/Opus voice messages).
 
 ```bash
-docker pull coyl/ktms:latest      # default lightweight image (~64 MB)
+docker pull coyl/ktms:latest      # default lightweight image (~65 MB)
 docker pull coyl/ktms:audio       # with ffmpeg for Gemini speech synthesis (~172 MB)
 ```
 
