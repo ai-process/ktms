@@ -175,8 +175,8 @@ needs tens of megabytes where Python gateways such as LiteLLM Proxy need gigabyt
 *Measured in October 2026 on Google Cloud: the gateway on a dedicated `c3-standard-4` (4 vCPU, 16 GB,
 x86_64), k6 on a second VM, and a mock OpenAI upstream (0 ms for latency, 10 ms for throughput). LiteLLM
 `v1.83.14-stable` ran with master key only and no database. Memory is the gateway container's cgroup
-RSS; Postgres and Redis are not counted. Two independent runs agreed within ~10%. The stand is in
-[`bench/`](bench/) and reproduces these numbers with one command.*
+RSS; Postgres and Redis are not counted. Two independent runs agreed within ~10%, except LiteLLM p99
+(29–37 ms). The stand is in [`bench/`](bench/) and reproduces these numbers with one command.*
 
 ## Installation
 
