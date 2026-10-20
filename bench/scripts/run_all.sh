@@ -83,11 +83,12 @@ record() {
 current=setup
 res=/dev/null
 sampler=
+job=
 finish() {
   local rc=$?
   set +e
   trap - EXIT
-  [[ -n "$sampler" ]] && kill "$sampler" 2>/dev/null
+  [[ -n "$job" ]] && kill "$job" 2>/dev/null
   [[ $rc -ne 0 ]] && echo "{\"target\":\"${current}\",\"exit\":${rc}}" >"${OUT}/aborted.json"
   [[ "$current" != setup ]] && sut stop-gateways
   if [[ -n "$RUNNER_SSH" ]]; then
@@ -108,14 +109,17 @@ printf '{"run_id":"%s","profile":"%s","mode":"%s","note":"%s","git_sha":"%s","st
   "$(git -C "$BENCH_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)" "$(date -u +%FT%TZ)" \
   "$sut_env" >"${OUT}/env.json"
 
-for target in $TARGETS; do
+# One target per subshell: a gateway that fails is recorded in failed.jsonl and the
+# run moves on. It runs in the background because set -e is ignored in a subshell
+# that is tested with || or if.
+bench_target() {
+  trap '[[ -n "$sampler" ]] && kill "$sampler" 2>/dev/null' EXIT
   case "$target" in
     direct) svc=mock-upstream key=mock-key model=gpt-4o-mini path=/v1/chat/completions headers='{}'
       base="$(endpoint mock-upstream 8000)" ;;
     *) svc="$target" key="$(gw "$target" key)" model="$(gw "$target" model)" path="$(gw "$target" path)"
       headers="$(gw "$target" headers)" base="$(endpoint "$target" "$(gw "$target" port)")" ;;
   esac
-  current="$target"
   res="${OUT}/${target}.resources.jsonl"
   : >"$res"
   sut stop-gateways
@@ -155,6 +159,20 @@ for target in $TARGETS; do
   k6run saturation 03_concurrency.js "STEPS=${SAT_STEPS}" "HOLD_S=${SAT_HOLD_S}" "RAMP_S=${SAT_RAMP_S}"
   if [[ "$target" != direct ]]; then
     record after_saturation m metrics "$svc"
+  fi
+}
+
+for target in $TARGETS; do
+  current="$target"
+  rc=0
+  bench_target &
+  job=$!
+  wait "$job" || rc=$?
+  job=
+  if [[ $rc -ne 0 ]]; then
+    echo "{\"target\":\"${target}\",\"exit\":${rc}}" >>"${OUT}/failed.jsonl"
+    log "${target}: failed (exit ${rc}), continuing with the next target"
+    sut stop-gateways || true
   fi
 done
 current=finished

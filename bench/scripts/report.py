@@ -172,9 +172,10 @@ def gateways_table(env, out):
     return table(["Gateway", "Image", "Client auth", "Notes"], rows)
 
 
-def warnings(env, rs, aborted):
+def warnings(env, rs, aborted, failed):
     host = MACHINE.get(env.get("sut", {}).get("arch"), env.get("sut", {}).get("arch"))
-    out = []
+    out = [f"- ⛔ {LABELS.get(f['target'], f['target'])} failed (exit {f['exit']}) and was skipped; "
+           "its rows are partial or missing." for f in failed]
     if aborted:
         out.append(f"- ⛔ Run aborted during `{aborted['target']}` (exit {aborted['exit']}); "
                    "tables below hold only what was measured before that.")
@@ -205,7 +206,9 @@ def main():
     st_p = (load(out, "direct.streaming.json") or {}).get("params", {})
     soak_p = next((s["params"] for g in GATEWAYS if (s := load(out, f"{g}.soak.json"))), {})
 
-    warn = warnings(env, rs, load(out, "aborted.json"))
+    failed_path = out / "failed.jsonl"
+    failed = [json.loads(l) for l in failed_path.read_text().splitlines() if l.strip()] if failed_path.exists() else []
+    warn = warnings(env, rs, load(out, "aborted.json"), failed)
     note = f" ({env['note']})" if env.get("note") else ""
 
     report = f"""# Gateway benchmark report
