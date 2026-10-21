@@ -2,11 +2,14 @@ package nodes
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/ai-process/ktms/internal/observability"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 )
@@ -172,13 +175,29 @@ func (m *Manager) ListNodes(ctx context.Context) ([]*NodeSnapshot, error) {
 	now := time.Now()
 	var out []*NodeSnapshot
 	for _, id := range nodeIDs {
+		// A node whose state cannot be read is left out rather than guessed at:
+		// an unread inflight count of 0 would bypass its capacity limit.
 		meta, err := m.store.GetMeta(ctx, id)
 		if err != nil {
+			if !errors.Is(err, ErrNodeNotFound) {
+				observability.DependencyErrorsTotal.WithLabelValues("redis", "node_state").Inc()
+				log.Warn().Err(err).Str("node_id", id).Msg("node meta unreadable, skipping node")
+			}
 			continue
 		}
-		hb, _ := m.store.GetHeartbeat(ctx, id)
+		hb, err := m.store.GetHeartbeat(ctx, id)
+		if err != nil {
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "node_state").Inc()
+			log.Warn().Err(err).Str("node_id", id).Msg("node heartbeat unreadable, skipping node")
+			continue
+		}
 		st, _ := m.GetNodeState(ctx, id, hb)
-		inflight, _ := m.store.GetInflightCount(ctx, id, now)
+		inflight, err := m.store.GetInflightCount(ctx, id, now)
+		if err != nil {
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "node_state").Inc()
+			log.Warn().Err(err).Str("node_id", id).Msg("node inflight unreadable, skipping node")
+			continue
+		}
 
 		perfMap := make(map[string]*NodePerfData)
 		for _, model := range meta.Models {
