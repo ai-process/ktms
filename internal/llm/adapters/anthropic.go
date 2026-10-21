@@ -226,7 +226,8 @@ func (a *AnthropicAdapter) toResponse(resp *anthropic.Message, carried llm.Token
 		return nil, fmt.Errorf("empty response from Anthropic")
 	}
 
-	if schema != nil && a.softSchema {
+	// A tool-call reply has no text to check; its arguments are checked upstream.
+	if schema != nil && a.softSchema && len(toolCalls) == 0 {
 		if err := llm.CheckResponseSchema(text, schema); err != nil {
 			return nil, err
 		}

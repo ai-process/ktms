@@ -105,7 +105,7 @@ type SchemaFailure struct {
 }
 
 func (e *SchemaFailure) Error() string {
-	return fmt.Sprintf("%s could not honour the response schema: %v", e.Model, e.Err)
+	return fmt.Sprintf("%s replied outside the requested schema: %v", e.Model, e.Err)
 }
 
 func (e *SchemaFailure) Unwrap() error { return e.Err }
@@ -760,11 +760,9 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 	return nil, exhaustedError(len(r.Chain), allCircuitBroken, allThrottled, anyCircuitBroken, throttledCount, throttleKind, lastErr, paused.retryAfter(len(r.Chain)))
 }
 
-// callAndCheck runs one model and verifies what its vendor did not enforce:
-// the reply schema when the model's API cannot take one, and the arguments of
-// strict tools, which not every vendor honours. A reply of the wrong shape
-// earns one more attempt on the same model before the chain moves on.
-// Settles the throttle reservation on every path.
+// callAndCheck checks what the vendor may not have enforced (soft-schema text,
+// strict tool arguments). A wrong shape gets one more attempt on the same
+// model before the chain moves on; the reservation is settled on every path.
 func (r Request) callAndCheck(ctx context.Context, adapter llm.ClientAdapter, m *proxydb.Model,
 	th Throttle, res *Reservation) (*llm.Response, error) {
 	soft := r.Chat.GetResponseSchema() != nil && r.SoftSchema != nil && r.SoftSchema(m)

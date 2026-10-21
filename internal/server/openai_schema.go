@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 )
@@ -24,29 +25,37 @@ type jsonSchema struct {
 	AdditionalProperties json.RawMessage `json:"additionalProperties"`
 }
 
-// enumValues keeps string enums. Other values cannot be carried, and dropping
-// them silently would loosen the caller's contract, so they are refused.
-func (s *jsonSchema) enumValues() (values []string, nullable bool, err error) {
+// enumValues carries strings as they are and other literals (1, true) as their
+// JSON text: vendors take enums on non-string types only as a hint, and the
+// adapters pass them on that way instead of dropping them.
+func (s *jsonSchema) enumValues() (values []string, nullable bool) {
 	for _, raw := range s.Enum {
-		if string(raw) == "null" {
+		text := strings.TrimSpace(string(raw))
+		if text == "null" {
 			nullable = true
 			continue
 		}
 		var v string
-		if err := json.Unmarshal(raw, &v); err != nil {
-			return nil, false, fmt.Errorf("enum values must be strings, got %s", raw)
+		if json.Unmarshal(raw, &v) != nil {
+			v = text
 		}
 		values = append(values, v)
 	}
-	return values, nullable, nil
+	return values, nullable
 }
 
+// additionalProperties is set only for a literal true or false. A schema (the
+// shape of extra values) or null allows extra keys, which is the default.
 func (s *jsonSchema) additionalProperties() *bool {
-	var allowed bool
-	if json.Unmarshal(s.AdditionalProperties, &allowed) != nil {
-		return nil
+	switch strings.TrimSpace(string(s.AdditionalProperties)) {
+	case "true":
+		v := true
+		return &v
+	case "false":
+		v := false
+		return &v
 	}
-	return &allowed
+	return nil
 }
 
 // schemaType resolves "type", which is either a string or a list such as
@@ -82,10 +91,7 @@ func (s *jsonSchema) toProperty(depth int) (*pb.SchemaProperty, error) {
 	if err != nil {
 		return nil, err
 	}
-	enum, enumNull, err := s.enumValues()
-	if err != nil {
-		return nil, err
-	}
+	enum, enumNull := s.enumValues()
 	out := &pb.SchemaProperty{
 		Type: typ, Description: s.Description, Required: s.Required, Nullable: nullable || enumNull,
 		Enum: enum, Format: s.Format, AdditionalProperties: s.additionalProperties(),

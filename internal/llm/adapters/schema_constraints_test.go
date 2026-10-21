@@ -90,3 +90,34 @@ func TestAdaptersDoNotMutateRequestSchema(t *testing.T) {
 		t.Fatalf("request schema required = %v, want only [status]", got)
 	}
 }
+
+func TestNonStringEnumBecomesAHint(t *testing.T) {
+	p := &llm.SchemaProperty{Type: llm.SchemaPropertyTypeInteger, Enum: []string{"1", "2"}, Description: "level"}
+	oa := convertLLMSchemaPropertyToOpenAISchemaProperty(p)
+	if _, ok := oa["enum"]; ok || oa["description"] != "level (allowed values: 1, 2)" {
+		t.Fatalf("OpenAI property = %v, want the enum as a hint", oa)
+	}
+	g := convertPropertySchemaToGenai(p)
+	if len(g.Enum) != 0 || !strings.Contains(g.Description, "allowed values: 1, 2") {
+		t.Fatalf("Gemini property = %+v, want the enum as a hint", g)
+	}
+}
+
+func TestObjectClosingRules(t *testing.T) {
+	closed := false
+	cases := []struct {
+		name string
+		prop *llm.SchemaProperty
+		want bool
+	}{
+		{"with properties", &llm.SchemaProperty{Type: llm.SchemaPropertyTypeObject, Properties: map[string]*llm.SchemaProperty{"a": {Type: llm.SchemaPropertyTypeString}}}, true},
+		{"free-form", &llm.SchemaProperty{Type: llm.SchemaPropertyTypeObject}, false},
+		{"explicitly closed", &llm.SchemaProperty{Type: llm.SchemaPropertyTypeObject, AdditionalProperties: &closed}, true},
+	}
+	for _, tc := range cases {
+		_, got := convertLLMSchemaPropertyToOpenAISchemaProperty(tc.prop)["additionalProperties"]
+		if got != tc.want {
+			t.Errorf("%s: additionalProperties sent = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

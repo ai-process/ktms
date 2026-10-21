@@ -1092,7 +1092,9 @@ type SchemaProperty struct {
 	Items       *SchemaProperty            `protobuf:"bytes,4,opt,name=items,proto3" json:"items,omitempty"`                                                                                     // array types
 	Required    []string                   `protobuf:"bytes,5,rep,name=required,proto3" json:"required,omitempty"`                                                                               // object types
 	Nullable    bool                       `protobuf:"varint,6,opt,name=nullable,proto3" json:"nullable,omitempty"`
-	Enum        []string                   `protobuf:"bytes,7,rep,name=enum,proto3" json:"enum,omitempty"` // string types: the allowed values
+	// Allowed values. Enforced on string types; on other types (values as JSON
+	// text, e.g. "1") they reach the model as a hint in the description.
+	Enum []string `protobuf:"bytes,7,rep,name=enum,proto3" json:"enum,omitempty"`
 	// String format hint ("date-time", "email", "uuid", ...). Formats a vendor
 	// cannot enforce are passed to the model in the description instead.
 	Format string `protobuf:"bytes,8,opt,name=format,proto3" json:"format,omitempty"`

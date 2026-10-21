@@ -286,7 +286,8 @@ func (a *BedrockAdapter) toResponse(resp *bedrockruntime.ConverseOutput, schema 
 		return nil, fmt.Errorf("empty response from Bedrock")
 	}
 
-	if schema != nil && a.softSchema {
+	// A tool-call reply has no text to check; its arguments are checked upstream.
+	if schema != nil && a.softSchema && len(toolCalls) == 0 {
 		if err := llm.CheckResponseSchema(text, schema); err != nil {
 			return nil, err
 		}
