@@ -131,6 +131,29 @@ var (
 		[]string{"vendor", "model", "from", "to"},
 	)
 
+	// DependencyErrorsTotal counts failed calls to Redis, Postgres and the usage
+	// collector, labelled by what the call was for; each one means a limit was
+	// skipped, a feature degraded or a request refused, as the README table says.
+	DependencyErrorsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "ktms",
+			Name:      "dependency_errors_total",
+			Help:      "Total number of failed calls to a dependency (redis, postgres, usage_collector) by operation.",
+		},
+		[]string{"dependency", "operation"},
+	)
+
+	// UsageEventsDroppedTotal counts usage events lost for good: the queue was
+	// full while the collector was down, or shutdown came before delivery.
+	UsageEventsDroppedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "ktms",
+			Name:      "usage_events_dropped_total",
+			Help:      "Total number of usage events dropped before reaching the collector, by reason.",
+		},
+		[]string{"reason"},
+	)
+
 	// VendorCooldownsTotal counts pauses started because a vendor answered 429
 	// or 503 with Retry-After; skipped calls show up as fallbacks with reason "cooldown".
 	VendorCooldownsTotal = promauto.NewCounterVec(

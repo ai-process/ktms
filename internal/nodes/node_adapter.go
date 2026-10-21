@@ -20,6 +20,7 @@ import (
 	"github.com/ai-process/ktms/internal/crypto"
 	"github.com/ai-process/ktms/internal/llm"
 	"github.com/ai-process/ktms/internal/llm/adapters"
+	"github.com/ai-process/ktms/internal/observability"
 	"github.com/ai-process/ktms/internal/proxydb"
 	"github.com/ai-process/ktms/internal/registry"
 )
@@ -209,6 +210,17 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 	return nil
 }
 
+// poolUnavailable passes capacity outcomes through and marks anything else
+// (a Redis failure) as unknown pool state, so cloud fallbacks still run.
+func poolUnavailable(op string, err error) error {
+	var capErr *nodeCapacityError
+	if err == nil || errors.As(err, &capErr) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	observability.DependencyErrorsTotal.WithLabelValues("redis", "node_"+op).Inc()
+	return &poolStateError{op: op, err: err}
+}
+
 // externalLoad is the engine queue KTMS did not cause: requests the heartbeat
 // saw waiting beyond KTMS's own leases on the node. Other clients' running
 // requests share the engine's batch with ours and are not counted. The
@@ -334,13 +346,13 @@ func (pa *PoolAdapter) acquireSlot(ctx context.Context, userID string, estTokens
 		reqID := uuid.NewString()
 		acquired, leaseErr := pa.selector.mgr.Slots().AcquireLease(ctx, cand.Snapshot.Meta.NodeID, reqID, cand.Snapshot.Meta.MaxConcurrent, pa.leaseTTL)
 		if leaseErr != nil {
-			return nil, "", fmt.Errorf("local pool acquire lease: %w", leaseErr)
+			return nil, "", poolUnavailable("acquire_lease", leaseErr)
 		}
 		if acquired {
 			return cand, reqID, nil
 		}
 	} else if !errors.Is(err, ErrNodePoolFull) {
-		return nil, "", err
+		return nil, "", poolUnavailable("select_node", err)
 	}
 
 	// Determine queue wait timeout
@@ -460,13 +472,13 @@ func (pa *PoolAdapter) acquireSlot(ctx context.Context, userID string, estTokens
 			reqID := uuid.NewString()
 			acquired, leaseErr := pa.selector.mgr.Slots().AcquireLease(ctx, cand.Snapshot.Meta.NodeID, reqID, cand.Snapshot.Meta.MaxConcurrent, pa.leaseTTL)
 			if leaseErr != nil {
-				return nil, "", fmt.Errorf("local pool acquire lease: %w", leaseErr)
+				return nil, "", poolUnavailable("acquire_lease", leaseErr)
 			}
 			if acquired {
 				return cand, reqID, nil
 			}
 		} else if !errors.Is(err, ErrNodePoolFull) {
-			return nil, "", err
+			return nil, "", poolUnavailable("select_node", err)
 		}
 
 		backoff *= 2

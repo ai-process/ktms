@@ -2,11 +2,15 @@ package nodes
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/ai-process/ktms/internal/observability"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 )
@@ -70,7 +74,11 @@ func (m *Manager) Config() Config               { return m.cfg }
 func (m *Manager) Register(ctx context.Context, meta *NodeMeta) error {
 	// 1. SSRF validation
 	if err := ValidateEndpoint(ctx, meta.Endpoint, m.cfg.AllowLocalhost); err != nil {
-		return fmt.Errorf("validate endpoint: %w", err)
+		var dnsErr *net.DNSError
+		if errors.As(err, &dnsErr) && (dnsErr.IsTimeout || dnsErr.IsTemporary) {
+			return fmt.Errorf("validate endpoint: %w", err) // our resolver's hiccup: the agent should retry
+		}
+		return fmt.Errorf("%w: validate endpoint: %w", ErrInvalidNode, err)
 	}
 
 	meta.RegisteredAt = time.Now()
@@ -146,12 +154,18 @@ func (m *Manager) GetNodeState(ctx context.Context, nodeID string, hb *NodeHeart
 	}
 
 	isDraining, err := m.store.IsDraining(ctx, nodeID)
-	if err == nil && (isDraining || hb.Draining) {
+	if err != nil {
+		return pb.NodeState_NODE_STATE_OFFLINE, fmt.Errorf("read drain flag: %w", err)
+	}
+	if isDraining || hb.Draining {
 		return pb.NodeState_NODE_STATE_DRAINING, nil
 	}
 
 	broken, err := m.circuit.IsBroken(ctx, nodeID)
-	if err == nil && broken {
+	if err != nil {
+		return pb.NodeState_NODE_STATE_OFFLINE, fmt.Errorf("read circuit state: %w", err)
+	}
+	if broken {
 		return pb.NodeState_NODE_STATE_CIRCUIT_BROKEN, nil
 	}
 
@@ -172,13 +186,33 @@ func (m *Manager) ListNodes(ctx context.Context) ([]*NodeSnapshot, error) {
 	now := time.Now()
 	var out []*NodeSnapshot
 	for _, id := range nodeIDs {
+		// Unread state is never guessed at (an inflight of 0 bypasses capacity).
+		// A Redis error aborts the walk: one timeout, then the caller falls back.
 		meta, err := m.store.GetMeta(ctx, id)
-		if err != nil {
+		if errors.Is(err, ErrNodeNotFound) {
 			continue
 		}
-		hb, _ := m.store.GetHeartbeat(ctx, id)
-		st, _ := m.GetNodeState(ctx, id, hb)
-		inflight, _ := m.store.GetInflightCount(ctx, id, now)
+		if errors.Is(err, ErrCorruptNode) {
+			log.Warn().Err(err).Str("node_id", id).Msg("node record unreadable, skipping node")
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		hb, err := m.store.GetHeartbeat(ctx, id)
+		if errors.Is(err, ErrCorruptNode) {
+			hb = nil // a garbled heartbeat reads as none: the node shows OFFLINE
+		} else if err != nil {
+			return nil, err
+		}
+		st, err := m.GetNodeState(ctx, id, hb)
+		if err != nil {
+			return nil, err
+		}
+		inflight, err := m.store.GetInflightCount(ctx, id, now)
+		if err != nil {
+			return nil, err
+		}
 
 		perfMap := make(map[string]*NodePerfData)
 		for _, model := range meta.Models {
@@ -227,6 +261,12 @@ func (m *Manager) sweep(ctx context.Context) {
 	now := time.Now()
 	for _, id := range nodeIDs {
 		meta, err := m.store.GetMeta(ctx, id)
+		if err != nil && !errors.Is(err, ErrNodeNotFound) && !errors.Is(err, ErrCorruptNode) {
+			// Unknown, not expired: evicting on a Redis error would drop live nodes.
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "node_sweep").Inc()
+			log.Warn().Err(err).Str("node_id", id).Msg("sweep: node meta unreadable, keeping node")
+			continue
+		}
 		if err != nil {
 			// Meta expired past RetentionTTL -> remove from all set
 			if remErr := m.store.RemoveNode(ctx, id); remErr != nil {
@@ -235,7 +275,12 @@ func (m *Manager) sweep(ctx context.Context) {
 			continue
 		}
 
-		hb, _ := m.store.GetHeartbeat(ctx, id)
+		hb, err := m.store.GetHeartbeat(ctx, id)
+		if err != nil && !errors.Is(err, ErrCorruptNode) {
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "node_sweep").Inc()
+			log.Warn().Err(err).Str("node_id", id).Msg("sweep: node heartbeat unreadable, keeping node")
+			continue
+		}
 		if hb == nil && now.Sub(meta.RegisteredAt) > m.cfg.RetentionTTL {
 			log.Info().Str("node_id", id).Msg("sweep: evicting dead node past retention TTL")
 			if remErr := m.store.RemoveNode(ctx, id); remErr != nil {

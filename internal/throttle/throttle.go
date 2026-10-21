@@ -12,9 +12,11 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/observability"
 	"github.com/ai-process/ktms/internal/panicsafe"
 	"github.com/ai-process/ktms/internal/pricing"
 	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/redisguard"
 	"github.com/ai-process/ktms/internal/rediskeys"
 	"github.com/ai-process/ktms/internal/router"
 	"github.com/ai-process/ktms/internal/spendlimit"
@@ -244,7 +246,8 @@ func (t *Redis) AllowRPM(ctx context.Context, keyName, userID string, m *proxydb
 
 	res, err := gcraScript.Run(ctx, t.client, keys, args...).Int()
 	if err != nil {
-		log.Warn().Err(err).Strs("keys", keys).Msg("throttle: gcra check failed, allowing (fail-open)")
+		observability.DependencyErrorsTotal.WithLabelValues("redis", "rpm").Inc()
+		redisguard.Log(err).Err(err).Strs("keys", keys).Msg("throttle: gcra check failed, allowing (fail-open)")
 		return true
 	}
 	return res == 1
@@ -337,18 +340,21 @@ func (t *Redis) Reserve(ctx context.Context, m *proxydb.Model, keyName, userID s
 
 		newVal, err := t.client.IncrBy(ctx, b.key, estimate).Result()
 		if err != nil {
-			log.Warn().Err(err).Msg("throttle: budget reserve failed, allowing (fail-open)")
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "token_budget").Inc()
+			redisguard.Log(err).Err(err).Msg("throttle: budget reserve failed, allowing (fail-open)")
 			continue // this budget is not reserved and not enforced
 		}
 		if expErr := t.client.Expire(ctx, b.key, budgetTTL).Err(); expErr != nil {
-			log.Warn().Err(expErr).Str("key", b.key).Msg("throttle: expire budget key failed")
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "token_budget").Inc()
+			redisguard.Log(expErr).Err(expErr).Str("key", b.key).Msg("throttle: expire budget key failed")
 		}
 
 		prevVal := newVal - estimate
 		if prevVal >= b.limit || newVal > maxAllowed {
 			// Undo this and every prior reservation of this call.
 			if decrErr := t.client.DecrBy(ctx, b.key, estimate).Err(); decrErr != nil {
-				log.Warn().Err(decrErr).Str("key", b.key).Msg("throttle: undo reservation failed")
+				observability.DependencyErrorsTotal.WithLabelValues("redis", "token_budget").Inc()
+				redisguard.Log(decrErr).Err(decrErr).Str("key", b.key).Msg("throttle: undo reservation failed")
 			}
 			t.rollback(ctx, res)
 			return nil, b.kind
@@ -388,12 +394,13 @@ func (t *Redis) reserveSpend(ctx context.Context, m *proxydb.Model, keyName, use
 
 	idx, err := spendReserveScript.Run(ctx, t.client, hold.Keys, args...).Int()
 	if err != nil {
+		observability.DependencyErrorsTotal.WithLabelValues("redis", "spend_reserve").Inc()
 		if t.spendFailClosed {
 			log.Error().Err(err).Str("key", keyName).Str("user", userID).
 				Msg("throttle: spend reserve failed, refusing (SPEND_LIMITS_FAIL_MODE=closed)")
 			return nil, spendlimit.ReasonUnavailable
 		}
-		log.Warn().Err(err).Str("key", keyName).Str("user", userID).
+		redisguard.Log(err).Err(err).Str("key", keyName).Str("user", userID).
 			Msg("throttle: spend reserve failed, allowing unmetered (fail-open)")
 		return nil, ""
 	}
@@ -406,7 +413,8 @@ func (t *Redis) reserveSpend(ctx context.Context, m *proxydb.Model, keyName, use
 func (t *Redis) rollback(ctx context.Context, res *router.Reservation) {
 	for _, key := range res.Keys {
 		if err := t.client.DecrBy(ctx, key, res.Estimate).Err(); err != nil {
-			log.Warn().Err(err).Str("key", key).Msg("throttle: rollback failed")
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "token_budget").Inc()
+			redisguard.Log(err).Err(err).Str("key", key).Msg("throttle: rollback failed")
 		}
 	}
 }
@@ -436,7 +444,8 @@ func (t *Redis) Settle(res *router.Reservation, usage llm.TokensUsage) {
 		if tokenDelta != 0 {
 			for _, key := range res.Keys {
 				if err := t.client.IncrBy(ctx, key, tokenDelta).Err(); err != nil {
-					log.Warn().Err(err).Str("key", key).Msg("throttle: settle failed")
+					observability.DependencyErrorsTotal.WithLabelValues("redis", "settle").Inc()
+					redisguard.Log(err).Err(err).Str("key", key).Msg("throttle: settle failed")
 				}
 			}
 		}
@@ -453,7 +462,8 @@ func (t *Redis) adjustSpend(ctx context.Context, keys []string, ttls []int64, de
 		args = append(args, ttl)
 	}
 	if err := spendAdjustScript.Run(ctx, t.client, keys, args...).Err(); err != nil {
-		log.Warn().Err(err).Strs("keys", keys).Int64("delta_nanousd", delta).Msg("throttle: spend adjust failed")
+		observability.DependencyErrorsTotal.WithLabelValues("redis", "settle").Inc()
+		redisguard.Log(err).Err(err).Strs("keys", keys).Int64("delta_nanousd", delta).Msg("throttle: spend adjust failed")
 	}
 }
 
@@ -466,7 +476,13 @@ func (t *Redis) CheckDailyBudget(ctx context.Context, m *proxydb.Model, keyName,
 	now := t.currentTime().UTC()
 	for _, b := range t.tokenBudgets(m, keyName, userID, now.Format("20060102")) {
 		val, err := t.client.Get(ctx, b.key).Int64()
-		if err == nil && val >= b.limit {
+		if err != nil && !errors.Is(err, redis.Nil) {
+			// Token budgets fail open, like Reserve; say so instead of passing silently.
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "token_budget").Inc()
+			redisguard.Log(err).Err(err).Str("key", b.key).Msg("throttle: budget check failed, allowing (fail-open)")
+			continue
+		}
+		if val >= b.limit {
 			return b.kind
 		}
 	}
@@ -477,10 +493,12 @@ func (t *Redis) CheckDailyBudget(ctx context.Context, m *proxydb.Model, keyName,
 		}
 		if err != nil {
 			if t.spendFailClosed {
+				observability.DependencyErrorsTotal.WithLabelValues("redis", "spend_check").Inc()
 				log.Error().Err(err).Str("key", tg.key).Msg("throttle: spend check failed, refusing (fail-closed)")
 				return spendlimit.ReasonUnavailable
 			}
-			log.Warn().Err(err).Str("key", tg.key).Msg("throttle: spend check failed, allowing (fail-open)")
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "spend_check").Inc()
+			redisguard.Log(err).Err(err).Str("key", tg.key).Msg("throttle: spend check failed, allowing (fail-open)")
 			continue
 		}
 		if val >= tg.limit {
@@ -522,7 +540,8 @@ func (t *Redis) ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName
 			pipe.IncrBy(c, k, tokens)
 			pipe.Expire(c, k, budgetTTL)
 			if _, err := pipe.Exec(c); err != nil {
-				log.Warn().Err(err).Str("key", k).Msg("throttle: charge batch tokens failed")
+				observability.DependencyErrorsTotal.WithLabelValues("redis", "batch_charge").Inc()
+				redisguard.Log(err).Err(err).Str("key", k).Msg("throttle: charge batch tokens failed")
 			}
 		}
 		if len(spendKeys) > 0 && cost > 0 {
