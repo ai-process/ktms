@@ -11,6 +11,7 @@ import (
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/cooldown"
 	"github.com/ai-process/ktms/internal/guardrails"
 	"github.com/ai-process/ktms/internal/llm"
 	"github.com/ai-process/ktms/internal/proxydb"
@@ -38,6 +39,7 @@ type ProxyServer struct {
 	snapshots       SnapshotProvider
 	throttle        router.Throttle
 	circuitBreaker  router.CircuitBreaker
+	cooldown        *cooldown.Store
 	upstreamTimeout time.Duration
 	cache           TextCache
 	semantic        SemanticCache
@@ -158,6 +160,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		Estimate:         estimateTokens(req),
 		Chat:             chat,
 		CircuitBreaker:   s.circuitBreaker,
+		Cooldown:         s.cooldownFor(snap, id),
 		UpstreamTimeout:  s.upstreamTimeout,
 		Adapter:          func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
 		SoftSchema:       registry.SoftSchema,
@@ -287,6 +290,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		Estimate:         estimateTokens(inner),
 		Chat:             chat,
 		CircuitBreaker:   s.circuitBreaker,
+		Cooldown:         s.cooldownFor(snap, id),
 		UpstreamTimeout:  s.upstreamTimeout,
 		Adapter:          func(m *proxydb.Model) (llm.ClientAdapter, error) { return snap.Adapter(id.KeyID, m) },
 		SoftSchema:       registry.SoftSchema,

@@ -128,6 +128,7 @@ func (s *ProxyServer) evaluateShadowJudge(ctx context.Context, id *apikeys.Ident
 		UserID:         router.UserID(plan.attrs, plan.identity.Name),
 		Estimate:       estTokens,
 		CircuitBreaker: s.circuitBreaker,
+		Cooldown:       plan.cooldown,
 		Adapter:        plan.adapter,
 		Call: func(callCtx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			judge, ok := adapter.(llm.Judge)

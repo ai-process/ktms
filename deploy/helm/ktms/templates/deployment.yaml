@@ -125,6 +125,8 @@ spec:
               value: {{ .Values.config.circuitBreakerFailThreshold | quote }}
             - name: CIRCUIT_BREAKER_COOLDOWN
               value: {{ .Values.config.circuitBreakerCooldown | quote }}
+            - name: VENDOR_COOLDOWN_MAX
+              value: {{ .Values.config.vendorCooldownMax | quote }}
             - name: SPEND_LIMITS_FAIL_MODE
               value: {{ .Values.config.spendLimitsFailMode | quote }}
             - name: BUDGET_GRACE_MARGIN
