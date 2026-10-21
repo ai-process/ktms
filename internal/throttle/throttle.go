@@ -412,7 +412,7 @@ func (t *Redis) reserveSpend(ctx context.Context, m *proxydb.Model, keyName, use
 func (t *Redis) rollback(ctx context.Context, res *router.Reservation) {
 	for _, key := range res.Keys {
 		if err := t.client.DecrBy(ctx, key, res.Estimate).Err(); err != nil {
-			observability.DependencyErrorsTotal.WithLabelValues("redis", "spend_rollback").Inc()
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "token_budget").Inc()
 			log.Warn().Err(err).Str("key", key).Msg("throttle: rollback failed")
 		}
 	}

@@ -12,8 +12,10 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/ai-process/ktms/internal/observability"
@@ -28,6 +30,8 @@ type UsageCollectorClient struct {
 	queue     chan *usagev1.UsageEvent
 	stop      chan struct{}
 	done      chan struct{}
+	ctx       context.Context // cancelled on Close, cutting an in-flight send short
+	cancel    context.CancelFunc
 	stopOnce  sync.Once
 	projectID string
 	// projectFor resolves the project from event meta (the proxy attributes
@@ -80,11 +84,14 @@ const (
 )
 
 func newClient(client usagev1.UsageServiceClient, projectID string, size int) *UsageCollectorClient {
+	ctx, cancel := context.WithCancel(context.Background())
 	c := &UsageCollectorClient{
 		client:    client,
 		queue:     make(chan *usagev1.UsageEvent, size),
 		stop:      make(chan struct{}),
 		done:      make(chan struct{}),
+		ctx:       ctx,
+		cancel:    cancel,
 		projectID: projectID,
 	}
 	go c.sendLoop()
@@ -116,7 +123,13 @@ func (c *UsageCollectorClient) sendLoop() {
 		if len(batch) == 0 {
 			continue
 		}
-		if err := c.send(batch); err != nil {
+		err := c.send(c.ctx, batch)
+		if status.Code(err) == codes.InvalidArgument {
+			// The collector refuses the whole batch for one bad event; retrying it
+			// as is would block delivery for good, so find and drop the bad ones.
+			err = c.sendEach(c.ctx, batch)
+		}
+		if err != nil {
 			// Keep the batch and retry later; new events keep queueing meanwhile.
 			observability.DependencyErrorsTotal.WithLabelValues("usage_collector", "record_usage").Inc()
 			if backoff == flushEvery {
@@ -137,11 +150,29 @@ func (c *UsageCollectorClient) sendLoop() {
 	}
 }
 
-func (c *UsageCollectorClient) send(batch []*usagev1.UsageEvent) error {
-	ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
+func (c *UsageCollectorClient) send(ctx context.Context, batch []*usagev1.UsageEvent) error {
+	ctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
 	_, err := c.client.RecordUsageEvents(ctx, &usagev1.RecordUsageEventsRequest{Events: batch})
 	return err
+}
+
+// sendEach delivers a refused batch one event at a time, dropping (and
+// counting) the events the collector rejects. Any other error stops it, so the
+// caller retries the whole batch; duplicates of delivered ones are ignored.
+func (c *UsageCollectorClient) sendEach(ctx context.Context, batch []*usagev1.UsageEvent) error {
+	for _, ev := range batch {
+		err := c.send(ctx, []*usagev1.UsageEvent{ev})
+		if status.Code(err) == codes.InvalidArgument {
+			observability.UsageEventsDroppedTotal.WithLabelValues("rejected").Inc()
+			log.Error().Err(err).Str("event_id", ev.GetEventId()).Str("model", ev.GetModel()).Msg("collector rejected usage event, dropped")
+			continue
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *UsageCollectorClient) sleep(d time.Duration) bool {
@@ -156,9 +187,10 @@ func (c *UsageCollectorClient) sleep(d time.Duration) bool {
 }
 
 // drain makes one last attempt at shutdown for what is held and queued, in
-// batches, and counts whatever it could not deliver.
+// batches, all within closeDeadline, and counts whatever it could not deliver.
 func (c *UsageCollectorClient) drain(batch []*usagev1.UsageEvent) {
-	deadline := time.Now().Add(closeDeadline)
+	ctx, cancel := context.WithTimeout(context.Background(), closeDeadline)
+	defer cancel()
 	for {
 		for len(batch) < maxBatch {
 			select {
@@ -172,7 +204,7 @@ func (c *UsageCollectorClient) drain(batch []*usagev1.UsageEvent) {
 		if len(batch) == 0 {
 			return
 		}
-		if time.Now().After(deadline) || c.send(batch) != nil {
+		if c.send(ctx, batch) != nil {
 			lost := len(batch) + len(c.queue)
 			observability.UsageEventsDroppedTotal.WithLabelValues("shutdown").Add(float64(lost))
 			log.Error().Int("events", lost).Msg("usage events not delivered before shutdown")
@@ -195,7 +227,10 @@ func (c *UsageCollectorClient) Close() error {
 	if c == nil {
 		return nil
 	}
-	c.stopOnce.Do(func() { close(c.stop) })
+	c.stopOnce.Do(func() {
+		close(c.stop)
+		c.cancel() // an in-flight send must not hold shutdown for its full timeout
+	})
 	<-c.done
 	if c.conn == nil {
 		return nil
@@ -239,6 +274,9 @@ func (c *UsageCollectorClient) RecordUsage(
 	if projectID == "" {
 		return fmt.Errorf("projectID is required but not set (userID: %s, actionID: %s, vendor: %s, model: %s)", userID, actionID, vendor, model)
 	}
+	if err := validateLimits(userID, projectID, actionID, vendor, model, costNanoUSD, status); err != nil {
+		return err
+	}
 
 	event := &usagev1.UsageEvent{
 		EventId:      uuid.Must(uuid.NewV7()).String(),
@@ -258,6 +296,12 @@ func (c *UsageCollectorClient) RecordUsage(
 	}
 	// Never block a request on accounting: a full queue means the collector has
 	// been down long enough to fill it, and the loss is counted, not hidden.
+	select {
+	case <-c.stop:
+		observability.UsageEventsDroppedTotal.WithLabelValues("closed").Inc()
+		return nil
+	default:
+	}
 	select {
 	case c.queue <- event:
 	default:
@@ -296,4 +340,28 @@ func NewUsageCollectorClientFromEnv(projectID string) (*UsageCollectorClient, er
 		return nil, nil
 	}
 	return NewUsageCollectorClient(host, projectID, os.Getenv("USAGE_COLLECTOR_TLS") == "true")
+}
+
+// The collector's limits (light-tokenmeter domain.Event.Validate). Checking
+// here keeps a bad event from being refused, with its batch, after the fact.
+const (
+	maxStringLength = 256
+	maxVendorLength = 64
+	maxModelLength  = 128
+)
+
+func validateLimits(userID, projectID, actionID, vendor, model string, cost int64, st usagev1.Status) error {
+	switch {
+	case len(userID) > maxStringLength, len(projectID) > maxStringLength, len(actionID) > maxStringLength:
+		return fmt.Errorf("usage event ids longer than %d bytes (action %q)", maxStringLength, actionID)
+	case vendor == "" || len(vendor) > maxVendorLength:
+		return fmt.Errorf("usage event vendor must be 1-%d bytes, got %q", maxVendorLength, vendor)
+	case model == "" || len(model) > maxModelLength:
+		return fmt.Errorf("usage event model must be 1-%d bytes, got %d", maxModelLength, len(model))
+	case cost < 0:
+		return fmt.Errorf("usage event cost must not be negative, got %d", cost)
+	case st == usagev1.Status_STATUS_UNSPECIFIED:
+		return fmt.Errorf("usage event status must be set (action %q)", actionID)
+	}
+	return nil
 }

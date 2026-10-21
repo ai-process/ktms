@@ -3,12 +3,15 @@ package usagereport
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/ai-process/ktms/internal/observability"
 	usagev1 "github.com/ai-process/ktms/internal/usagereport/gen/usage/v1"
@@ -40,6 +43,11 @@ func (f *fakeCollector) RecordUsageEvents(ctx context.Context, in *usagev1.Recor
 	}
 	if len(in.GetEvents()) > maxBatch {
 		return nil, errors.New("batch over the collector's limit")
+	}
+	for _, ev := range in.GetEvents() {
+		if ev.GetModel() == "refused" { // like tokenmeter: one bad event fails the batch
+			return nil, status.Error(codes.InvalidArgument, "invalid event")
+		}
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -145,5 +153,57 @@ func TestCloseFlushesQueuedEvents(t *testing.T) {
 	}
 	if u, _ := f.delivered(); u != 7 {
 		t.Fatalf("delivered %d events by Close, want 7", u)
+	}
+}
+
+// One event the collector refuses must cost only itself, not block delivery.
+func TestRejectedEventDoesNotBlockTheRest(t *testing.T) {
+	f := newFake()
+	c := newClient(f, "p", 100)
+	defer c.Close()
+	before := testutil.ToFloat64(observability.UsageEventsDroppedTotal.WithLabelValues("rejected"))
+	record(t, c, 3)
+	if err := c.RecordUsage("u", "a", "openai", "refused", 1, 1, 1, 0, usagev1.Status_STATUS_SUCCESS, nil); err != nil {
+		t.Fatal(err)
+	}
+	record(t, c, 3)
+	waitDelivered(t, f, 6, 3*time.Second)
+	if got := testutil.ToFloat64(observability.UsageEventsDroppedTotal.WithLabelValues("rejected")) - before; got != 1 {
+		t.Fatalf("rejected drops = %v, want 1", got)
+	}
+}
+
+func TestValidationMirrorsCollector(t *testing.T) {
+	c := newClient(newFake(), "p", 10)
+	defer c.Close()
+	long := strings.Repeat("m", maxModelLength+1)
+	if err := c.RecordUsage("u", "a", "openai", long, 1, 1, 1, 0, usagev1.Status_STATUS_SUCCESS, nil); err == nil {
+		t.Fatal("a model name the collector would refuse must fail at RecordUsage")
+	}
+	if err := c.RecordUsage("u", "a", "openai", "m", 1, 1, 1, -5, usagev1.Status_STATUS_SUCCESS, nil); err == nil {
+		t.Fatal("a negative cost must fail at RecordUsage")
+	}
+}
+
+func TestRecordAfterCloseIsCounted(t *testing.T) {
+	c := newClient(newFake(), "p", 10)
+	_ = c.Close()
+	before := testutil.ToFloat64(observability.UsageEventsDroppedTotal.WithLabelValues("closed"))
+	record(t, c, 2)
+	if got := testutil.ToFloat64(observability.UsageEventsDroppedTotal.WithLabelValues("closed")) - before; got != 2 {
+		t.Fatalf("closed drops = %v, want 2", got)
+	}
+}
+
+func TestCloseDoesNotWaitOutAHungSend(t *testing.T) {
+	f := newFake()
+	f.hang = true
+	c := newClient(f, "p", 10)
+	record(t, c, 1)
+	time.Sleep(1100 * time.Millisecond) // the flush is now stuck in the hung send
+	start := time.Now()
+	_ = c.Close()
+	if elapsed := time.Since(start); elapsed > closeDeadline+time.Second {
+		t.Fatalf("Close took %v, want at most about closeDeadline", elapsed)
 	}
 }

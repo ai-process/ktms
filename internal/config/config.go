@@ -49,8 +49,8 @@ type Config struct {
 	RedisPassword  string
 	RedisDB        int
 	RedisKeyPrefix string
-	// RedisTimeout bounds each Redis read and write (dials get twice as long),
-	// so a hung Redis costs a request this much before limits fail open.
+	// RedisTimeout bounds each Redis read and write (dials get twice as long);
+	// with redisguard failing fast after it trips, about what a hung Redis costs a request.
 	RedisTimeout time.Duration
 
 	// BootstrapAdminKey solves minting the first api key; unset after use.

@@ -149,12 +149,18 @@ func (m *Manager) GetNodeState(ctx context.Context, nodeID string, hb *NodeHeart
 	}
 
 	isDraining, err := m.store.IsDraining(ctx, nodeID)
-	if err == nil && (isDraining || hb.Draining) {
+	if err != nil {
+		return pb.NodeState_NODE_STATE_OFFLINE, fmt.Errorf("read drain flag: %w", err)
+	}
+	if isDraining || hb.Draining {
 		return pb.NodeState_NODE_STATE_DRAINING, nil
 	}
 
 	broken, err := m.circuit.IsBroken(ctx, nodeID)
-	if err == nil && broken {
+	if err != nil {
+		return pb.NodeState_NODE_STATE_OFFLINE, fmt.Errorf("read circuit state: %w", err)
+	}
+	if broken {
 		return pb.NodeState_NODE_STATE_CIRCUIT_BROKEN, nil
 	}
 
@@ -175,28 +181,34 @@ func (m *Manager) ListNodes(ctx context.Context) ([]*NodeSnapshot, error) {
 	now := time.Now()
 	var out []*NodeSnapshot
 	for _, id := range nodeIDs {
-		// A node whose state cannot be read is left out rather than guessed at:
-		// an unread inflight count of 0 would bypass its capacity limit.
+		// State that cannot be read is never guessed at (an unread inflight
+		// count of 0 would bypass capacity, an unread drain flag would route to
+		// a draining node). A Redis error aborts the walk, so the caller pays one
+		// timeout instead of one per node and falls back.
 		meta, err := m.store.GetMeta(ctx, id)
-		if err != nil {
-			if !errors.Is(err, ErrNodeNotFound) {
-				observability.DependencyErrorsTotal.WithLabelValues("redis", "node_state").Inc()
-				log.Warn().Err(err).Str("node_id", id).Msg("node meta unreadable, skipping node")
-			}
+		if errors.Is(err, ErrNodeNotFound) {
 			continue
+		}
+		if errors.Is(err, ErrCorruptNode) {
+			log.Warn().Err(err).Str("node_id", id).Msg("node record unreadable, skipping node")
+			continue
+		}
+		if err != nil {
+			return nil, err
 		}
 		hb, err := m.store.GetHeartbeat(ctx, id)
-		if err != nil {
-			observability.DependencyErrorsTotal.WithLabelValues("redis", "node_state").Inc()
-			log.Warn().Err(err).Str("node_id", id).Msg("node heartbeat unreadable, skipping node")
-			continue
+		if errors.Is(err, ErrCorruptNode) {
+			hb = nil // a garbled heartbeat reads as none: the node shows OFFLINE
+		} else if err != nil {
+			return nil, err
 		}
-		st, _ := m.GetNodeState(ctx, id, hb)
+		st, err := m.GetNodeState(ctx, id, hb)
+		if err != nil {
+			return nil, err
+		}
 		inflight, err := m.store.GetInflightCount(ctx, id, now)
 		if err != nil {
-			observability.DependencyErrorsTotal.WithLabelValues("redis", "node_state").Inc()
-			log.Warn().Err(err).Str("node_id", id).Msg("node inflight unreadable, skipping node")
-			continue
+			return nil, err
 		}
 
 		perfMap := make(map[string]*NodePerfData)
@@ -246,7 +258,7 @@ func (m *Manager) sweep(ctx context.Context) {
 	now := time.Now()
 	for _, id := range nodeIDs {
 		meta, err := m.store.GetMeta(ctx, id)
-		if err != nil && !errors.Is(err, ErrNodeNotFound) {
+		if err != nil && !errors.Is(err, ErrNodeNotFound) && !errors.Is(err, ErrCorruptNode) {
 			// Unknown, not expired: evicting on a Redis error would drop live nodes.
 			observability.DependencyErrorsTotal.WithLabelValues("redis", "node_sweep").Inc()
 			log.Warn().Err(err).Str("node_id", id).Msg("sweep: node meta unreadable, keeping node")
@@ -260,7 +272,12 @@ func (m *Manager) sweep(ctx context.Context) {
 			continue
 		}
 
-		hb, _ := m.store.GetHeartbeat(ctx, id)
+		hb, err := m.store.GetHeartbeat(ctx, id)
+		if err != nil && !errors.Is(err, ErrCorruptNode) {
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "node_sweep").Inc()
+			log.Warn().Err(err).Str("node_id", id).Msg("sweep: node heartbeat unreadable, keeping node")
+			continue
+		}
 		if hb == nil && now.Sub(meta.RegisteredAt) > m.cfg.RetentionTTL {
 			log.Info().Str("node_id", id).Msg("sweep: evicting dead node past retention TTL")
 			if remErr := m.store.RemoveNode(ctx, id); remErr != nil {
