@@ -371,7 +371,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `REDIS_ADDR` | empty | Redis for throttling. Empty disables limits. |
 | `REDIS_PASSWORD` / `REDIS_DB` | empty / `0` | Redis auth and database. |
 | `REDIS_KEY_PREFIX` | empty | Namespace for counters when Redis is shared (compose uses `dev`). |
-| `REDIS_TIMEOUT` | `500ms` | Per-command Redis read/write timeout (dials get twice as long, one retry). Bounds what a hung Redis adds to a request before limits fail open. |
+| `REDIS_TIMEOUT` | `500ms` | Per-command Redis read/write timeout (dials get twice as long, one retry). With the fail-fast guard, about what a hung Redis adds to a request before limits fail open. |
 | `BUDGET_GRACE_MARGIN` | `0.05` | Fraction of daily token budget allowed as grace overdraft (0.05 = 5%, 0.0 or negative disables grace overdraft). |
 | `SPEND_LIMITS_FAIL_MODE` | `open` | What spend limits do when Redis errors: `open` lets calls through unmetered (logged), `closed` refuses calls under a spend limit with `UNAVAILABLE throttled:spend_unavailable`. |
 | `SPEND_DEFAULT_OUTPUT_RESERVE_TOKENS` | `4096` | Output tokens priced into a spend reservation when the call sets no max tokens. |
@@ -1107,16 +1107,16 @@ Items returned in `ListBatchResults` that failed have an `error` containing a gR
 
 ### When a dependency fails
 
-Every failed call to a dependency is counted in `ktms_dependency_errors_total{dependency,operation}`; alert on it. Nothing below needs a restart: the Redis pool, the Postgres pool and the collector connection reconnect by themselves.
+Failed calls to Redis and the usage collector are counted in `ktms_dependency_errors_total{dependency,operation}`; alert on it. Nothing below needs a restart: the Redis pool, the Postgres pool and the collector connection reconnect by themselves. After 3 consecutive Redis transport failures, Redis calls fail fast without network IO for 2s, then are tried again, so a hung Redis costs a request about one `REDIS_TIMEOUT`, not one per command.
 
 | Dependency | What breaks | Behaviour | Why |
 | --- | --- | --- | --- |
-| Redis | RPM limits, daily token budgets | **Fail open**: calls proceed unmetered. Each Redis command is bounded by `REDIS_TIMEOUT` (500ms). | A metering outage should not become a service outage. |
+| Redis | RPM limits, daily token budgets | **Fail open**: calls proceed unmetered. | A metering outage should not become a service outage. |
 | Redis | Spend limits | `SPEND_LIMITS_FAIL_MODE`: `open` (default) proceeds unmetered; `closed` refuses calls under a limit with `UNAVAILABLE throttled:spend_unavailable`. | Money: the operator chooses. |
-| Redis | Settling reservations | The estimate stays booked until its window resets, so a key can hit a limit slightly early. Never late. | Errs on the safe side. |
+| Redis | Settling reservations | The counter keeps the reserved estimate instead of the actual usage until its window resets: a key can hit its limit early, or late when a call used more than was reserved. | Reported, not repaired: the window reset clears it. |
 | Redis | Response and semantic cache | **Fail open**: treated as a miss; storing is skipped. | A cache is an optimisation. |
 | Redis | Local node pool | The pool's state is unknown, so pool models are **skipped** and the chain falls back (e.g. to cloud models); the vendor circuit breaker is not tripped. A node whose state cannot be read is left out, never assumed idle. Node registration returns `UNAVAILABLE` (the agent retries); the sweep never evicts a node on a read error. | Never overbook a node; keep serving from the rest of the chain. |
-| Usage collector (light-tokenmeter) | Usage events | Queued in memory (10,000 events) and sent in batches; while the collector is down they are held and retried, then delivered exactly once (event IDs deduplicate). Only a full queue or shutdown drops events, counted in `ktms_usage_events_dropped_total{reason}`. Requests never wait on it. | Accounting must not slow down or lose traffic. |
+| Usage collector (light-tokenmeter) | Usage events | Queued in memory (10,000 events) and sent in batches; while the collector is down they are held and retried, then delivered exactly once (event IDs deduplicate). Events the collector refuses are dropped one by one, not with their batch. Drops are counted in `ktms_usage_events_dropped_total{reason}` (`queue_full`, `rejected`, `shutdown`, `closed`). Shutdown flushes for up to 5s. Requests never wait on it. | Accounting must not slow down or lose traffic. |
 | Postgres | API key and node key checks | Every call is refused with `UNAVAILABLE auth backend unavailable`; routing config keeps serving from the last snapshot. `/readyz` reports 503. | Revocation takes effect immediately. |
 | Postgres | Routing config reload | The last good snapshot keeps serving; reload retries every `ROUTING_RELOAD_SECONDS`. | |
 | Postgres | Admin RPCs, batches | `UNAVAILABLE storage unavailable`. | |
