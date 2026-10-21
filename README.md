@@ -277,7 +277,9 @@ Or build the image yourself: `docker build -t ktms .`
 ### Node agent
 
 `bin/ktms-node` runs next to a local inference engine (`ollama`, `vllm`, `tgi`, `llamacpp`),
-registers it with KTMS and sends heartbeats with the loaded models and GPU metrics. It
+registers it with KTMS and sends heartbeats with the loaded models, GPU metrics and the
+engine's load: running and waiting requests from the `/metrics` of vLLM, TGI and llama.cpp
+(start `llama-server` with `--metrics`). Ollama has no such API, so its nodes report no queue. It
 authenticates with a node key minted with the `MintNodeKey` admin RPC. KTMS dials the node,
 so the node must be reachable; the agent can do that itself:
 
@@ -1015,7 +1017,7 @@ purpose travels in free-form attributes, so the proxy knows nothing about your p
 - **User & Model Overrides:** Configure fine-grained limits per user and model with `SetUserRateLimit` (supports `*` wildcards for user-wide or model-wide defaults).
 - **Spend Limits:** Hard USD caps per API key and per end user (UTC day or month), reserved atomically before each call and settled to the actual cost; see [Spend limits](#5-spend-limits-optional).
 - **Daily Token Budgets:** Limits tokens per API key (`daily_tokens_per_key`) and per end-user (`daily_tokens_per_user`, UTC day). A configurable grace margin (`budget_grace_margin`, default 5%, `< 0` to strictly disable) absorbs requests that exceed the budget on their last call without refusing them mid-stream.
-- **Inference Pool Wait Buffer:** For local node pools, requests waiting for free slots use jittered backoff polling up to `queue_timeout_ms`. Interactive requests (non-service callers) are automatically capped to 250ms to safeguard Time-To-First-Token (TTFT). Little's Law predictive admission evaluates the queue depth and estimated duration, immediately falling back to the next model in the chain if expected wait time exceeds the timeout.
+- **Inference Pool Wait Buffer:** For local node pools, requests waiting for free slots use jittered backoff polling up to `queue_timeout_ms`. Interactive requests (non-service callers) are automatically capped to 250ms to safeguard Time-To-First-Token (TTFT). Little's Law predictive admission evaluates the queue depth (KTMS's own leases plus other clients' requests waiting in the engine: what the heartbeat saw waiting beyond KTMS's leases on that node; node selection weighs the same load) and estimated duration, immediately falling back to the next model in the chain if expected wait time exceeds the timeout. A slot lease is renewed for as long as its call runs, unary or streaming, so a long generation never frees a slot the node is still using.
 - A throttled model is skipped in the fallback chain; if none of the chain is available the caller gets `RESOURCE_EXHAUSTED`.
 
 **Upstream Circuit Breaker:**

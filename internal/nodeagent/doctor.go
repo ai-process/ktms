@@ -127,7 +127,7 @@ func (d *Doctor) Run(ctx context.Context) []Finding {
 // ---- engine ---------------------------------------------------------------
 
 func (d *Doctor) engineProbeURL() string {
-	base := strings.TrimSuffix(strings.TrimRight(d.Cfg.EngineURL, "/"), "/v1")
+	base := engineBaseURL(d.Cfg.EngineURL)
 	if strings.EqualFold(d.Cfg.Engine, "ollama") {
 		return base + "/api/version"
 	}
@@ -235,7 +235,7 @@ func (d *Doctor) checkAcceleration(ctx context.Context) []Finding {
 		return nil
 	}
 	intel, isIntel := d.intelOllamaOnPath()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(strings.TrimRight(d.Cfg.EngineURL, "/"), "/v1")+"/api/ps", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, engineBaseURL(d.Cfg.EngineURL)+"/api/ps", nil)
 	if err != nil {
 		return nil
 	}

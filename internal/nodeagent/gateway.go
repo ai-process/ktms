@@ -35,7 +35,7 @@ type Gateway struct {
 // NewGateway forwards to the engine at engineURL. accessKey is what callers
 // must present; engineToken, if any, is what the engine itself expects.
 func NewGateway(engineURL, accessKey, engineToken string) *Gateway {
-	base := strings.TrimSuffix(strings.TrimRight(engineURL, "/"), "/v1")
+	base := engineBaseURL(engineURL)
 	return &Gateway{
 		upstream:       base,
 		accessKey:      accessKey,
