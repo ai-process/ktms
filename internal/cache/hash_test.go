@@ -107,3 +107,28 @@ func TestComputeKey_ParameterSensitivity(t *testing.T) {
 		t.Error("expected different key on enable_google_search change")
 	}
 }
+
+// Schemas that differ only in a constraint ask for different replies and must
+// not share a cached answer.
+func TestComputeKey_SchemaConstraints(t *testing.T) {
+	withSchema := func(mut func(*pb.SchemaProperty, *pb.ResponseSchema)) string {
+		prop := &pb.SchemaProperty{Type: "string", Enum: []string{"open", "closed"}}
+		schema := &pb.ResponseSchema{Type: "object", Properties: map[string]*pb.SchemaProperty{"status": prop}}
+		mut(prop, schema)
+		return ComputeKey("key", 1, &pb.GenerateTextRequest{
+			Messages:       []*pb.ChatMessage{{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: "prompt"}},
+			ResponseSchema: schema,
+		})
+	}
+	base := withSchema(func(*pb.SchemaProperty, *pb.ResponseSchema) {})
+	closed := false
+	for name, mut := range map[string]func(*pb.SchemaProperty, *pb.ResponseSchema){
+		"enum":                 func(p *pb.SchemaProperty, _ *pb.ResponseSchema) { p.Enum = []string{"open"} },
+		"format":               func(p *pb.SchemaProperty, _ *pb.ResponseSchema) { p.Format = "date-time" },
+		"additionalProperties": func(_ *pb.SchemaProperty, s *pb.ResponseSchema) { s.AdditionalProperties = &closed },
+	} {
+		if withSchema(mut) == base {
+			t.Errorf("a different %s shares the cache key", name)
+		}
+	}
+}

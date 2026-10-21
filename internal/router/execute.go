@@ -105,7 +105,7 @@ type SchemaFailure struct {
 }
 
 func (e *SchemaFailure) Error() string {
-	return fmt.Sprintf("%s could not honour the response schema: %v", e.Model, e.Err)
+	return fmt.Sprintf("%s replied outside the requested schema: %v", e.Model, e.Err)
 }
 
 func (e *SchemaFailure) Unwrap() error { return e.Err }
@@ -760,15 +760,12 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 	return nil, exhaustedError(len(r.Chain), allCircuitBroken, allThrottled, anyCircuitBroken, throttledCount, throttleKind, lastErr, paused.retryAfter(len(r.Chain)))
 }
 
-// callAndCheck runs one model and, when that model cannot be handed a schema
-// through its API, verifies the reply here. A reply of the wrong shape earns
-// one more attempt on the same model before the chain moves on. Settles the
-// throttle reservation on every path.
+// callAndCheck checks what the vendor may not have enforced (soft-schema text,
+// strict tool arguments). A wrong shape gets one more attempt on the same
+// model before the chain moves on; the reservation is settled on every path.
 func (r Request) callAndCheck(ctx context.Context, adapter llm.ClientAdapter, m *proxydb.Model,
 	th Throttle, res *Reservation) (*llm.Response, error) {
-	schema := r.Chat.GetResponseSchema()
-	soft := schema != nil && r.SoftSchema != nil && r.SoftSchema(m)
-
+	soft := r.Chat.GetResponseSchema() != nil && r.SoftSchema != nil && r.SoftSchema(m)
 	var spent llm.TokensUsage
 	var lastCheck error
 	for attempt := 0; attempt < schemaAttempts; attempt++ {
@@ -782,11 +779,7 @@ func (r Request) callAndCheck(ctx context.Context, adapter llm.ClientAdapter, m 
 		spent.Input += resp.Usage.Input
 		spent.Output += resp.Usage.Output
 
-		if !soft {
-			th.Settle(res, spent)
-			return resp, nil
-		}
-		if err := llm.CheckResponseSchema(resp.Choices[0].Text, schema); err == nil {
+		if err := checkReply(resp, r.Chat, soft); err == nil {
 			th.Settle(res, spent)
 			return resp, nil
 		} else {
@@ -797,6 +790,34 @@ func (r Request) callAndCheck(ctx context.Context, adapter llm.ClientAdapter, m 
 	}
 	th.Settle(res, spent)
 	return nil, &SchemaFailure{Model: m.ID, Err: lastCheck}
+}
+
+// checkReply validates strict tool calls when the model called tools, and a
+// soft-schema model's text against the response schema otherwise.
+func checkReply(resp *llm.Response, chat *llm.ChatContext, soft bool) error {
+	if resp == nil || len(resp.Choices) == 0 || chat == nil {
+		return nil
+	}
+	msg := resp.Choices[0]
+	if len(msg.ToolCalls) > 0 {
+		return llm.CheckToolCalls(msg.ToolCalls, strictTools(chat.GetTools()))
+	}
+	if !soft {
+		return nil
+	}
+	return llm.CheckResponseSchema(msg.Text, chat.GetResponseSchema())
+}
+
+// strictTools are the tools whose arguments the caller asked to be exact;
+// the others are best effort by contract and are passed through as given.
+func strictTools(tools []*llm.Tool) []*llm.Tool {
+	var out []*llm.Tool
+	for _, t := range tools {
+		if t != nil && t.Function.Strict {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // callWithRetries retries retryable vendor errors (429/5xx, transport failures)

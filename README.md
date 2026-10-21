@@ -723,8 +723,8 @@ make proto-ts  # TypeScript stubs in gen/ts/
 | `effort` | Routing tier (`EFFORT_LOW`, `EFFORT_MEDIUM`, `EFFORT_HIGH`). |
 | `attributes` | Opaque key/values matched by rules and copied to usage events. `user_id` charges the per-user daily budget (falls back to `svc:<key_name>` for service callers without `user_id`). `usage_project` overrides the usage project (see below). |
 | `base_system_instruction`, `request_instruction` | System content never travels as a message. |
-| `response_schema` | Unset = free text. Set = JSON output validated against the schema; a vendor that can't enforce it is verified by the proxy. |
-| `tools`, `tool_choice` | Function/tool declarations with JSON Schema parameters. `tool_choice` specifies auto, required, none, or a specific named function. |
+| `response_schema` | Unset = free text. Set = JSON output in that shape: types `string`, `integer`, `number`, `boolean`, `object`, `array`, plus `required`, `nullable`, `enum`, `format` and `additional_properties`. Vendors with structured output enforce it; for the others the proxy checks the reply (types, required keys, enum values, extra keys when `additional_properties` is false), retries once and then falls back. A `format` a vendor rejects is passed to the model in the description instead. |
+| `tools`, `tool_choice` | Function/tool declarations with JSON Schema parameters. `tool_choice` specifies auto, required, none, or a specific named function. In non-streaming calls, arguments of `strict` tools are checked against their parameters, since not every vendor enforces strict; a call outside them is retried once and then falls back. Streamed tool calls reach the caller as they arrive and are not checked. |
 | `messages` | Chat history. Supports `MESSAGE_ROLE_USER`, `MESSAGE_ROLE_ASSISTANT`, and `MESSAGE_ROLE_TOOL` (with `tool_call_id`). User messages support multimodal `parts` (`ContentPart`: `text`, `image`, `audio`, `document`). Assistant messages can carry `tool_calls`. |
 | `max_output_tokens` | Ceiling, `0` = none. Output tokens are the expensive ones; set it. |
 | `enable_google_search` | Only Google models declaring `google_search` can serve it. |
@@ -964,7 +964,7 @@ fields: `metadata` is passed through as attributes, `user` becomes `attributes["
 | --- | --- |
 | `messages` | `system`/`developer` messages become the system instruction, `user`/`assistant` the conversation. Content is a string or text parts. |
 | `max_tokens`, `max_completion_tokens` | Output ceiling (`max_output_tokens`). Set one: an unbounded answer is the costliest failure. |
-| `response_format` | `json_schema` is enforced (converted to the proxy's schema; keywords such as `enum` and `additionalProperties` are dropped). `json_object` asks for JSON in the prompt. |
+| `response_format` | `json_schema` is enforced: `type` (incl. `number` and `["string","null"]`), `properties`, `items`, `required`, `enum`, `format` and boolean `additionalProperties` are carried. Enums on non-string types, and formats a vendor rejects, reach the model as a hint in the description. Other keywords (`minimum`, `pattern`, `oneOf`, ...) are dropped. `json_object` asks for JSON in the prompt. |
 | `stream` | Real incremental SSE streaming backed by gRPC server streaming. Once the first chunk is emitted, stream is locked to the selected model; `stream_options.include_usage` is honoured on completion. |
 | `reasoning_effort`, `user`, `metadata` | Routing, as above. |
 | `enable_google_search` | Extension: let a Google model ground the answer in search. |
