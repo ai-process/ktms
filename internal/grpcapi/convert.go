@@ -146,10 +146,11 @@ func schemaFromProto(s *pb.ResponseSchema) *llm.ResponseSchema {
 		return nil
 	}
 	return &llm.ResponseSchema{
-		Type:       llm.SchemaPropertyType(s.GetType()),
-		Properties: propertiesFromProto(s.GetProperties()),
-		Items:      propertyFromProto(s.GetItems()),
-		Required:   s.GetRequired(),
+		Type:                 llm.SchemaPropertyType(s.GetType()),
+		Properties:           propertiesFromProto(s.GetProperties()),
+		Items:                propertyFromProto(s.GetItems()),
+		Required:             s.GetRequired(),
+		AdditionalProperties: optionalBool(s.AdditionalProperties),
 	}
 }
 
@@ -158,13 +159,24 @@ func propertyFromProto(p *pb.SchemaProperty) *llm.SchemaProperty {
 		return nil
 	}
 	return &llm.SchemaProperty{
-		Type:        llm.SchemaPropertyType(p.GetType()),
-		Description: p.GetDescription(),
-		Properties:  propertiesFromProto(p.GetProperties()),
-		Items:       propertyFromProto(p.GetItems()),
-		Required:    p.GetRequired(),
-		Nullable:    p.GetNullable(),
+		Type:                 llm.SchemaPropertyType(p.GetType()),
+		Description:          p.GetDescription(),
+		Properties:           propertiesFromProto(p.GetProperties()),
+		Items:                propertyFromProto(p.GetItems()),
+		Required:             p.GetRequired(),
+		Nullable:             p.GetNullable(),
+		Enum:                 p.GetEnum(),
+		Format:               p.GetFormat(),
+		AdditionalProperties: optionalBool(p.AdditionalProperties),
 	}
+}
+
+func optionalBool(b *bool) *bool {
+	if b == nil {
+		return nil
+	}
+	v := *b
+	return &v
 }
 
 func propertiesFromProto(in map[string]*pb.SchemaProperty) map[string]*llm.SchemaProperty {

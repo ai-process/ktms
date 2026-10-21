@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"sort"
 	"strings"
 )
 
@@ -21,29 +23,57 @@ const maxSchemaIssues = 5
 // (DeepSeek among them): the proxy asks for JSON in the prompt, then verifies
 // the shape here rather than handing an unchecked document to the caller.
 //
-// Only the constraints the schema can express are checked — types, required
-// keys and array element shape. Descriptions and unknown extra keys are
-// ignored, matching what the native structured-output modes accept.
+// Checked: types, required keys, array element shape, enum values and, where
+// the schema sets additionalProperties false, unknown keys. Descriptions and
+// format are hints for the vendor and are not enforced here.
 func CheckResponseSchema(raw string, schema *ResponseSchema) error {
 	if schema == nil {
 		return nil
 	}
-	text := strings.TrimSpace(RemoveMarkdownCodeBlocks(raw))
+	return checkJSON(RemoveMarkdownCodeBlocks(raw), schema.Property())
+}
+
+// CheckToolCalls validates each call's arguments against the parameters of the
+// tool it names, so a malformed call is caught like a malformed reply.
+func CheckToolCalls(calls []*ToolCall, tools []*Tool) error {
+	if len(calls) == 0 || len(tools) == 0 {
+		return nil
+	}
+	params := make(map[string]*ResponseSchema, len(tools))
+	for _, t := range tools {
+		if t != nil && t.Function.Parameters != nil {
+			params[t.Function.Name] = t.Function.Parameters
+		}
+	}
+	for _, c := range calls {
+		if c == nil {
+			continue
+		}
+		schema, ok := params[c.Function.Name]
+		if !ok {
+			continue
+		}
+		args := c.Function.Arguments
+		if strings.TrimSpace(args) == "" {
+			args = "{}"
+		}
+		if err := checkJSON(args, schema.Property()); err != nil {
+			return fmt.Errorf("tool call %s: %w", c.Function.Name, err)
+		}
+	}
+	return nil
+}
+
+func checkJSON(raw string, want *SchemaProperty) error {
+	text := strings.TrimSpace(raw)
 	if text == "" {
 		return fmt.Errorf("%w: empty response", ErrSchemaViolation)
 	}
-
 	var doc any
 	if err := json.Unmarshal([]byte(text), &doc); err != nil {
 		return fmt.Errorf("%w: not valid JSON: %v", ErrSchemaViolation, err)
 	}
-
-	issues := checkValue(doc, &SchemaProperty{
-		Type:       schema.Type,
-		Properties: schema.Properties,
-		Items:      schema.Items,
-		Required:   schema.Required,
-	}, "$", nil)
+	issues := checkValue(doc, want, "$", nil)
 	if len(issues) == 0 {
 		return nil
 	}
@@ -85,6 +115,16 @@ func checkValue(value any, want *SchemaProperty, path string, issues []string) [
 				}
 			}
 		}
+		if want.AdditionalProperties != nil && !*want.AdditionalProperties {
+			for _, key := range sortedKeys(obj) {
+				if _, known := want.Properties[key]; !known {
+					issues = append(issues, fmt.Sprintf("%s.%s is not allowed", path, key))
+					if len(issues) >= maxSchemaIssues {
+						return issues
+					}
+				}
+			}
+		}
 	case SchemaPropertyTypeArray:
 		arr, ok := value.([]any)
 		if !ok {
@@ -97,8 +137,15 @@ func checkValue(value any, want *SchemaProperty, path string, issues []string) [
 			}
 		}
 	case SchemaPropertyTypeString:
-		if _, ok := value.(string); !ok {
+		str, ok := value.(string)
+		if !ok {
 			issues = append(issues, fmt.Sprintf("%s should be a string, got %s", path, jsonKind(value)))
+		} else if len(want.Enum) > 0 && !slices.Contains(want.Enum, str) {
+			issues = append(issues, fmt.Sprintf("%s should be one of %q, got %q", path, want.Enum, str))
+		}
+	case SchemaPropertyTypeNumber:
+		if _, ok := value.(float64); !ok {
+			issues = append(issues, fmt.Sprintf("%s should be a number, got %s", path, jsonKind(value)))
 		}
 	case SchemaPropertyTypeInteger:
 		// Every JSON number decodes to float64; integers are whole numbers.
@@ -114,6 +161,15 @@ func checkValue(value any, want *SchemaProperty, path string, issues []string) [
 		}
 	}
 	return issues
+}
+
+func sortedKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func jsonKind(v any) string {

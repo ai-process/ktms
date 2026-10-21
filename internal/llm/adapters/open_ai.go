@@ -31,6 +31,8 @@ func convertLLMSchemaPropertyTypeToOpenAIType(llmType llm.SchemaPropertyType) st
 		return "string"
 	case llm.SchemaPropertyTypeInteger:
 		return "integer"
+	case llm.SchemaPropertyTypeNumber:
+		return "number"
 	case llm.SchemaPropertyTypeBoolean:
 		return "boolean"
 	case llm.SchemaPropertyTypeObject:
@@ -60,10 +62,26 @@ func convertLLMSchemaPropertyToOpenAISchemaProperty(llmProperty *llm.SchemaPrope
 		openAIProperty["type"] = convertLLMSchemaPropertyTypeToOpenAIType(llmProperty.Type)
 	}
 
-	if llmProperty.Description != "" {
-		openAIProperty["description"] = llmProperty.Description
+	description, format := splitStrictFormat(llmProperty)
+	if description != "" {
+		openAIProperty["description"] = description
+	}
+	if format != "" {
+		openAIProperty["format"] = format
+	}
+	if len(llmProperty.Enum) > 0 {
+		enum := make([]any, 0, len(llmProperty.Enum)+1)
+		for _, v := range llmProperty.Enum {
+			enum = append(enum, v)
+		}
+		if llmProperty.Nullable {
+			enum = append(enum, nil) // strict mode checks enum before the null type
+		}
+		openAIProperty["enum"] = enum
 	}
 
+	// additionalProperties is always false: strict modes require it, and a reply
+	// without extra keys satisfies a schema that would have allowed them.
 	if len(llmProperty.Properties) > 0 {
 		propertiesMap := make(map[string]interface{})
 		for name, prop := range llmProperty.Properties {
@@ -102,11 +120,42 @@ func convertLLMResponseSchemaToOpenAISchema(llmResponseSchema *llm.ResponseSchem
 		openAISchema["additionalProperties"] = false
 	}
 
+	if llmResponseSchema.Items != nil {
+		openAISchema["items"] = convertLLMSchemaPropertyToOpenAISchemaProperty(llmResponseSchema.Items)
+	}
+
 	if len(llmResponseSchema.Required) > 0 {
 		openAISchema["required"] = llmResponseSchema.Required
 	}
 
 	return openAISchema
+}
+
+// strictFormats are the string formats both OpenAI and Anthropic structured
+// outputs accept; sending any other makes them reject the whole request.
+var strictFormats = map[string]bool{
+	"date-time": true, "time": true, "date": true, "duration": true, "email": true,
+	"hostname": true, "ipv4": true, "ipv6": true, "uuid": true,
+}
+
+// splitStrictFormat keeps a supported string format as a keyword and moves any
+// other into the description, so the model still sees it.
+func splitStrictFormat(p *llm.SchemaProperty) (description, format string) {
+	description = p.Description
+	if p.Format == "" {
+		return description, ""
+	}
+	if p.Type == llm.SchemaPropertyTypeString && strictFormats[p.Format] {
+		return description, p.Format
+	}
+	return joinHint(description, "format: "+p.Format), ""
+}
+
+func joinHint(description, hint string) string {
+	if description == "" {
+		return hint
+	}
+	return description + " (" + hint + ")"
 }
 
 func schemaNameFromActionID(actionID string) string {
@@ -347,13 +396,12 @@ func (a *OpenAIAdapter) buildCompletionParams(chat *llm.ChatContext, messages []
 	}
 
 	if chat.GetResponseSchema() != nil && !a.softSchema {
-		llm.EnforceAllRequired(chat.GetResponseSchema())
 		params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
 			OfJSONSchema: &shared.ResponseFormatJSONSchemaParam{
 				JSONSchema: shared.ResponseFormatJSONSchemaJSONSchemaParam{
 					Name:   schemaNameFromActionID(chat.GetActionID()),
 					Strict: openai.Bool(true),
-					Schema: convertLLMResponseSchemaToOpenAISchema(chat.GetResponseSchema()),
+					Schema: convertLLMResponseSchemaToOpenAISchema(llm.EnforceAllRequired(chat.GetResponseSchema())),
 				},
 			},
 		}
@@ -395,38 +443,6 @@ func (a *OpenAIAdapter) buildCompletionParams(chat *llm.ChatContext, messages []
 		}
 	}
 
-	if len(chat.GetTools()) > 0 {
-		var tools []openai.ChatCompletionToolUnionParam
-		for _, t := range chat.GetTools() {
-			fnParam := shared.FunctionDefinitionParam{
-				Name: t.Function.Name,
-			}
-			if t.Function.Description != "" {
-				fnParam.Description = openai.String(t.Function.Description)
-			}
-			if t.Function.Strict {
-				fnParam.Strict = openai.Bool(true)
-			}
-			if t.Function.Parameters != nil {
-				fnParam.Parameters = shared.FunctionParameters(convertLLMResponseSchemaToOpenAISchema(t.Function.Parameters))
-			}
-			tools = append(tools, openai.ChatCompletionFunctionTool(fnParam))
-		}
-		params.Tools = tools
-	}
-
-	if tc := chat.GetToolChoice(); tc != nil {
-		switch tc.Mode {
-		case "auto", "none", "required":
-			params.ToolChoice = openai.ChatCompletionToolChoiceOptionUnionParam{
-				OfAuto: openai.String(tc.Mode),
-			}
-		case "specific":
-			params.ToolChoice = openai.ToolChoiceOptionFunctionToolChoice(openai.ChatCompletionNamedToolChoiceFunctionParam{
-				Name: tc.SpecificFunctionName,
-			})
-		}
-	}
 	return params
 }
 

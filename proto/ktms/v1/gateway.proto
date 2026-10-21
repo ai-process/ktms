@@ -109,21 +109,31 @@ message ChatMessage {
 
 // SchemaProperty mirrors the vendor-neutral llm.SchemaProperty.
 message SchemaProperty {
-  // "string" | "integer" | "boolean" | "object" | "array"
+  // "string" | "integer" | "number" | "boolean" | "object" | "array"
   string type = 1;
   string description = 2;
   map<string, SchemaProperty> properties = 3; // object types
   SchemaProperty items = 4; // array types
   repeated string required = 5; // object types
   bool nullable = 6;
+  repeated string enum = 7; // string types: the allowed values
+  // String format hint ("date-time", "email", "uuid", ...). Formats a vendor
+  // cannot enforce are passed to the model in the description instead.
+  string format = 8;
+  // Object types: false forbids keys beyond properties. Unset allows them;
+  // vendors with strict modes forbid them anyway, which still satisfies it.
+  optional bool additional_properties = 9;
 }
 
 // ResponseSchema mirrors llm.ResponseSchema (top level of the JSON schema).
+// Replies are checked against it, including enum values and forbidden extra
+// keys; a mismatch is retried once on the same model, then falls back.
 message ResponseSchema {
   string type = 1;
   map<string, SchemaProperty> properties = 2;
   SchemaProperty items = 3;
   repeated string required = 4;
+  optional bool additional_properties = 5;
 }
 
 message GenerateTextRequest {

@@ -1085,15 +1085,22 @@ func (x *ChatMessage) GetParts() []*ContentPart {
 // SchemaProperty mirrors the vendor-neutral llm.SchemaProperty.
 type SchemaProperty struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// "string" | "integer" | "boolean" | "object" | "array"
-	Type          string                     `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
-	Description   string                     `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
-	Properties    map[string]*SchemaProperty `protobuf:"bytes,3,rep,name=properties,proto3" json:"properties,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // object types
-	Items         *SchemaProperty            `protobuf:"bytes,4,opt,name=items,proto3" json:"items,omitempty"`                                                                                     // array types
-	Required      []string                   `protobuf:"bytes,5,rep,name=required,proto3" json:"required,omitempty"`                                                                               // object types
-	Nullable      bool                       `protobuf:"varint,6,opt,name=nullable,proto3" json:"nullable,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// "string" | "integer" | "number" | "boolean" | "object" | "array"
+	Type        string                     `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	Description string                     `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	Properties  map[string]*SchemaProperty `protobuf:"bytes,3,rep,name=properties,proto3" json:"properties,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // object types
+	Items       *SchemaProperty            `protobuf:"bytes,4,opt,name=items,proto3" json:"items,omitempty"`                                                                                     // array types
+	Required    []string                   `protobuf:"bytes,5,rep,name=required,proto3" json:"required,omitempty"`                                                                               // object types
+	Nullable    bool                       `protobuf:"varint,6,opt,name=nullable,proto3" json:"nullable,omitempty"`
+	Enum        []string                   `protobuf:"bytes,7,rep,name=enum,proto3" json:"enum,omitempty"` // string types: the allowed values
+	// String format hint ("date-time", "email", "uuid", ...). Formats a vendor
+	// cannot enforce are passed to the model in the description instead.
+	Format string `protobuf:"bytes,8,opt,name=format,proto3" json:"format,omitempty"`
+	// Object types: false forbids keys beyond properties. Unset allows them;
+	// vendors with strict modes forbid them anyway, which still satisfies it.
+	AdditionalProperties *bool `protobuf:"varint,9,opt,name=additional_properties,json=additionalProperties,proto3,oneof" json:"additional_properties,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *SchemaProperty) Reset() {
@@ -1168,15 +1175,39 @@ func (x *SchemaProperty) GetNullable() bool {
 	return false
 }
 
+func (x *SchemaProperty) GetEnum() []string {
+	if x != nil {
+		return x.Enum
+	}
+	return nil
+}
+
+func (x *SchemaProperty) GetFormat() string {
+	if x != nil {
+		return x.Format
+	}
+	return ""
+}
+
+func (x *SchemaProperty) GetAdditionalProperties() bool {
+	if x != nil && x.AdditionalProperties != nil {
+		return *x.AdditionalProperties
+	}
+	return false
+}
+
 // ResponseSchema mirrors llm.ResponseSchema (top level of the JSON schema).
+// Replies are checked against it, including enum values and forbidden extra
+// keys; a mismatch is retried once on the same model, then falls back.
 type ResponseSchema struct {
-	state         protoimpl.MessageState     `protogen:"open.v1"`
-	Type          string                     `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
-	Properties    map[string]*SchemaProperty `protobuf:"bytes,2,rep,name=properties,proto3" json:"properties,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Items         *SchemaProperty            `protobuf:"bytes,3,opt,name=items,proto3" json:"items,omitempty"`
-	Required      []string                   `protobuf:"bytes,4,rep,name=required,proto3" json:"required,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                protoimpl.MessageState     `protogen:"open.v1"`
+	Type                 string                     `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	Properties           map[string]*SchemaProperty `protobuf:"bytes,2,rep,name=properties,proto3" json:"properties,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Items                *SchemaProperty            `protobuf:"bytes,3,opt,name=items,proto3" json:"items,omitempty"`
+	Required             []string                   `protobuf:"bytes,4,rep,name=required,proto3" json:"required,omitempty"`
+	AdditionalProperties *bool                      `protobuf:"varint,5,opt,name=additional_properties,json=additionalProperties,proto3,oneof" json:"additional_properties,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *ResponseSchema) Reset() {
@@ -1235,6 +1266,13 @@ func (x *ResponseSchema) GetRequired() []string {
 		return x.Required
 	}
 	return nil
+}
+
+func (x *ResponseSchema) GetAdditionalProperties() bool {
+	if x != nil && x.AdditionalProperties != nil {
+		return *x.AdditionalProperties
+	}
+	return false
 }
 
 type GenerateTextRequest struct {
@@ -4144,7 +4182,7 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"tool_calls\x18\x03 \x03(\v2\x11.ktms.v1.ToolCallR\ttoolCalls\x12 \n" +
 	"\ftool_call_id\x18\x04 \x01(\tR\n" +
 	"toolCallId\x12*\n" +
-	"\x05parts\x18\x05 \x03(\v2\x14.ktms.v1.ContentPartR\x05parts\"\xce\x02\n" +
+	"\x05parts\x18\x05 \x03(\v2\x14.ktms.v1.ContentPartR\x05parts\"\xce\x03\n" +
 	"\x0eSchemaProperty\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12G\n" +
@@ -4153,20 +4191,26 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"properties\x12-\n" +
 	"\x05items\x18\x04 \x01(\v2\x17.ktms.v1.SchemaPropertyR\x05items\x12\x1a\n" +
 	"\brequired\x18\x05 \x03(\tR\brequired\x12\x1a\n" +
-	"\bnullable\x18\x06 \x01(\bR\bnullable\x1aV\n" +
+	"\bnullable\x18\x06 \x01(\bR\bnullable\x12\x12\n" +
+	"\x04enum\x18\a \x03(\tR\x04enum\x12\x16\n" +
+	"\x06format\x18\b \x01(\tR\x06format\x128\n" +
+	"\x15additional_properties\x18\t \x01(\bH\x00R\x14additionalProperties\x88\x01\x01\x1aV\n" +
 	"\x0fPropertiesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
-	"\x05value\x18\x02 \x01(\v2\x17.ktms.v1.SchemaPropertyR\x05value:\x028\x01\"\x90\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x17.ktms.v1.SchemaPropertyR\x05value:\x028\x01B\x18\n" +
+	"\x16_additional_properties\"\xe4\x02\n" +
 	"\x0eResponseSchema\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12G\n" +
 	"\n" +
 	"properties\x18\x02 \x03(\v2'.ktms.v1.ResponseSchema.PropertiesEntryR\n" +
 	"properties\x12-\n" +
 	"\x05items\x18\x03 \x01(\v2\x17.ktms.v1.SchemaPropertyR\x05items\x12\x1a\n" +
-	"\brequired\x18\x04 \x03(\tR\brequired\x1aV\n" +
+	"\brequired\x18\x04 \x03(\tR\brequired\x128\n" +
+	"\x15additional_properties\x18\x05 \x01(\bH\x00R\x14additionalProperties\x88\x01\x01\x1aV\n" +
 	"\x0fPropertiesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
-	"\x05value\x18\x02 \x01(\v2\x17.ktms.v1.SchemaPropertyR\x05value:\x028\x01\"\xb0\x06\n" +
+	"\x05value\x18\x02 \x01(\v2\x17.ktms.v1.SchemaPropertyR\x05value:\x028\x01B\x18\n" +
+	"\x16_additional_properties\"\xb0\x06\n" +
 	"\x13GenerateTextRequest\x12'\n" +
 	"\x06effort\x18\x01 \x01(\x0e2\x0f.ktms.v1.EffortR\x06effort\x12L\n" +
 	"\n" +
@@ -4716,6 +4760,8 @@ func file_ktms_v1_gateway_proto_init() {
 		(*ContentPart_Audio)(nil),
 		(*ContentPart_Document)(nil),
 	}
+	file_ktms_v1_gateway_proto_msgTypes[12].OneofWrappers = []any{}
+	file_ktms_v1_gateway_proto_msgTypes[13].OneofWrappers = []any{}
 	file_ktms_v1_gateway_proto_msgTypes[30].OneofWrappers = []any{
 		(*MediaPart_Text)(nil),
 		(*MediaPart_Image)(nil),
