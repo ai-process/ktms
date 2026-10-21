@@ -433,8 +433,7 @@ func (a *AnthropicAdapter) buildParams(chat *llm.ChatContext, ceiling int) anthr
 	}
 
 	if chat.GetResponseSchema() != nil && !a.softSchema {
-		schema := cloneResponseSchema(chat.GetResponseSchema())
-		llm.EnforceAllRequired(schema)
+		schema := llm.EnforceAllRequired(chat.GetResponseSchema())
 		params.OutputConfig = anthropic.OutputConfigParam{
 			Format: anthropic.JSONOutputFormatParam{
 				Schema: convertLLMResponseSchemaToOpenAISchema(schema),
@@ -450,8 +449,7 @@ func (a *AnthropicAdapter) buildParams(chat *llm.ChatContext, ceiling int) anthr
 			if t.Function.Parameters != nil {
 				paramSchema := t.Function.Parameters
 				if t.Function.Strict {
-					paramSchema = cloneResponseSchema(paramSchema)
-					llm.EnforceAllRequired(paramSchema)
+					paramSchema = llm.EnforceAllRequired(paramSchema)
 				}
 				required = paramSchema.Required
 				if len(paramSchema.Properties) > 0 {
@@ -505,46 +503,4 @@ func (a *AnthropicAdapter) buildParams(chat *llm.ChatContext, ceiling int) anthr
 	}
 
 	return params
-}
-
-func cloneResponseSchema(s *llm.ResponseSchema) *llm.ResponseSchema {
-	if s == nil {
-		return nil
-	}
-	clone := &llm.ResponseSchema{
-		Type:     s.Type,
-		Required: append([]string(nil), s.Required...),
-	}
-	if s.Items != nil {
-		clone.Items = cloneSchemaProperty(s.Items)
-	}
-	if s.Properties != nil {
-		clone.Properties = make(map[string]*llm.SchemaProperty, len(s.Properties))
-		for k, v := range s.Properties {
-			clone.Properties[k] = cloneSchemaProperty(v)
-		}
-	}
-	return clone
-}
-
-func cloneSchemaProperty(p *llm.SchemaProperty) *llm.SchemaProperty {
-	if p == nil {
-		return nil
-	}
-	clone := &llm.SchemaProperty{
-		Type:        p.Type,
-		Description: p.Description,
-		Required:    append([]string(nil), p.Required...),
-		Nullable:    p.Nullable,
-	}
-	if p.Items != nil {
-		clone.Items = cloneSchemaProperty(p.Items)
-	}
-	if p.Properties != nil {
-		clone.Properties = make(map[string]*llm.SchemaProperty, len(p.Properties))
-		for k, v := range p.Properties {
-			clone.Properties[k] = cloneSchemaProperty(v)
-		}
-	}
-	return clone
 }

@@ -9,8 +9,8 @@ import (
 
 const maxSchemaDepth = 32
 
-// jsonSchema is the subset of JSON Schema the proxy can carry; keywords it has
-// no field for (enum, format, additionalProperties, ...) are dropped.
+// jsonSchema is the subset of JSON Schema the proxy can carry. Validation
+// keywords it has no field for (minimum, pattern, oneOf, ...) are dropped.
 type jsonSchema struct {
 	Type        json.RawMessage        `json:"type"`
 	Description string                 `json:"description"`
@@ -18,6 +18,35 @@ type jsonSchema struct {
 	Items       *jsonSchema            `json:"items"`
 	Required    []string               `json:"required"`
 	Nullable    bool                   `json:"nullable"`
+	Enum        []json.RawMessage      `json:"enum"`
+	Format      string                 `json:"format"`
+	// A bool, or a schema for the extra values (carried as "allowed").
+	AdditionalProperties json.RawMessage `json:"additionalProperties"`
+}
+
+// enumValues keeps string enums. Other values cannot be carried, and dropping
+// them silently would loosen the caller's contract, so they are refused.
+func (s *jsonSchema) enumValues() (values []string, nullable bool, err error) {
+	for _, raw := range s.Enum {
+		if string(raw) == "null" {
+			nullable = true
+			continue
+		}
+		var v string
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return nil, false, fmt.Errorf("enum values must be strings, got %s", raw)
+		}
+		values = append(values, v)
+	}
+	return values, nullable, nil
+}
+
+func (s *jsonSchema) additionalProperties() *bool {
+	var allowed bool
+	if json.Unmarshal(s.AdditionalProperties, &allowed) != nil {
+		return nil
+	}
+	return &allowed
 }
 
 // schemaType resolves "type", which is either a string or a list such as
@@ -53,7 +82,14 @@ func (s *jsonSchema) toProperty(depth int) (*pb.SchemaProperty, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := &pb.SchemaProperty{Type: typ, Description: s.Description, Required: s.Required, Nullable: nullable}
+	enum, enumNull, err := s.enumValues()
+	if err != nil {
+		return nil, err
+	}
+	out := &pb.SchemaProperty{
+		Type: typ, Description: s.Description, Required: s.Required, Nullable: nullable || enumNull,
+		Enum: enum, Format: s.Format, AdditionalProperties: s.additionalProperties(),
+	}
 	if len(s.Properties) > 0 {
 		out.Properties = make(map[string]*pb.SchemaProperty, len(s.Properties))
 		for name, p := range s.Properties {
@@ -85,9 +121,10 @@ func responseSchemaFromJSON(raw json.RawMessage) (*pb.ResponseSchema, error) {
 		return nil, err
 	}
 	return &pb.ResponseSchema{
-		Type:       root.Type,
-		Properties: root.Properties,
-		Items:      root.Items,
-		Required:   root.Required,
+		Type:                 root.Type,
+		Properties:           root.Properties,
+		Items:                root.Items,
+		Required:             root.Required,
+		AdditionalProperties: root.AdditionalProperties,
 	}, nil
 }

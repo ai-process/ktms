@@ -388,8 +388,7 @@ func (a *GoogleAdapter) buildGenerateConfig(chat *llm.ChatContext) *genai.Genera
 	}
 
 	if chat.GetResponseSchema() != nil {
-		llm.EnforceAllRequired(chat.GetResponseSchema())
-		if genaiSchema := convertSchemaToGenai(chat.GetResponseSchema()); genaiSchema != nil {
+		if genaiSchema := convertSchemaToGenai(llm.EnforceAllRequired(chat.GetResponseSchema())); genaiSchema != nil {
 			config.ResponseSchema = genaiSchema
 			// Response schema requires application/json MIME type
 			config.ResponseMIMEType = "application/json"
@@ -470,6 +469,8 @@ func convertLLMSchemaPropertyTypeToGenaiType(llmType llm.SchemaPropertyType) gen
 		return genai.TypeString
 	case llm.SchemaPropertyTypeInteger:
 		return genai.TypeInteger
+	case llm.SchemaPropertyTypeNumber:
+		return genai.TypeNumber
 	case llm.SchemaPropertyTypeBoolean:
 		return genai.TypeBoolean
 	case llm.SchemaPropertyTypeObject:
@@ -486,9 +487,12 @@ func convertPropertySchemaToGenai(llmProperty *llm.SchemaProperty) *genai.Schema
 		return nil
 	}
 
+	description, format := splitGenaiFormat(llmProperty)
 	genaiSchema := &genai.Schema{
 		Type:        convertLLMSchemaPropertyTypeToGenaiType(llmProperty.Type),
-		Description: llmProperty.Description,
+		Description: description,
+		Format:      format,
+		Enum:        llmProperty.Enum,
 	}
 
 	// Handle nullable types: JSON Schema uses ["type", "null"] for nullable fields
@@ -517,6 +521,24 @@ func convertPropertySchemaToGenai(llmProperty *llm.SchemaProperty) *genai.Schema
 	}
 
 	return genaiSchema
+}
+
+// genaiFormats are the formats Gemini accepts per type; others would fail the
+// request, so they move into the description instead.
+var genaiFormats = map[llm.SchemaPropertyType]map[string]bool{
+	llm.SchemaPropertyTypeString:  {"date-time": true},
+	llm.SchemaPropertyTypeInteger: {"int32": true, "int64": true},
+	llm.SchemaPropertyTypeNumber:  {"float": true, "double": true},
+}
+
+func splitGenaiFormat(p *llm.SchemaProperty) (description, format string) {
+	if p.Format == "" {
+		return p.Description, ""
+	}
+	if genaiFormats[p.Type][p.Format] {
+		return p.Description, p.Format
+	}
+	return joinHint(p.Description, "format: "+p.Format), ""
 }
 
 func convertSchemaToGenai(llmResponseSchema *llm.ResponseSchema) *genai.Schema {
