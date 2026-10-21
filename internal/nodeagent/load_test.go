@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -65,27 +66,28 @@ func TestLoadFailsWithoutMetrics(t *testing.T) {
 	}
 }
 
-func TestAgentLoadFallsBackToGateway(t *testing.T) {
-	gw := NewGateway("http://127.0.0.1:1", "k", "")
-	gw.inflight.Add(3)
-	a := &Agent{inspector: &OllamaInspector{}, gateway: gw}
-	if active, queued := a.load(context.Background()); active != 3 || queued != 0 {
-		t.Fatalf("load = %d/%d, want the gateway's 3 in flight and no queue", active, queued)
+func TestAgentLoadFromEngine(t *testing.T) {
+	url := metricsServer(t, http.StatusOK, vllmMetrics)
+	a := &Agent{inspector: &VLLMInspector{}, cfg: AgentConfig{EngineURL: url}}
+	if active, queued := a.load(context.Background()); active != 4 || queued != 5 {
+		t.Fatalf("load = %d/%d, want the engine's 4/5", active, queued)
 	}
-
 	a = &Agent{inspector: &OllamaInspector{}}
 	if active, queued := a.load(context.Background()); active != 0 || queued != 0 {
-		t.Fatalf("load without a source = %d/%d, want zeros", active, queued)
+		t.Fatalf("Ollama load = %d/%d, want zeros: it publishes no queue", active, queued)
 	}
 }
 
-func TestEngineLoadWinsOverGateway(t *testing.T) {
-	url := metricsServer(t, http.StatusOK, vllmMetrics)
-	gw := NewGateway(url, "k", "")
-	gw.inflight.Add(1)
-	a := &Agent{inspector: &VLLMInspector{}, gateway: gw, cfg: AgentConfig{EngineURL: url}}
-	if active, queued := a.load(context.Background()); active != 4 || queued != 5 {
-		t.Fatalf("load = %d/%d, want the engine's own 4/5", active, queued)
+func TestGaugeFitsInt32(t *testing.T) {
+	inf := 1.0
+	for i := 0; i < 400; i++ {
+		inf *= 10
+	}
+	if got := gauge(inf); got != math.MaxInt32 {
+		t.Fatalf("gauge(+Inf) = %d, want MaxInt32 so the proxy's int32 cannot wrap", got)
+	}
+	if got := gauge(2.6); got != 3 {
+		t.Fatalf("gauge(2.6) = %d", got)
 	}
 }
 
@@ -97,6 +99,7 @@ func TestParseSample(t *testing.T) {
 		ok    bool
 	}{
 		{`up 1`, "up", 1, true},
+		{"tgi_queue_size\t7", "tgi_queue_size", 7, true},
 		{`m{a="x y",b="}"} 2.5 1700000000`, "m", 2.5, true},
 		{`# HELP m help`, "", 0, false},
 		{`m{a="1"} NaNx`, "", 0, false},

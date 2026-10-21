@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,7 +20,7 @@ type EngineLoad struct {
 }
 
 // LoadProber is implemented by inspectors whose engine publishes its queue.
-// Ollama has no such API; behind the agent's gateway its load is counted there.
+// Ollama has no such API.
 type LoadProber interface {
 	Load(ctx context.Context, endpoint, authToken string) (EngineLoad, error)
 }
@@ -46,8 +47,8 @@ func (li *LlamaCppInspector) Load(ctx context.Context, endpoint, authToken strin
 // scrapeLoad reads the engine's /metrics (served at the root, not under /v1)
 // and sums the two gauges across label sets, e.g. one series per model.
 func scrapeLoad(ctx context.Context, endpoint, authToken string, names [2]string) (EngineLoad, error) {
-	base := strings.TrimSuffix(strings.TrimRight(endpoint, "/"), "/v1")
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	base := engineBaseURL(endpoint)
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/metrics", nil)
 	if err != nil {
@@ -97,7 +98,7 @@ func parseSample(line string) (string, float64, bool) {
 		return "", 0, false
 	}
 	name, rest := line, ""
-	if i := strings.IndexAny(line, "{ "); i >= 0 {
+	if i := strings.IndexAny(line, "{ \t"); i >= 0 {
 		name, rest = line[:i], line[i:]
 	}
 	if strings.HasPrefix(rest, "{") {
@@ -118,12 +119,19 @@ func parseSample(line string) (string, float64, bool) {
 	return name, v, true
 }
 
+// gauge caps at MaxInt32: the proxy reads the field as int32, and a larger
+// value would wrap negative and make a loaded node look idle.
 func gauge(v float64) uint32 {
 	if v <= 0 || v != v {
 		return 0
 	}
-	if v > float64(^uint32(0)) {
-		return ^uint32(0)
+	if v >= math.MaxInt32 {
+		return math.MaxInt32
 	}
 	return uint32(v + 0.5)
+}
+
+// engineBaseURL is the engine's root, where /metrics and native APIs live.
+func engineBaseURL(endpoint string) string {
+	return strings.TrimSuffix(strings.TrimRight(endpoint, "/"), "/v1")
 }
