@@ -20,8 +20,24 @@ func (e *nodeCapacityError) Error() string           { return e.msg }
 func (e *nodeCapacityError) SkipToNextModel() bool   { return true }
 func (e *nodeCapacityError) CapacityExhausted() bool { return true }
 
+// poolStateError is a node-pool bookkeeping failure (Redis down or erroring).
+// The pool's state is unknown, not its nodes broken: the chain moves on to the
+// next model and the vendor breaker is left alone.
+type poolStateError struct {
+	op  string
+	err error
+}
+
+func (e *poolStateError) Error() string {
+	return "nodes: pool state unavailable (" + e.op + "): " + e.err.Error()
+}
+func (e *poolStateError) Unwrap() error           { return e.err }
+func (e *poolStateError) SkipToNextModel() bool   { return true }
+func (e *poolStateError) CapacityExhausted() bool { return true }
+
 var (
 	ErrNodeNotFound      = errors.New("nodes: node not found")
+	ErrInvalidNode       = errors.New("nodes: invalid registration") // the node's fault, not the pool's
 	ErrNodeSlotExhausted = &nodeCapacityError{msg: "nodes: max concurrent requests reached"}
 	ErrNodePoolFull      = &nodeCapacityError{msg: "nodes: all candidate nodes at capacity"}
 	ErrNoAvailableNodes  = &nodeCapacityError{msg: "nodes: no healthy nodes available for model"}

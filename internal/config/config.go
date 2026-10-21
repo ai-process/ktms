@@ -4,6 +4,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 // Config holds the application configuration. Load never fails; main.go
@@ -47,6 +49,9 @@ type Config struct {
 	RedisPassword  string
 	RedisDB        int
 	RedisKeyPrefix string
+	// RedisTimeout bounds each Redis read and write (dials get twice as long),
+	// so a hung Redis costs a request this much before limits fail open.
+	RedisTimeout time.Duration
 
 	// BootstrapAdminKey solves minting the first api key; unset after use.
 	BootstrapAdminKey string
@@ -152,6 +157,7 @@ func Load() *Config {
 		RedisPassword:                   getEnv("REDIS_PASSWORD", ""),
 		RedisDB:                         getIntEnv("REDIS_DB", 0),
 		RedisKeyPrefix:                  getEnv("REDIS_KEY_PREFIX", ""),
+		RedisTimeout:                    getDurationEnv("REDIS_TIMEOUT", 500*time.Millisecond),
 		BootstrapAdminKey:               getEnv("BOOTSTRAP_ADMIN_KEY", ""),
 		UsageCollectorHost:              getEnv("USAGE_COLLECTOR_HOST", ""),
 		UsageCollectorTLS:               getBoolEnv("USAGE_COLLECTOR_TLS", false),
@@ -203,6 +209,26 @@ func Load() *Config {
 // RedisConfigured reports whether throttling has a backing store; without it
 // all requests are allowed (fail-open by design).
 func (c *Config) RedisConfigured() bool { return c.RedisAddr != "" }
+
+// RedisOptions builds the client options. go-redis defaults (3s reads, 5s
+// dials, 3 retries) let one blackholed Redis add seconds to every request.
+func (c *Config) RedisOptions() *redis.Options {
+	t := c.RedisTimeout
+	if t <= 0 {
+		t = 500 * time.Millisecond
+	}
+	return &redis.Options{
+		Addr:                  c.RedisAddr,
+		Password:              c.RedisPassword,
+		DB:                    c.RedisDB,
+		DialTimeout:           2 * t,
+		ReadTimeout:           t,
+		WriteTimeout:          t,
+		PoolTimeout:           2 * t,
+		ContextTimeoutEnabled: true,
+		MaxRetries:            1,
+	}
+}
 
 // SpendFailClosed reports whether spend limits refuse calls while their
 // counters are unreachable.

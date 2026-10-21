@@ -13,6 +13,7 @@ import (
 	"github.com/ai-process/ktms/internal/apikeys"
 	"github.com/ai-process/ktms/internal/cache"
 	"github.com/ai-process/ktms/internal/guardrails"
+	"github.com/ai-process/ktms/internal/observability"
 	"github.com/ai-process/ktms/internal/registry"
 	"github.com/ai-process/ktms/internal/router"
 	usagev1 "github.com/ai-process/ktms/internal/usagereport/gen/usage/v1"
@@ -44,6 +45,7 @@ func (s *ProxyServer) lookupCache(ctx context.Context, snap *registry.Snapshot, 
 	if s.cache != nil {
 		cached, hit, err := s.cache.Get(ctx, id.KeyID, snap.Version, req)
 		if err != nil {
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "cache_get").Inc()
 			log.Warn().Err(err).Str("api_key_id", id.KeyID).Msg("cache lookup failed")
 		} else if hit && cached != nil {
 			return &cacheHit{resp: cached}
@@ -52,6 +54,7 @@ func (s *ProxyServer) lookupCache(ctx context.Context, snap *registry.Snapshot, 
 	if s.semantic != nil && s.semanticEligible(req) && s.semanticScreened(ctx, req) {
 		cached, score, hit, err := s.semantic.Get(ctx, id.KeyID, snap.Version, req)
 		if err != nil {
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "semantic_cache_get").Inc()
 			log.Warn().Err(err).Str("api_key_id", id.KeyID).Msg("semantic cache lookup failed")
 		} else if hit && cached != nil {
 			return &cacheHit{resp: cached, semantic: true, similarity: score}
@@ -121,11 +124,13 @@ func (s *ProxyServer) storeCache(ctx context.Context, snap *registry.Snapshot, i
 	}
 	if s.cache != nil {
 		if err := s.cache.Set(ctx, id.KeyID, snap.Version, req, out); err != nil {
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "cache_set").Inc()
 			log.Warn().Err(err).Str("api_key_id", id.KeyID).Msg("failed to cache response")
 		}
 	}
 	if s.semantic != nil && s.semanticEligible(req) {
 		if err := s.semantic.Set(ctx, id.KeyID, snap.Version, req, out); err != nil {
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "semantic_cache_set").Inc()
 			log.Warn().Err(err).Str("api_key_id", id.KeyID).Msg("failed to store semantic cache entry")
 		}
 	}

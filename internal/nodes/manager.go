@@ -73,7 +73,7 @@ func (m *Manager) Config() Config               { return m.cfg }
 func (m *Manager) Register(ctx context.Context, meta *NodeMeta) error {
 	// 1. SSRF validation
 	if err := ValidateEndpoint(ctx, meta.Endpoint, m.cfg.AllowLocalhost); err != nil {
-		return fmt.Errorf("validate endpoint: %w", err)
+		return fmt.Errorf("%w: validate endpoint: %w", ErrInvalidNode, err)
 	}
 
 	meta.RegisteredAt = time.Now()
@@ -246,6 +246,12 @@ func (m *Manager) sweep(ctx context.Context) {
 	now := time.Now()
 	for _, id := range nodeIDs {
 		meta, err := m.store.GetMeta(ctx, id)
+		if err != nil && !errors.Is(err, ErrNodeNotFound) {
+			// Unknown, not expired: evicting on a Redis error would drop live nodes.
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "node_sweep").Inc()
+			log.Warn().Err(err).Str("node_id", id).Msg("sweep: node meta unreadable, keeping node")
+			continue
+		}
 		if err != nil {
 			// Meta expired past RetentionTTL -> remove from all set
 			if remErr := m.store.RemoveNode(ctx, id); remErr != nil {
