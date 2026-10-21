@@ -1,9 +1,9 @@
-FROM golang:1.27-alpine AS builder
+FROM golang:1.27.3-alpine3.23 AS builder
 WORKDIR /src
 COPY main.go .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /mock-upstream main.go
 
-FROM alpine:3.21
+FROM alpine:3.23
 COPY --from=builder /mock-upstream /mock-upstream
 USER 10001
 EXPOSE 8000
