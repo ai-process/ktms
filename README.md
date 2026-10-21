@@ -376,6 +376,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `CIRCUIT_BREAKER_FAIL_THRESHOLD` | `5` | Consecutive upstream failures (5xx, network timeouts) before tripping circuit to Open. |
 | `CIRCUIT_BREAKER_COOLDOWN` | `30s` | Cooldown period before allowing a single probe request in Half-Open state. |
 | `UPSTREAM_REQUEST_TIMEOUT` | `0` (disabled) | Upstream vendor timeout (total per-attempt deadline for unary/media; per-chunk idle watchdog for streaming). Stalls trip breaker and advance fallback chains. |
+| `VENDOR_COOLDOWN_MAX` | `5m` | Longest pause honoured when a vendor answers `429`/`503` with `Retry-After`. `0` disables pauses. |
 | `BATCH_POLL_SECONDS` | `60` | Background polling interval in seconds for checking unfinished batch jobs. |
 | `BATCH_MAX_ITEMS` | `10000` | Maximum number of items allowed in a single batch submission. |
 | `RESULTS_RETENTION_DAYS` | `7` | Retention period for completed batch results before cleanup (accepts integer days, e.g. `7`, or Go duration string, e.g. `168h`). |
@@ -1024,6 +1025,14 @@ purpose travels in free-form attributes, so the proxy knows nothing about your p
 - After `CIRCUIT_BREAKER_COOLDOWN` (default 30s), transitions to `HALF_OPEN` and admits a single probe request. Success restores `CLOSED`; failure re-opens the circuit.
 - If all models in the chain have open circuits, the caller receives `UNAVAILABLE vendors_unavailable`.
 
+**Vendor back-off (`Retry-After`):**
+- Vendor SDKs run with their built-in retries off, so one router attempt is exactly one vendor call. The router retries a `429`, `5xx` or transport failure (connection reset, EOF on a reused connection) once on the same model before falling back, for text, media and streaming calls (a stream only until its first chunk).
+- The vendor's wait is read from `Retry-After` or `retry-after-ms` (OpenAI-compatible APIs, Azure, Anthropic) and from `google.rpc.RetryInfo` (Gemini). Bedrock throttling carries no wait, so it is retried and falls back as before.
+- A wait of up to 1s is honoured in place before the same-model retry. A longer one on a `429` or `503` pauses the model for that client's vendor credential, up to `VENDOR_COOLDOWN_MAX`, and the chain moves on. Clients sharing one vendor key share the pause; other credentials are unaffected. With pauses off, the ordinary same-model retry applies. Shadow traffic respects pauses but never starts one.
+- Paused models are skipped without a network round trip (`ktms_fallbacks_total{reason="cooldown"}`; pauses started are counted in `ktms_vendor_cooldowns_total`). Pauses live in each replica's memory, like circuit breakers, so each replica learns of a pause from its own first rejected call.
+- If every model in the chain is paused, the caller receives `UNAVAILABLE vendors_unavailable` with a gRPC `RetryInfo` for the soonest pause to end; the OpenAI-compatible HTTP API returns it as a `Retry-After` header. When any model failed for another reason, no wait is promised: it may serve the next request.
+- Local node models are never paused: the node pool has its own admission control.
+
 **Usage reporting.** When `USAGE_COLLECTOR_HOST` is set, every call emits an event (vendor,
 model, tokens, duration, status, `action_id`, rule name and your attributes as metadata) to a
 gRPC service implementing [`usage-proto/usage/v1/usage.proto`](usage-proto/usage/v1/usage.proto).
@@ -1059,7 +1068,7 @@ lexical hash encoder that folds case, homoglyphs, zero-width and spaced-out lett
 | `NOT_FOUND` | – | Unknown batch ID. |
 | `INVALID_ARGUMENT` | `guardrail_violation` | Blocked due to detected prompt injection, PII, or a latent-space threat match. Clean input before retrying. |
 | `INVALID_ARGUMENT` | `bad_request: <message>` | Empty batch, duplicate `custom_id`, too many items (> `BATCH_MAX_ITEMS`), or invalid parameters. |
-| `UNAVAILABLE` | `vendors_unavailable` | The whole chain failed. **The only retryable error.** |
+| `UNAVAILABLE` | `vendors_unavailable` | The whole chain failed. **The only retryable error.** When vendors paused every model in the chain with `Retry-After`, details carry `RetryInfo` (HTTP: `Retry-After` header): wait that long first. |
 | `RESOURCE_EXHAUSTED` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` | Back off; don't hot-retry. Daily budget exhausted before batch submission. |
 | `RESOURCE_EXHAUSTED` | `throttled:spend_key_daily`, `throttled:spend_key_monthly`, `throttled:spend_user_daily`, `throttled:spend_user_monthly` | Spend limit reached. Details carry `ErrorInfo{reason: "insufficient_quota"}` and `RetryInfo` until the period resets. |
 | `UNAVAILABLE` | `throttled:spend_unavailable` | Spend counters unreachable with `SPEND_LIMITS_FAIL_MODE=closed`. Retry with backoff. |

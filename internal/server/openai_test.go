@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -507,6 +508,26 @@ func TestSpendLimitErrorMapping(t *testing.T) {
 	rec = do(h, "POST", "/v1/chat/completions", key, body)
 	if e := errBody(t, rec); rec.Code != http.StatusServiceUnavailable || e["code"] != "throttled:spend_unavailable" {
 		t.Errorf("fail-closed refusal: got %d %v", rec.Code, e)
+	}
+}
+
+func TestVendorCooldownSetsRetryAfter(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	body := `{"messages":[{"role":"user","content":"x"}]}`
+
+	fp.textErr = router.ToStatus(&router.ChainExhausted{Last: &router.CoolingDown{Model: "m", Remaining: 2500 * time.Millisecond}, RetryAfter: 2500 * time.Millisecond})
+	rec := do(h, "POST", "/v1/chat/completions", key, body)
+	if e := errBody(t, rec); rec.Code != http.StatusServiceUnavailable || e["code"] != "vendors_unavailable" {
+		t.Fatalf("got %d %v", rec.Code, e)
+	}
+	if got := rec.Header().Get("Retry-After"); got != "3" {
+		t.Errorf("Retry-After = %q, want the paused model's 3s", got)
+	}
+
+	fp.textErr = router.ToStatus(&router.ChainExhausted{AllCircuitBroken: true})
+	rec = do(h, "POST", "/v1/chat/completions", key, body)
+	if got := rec.Header().Get("Retry-After"); got != "" {
+		t.Errorf("open circuits carry no vendor wait, got Retry-After %q", got)
 	}
 }
 

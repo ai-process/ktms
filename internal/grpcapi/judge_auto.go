@@ -138,6 +138,7 @@ func (s *ProxyServer) judgeEffort(ctx context.Context, attrs map[string]string, 
 		Estimate:        50,
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,
+		Cooldown:        plan.cooldown,
 		Adapter:         plan.adapter,
 		Call: func(callCtx context.Context, m *proxydb.Model, adapter llm.ClientAdapter) (llm.TokensUsage, error) {
 			judge, ok := adapter.(llm.Judge)

@@ -132,7 +132,7 @@ func (l *Loader) build(ctx context.Context, version int64) (*Snapshot, error) {
 	snap := &Snapshot{
 		Version:        version,
 		Models:         map[string]*proxydb.Model{},
-		vendorKeys:     map[string]map[string]string{},
+		vendorKeys:     map[string]map[string]vendorCred{},
 		UserRateLimits: map[string]map[string]*proxydb.UserRateLimit{},
 		SpendLimits:    map[string]map[string]int64{},
 		tracker:        l.tracker,
@@ -168,9 +168,9 @@ func (l *Loader) build(ctx context.Context, version int64) (*Snapshot, error) {
 			return nil, fmt.Errorf("decrypt vendor key %s (version %d): %w", vk.ID, vk.KeyVersion, err)
 		}
 		if snap.vendorKeys[vk.APIKeyID] == nil {
-			snap.vendorKeys[vk.APIKeyID] = map[string]string{}
+			snap.vendorKeys[vk.APIKeyID] = map[string]vendorCred{}
 		}
-		snap.vendorKeys[vk.APIKeyID][vk.Vendor] = plain
+		snap.vendorKeys[vk.APIKeyID][vk.Vendor] = newVendorCred(plain)
 	}
 	return snap, nil
 }

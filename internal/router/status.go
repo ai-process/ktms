@@ -34,6 +34,8 @@ type ChainExhausted struct {
 	ThrottleKind     string // "rpm" | "budget_key" | "budget_user" | spendlimit reasons
 	AllCircuitBroken bool   // every model skipped because circuit breaker is open
 	AnyCircuitBroken bool   // observed at least one open circuit in chain; retained for telemetry and tests
+	// RetryAfter is when the first model frees up if every one was paused, else zero.
+	RetryAfter time.Duration
 }
 
 func (e *ChainExhausted) Error() string {
@@ -79,11 +81,26 @@ func ToStatus(err error) error {
 			return throttledStatus(exhausted.ThrottleKind, time.Now())
 		}
 		if llm.IsRetryableError(exhausted.Last) || llm.ShouldSkipToNextModel(exhausted.Last) {
-			return status.Error(codes.Unavailable, "vendors_unavailable")
+			return unavailableStatus(exhausted)
 		}
 		return status.Error(codes.Internal, "vendor_error")
 	}
 	return status.Error(codes.Internal, "vendor_error")
+}
+
+// unavailableStatus passes on when the first paused model frees up, so
+// clients wait instead of hammering a chain that is entirely paused.
+func unavailableStatus(exhausted *ChainExhausted) error {
+	st := status.New(codes.Unavailable, "vendors_unavailable")
+	if exhausted.RetryAfter <= 0 {
+		return st.Err()
+	}
+	withInfo, err := st.WithDetails(&errdetails.RetryInfo{RetryDelay: durationpb.New(exhausted.RetryAfter)})
+	if err != nil {
+		log.Error().Err(err).Msg("attach retry info to vendor cooldown")
+		return st.Err()
+	}
+	return withInfo.Err()
 }
 
 // throttledStatus carries a RetryInfo until the period resets for spend

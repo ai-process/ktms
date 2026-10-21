@@ -425,7 +425,8 @@ func (f *fakeOpenAIDecisions) handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func TestJudgeFallsBackFromTypeSafeToOpenAI(t *testing.T) {
-	tsFake := &fakeJudge{failFirstN: 1, failStatus: http.StatusInternalServerError}
+	// Both attempts on TypeSafe fail (the router retries a 5xx once), then the chain moves on.
+	tsFake := &fakeJudge{failFirstN: 2, failStatus: http.StatusInternalServerError}
 	tsSrv := httptest.NewServer(http.HandlerFunc(tsFake.handler))
 	defer tsSrv.Close()
 
@@ -452,8 +453,8 @@ func TestJudgeFallsBackFromTypeSafeToOpenAI(t *testing.T) {
 	if resp.GetResolvedVendor() != registry.VendorOpenAI || resp.GetResolvedModel() != "gpt-6-luna" {
 		t.Errorf("resolved %s/%s, want openai/gpt-6-luna", resp.GetResolvedVendor(), resp.GetResolvedModel())
 	}
-	if tsFake.count() != 1 {
-		t.Errorf("typesafe calls = %d, want 1", tsFake.count())
+	if tsFake.count() != 2 {
+		t.Errorf("typesafe calls = %d, want 2", tsFake.count())
 	}
 	if oaiFake.calls != 1 {
 		t.Errorf("openai calls = %d, want 1", oaiFake.calls)

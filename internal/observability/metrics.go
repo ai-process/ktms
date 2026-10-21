@@ -131,6 +131,17 @@ var (
 		[]string{"vendor", "model", "from", "to"},
 	)
 
+	// VendorCooldownsTotal counts pauses started because a vendor answered 429
+	// or 503 with Retry-After; skipped calls show up as fallbacks with reason "cooldown".
+	VendorCooldownsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "ktms",
+			Name:      "vendor_cooldowns_total",
+			Help:      "Total number of model pauses started from a vendor Retry-After.",
+		},
+		[]string{"vendor", "model"},
+	)
+
 	// CircuitBreakerRejectionsTotal tracks requests skipped immediately without network
 	// latency while a model's upstream circuit is open.
 	CircuitBreakerRejectionsTotal = promauto.NewCounterVec(
