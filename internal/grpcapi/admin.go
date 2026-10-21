@@ -19,6 +19,7 @@ import (
 	"github.com/ai-process/ktms/internal/apikeys"
 	"github.com/ai-process/ktms/internal/crypto"
 	"github.com/ai-process/ktms/internal/nodes"
+	"github.com/ai-process/ktms/internal/observability"
 	"github.com/ai-process/ktms/internal/proxydb"
 	"github.com/ai-process/ktms/internal/registry"
 	"github.com/ai-process/ktms/internal/spendlimit"
@@ -437,6 +438,13 @@ func (s *AdminServer) RotateEncryption(ctx context.Context, _ *pb.RotateEncrypti
 func dbStatus(err error) error {
 	if errors.Is(err, proxydb.ErrNotFound) {
 		return status.Error(codes.NotFound, "not found")
+	}
+	log.Error().Err(err).Msg("admin storage call failed")
+	// Postgres answered with an error (a constraint, bad data): an operator's
+	// problem, not an outage, so it does not feed the dependency alert.
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		observability.DependencyErrorsTotal.WithLabelValues("postgres", "admin").Inc()
 	}
 	return status.Error(codes.Unavailable, "storage unavailable")
 }

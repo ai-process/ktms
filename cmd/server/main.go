@@ -40,6 +40,10 @@ import (
 	"github.com/ai-process/ktms/migrations"
 )
 
+// initialLoadTimeout keeps a replica that cannot reach Postgres at boot from
+// hanging: it exits and is restarted, instead of sitting there unready.
+const initialLoadTimeout = 30 * time.Second
+
 func main() {
 	_ = godotenv.Load() // .env is absent in prod on purpose
 
@@ -86,6 +90,9 @@ func main() {
 	}
 	poolCfg.MaxConns = cfg.DBMaxConns
 	poolCfg.MinConns = cfg.DBMinConns
+	if poolCfg.ConnConfig.ConnectTimeout == 0 && cfg.DBTimeout > 0 {
+		poolCfg.ConnConfig.ConnectTimeout = cfg.DBTimeout // a DSN connect_timeout still wins
+	}
 	pool, err := pgxpool.NewWithConfig(context.Background(), poolCfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create database pool")
@@ -123,7 +130,9 @@ func main() {
 	}
 
 	db := proxydb.New(pool)
-	verifier := apikeys.NewVerifier(db, cfg.BootstrapAdminKey)
+	verifier := apikeys.NewVerifier(db, cfg.BootstrapAdminKey).
+		WithQueryTimeout(cfg.DBTimeout).
+		WithStaleIfError(cfg.AuthStaleIfError)
 	if cfg.BootstrapAdminKey != "" {
 		log.Warn().Msg("bootstrap admin key is set; unset it once real keys are minted")
 	}
@@ -198,7 +207,10 @@ func main() {
 
 	rootCtx, rootCancel := context.WithCancel(context.Background())
 	defer rootCancel()
-	if err := loader.Load(rootCtx); err != nil {
+	loadCtx, loadCancel := context.WithTimeout(rootCtx, initialLoadTimeout)
+	err = loader.Load(loadCtx)
+	loadCancel()
+	if err != nil {
 		log.Fatal().Err(err).Msg("initial routing config load failed")
 	}
 	loader.Start(rootCtx, cfg.RoutingReload)
@@ -263,7 +275,8 @@ func main() {
 	if cfg.HTTPAPIEnabled {
 		openaiAPI = server.NewOpenAIAPI(proxySrv, verifier)
 	}
-	httpSrv := server.NewHTTPServer(pool, cfg.HTTPAddr, openaiAPI, cfg.HTTPAPITimeout)
+	httpSrv := server.NewHTTPServer(pool, cfg.HTTPAddr, openaiAPI, cfg.HTTPAPITimeout).
+		WithDegradedReadiness(cfg.AuthStaleIfError)
 
 	grpcErrCh := make(chan error, 1)
 	httpErrCh := make(chan error, 1)

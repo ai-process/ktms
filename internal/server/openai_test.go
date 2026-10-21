@@ -1509,4 +1509,3 @@ func TestHeaderCompatibilityAndDeprecation(t *testing.T) {
 		t.Errorf("expected placement nodes_only, got %s", fp.text.Placement)
 	}
 }
-
