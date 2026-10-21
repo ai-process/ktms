@@ -24,6 +24,7 @@ type fakeBatchStore struct {
 	byClient       map[string]*proxydb.Batch
 	items          map[string][]*proxydb.BatchItem
 	createBatchErr error
+	lookupErr      error
 }
 
 func newFakeBatchStore() *fakeBatchStore {
@@ -59,6 +60,9 @@ func (s *fakeBatchStore) GetBatch(ctx context.Context, id, apiKeyID string) (*pr
 }
 
 func (s *fakeBatchStore) GetBatchByClientBatchID(ctx context.Context, apiKeyID, clientBatchID string) (*proxydb.Batch, error) {
+	if s.lookupErr != nil {
+		return nil, s.lookupErr
+	}
 	k := apiKeyID + ":" + clientBatchID
 	b, ok := s.byClient[k]
 	if !ok {
@@ -637,5 +641,27 @@ func TestBatchRPCs_BatchNotConfigured(t *testing.T) {
 	_, err = server.CancelBatch(ctx, &pb.CancelBatchRequest{BatchId: "b-1"})
 	if status.Code(err) != codes.FailedPrecondition || status.Convert(err).Message() != "batch not configured" {
 		t.Fatalf("CancelBatch: expected FailedPrecondition (batch not configured), got %v", err)
+	}
+}
+
+// When the store cannot say whether the batch already exists, submitting
+// anyway could pay the vendor for it twice; refuse and let the client retry.
+func TestSubmitBatch_IdempotencyLookupFailureRefuses(t *testing.T) {
+	server, store, adapter := batchServerFixture()
+	ctx := authCtx("key-1", "test-client")
+	store.lookupErr = errors.New("database connection refused")
+
+	_, err := server.SubmitBatch(ctx, &pb.SubmitBatchRequest{
+		ClientBatchId: "nightly-1",
+		Effort:        pb.Effort_EFFORT_MEDIUM,
+		Items: []*pb.BatchItemRequest{
+			{CustomId: "c1", Request: &pb.GenerateTextRequest{Messages: []*pb.ChatMessage{{Text: "hi"}}}},
+		},
+	})
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("err = %v, want Unavailable", err)
+	}
+	if adapter.submittedID != "" {
+		t.Fatal("nothing may reach the vendor when idempotency is unknown")
 	}
 }

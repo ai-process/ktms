@@ -177,8 +177,8 @@ func TestVerifyPropagatesStoreErrors(t *testing.T) {
 	}
 }
 
-// Nothing is cached, so a key revoked in the database stops working on the
-// very next request — in every replica.
+// The store is asked on every request (the stale cache only answers while it
+// is unreachable), so a revoked key stops working on the very next request.
 func TestRevocationTakesEffectImmediately(t *testing.T) {
 	store := newFakeStore()
 	plain := mint(t, store, "generation", ScopeGenerate)

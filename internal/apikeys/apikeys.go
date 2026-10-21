@@ -15,9 +15,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 
+	"github.com/ai-process/ktms/internal/observability"
 	"github.com/ai-process/ktms/internal/proxydb"
 )
 
@@ -158,6 +161,27 @@ func isValidScope(s string) bool {
 type Verifier struct {
 	store        Store
 	bootstrapKey string
+	queryTimeout time.Duration // bounds each key lookup; 0 = the caller's deadline only
+	stale        *staleCache   // nil = a store outage refuses every key
+}
+
+// WithQueryTimeout bounds each key lookup, so a hung database fails calls
+// instead of stalling them until every pool connection is stuck.
+func (v *Verifier) WithQueryTimeout(d time.Duration) *Verifier {
+	v.queryTimeout = d
+	return v
+}
+
+// WithStaleIfError lets a key verified within maxAge keep working while the
+// store is unreachable; revocation applies whenever the store answers, so only
+// one made just before an outage can lag, by at most maxAge. 0 disables it.
+func (v *Verifier) WithStaleIfError(maxAge time.Duration) *Verifier {
+	if maxAge > 0 {
+		v.stale = newStaleCache(maxAge)
+	} else {
+		v.stale = nil
+	}
+	return v
 }
 
 // NewVerifier builds a verifier. bootstrapKey, when non-empty, is accepted as
@@ -193,8 +217,37 @@ func (v *Verifier) Verify(ctx context.Context, plain string) (*Identity, error) 
 		return &Identity{KeyID: "bootstrap", Name: "bootstrap", Scopes: []string{ScopeAdmin}}, nil
 	}
 
+	lookup := LookupHash(plain) // also the verify hash: one digest, computed once
+	id, err := v.lookup(ctx, plain, lookup)
+	switch {
+	case err == nil:
+		v.stale.put(lookup, id)
+		return id, nil
+	case errors.Is(err, ErrUnauthenticated):
+		v.stale.drop(lookup) // a revoked or unknown key never survives on the cache
+		return nil, err
+	case ctx.Err() != nil:
+		return nil, err // the caller left; that says nothing about the store
+	}
+	observability.DependencyErrorsTotal.WithLabelValues("postgres", "auth").Inc()
+	if cached := v.stale.get(lookup); cached != nil {
+		log.Warn().Err(err).Str("key", cached.Name).Msg("key store unreachable, accepting a recently verified key")
+		return cached, nil
+	}
+	log.Error().Err(err).Msg("key store unreachable, refusing the call")
+	return nil, err
+}
+
+// lookup verifies the key against the store: ErrUnauthenticated for a key
+// that is unknown, disabled or wrong, any other error for an unreachable store.
+func (v *Verifier) lookup(ctx context.Context, plain, lookup string) (*Identity, error) {
+	if v.queryTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, v.queryTimeout)
+		defer cancel()
+	}
 	if strings.HasPrefix(plain, NodeKeyPrefix) || strings.HasPrefix(plain, LegacyNodeKeyPrefix) {
-		row, err := v.store.GetNodeKeyByLookup(ctx, LookupHash(plain))
+		row, err := v.store.GetNodeKeyByLookup(ctx, lookup)
 		if errors.Is(err, proxydb.ErrNotFound) {
 			return nil, ErrUnauthenticated
 		}
@@ -204,7 +257,7 @@ func (v *Verifier) Verify(ctx context.Context, plain string) (*Identity, error) 
 		if !row.Active() {
 			return nil, ErrUnauthenticated
 		}
-		if subtle.ConstantTimeCompare([]byte(row.KeyHash), []byte(VerifyHash(plain))) != 1 {
+		if subtle.ConstantTimeCompare([]byte(row.KeyHash), []byte(lookup)) != 1 {
 			return nil, ErrUnauthenticated
 		}
 		return &Identity{
@@ -219,7 +272,7 @@ func (v *Verifier) Verify(ctx context.Context, plain string) (*Identity, error) 
 		}, nil
 	}
 
-	row, err := v.store.GetAPIKeyByLookup(ctx, LookupHash(plain))
+	row, err := v.store.GetAPIKeyByLookup(ctx, lookup)
 	if errors.Is(err, proxydb.ErrNotFound) {
 		return nil, ErrUnauthenticated
 	}
@@ -229,7 +282,7 @@ func (v *Verifier) Verify(ctx context.Context, plain string) (*Identity, error) 
 	if !row.Active() {
 		return nil, ErrUnauthenticated
 	}
-	if subtle.ConstantTimeCompare([]byte(row.KeyHash), []byte(VerifyHash(plain))) != 1 {
+	if subtle.ConstantTimeCompare([]byte(row.KeyHash), []byte(lookup)) != 1 {
 		return nil, ErrUnauthenticated
 	}
 

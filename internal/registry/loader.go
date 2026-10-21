@@ -10,6 +10,7 @@ import (
 
 	"github.com/ai-process/ktms/internal/crypto"
 	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/observability"
 	"github.com/ai-process/ktms/internal/panicsafe"
 	"github.com/ai-process/ktms/internal/proxydb"
 )
@@ -79,19 +80,33 @@ func (l *Loader) Start(ctx context.Context, interval time.Duration) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				l.reloadIfChanged(ctx)
+				l.withTimeout(ctx, l.reloadIfChanged)
 			case <-l.refreshCh:
-				if err := l.Load(ctx); err != nil {
-					log.Error().Err(err).Msg("config refresh failed; keeping last good snapshot")
-				}
+				l.withTimeout(ctx, func(ctx context.Context) {
+					if err := l.Load(ctx); err != nil {
+						observability.DependencyErrorsTotal.WithLabelValues("postgres", "config_reload").Inc()
+						log.Error().Err(err).Msg("config refresh failed; keeping last good snapshot")
+					}
+				})
 			}
 		}
 	}()
 }
 
+// reloadTimeout bounds one poll or rebuild, so a hung database stalls neither
+// this goroutine nor the refreshes queued behind it; the last snapshot serves.
+const reloadTimeout = 30 * time.Second
+
+func (l *Loader) withTimeout(ctx context.Context, fn func(context.Context)) {
+	ctx, cancel := context.WithTimeout(ctx, reloadTimeout)
+	defer cancel()
+	fn(ctx)
+}
+
 func (l *Loader) reloadIfChanged(ctx context.Context) {
 	version, err := l.db.ConfigVersion(ctx)
 	if err != nil {
+		observability.DependencyErrorsTotal.WithLabelValues("postgres", "config_reload").Inc()
 		log.Warn().Err(err).Msg("config version poll failed")
 		return
 	}
@@ -99,7 +114,9 @@ func (l *Loader) reloadIfChanged(ctx context.Context) {
 		return
 	}
 	if err := l.Load(ctx); err != nil {
-		// Can only happen via manual SQL — admin RPCs validate before commit.
+		// Postgres failing mid-rebuild, or a config that manual SQL broke
+		// (admin RPCs validate before commit). Either way the old snapshot serves.
+		observability.DependencyErrorsTotal.WithLabelValues("postgres", "config_reload").Inc()
 		log.Error().Err(err).Msg("config reload failed; keeping last good snapshot")
 	}
 }
