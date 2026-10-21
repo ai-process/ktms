@@ -153,11 +153,7 @@ func main() {
 		redisClient *redis.Client
 	)
 	if cfg.RedisConfigured() {
-		redisClient = redis.NewClient(&redis.Options{
-			Addr:     cfg.RedisAddr,
-			Password: cfg.RedisPassword,
-			DB:       cfg.RedisDB,
-		})
+		redisClient = redis.NewClient(cfg.RedisOptions())
 		defer func() { _ = redisClient.Close() }()
 		rLimiter := throttle.New(redisClient, cfg.RedisKeyPrefix)
 		rLimiter.SetGraceMargin(cfg.BudgetGraceMargin)
