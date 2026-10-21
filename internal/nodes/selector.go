@@ -148,10 +148,11 @@ func (s *Selector) SelectNodeForCapability(ctx context.Context, modelID string, 
 			fPerf = math.Max(0.1, math.Min(2.0, 0.7*tpsRatio+0.3*ttftRatio))
 		}
 
-		// Calculate F_load: max(0.1, 1 - (inflight / max_concurrent)^2)
+		// F_load: max(0.1, 1 - util^2). Other clients' requests waiting in the
+		// engine count as load, so a node they keep busy draws less traffic.
 		fLoad := 1.0
 		if n.Meta.MaxConcurrent > 0 {
-			util := float64(n.Inflight) / float64(n.Meta.MaxConcurrent)
+			util := (float64(n.Inflight) + float64(externalLoad(n))) / float64(n.Meta.MaxConcurrent)
 			fLoad = math.Max(0.1, 1.0-util*util)
 		}
 
