@@ -209,10 +209,25 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 	return nil
 }
 
-// newNodeAdapter applies the same model config as registry.buildAdapter, keyed by the node's engine.
-// holdLease keeps the slot leased for as long as the call runs, whatever its
-// kind: a unary generation can outlast the TTL as easily as a stream, and a
-// lapsed lease lets the pool overbook the node. The returned func releases it.
+const leaseRenewTimeout = 2 * time.Second
+
+// externalLoad is the engine work KTMS did not send: everything the heartbeat
+// saw running or waiting, minus KTMS's own leases on the node. KTMS's queued
+// requests are already counted by their leases; only other clients' add wait.
+func externalLoad(n *NodeSnapshot) int32 {
+	if n.Heartbeat == nil {
+		return 0
+	}
+	ext := n.Heartbeat.ActiveRequests + n.Heartbeat.QueueDepth - n.Inflight
+	if ext < 0 {
+		return 0
+	}
+	return ext
+}
+
+// holdLease renews the slot for as long as the call runs: a unary generation
+// outlasts the TTL as easily as a stream, and a lapsed lease lets the pool
+// overbook the node. The returned func stops renewing, then releases.
 func (pa *PoolAdapter) holdLease(ctx context.Context, cand *Candidate, reqID string) func() {
 	nodeID := cand.Snapshot.Meta.NodeID
 	renewCtx, stop := context.WithCancel(context.WithoutCancel(ctx))
@@ -226,7 +241,10 @@ func (pa *PoolAdapter) holdLease(ctx context.Context, cand *Candidate, reqID str
 			case <-renewCtx.Done():
 				return
 			case <-ticker.C:
-				renewed, err := pa.selector.mgr.Slots().RenewLease(context.Background(), nodeID, reqID, pa.leaseTTL)
+				// Bounded, so a stalled Redis cannot hold back a finished call's release.
+				rctx, cancel := context.WithTimeout(context.Background(), leaseRenewTimeout)
+				renewed, err := pa.selector.mgr.Slots().RenewLease(rctx, nodeID, reqID, pa.leaseTTL)
+				cancel()
 				if err != nil {
 					log.Warn().Err(err).Str("node_id", nodeID).Str("req_id", reqID).Msg("failed to renew node slot lease")
 				} else if !renewed {
@@ -244,6 +262,7 @@ func (pa *PoolAdapter) holdLease(ctx context.Context, cand *Candidate, reqID str
 	}
 }
 
+// newNodeAdapter applies the same model config as registry.buildAdapter, keyed by the node's engine.
 func (pa *PoolAdapter) newNodeAdapter(client *openai.Client, model string, cand *Candidate) *adapters.OpenAIAdapter {
 	a := adapters.NewOpenAIAdapter(client, model, llm.NewThrottleControl(0, 60))
 	registry.ConfigureOpenAI(a, pa.model, cand.Snapshot.Meta.Engine)
@@ -377,9 +396,7 @@ func (pa *PoolAdapter) acquireSlot(ctx context.Context, userID string, estTokens
 
 			totalSlots += n.Meta.MaxConcurrent
 			totalInflight += n.Inflight
-			if n.Heartbeat != nil {
-				queueDepth += n.Heartbeat.QueueDepth
-			}
+			queueDepth += externalLoad(n)
 			if perf, ok := n.Perf[pa.model.ID]; ok && perf.TPSEMA > 0 {
 				dur := (estTokens / perf.TPSEMA) * 1000.0
 				if dur < 10 {

@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -31,13 +30,12 @@ type Gateway struct {
 	keepaliveAfter time.Duration
 	keepaliveEvery time.Duration
 	client         *http.Client
-	inflight       atomic.Int64 // proxied requests now in the engine, for heartbeats
 }
 
 // NewGateway forwards to the engine at engineURL. accessKey is what callers
 // must present; engineToken, if any, is what the engine itself expects.
 func NewGateway(engineURL, accessKey, engineToken string) *Gateway {
-	base := strings.TrimSuffix(strings.TrimRight(engineURL, "/"), "/v1")
+	base := engineBaseURL(engineURL)
 	return &Gateway{
 		upstream:       base,
 		accessKey:      accessKey,
@@ -84,17 +82,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeGatewayError(w, http.StatusNotFound, "route not exposed by this node")
 		return
 	}
-	g.inflight.Add(1)
-	defer g.inflight.Add(-1)
 	g.forward(w, r, body, stream)
-}
-
-// Inflight is how many proxied requests are in the engine right now.
-func (g *Gateway) Inflight() uint32 {
-	if n := g.inflight.Load(); n > 0 {
-		return uint32(n)
-	}
-	return 0
 }
 
 func (g *Gateway) authorized(r *http.Request) bool {

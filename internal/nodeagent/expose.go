@@ -56,11 +56,7 @@ func (a *Agent) startExposure(ctx context.Context) (urls <-chan string, stopped 
 	if err != nil {
 		return nil, nil, fmt.Errorf("listen for gateway: %w", err)
 	}
-	gw := NewGateway(a.cfg.EngineURL, key, a.cfg.EngineToken)
-	a.mu.Lock()
-	a.gateway = gw
-	a.mu.Unlock()
-	srv := &http.Server{Handler: gw, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: NewGateway(a.cfg.EngineURL, key, a.cfg.EngineToken), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error().Err(err).Msg("gateway stopped")

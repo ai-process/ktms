@@ -21,7 +21,7 @@ import (
 // pool admits a request the node has no room for.
 func TestUnaryGenerationKeepsItsLease(t *testing.T) {
 	ctx := context.Background()
-	const ttl = 300 * time.Millisecond
+	const ttl = time.Second // renewals every 500ms leave a wide margin for a busy -race run
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-release
@@ -64,7 +64,7 @@ func TestUnaryGenerationKeepsItsLease(t *testing.T) {
 		done <- err
 	}()
 
-	time.Sleep(3 * ttl) // well past the TTL the lease was taken with
+	time.Sleep(2*ttl + ttl/2) // well past the TTL the lease was taken with
 	if n := liveLeases(); n != 1 {
 		t.Fatalf("live leases mid-call = %d, want 1: the slot lapsed while the node was busy", n)
 	}
@@ -74,5 +74,28 @@ func TestUnaryGenerationKeepsItsLease(t *testing.T) {
 	}
 	if n, _ := rdb.ZCard(ctx, key).Result(); n != 0 {
 		t.Fatalf("leases after the call = %d, want 0", n)
+	}
+}
+
+// The engine's queue includes requests KTMS itself sent and already holds
+// leases for; only the excess is other clients' load.
+func TestExternalLoadExcludesOwnLeases(t *testing.T) {
+	cases := []struct {
+		name                     string
+		active, queued, inflight int32
+		want                     int32
+	}{
+		{"all ours, oversubscribed engine", 4, 4, 8, 0},
+		{"other clients waiting", 4, 10, 8, 6},
+		{"stale heartbeat below our leases", 1, 0, 5, 0},
+	}
+	for _, tc := range cases {
+		n := &NodeSnapshot{Inflight: tc.inflight, Heartbeat: &NodeHeartbeatData{ActiveRequests: tc.active, QueueDepth: tc.queued}}
+		if got := externalLoad(n); got != tc.want {
+			t.Errorf("%s: externalLoad = %d, want %d", tc.name, got, tc.want)
+		}
+	}
+	if got := externalLoad(&NodeSnapshot{Inflight: 3}); got != 0 {
+		t.Errorf("no heartbeat: externalLoad = %d", got)
 	}
 }

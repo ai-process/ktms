@@ -41,16 +41,17 @@ type AgentConfig struct {
 }
 
 type Agent struct {
-	cfg       AgentConfig
-	client    pb.NodeRegistryServiceClient
-	inspector EngineInspector
-	drainChan chan struct{}
-	stopChan  chan struct{}
-	draining  bool
-	endpoint  string // currently reported address; changes when the tunnel restarts
-	mu        sync.Mutex
-	probe     func(ctx context.Context, url string) error
-	gateway   *Gateway // set when the agent exposes the engine itself
+	cfg        AgentConfig
+	client     pb.NodeRegistryServiceClient
+	inspector  EngineInspector
+	drainChan  chan struct{}
+	stopChan   chan struct{}
+	draining   bool
+	endpoint   string // currently reported address; changes when the tunnel restarts
+	mu         sync.Mutex
+	probe      func(ctx context.Context, url string) error
+	loadOK     bool // last engine load scrape succeeded
+	loadWarned bool // a failed scrape was logged; repeats stay quiet
 
 	retryInitial, retryMax time.Duration // pause between refused registrations
 }
@@ -340,24 +341,27 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 }
 
-// load reports the engine's running and waiting requests for the heartbeat:
-// from the engine's metrics where it has them, else what passes through the
-// gateway (which knows nothing of a queue), else nothing.
+// load reports the engine's running and waiting requests for the heartbeat,
+// from its metrics. Engines without them (Ollama) report nothing: the proxy
+// then sees only its own leases, which is all it saw before.
 func (a *Agent) load(ctx context.Context) (active, queued uint32) {
-	if p, ok := a.inspector.(LoadProber); ok {
-		l, err := p.Load(ctx, a.cfg.EngineURL, a.cfg.EngineToken)
-		if err == nil {
-			return l.Running, l.Waiting
+	p, ok := a.inspector.(LoadProber)
+	if !ok {
+		return 0, 0
+	}
+	l, err := p.Load(ctx, a.cfg.EngineURL, a.cfg.EngineToken)
+	if err != nil {
+		if a.loadOK || !a.loadWarned {
+			log.Warn().Err(err).Msg("engine load unavailable; heartbeats report no queue until it returns")
 		}
-		log.Debug().Err(err).Msg("engine load unavailable for heartbeat")
+		a.loadOK, a.loadWarned = false, true
+		return 0, 0
 	}
-	a.mu.Lock()
-	gw := a.gateway
-	a.mu.Unlock()
-	if gw != nil {
-		return gw.Inflight(), 0
+	if !a.loadOK && a.loadWarned {
+		log.Info().Msg("engine load available again")
 	}
-	return 0, 0
+	a.loadOK = true
+	return l.Running, l.Waiting
 }
 
 // stopOrFail ends Run after a wait was cut short: a shutdown request is a clean exit.
