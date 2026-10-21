@@ -26,6 +26,12 @@ type Config struct {
 	ShutdownTimeout time.Duration
 	DBMaxConns      int32
 	DBMinConns      int32
+	// DBTimeout bounds connecting and each per-request query (key checks), so
+	// a hung database fails calls fast instead of exhausting the pool.
+	DBTimeout time.Duration
+	// AuthStaleIfError keeps recently verified keys working while Postgres is
+	// unreachable; 0 refuses every call during an outage.
+	AuthStaleIfError time.Duration
 
 	// RoutingReload is how often replicas poll config_state for changes.
 	RoutingReload time.Duration
@@ -144,6 +150,8 @@ func Load() *Config {
 		ShutdownTimeout:                 getDurationEnv("SHUTDOWN_TIMEOUT", 30*time.Second),
 		DBMaxConns:                      int32(getIntEnv("DB_MAX_CONNS", 25)),
 		DBMinConns:                      int32(getIntEnv("DB_MIN_CONNS", 5)),
+		DBTimeout:                       getDurationEnv("DB_TIMEOUT", 3*time.Second),
+		AuthStaleIfError:                getDurationEnv("AUTH_STALE_IF_ERROR", 5*time.Minute),
 		RoutingReload:                   time.Duration(getIntEnv("ROUTING_RELOAD_SECONDS", 60)) * time.Second,
 		AutoMigrate:                     getBoolEnv("AUTO_MIGRATE", true),
 		MigrateTimeout:                  getDurationEnv("MIGRATE_TIMEOUT", 3*time.Minute),

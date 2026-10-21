@@ -359,6 +359,8 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `LOG_LEVEL` | `info` | zerolog level. |
 | `SHUTDOWN_TIMEOUT` | `30s` | Graceful drain time on SIGTERM. |
 | `DB_MAX_CONNS` / `DB_MIN_CONNS` | `25` / `5` | Postgres pool bounds. |
+| `DB_TIMEOUT` | `3s` | Bounds connecting to Postgres (unless the DSN sets `connect_timeout`) and each per-request query such as key checks, so a hung database fails calls fast. |
+| `AUTH_STALE_IF_ERROR` | `5m` | While Postgres is unreachable, a key that verified within this window keeps working (a revocation made just before the outage can lag by at most this much). `0` refuses every call during an outage. |
 | `ROUTING_RELOAD_SECONDS` | `60` | How often replicas poll for config changed elsewhere. |
 | `AUTO_MIGRATE` | `true` | Apply embedded migrations at startup (guarded by an advisory lock, safe for rolling deploys). Off means applying `migrations/*.sql` by hand. |
 | `MIGRATE_TIMEOUT` | `3m` | Bound for the whole migration run. |
@@ -1107,7 +1109,7 @@ Items returned in `ListBatchResults` that failed have an `error` containing a gR
 
 ### When a dependency fails
 
-Failed calls to Redis and the usage collector are counted in `ktms_dependency_errors_total{dependency,operation}`; alert on it. Nothing below needs a restart: the Redis pool, the Postgres pool and the collector connection reconnect by themselves. After 3 consecutive Redis transport failures, Redis calls fail fast without network IO for 2s, then are tried again, so a hung Redis costs a request about one `REDIS_TIMEOUT`, not one per command.
+Failed calls to Redis, Postgres and the usage collector are counted in `ktms_dependency_errors_total{dependency,operation}`; alert on it. Nothing below needs a restart: the Redis pool, the Postgres pool and the collector connection reconnect by themselves. After 3 consecutive Redis transport failures, Redis calls fail fast without network IO for 2s, then are tried again, so a hung Redis costs a request about one `REDIS_TIMEOUT`, not one per command.
 
 | Dependency | What breaks | Behaviour | Why |
 | --- | --- | --- | --- |
@@ -1117,9 +1119,10 @@ Failed calls to Redis and the usage collector are counted in `ktms_dependency_er
 | Redis | Response and semantic cache | **Fail open**: treated as a miss; storing is skipped. | A cache is an optimisation. |
 | Redis | Local node pool | The pool's state is unknown, so pool models are **skipped** and the chain falls back (e.g. to cloud models); the vendor circuit breaker is not tripped. A node whose state cannot be read is left out, never assumed idle. Node registration returns `UNAVAILABLE` (the agent retries); the sweep never evicts a node on a read error. | Never overbook a node; keep serving from the rest of the chain. |
 | Usage collector (light-tokenmeter) | Usage events | Queued in memory (10,000 events) and sent in batches; while the collector is down they are held and retried, then delivered exactly once (event IDs deduplicate). Events the collector refuses are dropped one by one, not with their batch. Drops are counted in `ktms_usage_events_dropped_total{reason}` (`queue_full`, `rejected`, `shutdown`, `closed`). Shutdown flushes for up to 5s. Requests never wait on it. | Accounting must not slow down or lose traffic. |
-| Postgres | API key and node key checks | Every call is refused with `UNAVAILABLE auth backend unavailable`; routing config keeps serving from the last snapshot. `/readyz` reports 503. | Revocation takes effect immediately. |
-| Postgres | Routing config reload | The last good snapshot keeps serving; reload retries every `ROUTING_RELOAD_SECONDS`. | |
-| Postgres | Admin RPCs, batches | `UNAVAILABLE storage unavailable`. | |
+| Postgres | API key and node key checks | Keys that verified within `AUTH_STALE_IF_ERROR` (5m) keep working; any other key is refused with `UNAVAILABLE auth backend unavailable`. Each check is bounded by `DB_TIMEOUT` (3s). Routing, limits and vendor keys serve from the last snapshot, so traffic of known keys continues. `/readyz` stays 200 with `"status":"degraded"`; with `AUTH_STALE_IF_ERROR=0` it reports 503 and every call is refused. | Availability for known keys. Revocation still applies on the next request whenever Postgres answers; only one made just before an outage can lag, by at most the window. |
+| Postgres | Routing config reload | The last good snapshot keeps serving; each poll or rebuild is bounded to 30s and retried every `ROUTING_RELOAD_SECONDS`. | |
+| Postgres | Admin RPCs, batches | `UNAVAILABLE storage unavailable` (cause logged). A batch whose idempotency check fails is refused rather than submitted, so it is never paid for twice. | |
+| Postgres | Startup | Migrations and the first config load must succeed (the first load within 30s); otherwise the process exits and the orchestrator restarts it. | Nothing to serve without a first snapshot. |
 
 ## Development
 

@@ -18,6 +18,7 @@ import (
 	"github.com/ai-process/ktms/internal/apikeys"
 	"github.com/ai-process/ktms/internal/guardrails"
 	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/observability"
 	"github.com/ai-process/ktms/internal/proxydb"
 	"github.com/ai-process/ktms/internal/router"
 )
@@ -114,6 +115,12 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 		existing, err := s.batchStore.GetBatchByClientBatchID(ctx, id.KeyID, req.GetClientBatchId())
 		if err == nil && existing != nil {
 			return &pb.SubmitBatchResponse{Batch: batchToProto(existing)}, nil
+		}
+		if err != nil && !errors.Is(err, proxydb.ErrNotFound) {
+			// Unknown is not "new": submitting now could pay the vendor for the same batch twice.
+			observability.DependencyErrorsTotal.WithLabelValues("postgres", "batch").Inc()
+			log.Error().Err(err).Str("client_batch_id", req.GetClientBatchId()).Msg("batch idempotency check failed")
+			return nil, status.Error(codes.Unavailable, "storage unavailable")
 		}
 	}
 

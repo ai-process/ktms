@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"github.com/ai-process/ktms/internal/observability"
 	"net/http"
 	"time"
 
@@ -16,9 +17,10 @@ type Pinger interface {
 
 // HTTPServer serves the health endpoints and, when configured, the OpenAI-compatible API.
 type HTTPServer struct {
-	server *http.Server
-	pinger Pinger
-	addr   string
+	degradedOK bool // serve while the database is down (stale-if-error auth on)
+	server     *http.Server
+	pinger     Pinger
+	addr       string
 }
 
 // NewHTTPServer creates the HTTP server. api may be nil (health only);
@@ -61,8 +63,17 @@ func (s *HTTPServer) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
+// WithDegradedReadiness keeps /readyz at 200 while Postgres is down, when
+// recently verified keys keep working (AUTH_STALE_IF_ERROR): a 503 would pull
+// every replica out of the load balancer at once and turn degraded into down.
+func (s *HTTPServer) WithDegradedReadiness(ok bool) *HTTPServer {
+	s.degradedOK = ok
+	return s
+}
+
 func (s *HTTPServer) handleReadyz(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	// Under the probe's own 5s timeout, so a slow database reads as down, not as a hung probe.
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -72,7 +83,13 @@ func (s *HTTPServer) handleReadyz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.pinger.Ping(ctx); err != nil {
-		log.Warn().Err(err).Msg("readiness check failed")
+		observability.DependencyErrorsTotal.WithLabelValues("postgres", "readiness").Inc()
+		log.Warn().Err(err).Msg("readiness check: database unavailable")
+		if s.degradedOK {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"degraded","database":"unavailable"}`))
+			return
+		}
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte(`{"status":"not ready","error":"database unavailable"}`))
 		return
