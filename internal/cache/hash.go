@@ -111,7 +111,10 @@ func writeMessage(h io.Writer, i int, m *pb.ChatMessage) {
 }
 
 func writeResponseSchema(w io.Writer, schema *pb.ResponseSchema) {
-	fmt.Fprintf(w, "schema:%s:%s\n", schema.GetType(), optionalBoolKey(schema.AdditionalProperties))
+	fmt.Fprintf(w, "schema:%s\n", schema.GetType())
+	if schema.AdditionalProperties != nil {
+		fmt.Fprintf(w, "schema_addl:%t\n", schema.GetAdditionalProperties())
+	}
 	for _, req := range schema.GetRequired() {
 		fmt.Fprintf(w, "schema_req:%s\n", req)
 	}
@@ -135,9 +138,14 @@ func writeSchemaProperty(w io.Writer, name string, prop *pb.SchemaProperty) {
 		return
 	}
 	fmt.Fprintf(w, "prop:%s:%s:%s:%s\n", name, prop.GetType(), prop.GetDescription(), strconv.FormatBool(prop.GetNullable()))
-	// Schemas that differ only in these constrain the reply differently, so
-	// they must not share a cached answer.
-	fmt.Fprintf(w, "prop_fmt:%s:%q:%s\n", name, prop.GetFormat(), optionalBoolKey(prop.AdditionalProperties))
+	// Constraints change the reply, so they change the key; written only when
+	// set, so keys of schemas without them stay as they were.
+	if prop.GetFormat() != "" {
+		fmt.Fprintf(w, "prop_fmt:%s:%q\n", name, prop.GetFormat())
+	}
+	if prop.AdditionalProperties != nil {
+		fmt.Fprintf(w, "prop_addl:%s:%t\n", name, prop.GetAdditionalProperties())
+	}
 	for _, v := range prop.GetEnum() {
 		fmt.Fprintf(w, "prop_enum:%s:%q\n", name, v)
 	}
@@ -157,11 +165,4 @@ func writeSchemaProperty(w io.Writer, name string, prop *pb.SchemaProperty) {
 	if items := prop.GetItems(); items != nil {
 		writeSchemaProperty(w, name+".items", items)
 	}
-}
-
-func optionalBoolKey(b *bool) string {
-	if b == nil {
-		return "-"
-	}
-	return strconv.FormatBool(*b)
 }

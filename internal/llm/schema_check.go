@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 )
 
@@ -116,7 +115,7 @@ func checkValue(value any, want *SchemaProperty, path string, issues []string) [
 			}
 		}
 		if want.AdditionalProperties != nil && !*want.AdditionalProperties {
-			for _, key := range sortedKeys(obj) {
+			for _, key := range allKeys(obj) {
 				if _, known := want.Properties[key]; !known {
 					issues = append(issues, fmt.Sprintf("%s.%s is not allowed", path, key))
 					if len(issues) >= maxSchemaIssues {
@@ -161,15 +160,6 @@ func checkValue(value any, want *SchemaProperty, path string, issues []string) [
 		}
 	}
 	return issues
-}
-
-func sortedKeys(m map[string]any) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 func jsonKind(v any) string {

@@ -36,9 +36,22 @@ func TestResponseSchemaFromJSONKeepsConstraints(t *testing.T) {
 	}
 }
 
-func TestResponseSchemaFromJSONRefusesNonStringEnum(t *testing.T) {
-	_, err := responseSchemaFromJSON(json.RawMessage(`{"type":"object","properties":{"n":{"type":"integer","enum":[1,2]}}}`))
-	if err == nil || !strings.Contains(err.Error(), "enum values must be strings") {
-		t.Fatalf("err = %v: a numeric enum must be refused, not dropped", err)
+func TestResponseSchemaFromJSONCarriesNonStringEnum(t *testing.T) {
+	s, err := responseSchemaFromJSON(json.RawMessage(`{"type":"object","properties":{"n":{"type":"integer","enum":[1,2]}}}`))
+	if err != nil {
+		t.Fatalf("a numeric enum must not fail the request: %v", err)
+	}
+	if got := strings.Join(s.Properties["n"].Enum, ","); got != "1,2" {
+		t.Fatalf("enum = %q, want the literals as text", got)
+	}
+}
+
+func TestAdditionalPropertiesNullAllowsExtraKeys(t *testing.T) {
+	s, err := responseSchemaFromJSON(json.RawMessage(`{"type":"object","additionalProperties":null,"properties":{"a":{"type":"string"}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.AdditionalProperties != nil {
+		t.Fatalf("null must not become false: %v", *s.AdditionalProperties)
 	}
 }

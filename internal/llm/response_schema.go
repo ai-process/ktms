@@ -45,7 +45,7 @@ func (s *ResponseSchema) Clone() *ResponseSchema {
 		Properties:           cloneProperties(s.Properties),
 		Items:                s.Items.Clone(),
 		Required:             append([]string(nil), s.Required...),
-		AdditionalProperties: cloneBool(s.AdditionalProperties),
+		AdditionalProperties: CopyBool(s.AdditionalProperties),
 	}
 }
 
@@ -59,7 +59,7 @@ func (p *SchemaProperty) Clone() *SchemaProperty {
 	c.Items = p.Items.Clone()
 	c.Required = append([]string(nil), p.Required...)
 	c.Enum = append([]string(nil), p.Enum...)
-	c.AdditionalProperties = cloneBool(p.AdditionalProperties)
+	c.AdditionalProperties = CopyBool(p.AdditionalProperties)
 	return &c
 }
 
@@ -88,7 +88,8 @@ func cloneProperties(in map[string]*SchemaProperty) map[string]*SchemaProperty {
 	return out
 }
 
-func cloneBool(b *bool) *bool {
+// CopyBool copies an optional flag so the copy can change independently.
+func CopyBool(b *bool) *bool {
 	if b == nil {
 		return nil
 	}

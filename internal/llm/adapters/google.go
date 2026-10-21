@@ -122,7 +122,8 @@ func (a *GoogleAdapter) parseGenerateContentResponse(result *genai.GenerateConte
 		}
 	}
 
-	if schema != nil && a.softSchema {
+	// A tool-call reply has no text to check; its arguments are checked upstream.
+	if schema != nil && a.softSchema && len(toolCalls) == 0 {
 		if err := llm.CheckResponseSchema(text, schema); err != nil {
 			return nil, err
 		}
@@ -487,12 +488,12 @@ func convertPropertySchemaToGenai(llmProperty *llm.SchemaProperty) *genai.Schema
 		return nil
 	}
 
-	description, format := splitGenaiFormat(llmProperty)
+	description, format, enum := schemaHints(llmProperty, genaiFormatOK)
 	genaiSchema := &genai.Schema{
 		Type:        convertLLMSchemaPropertyTypeToGenaiType(llmProperty.Type),
 		Description: description,
 		Format:      format,
-		Enum:        llmProperty.Enum,
+		Enum:        enum,
 	}
 
 	// Handle nullable types: JSON Schema uses ["type", "null"] for nullable fields
@@ -531,14 +532,8 @@ var genaiFormats = map[llm.SchemaPropertyType]map[string]bool{
 	llm.SchemaPropertyTypeNumber:  {"float": true, "double": true},
 }
 
-func splitGenaiFormat(p *llm.SchemaProperty) (description, format string) {
-	if p.Format == "" {
-		return p.Description, ""
-	}
-	if genaiFormats[p.Type][p.Format] {
-		return p.Description, p.Format
-	}
-	return joinHint(p.Description, "format: "+p.Format), ""
+func genaiFormatOK(typ llm.SchemaPropertyType, format string) bool {
+	return genaiFormats[typ][format]
 }
 
 func convertSchemaToGenai(llmResponseSchema *llm.ResponseSchema) *genai.Schema {

@@ -62,16 +62,16 @@ func convertLLMSchemaPropertyToOpenAISchemaProperty(llmProperty *llm.SchemaPrope
 		openAIProperty["type"] = convertLLMSchemaPropertyTypeToOpenAIType(llmProperty.Type)
 	}
 
-	description, format := splitStrictFormat(llmProperty)
+	description, format, enumValues := schemaHints(llmProperty, strictFormatOK)
 	if description != "" {
 		openAIProperty["description"] = description
 	}
 	if format != "" {
 		openAIProperty["format"] = format
 	}
-	if len(llmProperty.Enum) > 0 {
-		enum := make([]any, 0, len(llmProperty.Enum)+1)
-		for _, v := range llmProperty.Enum {
+	if len(enumValues) > 0 {
+		enum := make([]any, 0, len(enumValues)+1)
+		for _, v := range enumValues {
 			enum = append(enum, v)
 		}
 		if llmProperty.Nullable {
@@ -80,14 +80,14 @@ func convertLLMSchemaPropertyToOpenAISchemaProperty(llmProperty *llm.SchemaPrope
 		openAIProperty["enum"] = enum
 	}
 
-	// additionalProperties is always false: strict modes require it, and a reply
-	// without extra keys satisfies a schema that would have allowed them.
 	if len(llmProperty.Properties) > 0 {
 		propertiesMap := make(map[string]interface{})
 		for name, prop := range llmProperty.Properties {
 			propertiesMap[name] = convertLLMSchemaPropertyToOpenAISchemaProperty(prop)
 		}
 		openAIProperty["properties"] = propertiesMap
+	}
+	if closedObject(llmProperty.Type, len(llmProperty.Properties), llmProperty.AdditionalProperties) {
 		openAIProperty["additionalProperties"] = false
 	}
 
@@ -117,6 +117,8 @@ func convertLLMResponseSchemaToOpenAISchema(llmResponseSchema *llm.ResponseSchem
 			propertiesMap[name] = convertLLMSchemaPropertyToOpenAISchemaProperty(prop)
 		}
 		openAISchema["properties"] = propertiesMap
+	}
+	if closedObject(llmResponseSchema.Type, len(llmResponseSchema.Properties), llmResponseSchema.AdditionalProperties) {
 		openAISchema["additionalProperties"] = false
 	}
 
@@ -138,24 +140,19 @@ var strictFormats = map[string]bool{
 	"hostname": true, "ipv4": true, "ipv6": true, "uuid": true,
 }
 
-// splitStrictFormat keeps a supported string format as a keyword and moves any
-// other into the description, so the model still sees it.
-func splitStrictFormat(p *llm.SchemaProperty) (description, format string) {
-	description = p.Description
-	if p.Format == "" {
-		return description, ""
+// closedObject says when to send additionalProperties false. Objects with
+// properties always get it (strict modes require it, and a reply without extra
+// keys satisfies a schema that allowed them); a free-form object only when the
+// caller asked, since closing it would leave the model nothing to put in it.
+func closedObject(typ llm.SchemaPropertyType, properties int, additional *bool) bool {
+	if typ != llm.SchemaPropertyTypeObject {
+		return false
 	}
-	if p.Type == llm.SchemaPropertyTypeString && strictFormats[p.Format] {
-		return description, p.Format
-	}
-	return joinHint(description, "format: "+p.Format), ""
+	return properties > 0 || (additional != nil && !*additional)
 }
 
-func joinHint(description, hint string) string {
-	if description == "" {
-		return hint
-	}
-	return description + " (" + hint + ")"
+func strictFormatOK(typ llm.SchemaPropertyType, format string) bool {
+	return typ == llm.SchemaPropertyTypeString && strictFormats[format]
 }
 
 func schemaNameFromActionID(actionID string) string {

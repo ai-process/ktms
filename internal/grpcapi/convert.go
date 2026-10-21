@@ -150,7 +150,7 @@ func schemaFromProto(s *pb.ResponseSchema) *llm.ResponseSchema {
 		Properties:           propertiesFromProto(s.GetProperties()),
 		Items:                propertyFromProto(s.GetItems()),
 		Required:             s.GetRequired(),
-		AdditionalProperties: optionalBool(s.AdditionalProperties),
+		AdditionalProperties: llm.CopyBool(s.AdditionalProperties),
 	}
 }
 
@@ -167,16 +167,8 @@ func propertyFromProto(p *pb.SchemaProperty) *llm.SchemaProperty {
 		Nullable:             p.GetNullable(),
 		Enum:                 p.GetEnum(),
 		Format:               p.GetFormat(),
-		AdditionalProperties: optionalBool(p.AdditionalProperties),
+		AdditionalProperties: llm.CopyBool(p.AdditionalProperties),
 	}
-}
-
-func optionalBool(b *bool) *bool {
-	if b == nil {
-		return nil
-	}
-	v := *b
-	return &v
 }
 
 func propertiesFromProto(in map[string]*pb.SchemaProperty) map[string]*llm.SchemaProperty {

@@ -116,7 +116,9 @@ message SchemaProperty {
   SchemaProperty items = 4; // array types
   repeated string required = 5; // object types
   bool nullable = 6;
-  repeated string enum = 7; // string types: the allowed values
+  // Allowed values. Enforced on string types; on other types (values as JSON
+  // text, e.g. "1") they reach the model as a hint in the description.
+  repeated string enum = 7;
   // String format hint ("date-time", "email", "uuid", ...). Formats a vendor
   // cannot enforce are passed to the model in the description instead.
   string format = 8;
