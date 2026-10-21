@@ -172,10 +172,9 @@ func (v *Verifier) WithQueryTimeout(d time.Duration) *Verifier {
 	return v
 }
 
-// WithStaleIfError lets a key that verified within maxAge keep working while
-// the store is unreachable. Revocation still applies the moment the store
-// answers again; only a revocation made just before the outage can lag, by at
-// most maxAge. 0 disables it.
+// WithStaleIfError lets a key verified within maxAge keep working while the
+// store is unreachable; revocation applies whenever the store answers, so only
+// one made just before an outage can lag, by at most maxAge. 0 disables it.
 func (v *Verifier) WithStaleIfError(maxAge time.Duration) *Verifier {
 	if maxAge > 0 {
 		v.stale = newStaleCache(maxAge)
@@ -218,18 +217,20 @@ func (v *Verifier) Verify(ctx context.Context, plain string) (*Identity, error) 
 		return &Identity{KeyID: "bootstrap", Name: "bootstrap", Scopes: []string{ScopeAdmin}}, nil
 	}
 
-	lookup, secret := LookupHash(plain), VerifyHash(plain)
-	id, err := v.lookup(ctx, plain, lookup, secret)
+	lookup := LookupHash(plain) // also the verify hash: one digest, computed once
+	id, err := v.lookup(ctx, plain, lookup)
 	switch {
 	case err == nil:
-		v.stale.put(lookup, secret, id)
+		v.stale.put(lookup, id)
 		return id, nil
 	case errors.Is(err, ErrUnauthenticated):
 		v.stale.drop(lookup) // a revoked or unknown key never survives on the cache
 		return nil, err
+	case ctx.Err() != nil:
+		return nil, err // the caller left; that says nothing about the store
 	}
 	observability.DependencyErrorsTotal.WithLabelValues("postgres", "auth").Inc()
-	if cached := v.stale.get(lookup, secret); cached != nil {
+	if cached := v.stale.get(lookup); cached != nil {
 		log.Warn().Err(err).Str("key", cached.Name).Msg("key store unreachable, accepting a recently verified key")
 		return cached, nil
 	}
@@ -239,7 +240,7 @@ func (v *Verifier) Verify(ctx context.Context, plain string) (*Identity, error) 
 
 // lookup verifies the key against the store: ErrUnauthenticated for a key
 // that is unknown, disabled or wrong, any other error for an unreachable store.
-func (v *Verifier) lookup(ctx context.Context, plain, lookup, secret string) (*Identity, error) {
+func (v *Verifier) lookup(ctx context.Context, plain, lookup string) (*Identity, error) {
 	if v.queryTimeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, v.queryTimeout)
@@ -256,7 +257,7 @@ func (v *Verifier) lookup(ctx context.Context, plain, lookup, secret string) (*I
 		if !row.Active() {
 			return nil, ErrUnauthenticated
 		}
-		if subtle.ConstantTimeCompare([]byte(row.KeyHash), []byte(secret)) != 1 {
+		if subtle.ConstantTimeCompare([]byte(row.KeyHash), []byte(lookup)) != 1 {
 			return nil, ErrUnauthenticated
 		}
 		return &Identity{
@@ -281,7 +282,7 @@ func (v *Verifier) lookup(ctx context.Context, plain, lookup, secret string) (*I
 	if !row.Active() {
 		return nil, ErrUnauthenticated
 	}
-	if subtle.ConstantTimeCompare([]byte(row.KeyHash), []byte(secret)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(row.KeyHash), []byte(lookup)) != 1 {
 		return nil, ErrUnauthenticated
 	}
 

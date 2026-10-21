@@ -439,7 +439,12 @@ func dbStatus(err error) error {
 	if errors.Is(err, proxydb.ErrNotFound) {
 		return status.Error(codes.NotFound, "not found")
 	}
-	observability.DependencyErrorsTotal.WithLabelValues("postgres", "admin").Inc()
 	log.Error().Err(err).Msg("admin storage call failed")
+	// Postgres answered with an error (a constraint, bad data): an operator's
+	// problem, not an outage, so it does not feed the dependency alert.
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		observability.DependencyErrorsTotal.WithLabelValues("postgres", "admin").Inc()
+	}
 	return status.Error(codes.Unavailable, "storage unavailable")
 }
