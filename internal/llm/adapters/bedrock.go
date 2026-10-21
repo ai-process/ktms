@@ -286,7 +286,8 @@ func (a *BedrockAdapter) toResponse(resp *bedrockruntime.ConverseOutput, schema 
 		return nil, fmt.Errorf("empty response from Bedrock")
 	}
 
-	if schema != nil && a.softSchema {
+	// A tool-call reply has no text to check; its arguments are checked upstream.
+	if schema != nil && a.softSchema && len(toolCalls) == 0 {
 		if err := llm.CheckResponseSchema(text, schema); err != nil {
 			return nil, err
 		}
@@ -491,8 +492,7 @@ func (a *BedrockAdapter) buildCommonConfig(chat *llm.ChatContext, ceiling int) (
 	}
 
 	if chat.GetResponseSchema() != nil && !a.softSchema {
-		schema := cloneResponseSchema(chat.GetResponseSchema())
-		llm.EnforceAllRequired(schema)
+		schema := llm.EnforceAllRequired(chat.GetResponseSchema())
 		rawSchema := convertLLMResponseSchemaToOpenAISchema(schema)
 		if b, err := json.Marshal(rawSchema); err == nil {
 			outConfig = &types.OutputConfig{
@@ -516,8 +516,7 @@ func (a *BedrockAdapter) buildCommonConfig(chat *llm.ChatContext, ceiling int) (
 			if t.Function.Parameters != nil {
 				paramSchema := t.Function.Parameters
 				if t.Function.Strict {
-					paramSchema = cloneResponseSchema(paramSchema)
-					llm.EnforceAllRequired(paramSchema)
+					paramSchema = llm.EnforceAllRequired(paramSchema)
 				}
 				propertiesMap := make(map[string]any)
 				for name, prop := range paramSchema.Properties {
