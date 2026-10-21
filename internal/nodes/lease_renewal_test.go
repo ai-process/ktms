@@ -2,6 +2,7 @@ package nodes
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -78,16 +79,18 @@ func TestUnaryGenerationKeepsItsLease(t *testing.T) {
 }
 
 // The engine's queue includes requests KTMS itself sent and already holds
-// leases for; only the excess is other clients' load.
-func TestExternalLoadExcludesOwnLeases(t *testing.T) {
+// leases for; only waiting requests beyond those are other clients' load.
+// Other clients' running requests share the batch and add no wait.
+func TestExternalLoadCountsOnlyForeignWaiting(t *testing.T) {
 	cases := []struct {
 		name                     string
 		active, queued, inflight int32
-		want                     int32
+		want                     int64
 	}{
 		{"all ours, oversubscribed engine", 4, 4, 8, 0},
-		{"other clients waiting", 4, 10, 8, 6},
-		{"stale heartbeat below our leases", 1, 0, 5, 0},
+		{"other clients waiting", 4, 10, 8, 2},
+		{"other clients only running", 30, 0, 4, 0},
+		{"huge gauges do not wrap", math.MaxInt32, math.MaxInt32, 0, math.MaxInt32},
 	}
 	for _, tc := range cases {
 		n := &NodeSnapshot{Inflight: tc.inflight, Heartbeat: &NodeHeartbeatData{ActiveRequests: tc.active, QueueDepth: tc.queued}}
@@ -97,5 +100,39 @@ func TestExternalLoadExcludesOwnLeases(t *testing.T) {
 	}
 	if got := externalLoad(&NodeSnapshot{Inflight: 3}); got != 0 {
 		t.Errorf("no heartbeat: externalLoad = %d", got)
+	}
+}
+
+// A node other clients keep busy draws less traffic, before any KTMS slot on
+// it is taken.
+func TestSelectorSteersAwayFromForeignQueue(t *testing.T) {
+	ctx := context.Background()
+	mgr, _ := setupTestManager(t)
+	modelID := "local-gemma"
+	for _, id := range []string{"idle", "busy"} {
+		if err := mgr.Register(ctx, &NodeMeta{
+			NodeID: id, Name: id, Endpoint: "http://127.0.0.1:1", Engine: "vllm", BaseWeight: 10, MaxConcurrent: 10,
+			Models: []*pb.NodeModelSpec{{ModelId: modelID, RemoteModelName: "gemma", IsWarm: true}},
+		}); err != nil {
+			t.Fatalf("Register %s: %v", id, err)
+		}
+	}
+	if _, _, err := mgr.Heartbeat(ctx, &NodeHeartbeatData{NodeID: "idle"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := mgr.Heartbeat(ctx, &NodeHeartbeatData{NodeID: "busy", ActiveRequests: 10, QueueDepth: 8}); err != nil {
+		t.Fatal(err)
+	}
+	sel := NewSelector(mgr)
+	picks := map[string]int{}
+	for i := 0; i < 100; i++ {
+		c, err := sel.SelectNode(ctx, modelID)
+		if err != nil {
+			t.Fatalf("SelectNode: %v", err)
+		}
+		picks[c.Snapshot.Meta.NodeID]++
+	}
+	if picks["idle"] < 2*picks["busy"] {
+		t.Fatalf("picks = %v: the node with 8 foreign requests waiting should get far less traffic", picks)
 	}
 }

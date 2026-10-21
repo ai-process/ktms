@@ -58,11 +58,7 @@ type ollamaPsResponse struct {
 }
 
 func (oi *OllamaInspector) Inspect(ctx context.Context, endpoint, authToken string) ([]*pb.NodeModelSpec, error) {
-	baseURL := strings.TrimRight(endpoint, "/")
-	if strings.HasSuffix(baseURL, "/v1") {
-		baseURL = strings.TrimSuffix(baseURL, "/v1")
-	}
-
+	baseURL := engineBaseURL(endpoint)
 	client := &http.Client{Timeout: 5 * time.Second}
 
 	// 1. Fetch available models from /api/tags
