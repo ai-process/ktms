@@ -29,10 +29,17 @@ func TestReadyzWhileDatabaseIsDown(t *testing.T) {
 		t.Fatalf("without stale auth: %d, want 503 (no call can be served)", code)
 	}
 
-	degraded := NewHTTPServer(down, ":0", nil, time.Second).WithDegradedReadiness(true)
+	degraded := NewHTTPServer(down, ":0", nil, time.Second).WithDegradedReadiness(5 * time.Minute)
 	code, body := readyz(t, degraded)
 	if code != http.StatusOK || !strings.Contains(body, `"database":"unavailable"`) {
 		t.Fatalf("with stale auth: %d %s, want 200 degraded: pulling every replica would turn degraded into down", code, body)
+	}
+
+	// Once the cache window has passed since the database was last seen,
+	// every key has expired and the replica can serve nothing.
+	degraded.lastPingOK.Store(time.Now().Add(-6 * time.Minute).UnixNano())
+	if code, _ := readyz(t, degraded); code != http.StatusServiceUnavailable {
+		t.Fatalf("past the window: %d, want 503", code)
 	}
 }
 

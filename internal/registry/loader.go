@@ -114,7 +114,9 @@ func (l *Loader) reloadIfChanged(ctx context.Context) {
 		return
 	}
 	if err := l.Load(ctx); err != nil {
-		// Can only happen via manual SQL — admin RPCs validate before commit.
+		// Postgres failing mid-rebuild, or a config that manual SQL broke
+		// (admin RPCs validate before commit). Either way the old snapshot serves.
+		observability.DependencyErrorsTotal.WithLabelValues("postgres", "config_reload").Inc()
 		log.Error().Err(err).Msg("config reload failed; keeping last good snapshot")
 	}
 }

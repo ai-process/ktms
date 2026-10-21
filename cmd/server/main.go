@@ -276,7 +276,7 @@ func main() {
 		openaiAPI = server.NewOpenAIAPI(proxySrv, verifier)
 	}
 	httpSrv := server.NewHTTPServer(pool, cfg.HTTPAddr, openaiAPI, cfg.HTTPAPITimeout).
-		WithDegradedReadiness(cfg.AuthStaleIfError > 0)
+		WithDegradedReadiness(cfg.AuthStaleIfError)
 
 	grpcErrCh := make(chan error, 1)
 	httpErrCh := make(chan error, 1)

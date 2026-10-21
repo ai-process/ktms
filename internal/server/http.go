@@ -2,12 +2,14 @@ package server
 
 import (
 	"context"
-	"github.com/ai-process/ktms/internal/observability"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	"github.com/ai-process/ktms/internal/observability"
 )
 
 // Pinger is the readiness dependency (the pgx pool in production).
@@ -17,10 +19,11 @@ type Pinger interface {
 
 // HTTPServer serves the health endpoints and, when configured, the OpenAI-compatible API.
 type HTTPServer struct {
-	degradedOK bool // serve while the database is down (stale-if-error auth on)
-	server     *http.Server
-	pinger     Pinger
-	addr       string
+	degradedFor time.Duration // how long after the last good ping a down database still reads as degraded
+	lastPingOK  atomic.Int64  // unix nanos of the last successful ping
+	server      *http.Server
+	pinger      Pinger
+	addr        string
 }
 
 // NewHTTPServer creates the HTTP server. api may be nil (health only);
@@ -63,11 +66,12 @@ func (s *HTTPServer) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
-// WithDegradedReadiness keeps /readyz at 200 while Postgres is down, when
-// recently verified keys keep working (AUTH_STALE_IF_ERROR): a 503 would pull
-// every replica out of the load balancer at once and turn degraded into down.
-func (s *HTTPServer) WithDegradedReadiness(ok bool) *HTTPServer {
-	s.degradedOK = ok
+// WithDegradedReadiness keeps /readyz at 200 for up to window after the last
+// good ping, while recently verified keys still work (AUTH_STALE_IF_ERROR): a
+// 503 would pull every replica at once. Past the window nothing is served.
+func (s *HTTPServer) WithDegradedReadiness(window time.Duration) *HTTPServer {
+	s.degradedFor = window
+	s.lastPingOK.Store(time.Now().UnixNano()) // boot loaded config, so the database was just up
 	return s
 }
 
@@ -85,7 +89,7 @@ func (s *HTTPServer) handleReadyz(w http.ResponseWriter, r *http.Request) {
 	if err := s.pinger.Ping(ctx); err != nil {
 		observability.DependencyErrorsTotal.WithLabelValues("postgres", "readiness").Inc()
 		log.Warn().Err(err).Msg("readiness check: database unavailable")
-		if s.degradedOK {
+		if s.degradedFor > 0 && time.Since(time.Unix(0, s.lastPingOK.Load())) < s.degradedFor {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"status":"degraded","database":"unavailable"}`))
 			return
@@ -94,6 +98,7 @@ func (s *HTTPServer) handleReadyz(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"not ready","error":"database unavailable"}`))
 		return
 	}
+	s.lastPingOK.Store(time.Now().UnixNano())
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"status":"ready"}`))
 }
