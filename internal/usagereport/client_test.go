@@ -44,9 +44,9 @@ func (f *fakeCollector) RecordUsageEvents(ctx context.Context, in *usagev1.Recor
 	if len(in.GetEvents()) > maxBatch {
 		return nil, errors.New("batch over the collector's limit")
 	}
-	for _, ev := range in.GetEvents() {
+	for i, ev := range in.GetEvents() {
 		if ev.GetModel() == "refused" { // like tokenmeter: one bad event fails the batch
-			return nil, status.Error(codes.InvalidArgument, "invalid event")
+			return nil, status.Errorf(codes.InvalidArgument, "invalid event at index %d: model refused", i)
 		}
 	}
 	f.mu.Lock()
@@ -170,6 +170,25 @@ func TestRejectedEventDoesNotBlockTheRest(t *testing.T) {
 	waitDelivered(t, f, 6, 3*time.Second)
 	if got := testutil.ToFloat64(observability.UsageEventsDroppedTotal.WithLabelValues("rejected")) - before; got != 1 {
 		t.Fatalf("rejected drops = %v, want 1", got)
+	}
+	f.mu.Lock()
+	calls := f.calls
+	f.mu.Unlock()
+	if calls > 3 {
+		t.Fatalf("%d calls: the named index should be dropped and the rest resent at once", calls)
+	}
+}
+
+func TestRejectedIndex(t *testing.T) {
+	err := status.Error(codes.InvalidArgument, "invalid event at index 12: model too long")
+	if i, ok := rejectedIndex(err, 20); !ok || i != 12 {
+		t.Fatalf("rejectedIndex = %d, %v", i, ok)
+	}
+	if _, ok := rejectedIndex(err, 5); ok {
+		t.Fatal("an index outside the batch must not be trusted")
+	}
+	if _, ok := rejectedIndex(status.Error(codes.InvalidArgument, "bad"), 5); ok {
+		t.Fatal("no index, no match")
 	}
 }
 
