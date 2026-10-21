@@ -100,6 +100,8 @@ func TestParseSample(t *testing.T) {
 	}{
 		{`up 1`, "up", 1, true},
 		{"tgi_queue_size\t7", "tgi_queue_size", 7, true},
+		{`m{l="x"} 2 # {trace_id="a"} 1`, "m", 2, true},
+		{`m{l="a\"}b"} 3`, "m", 3, true},
 		{`m{a="x y",b="}"} 2.5 1700000000`, "m", 2.5, true},
 		{`# HELP m help`, "", 0, false},
 		{`m{a="1"} NaNx`, "", 0, false},

@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"sync"
 
@@ -199,8 +200,8 @@ func (s *NodeRegistryServer) Heartbeat(ctx context.Context, req *pb.HeartbeatReq
 	hb := &nodes.NodeHeartbeatData{
 		NodeID:         req.GetNodeId(),
 		Draining:       req.GetDraining(),
-		ActiveRequests: int32(req.GetActiveRequests()),
-		QueueDepth:     int32(req.GetQueueDepth()),
+		ActiveRequests: clampInt32(req.GetActiveRequests()),
+		QueueDepth:     clampInt32(req.GetQueueDepth()),
 		VRAMTotalMB:    totalVRAM,
 		VRAMFreeMB:     freeVRAM,
 		GPUUtilPercent: gpuUtil,
@@ -384,4 +385,13 @@ func (s *AdminServer) DrainNode(ctx context.Context, req *pb.DrainNodeRequest) (
 		return nil, status.Errorf(codes.Internal, "drain node failed: %v", err)
 	}
 	return &pb.DrainNodeResponse{}, nil
+}
+
+// clampInt32 keeps a reported count from wrapping negative, which would make a
+// saturated node look idle to admission.
+func clampInt32(v uint32) int32 {
+	if v > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	return int32(v)
 }

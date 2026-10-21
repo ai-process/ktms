@@ -102,7 +102,7 @@ func parseSample(line string) (string, float64, bool) {
 		name, rest = line[:i], line[i:]
 	}
 	if strings.HasPrefix(rest, "{") {
-		end := strings.LastIndex(rest, "}")
+		end := labelsEnd(rest)
 		if end < 0 {
 			return "", 0, false
 		}
@@ -117,6 +117,25 @@ func parseSample(line string) (string, float64, bool) {
 		return "", 0, false
 	}
 	return name, v, true
+}
+
+// labelsEnd finds the brace closing the label set, skipping braces inside
+// quoted values; an OpenMetrics exemplar after the value has braces of its own.
+func labelsEnd(s string) int {
+	inQuote, escaped := false, false
+	for i := 1; i < len(s); i++ {
+		switch c := s[i]; {
+		case escaped:
+			escaped = false
+		case c == '\\':
+			escaped = inQuote
+		case c == '"':
+			inQuote = !inQuote
+		case c == '}' && !inQuote:
+			return i
+		}
+	}
+	return -1
 }
 
 // gauge caps at MaxInt32: the proxy reads the field as int32, and a larger

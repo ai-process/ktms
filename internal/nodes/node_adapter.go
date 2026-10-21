@@ -91,7 +91,7 @@ func (pa *PoolAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) 
 	if err != nil {
 		return nil, err
 	}
-	defer pa.holdLease(ctx, cand, reqID)()
+	defer pa.holdLease(cand, reqID)()
 
 	client, underlyingModel, _, err := pa.buildNodeClient(cand)
 	if err != nil {
@@ -145,7 +145,7 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 	if err != nil {
 		return err
 	}
-	defer pa.holdLease(ctx, cand, reqID)()
+	defer pa.holdLease(cand, reqID)()
 
 	client, underlyingModel, _, err := pa.buildNodeClient(cand)
 	if err != nil {
@@ -209,53 +209,52 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 	return nil
 }
 
-const leaseRenewTimeout = 2 * time.Second
-
-// externalLoad is the engine work KTMS did not send: everything the heartbeat
-// saw running or waiting, minus KTMS's own leases on the node. KTMS's queued
-// requests are already counted by their leases; only other clients' add wait.
-func externalLoad(n *NodeSnapshot) int32 {
+// externalLoad is the engine queue KTMS did not cause: requests the heartbeat
+// saw waiting beyond KTMS's own leases on the node. Other clients' running
+// requests share the engine's batch with ours and are not counted. The
+// heartbeat may be one interval old, which errs towards caution after bursts.
+func externalLoad(n *NodeSnapshot) int64 {
 	if n.Heartbeat == nil {
 		return 0
 	}
-	ext := n.Heartbeat.ActiveRequests + n.Heartbeat.QueueDepth - n.Inflight
-	if ext < 0 {
-		return 0
+	if ext := int64(n.Heartbeat.QueueDepth) - int64(n.Inflight); ext > 0 {
+		return ext
 	}
-	return ext
+	return 0
 }
 
 // holdLease renews the slot for as long as the call runs: a unary generation
 // outlasts the TTL as easily as a stream, and a lapsed lease lets the pool
-// overbook the node. The returned func stops renewing, then releases.
-func (pa *PoolAdapter) holdLease(ctx context.Context, cand *Candidate, reqID string) func() {
+// overbook the node. The returned func stops renewing and releases the slot.
+func (pa *PoolAdapter) holdLease(cand *Candidate, reqID string) func() {
 	nodeID := cand.Snapshot.Meta.NodeID
-	renewCtx, stop := context.WithCancel(context.WithoutCancel(ctx))
-	done := make(chan struct{})
+	every := pa.leaseTTL / 2
+	timeout := min(2*time.Second, every) // a renewal must land before the lease runs out
+	stop := make(chan struct{})
 	go func() {
-		defer close(done)
-		ticker := time.NewTicker(pa.leaseTTL / 2)
+		ticker := time.NewTicker(every)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-renewCtx.Done():
+			case <-stop:
 				return
 			case <-ticker.C:
-				// Bounded, so a stalled Redis cannot hold back a finished call's release.
-				rctx, cancel := context.WithTimeout(context.Background(), leaseRenewTimeout)
+				rctx, cancel := context.WithTimeout(context.Background(), timeout)
 				renewed, err := pa.selector.mgr.Slots().RenewLease(rctx, nodeID, reqID, pa.leaseTTL)
 				cancel()
 				if err != nil {
 					log.Warn().Err(err).Str("node_id", nodeID).Str("req_id", reqID).Msg("failed to renew node slot lease")
 				} else if !renewed {
-					log.Warn().Str("node_id", nodeID).Str("req_id", reqID).Msg("node slot lease expired or lost before renewal")
+					// Gone for good: the renew script never recreates a lease, so stop trying.
+					log.Warn().Str("node_id", nodeID).Str("req_id", reqID).Msg("node slot lease lapsed before the call finished")
+					return
 				}
 			}
 		}
 	}()
 	return func() {
-		stop()
-		<-done // no renewal may land after the release and resurrect the lease
+		close(stop)
+		// No wait for an in-flight renewal: it cannot recreate a released lease.
 		if err := pa.selector.mgr.Slots().ReleaseLease(context.Background(), nodeID, reqID); err != nil {
 			log.Warn().Err(err).Str("node_id", nodeID).Str("req_id", reqID).Msg("failed to release node slot lease")
 		}
@@ -368,7 +367,7 @@ func (pa *PoolAdapter) acquireSlot(ctx context.Context, userID string, estTokens
 	if listErr == nil && len(nodes) > 0 {
 		var totalSlots int32
 		var totalInflight int32
-		var queueDepth int32
+		var queueDepth int64 // int64: reported gauges can be large enough to wrap int32 sums
 		var totalDuration float64
 		var perfCount int
 
@@ -415,7 +414,7 @@ func (pa *PoolAdapter) acquireSlot(ctx context.Context, userID string, estTokens
 			if perfCount > 0 {
 				durationEMA = totalDuration / float64(perfCount)
 			}
-			queuePos := totalInflight - totalSlots + 1 + queueDepth
+			queuePos := int64(totalInflight) - int64(totalSlots) + 1 + queueDepth
 			if queuePos < 1 {
 				queuePos = 1
 			}
@@ -492,7 +491,7 @@ func (pa *PoolAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, userID 
 	if err != nil {
 		return nil, err
 	}
-	defer pa.holdLease(ctx, cand, reqID)()
+	defer pa.holdLease(cand, reqID)()
 
 	client, underlyingModel, plainAuthToken, err := pa.buildNodeClient(cand)
 	if err != nil {
@@ -583,7 +582,7 @@ func (pa *PoolAdapter) EvaluateRollouts(ctx context.Context, req *llm.EvaluateRo
 	if err != nil {
 		return nil, err
 	}
-	defer pa.holdLease(ctx, cand, reqID)()
+	defer pa.holdLease(cand, reqID)()
 
 	client, underlyingModel, plainAuthToken, err := pa.buildNodeClient(cand)
 	if err != nil {
