@@ -91,11 +91,7 @@ func (pa *PoolAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) 
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if relErr := pa.selector.mgr.Slots().ReleaseLease(context.Background(), cand.Snapshot.Meta.NodeID, reqID); relErr != nil {
-			log.Warn().Err(relErr).Str("node_id", cand.Snapshot.Meta.NodeID).Str("req_id", reqID).Msg("failed to release node slot lease")
-		}
-	}()
+	defer pa.holdLease(ctx, cand, reqID)()
 
 	client, underlyingModel, _, err := pa.buildNodeClient(cand)
 	if err != nil {
@@ -149,32 +145,7 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if relErr := pa.selector.mgr.Slots().ReleaseLease(context.Background(), cand.Snapshot.Meta.NodeID, reqID); relErr != nil {
-			log.Warn().Err(relErr).Str("node_id", cand.Snapshot.Meta.NodeID).Str("req_id", reqID).Msg("failed to release node slot lease")
-		}
-	}()
-
-	// Background renewal ticker for streaming
-	renewCtx, cancelRenew := context.WithCancel(ctx)
-	defer cancelRenew()
-	go func() {
-		ticker := time.NewTicker(pa.leaseTTL / 2)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-renewCtx.Done():
-				return
-			case <-ticker.C:
-				renewed, renewErr := pa.selector.mgr.Slots().RenewLease(context.Background(), cand.Snapshot.Meta.NodeID, reqID, pa.leaseTTL)
-				if renewErr != nil {
-					log.Warn().Err(renewErr).Str("node_id", cand.Snapshot.Meta.NodeID).Str("req_id", reqID).Msg("failed to renew node slot lease")
-				} else if !renewed {
-					log.Warn().Str("node_id", cand.Snapshot.Meta.NodeID).Str("req_id", reqID).Msg("node slot lease expired or lost before renewal")
-				}
-			}
-		}
-	}()
+	defer pa.holdLease(ctx, cand, reqID)()
 
 	client, underlyingModel, _, err := pa.buildNodeClient(cand)
 	if err != nil {
@@ -239,6 +210,40 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 }
 
 // newNodeAdapter applies the same model config as registry.buildAdapter, keyed by the node's engine.
+// holdLease keeps the slot leased for as long as the call runs, whatever its
+// kind: a unary generation can outlast the TTL as easily as a stream, and a
+// lapsed lease lets the pool overbook the node. The returned func releases it.
+func (pa *PoolAdapter) holdLease(ctx context.Context, cand *Candidate, reqID string) func() {
+	nodeID := cand.Snapshot.Meta.NodeID
+	renewCtx, stop := context.WithCancel(context.WithoutCancel(ctx))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(pa.leaseTTL / 2)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-renewCtx.Done():
+				return
+			case <-ticker.C:
+				renewed, err := pa.selector.mgr.Slots().RenewLease(context.Background(), nodeID, reqID, pa.leaseTTL)
+				if err != nil {
+					log.Warn().Err(err).Str("node_id", nodeID).Str("req_id", reqID).Msg("failed to renew node slot lease")
+				} else if !renewed {
+					log.Warn().Str("node_id", nodeID).Str("req_id", reqID).Msg("node slot lease expired or lost before renewal")
+				}
+			}
+		}
+	}()
+	return func() {
+		stop()
+		<-done // no renewal may land after the release and resurrect the lease
+		if err := pa.selector.mgr.Slots().ReleaseLease(context.Background(), nodeID, reqID); err != nil {
+			log.Warn().Err(err).Str("node_id", nodeID).Str("req_id", reqID).Msg("failed to release node slot lease")
+		}
+	}
+}
+
 func (pa *PoolAdapter) newNodeAdapter(client *openai.Client, model string, cand *Candidate) *adapters.OpenAIAdapter {
 	a := adapters.NewOpenAIAdapter(client, model, llm.NewThrottleControl(0, 60))
 	registry.ConfigureOpenAI(a, pa.model, cand.Snapshot.Meta.Engine)
@@ -470,11 +475,7 @@ func (pa *PoolAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, userID 
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if relErr := pa.selector.mgr.Slots().ReleaseLease(context.Background(), cand.Snapshot.Meta.NodeID, reqID); relErr != nil {
-			log.Warn().Err(relErr).Str("node_id", cand.Snapshot.Meta.NodeID).Str("req_id", reqID).Msg("failed to release node slot lease")
-		}
-	}()
+	defer pa.holdLease(ctx, cand, reqID)()
 
 	client, underlyingModel, plainAuthToken, err := pa.buildNodeClient(cand)
 	if err != nil {
@@ -565,11 +566,7 @@ func (pa *PoolAdapter) EvaluateRollouts(ctx context.Context, req *llm.EvaluateRo
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if relErr := pa.selector.mgr.Slots().ReleaseLease(context.Background(), cand.Snapshot.Meta.NodeID, reqID); relErr != nil {
-			log.Warn().Err(relErr).Str("node_id", cand.Snapshot.Meta.NodeID).Str("req_id", reqID).Msg("failed to release node slot lease")
-		}
-	}()
+	defer pa.holdLease(ctx, cand, reqID)()
 
 	client, underlyingModel, plainAuthToken, err := pa.buildNodeClient(cand)
 	if err != nil {
