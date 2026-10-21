@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,6 +35,8 @@ type UsageCollectorClient struct {
 	ctx       context.Context // cancelled on Close, cutting an in-flight send short
 	cancel    context.CancelFunc
 	stopOnce  sync.Once
+	closeMu   sync.RWMutex // held for reading by RecordUsage; Close takes it to shut the door
+	closed    bool
 	projectID string
 	// projectFor resolves the project from event meta (the proxy attributes
 	// spend to the calling service, not to itself). Empty result falls back
@@ -123,11 +127,11 @@ func (c *UsageCollectorClient) sendLoop() {
 		if len(batch) == 0 {
 			continue
 		}
-		err := c.send(c.ctx, batch)
-		if status.Code(err) == codes.InvalidArgument {
-			// The collector refuses the whole batch for one bad event; retrying it
-			// as is would block delivery for good, so find and drop the bad ones.
-			err = c.sendEach(c.ctx, batch)
+		var err error
+		batch, err = c.deliver(c.ctx, batch)
+		if err != nil && c.ctx.Err() != nil {
+			c.drain(batch) // Close cut the send short; that is not a collector failure
+			return
 		}
 		if err != nil {
 			// Keep the batch and retry later; new events keep queueing meanwhile.
@@ -146,7 +150,6 @@ func (c *UsageCollectorClient) sendLoop() {
 			log.Info().Int("events", len(batch)).Msg("usage collector reachable again, held events delivered")
 		}
 		backoff = flushEvery
-		batch = batch[:0]
 	}
 }
 
@@ -157,22 +160,65 @@ func (c *UsageCollectorClient) send(ctx context.Context, batch []*usagev1.UsageE
 	return err
 }
 
-// sendEach delivers a refused batch one event at a time, dropping (and
-// counting) the events the collector rejects. Any other error stops it, so the
-// caller retries the whole batch; duplicates of delivered ones are ignored.
-func (c *UsageCollectorClient) sendEach(ctx context.Context, batch []*usagev1.UsageEvent) error {
-	for _, ev := range batch {
+// deliver sends a batch and returns what is still to be sent. The collector
+// refuses a whole batch for one invalid event and names its index; that event
+// is dropped (counted once) and the rest resent, so it cannot block delivery.
+func (c *UsageCollectorClient) deliver(ctx context.Context, batch []*usagev1.UsageEvent) ([]*usagev1.UsageEvent, error) {
+	for len(batch) > 0 {
+		err := c.send(ctx, batch)
+		if err == nil {
+			return batch[:0], nil
+		}
+		if status.Code(err) != codes.InvalidArgument {
+			return batch, err
+		}
+		i, ok := rejectedIndex(err, len(batch))
+		if !ok {
+			// No index to go on: settle it one event at a time.
+			return c.deliverEach(ctx, batch)
+		}
+		c.reject(batch[i], err)
+		batch = append(batch[:i], batch[i+1:]...)
+	}
+	return batch, nil
+}
+
+func (c *UsageCollectorClient) deliverEach(ctx context.Context, batch []*usagev1.UsageEvent) ([]*usagev1.UsageEvent, error) {
+	for i, ev := range batch {
 		err := c.send(ctx, []*usagev1.UsageEvent{ev})
 		if status.Code(err) == codes.InvalidArgument {
-			observability.UsageEventsDroppedTotal.WithLabelValues("rejected").Inc()
-			log.Error().Err(err).Str("event_id", ev.GetEventId()).Str("model", ev.GetModel()).Msg("collector rejected usage event, dropped")
+			c.reject(ev, err)
 			continue
 		}
 		if err != nil {
-			return err
+			return batch[i:], err
 		}
 	}
-	return nil
+	return batch[:0], nil
+}
+
+func (c *UsageCollectorClient) reject(ev *usagev1.UsageEvent, err error) {
+	observability.UsageEventsDroppedTotal.WithLabelValues("rejected").Inc()
+	log.Error().Err(err).Str("event_id", ev.GetEventId()).Str("model", ev.GetModel()).Msg("collector rejected usage event, dropped")
+}
+
+// rejectedIndex reads "invalid event at index N" from light-tokenmeter.
+func rejectedIndex(err error, n int) (int, bool) {
+	msg := status.Convert(err).Message()
+	const marker = "at index "
+	j := strings.Index(msg, marker)
+	if j < 0 {
+		return 0, false
+	}
+	digits := msg[j+len(marker):]
+	if k := strings.IndexFunc(digits, func(r rune) bool { return r < '0' || r > '9' }); k >= 0 {
+		digits = digits[:k]
+	}
+	i, err := strconv.Atoi(digits)
+	if err != nil || i < 0 || i >= n {
+		return 0, false
+	}
+	return i, true
 }
 
 func (c *UsageCollectorClient) sleep(d time.Duration) bool {
@@ -204,13 +250,13 @@ func (c *UsageCollectorClient) drain(batch []*usagev1.UsageEvent) {
 		if len(batch) == 0 {
 			return
 		}
-		if c.send(ctx, batch) != nil {
+		var err error
+		if batch, err = c.deliver(ctx, batch); err != nil {
 			lost := len(batch) + len(c.queue)
 			observability.UsageEventsDroppedTotal.WithLabelValues("shutdown").Add(float64(lost))
-			log.Error().Int("events", lost).Msg("usage events not delivered before shutdown")
+			log.Error().Err(err).Int("events", lost).Msg("usage events not delivered before shutdown")
 			return
 		}
-		batch = batch[:0]
 	}
 }
 
@@ -228,6 +274,9 @@ func (c *UsageCollectorClient) Close() error {
 		return nil
 	}
 	c.stopOnce.Do(func() {
+		c.closeMu.Lock()
+		c.closed = true // no enqueue can land after the drain below has looked
+		c.closeMu.Unlock()
 		close(c.stop)
 		c.cancel() // an in-flight send must not hold shutdown for its full timeout
 	})
@@ -296,11 +345,11 @@ func (c *UsageCollectorClient) RecordUsage(
 	}
 	// Never block a request on accounting: a full queue means the collector has
 	// been down long enough to fill it, and the loss is counted, not hidden.
-	select {
-	case <-c.stop:
+	c.closeMu.RLock()
+	defer c.closeMu.RUnlock()
+	if c.closed {
 		observability.UsageEventsDroppedTotal.WithLabelValues("closed").Inc()
 		return nil
-	default:
 	}
 	select {
 	case c.queue <- event:

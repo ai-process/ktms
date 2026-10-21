@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -73,6 +74,10 @@ func (m *Manager) Config() Config               { return m.cfg }
 func (m *Manager) Register(ctx context.Context, meta *NodeMeta) error {
 	// 1. SSRF validation
 	if err := ValidateEndpoint(ctx, meta.Endpoint, m.cfg.AllowLocalhost); err != nil {
+		var dnsErr *net.DNSError
+		if errors.As(err, &dnsErr) && (dnsErr.IsTimeout || dnsErr.IsTemporary) {
+			return fmt.Errorf("validate endpoint: %w", err) // our resolver's hiccup: the agent should retry
+		}
 		return fmt.Errorf("%w: validate endpoint: %w", ErrInvalidNode, err)
 	}
 
@@ -181,10 +186,8 @@ func (m *Manager) ListNodes(ctx context.Context) ([]*NodeSnapshot, error) {
 	now := time.Now()
 	var out []*NodeSnapshot
 	for _, id := range nodeIDs {
-		// State that cannot be read is never guessed at (an unread inflight
-		// count of 0 would bypass capacity, an unread drain flag would route to
-		// a draining node). A Redis error aborts the walk, so the caller pays one
-		// timeout instead of one per node and falls back.
+		// Unread state is never guessed at (an inflight of 0 bypasses capacity).
+		// A Redis error aborts the walk: one timeout, then the caller falls back.
 		meta, err := m.store.GetMeta(ctx, id)
 		if errors.Is(err, ErrNodeNotFound) {
 			continue

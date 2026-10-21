@@ -3,6 +3,7 @@ package redisguard
 import (
 	"context"
 	"errors"
+	"net"
 	"testing"
 	"time"
 
@@ -66,5 +67,36 @@ func TestRedisRepliesDoNotOpenGuard(t *testing.T) {
 	}
 	if g.Open() {
 		t.Fatal("redis.Nil and script errors must not open the guard")
+	}
+}
+
+// A caller's own short deadline expiring mid-command must not open the guard
+// for everyone else.
+func TestCallerDeadlinesDoNotOpenGuard(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			t.Cleanup(func() { _ = c.Close() })
+		}
+	}()
+	g := New()
+	rdb := redis.NewClient(&redis.Options{Addr: ln.Addr().String(), ReadTimeout: 5 * time.Second, ContextTimeoutEnabled: true, MaxRetries: -1})
+	rdb.AddHook(g)
+	t.Cleanup(func() { _ = rdb.Close() })
+	for i := 0; i < 2*tripAfter; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+		_ = rdb.Get(ctx, "k").Err()
+		cancel()
+	}
+	if g.Open() {
+		t.Fatal("caller deadlines must not count as a Redis outage")
 	}
 }

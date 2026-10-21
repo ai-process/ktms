@@ -6,11 +6,13 @@ package redisguard
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -44,7 +46,7 @@ func (g *Guard) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
 			return err
 		}
 		err := next(ctx, cmd)
-		g.report(err)
+		g.report(ctx, err)
 		return err
 	}
 }
@@ -58,7 +60,7 @@ func (g *Guard) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.Proces
 			return err
 		}
 		err := next(ctx, cmds)
-		g.report(err)
+		g.report(ctx, err)
 		return err
 	}
 }
@@ -82,7 +84,15 @@ func (g *Guard) admit() error {
 	return nil
 }
 
-func (g *Guard) report(err error) {
+// report updates the state from one outcome. A call that ended with its
+// caller's context done says nothing about Redis (ContextTimeoutEnabled turns
+// a short caller deadline into a socket timeout), so it neither counts nor resets.
+func (g *Guard) report(ctx context.Context, err error) {
+	// Judged by the caller's ctx only: go-redis's own dial timeout also wraps
+	// context.DeadlineExceeded, and that one is an outage.
+	if err != nil && callerDone(ctx) {
+		return
+	}
 	transport := isTransport(err)
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -103,20 +113,35 @@ func (g *Guard) report(err error) {
 	}
 }
 
+// callerDone also catches a deadline that has passed before its timer fired:
+// the socket deadline equals it, so the read timeout can win that race.
+func callerDone(ctx context.Context) bool {
+	if ctx.Err() != nil {
+		return true
+	}
+	d, ok := ctx.Deadline()
+	return ok && !time.Now().Before(d)
+}
+
 // isTransport separates "Redis is not there" from answers Redis gave: a nil
 // reply, a script error or OOM mean it is up and must not open the guard.
 func isTransport(err error) bool {
 	if err == nil || errors.Is(err, redis.Nil) || errors.Is(err, ErrOpen) {
 		return false
 	}
-	if errors.Is(err, context.Canceled) {
-		return false
-	}
 	var netErr net.Error
 	if errors.As(err, &netErr) {
 		return true
 	}
-	// A caller's own deadline is not counted: short client deadlines must not
-	// open the guard for everyone. Redis's read timeouts are net errors above.
-	return errors.Is(err, redis.ErrPoolTimeout)
+	// A pooled connection to a Redis that went away reads EOF, not a net.Error.
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, redis.ErrPoolTimeout)
+}
+
+// Log picks the level for a failed Redis call: once the guard is open the
+// outage was logged when it opened, so each fast-failed call is only Debug.
+func Log(err error) *zerolog.Event {
+	if errors.Is(err, ErrOpen) {
+		return log.Debug()
+	}
+	return log.Warn()
 }
