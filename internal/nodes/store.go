@@ -20,8 +20,25 @@ func (e *nodeCapacityError) Error() string           { return e.msg }
 func (e *nodeCapacityError) SkipToNextModel() bool   { return true }
 func (e *nodeCapacityError) CapacityExhausted() bool { return true }
 
+// poolStateError is a node-pool bookkeeping failure (Redis down or erroring).
+// The pool's state is unknown, not its nodes broken: the chain moves on to the
+// next model and the vendor breaker is left alone.
+type poolStateError struct {
+	op  string
+	err error
+}
+
+func (e *poolStateError) Error() string {
+	return "nodes: pool state unavailable (" + e.op + "): " + e.err.Error()
+}
+func (e *poolStateError) Unwrap() error           { return e.err }
+func (e *poolStateError) SkipToNextModel() bool   { return true }
+func (e *poolStateError) CapacityExhausted() bool { return true }
+
 var (
 	ErrNodeNotFound      = errors.New("nodes: node not found")
+	ErrInvalidNode       = errors.New("nodes: invalid registration")   // the node's fault, not the pool's
+	ErrCorruptNode       = errors.New("nodes: unreadable node record") // Redis answered; the data is bad
 	ErrNodeSlotExhausted = &nodeCapacityError{msg: "nodes: max concurrent requests reached"}
 	ErrNodePoolFull      = &nodeCapacityError{msg: "nodes: all candidate nodes at capacity"}
 	ErrNoAvailableNodes  = &nodeCapacityError{msg: "nodes: no healthy nodes available for model"}
@@ -65,7 +82,7 @@ func (s *Store) GetMeta(ctx context.Context, nodeID string) (*NodeMeta, error) {
 	}
 	var meta NodeMeta
 	if err := json.Unmarshal(val, &meta); err != nil {
-		return nil, fmt.Errorf("unmarshal node meta: %w", err)
+		return nil, fmt.Errorf("%w: unmarshal node meta: %w", ErrCorruptNode, err)
 	}
 	return &meta, nil
 }
@@ -94,7 +111,7 @@ func (s *Store) GetHeartbeat(ctx context.Context, nodeID string) (*NodeHeartbeat
 	}
 	var hb NodeHeartbeatData
 	if err := json.Unmarshal(val, &hb); err != nil {
-		return nil, fmt.Errorf("unmarshal heartbeat: %w", err)
+		return nil, fmt.Errorf("%w: unmarshal heartbeat: %w", ErrCorruptNode, err)
 	}
 	return &hb, nil
 }

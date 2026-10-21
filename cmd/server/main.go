@@ -29,6 +29,7 @@ import (
 	"github.com/ai-process/ktms/internal/nodes"
 	"github.com/ai-process/ktms/internal/observability"
 	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/redisguard"
 	"github.com/ai-process/ktms/internal/rediskeys"
 	"github.com/ai-process/ktms/internal/registry"
 	"github.com/ai-process/ktms/internal/router"
@@ -153,11 +154,8 @@ func main() {
 		redisClient *redis.Client
 	)
 	if cfg.RedisConfigured() {
-		redisClient = redis.NewClient(&redis.Options{
-			Addr:     cfg.RedisAddr,
-			Password: cfg.RedisPassword,
-			DB:       cfg.RedisDB,
-		})
+		redisClient = redis.NewClient(cfg.RedisOptions())
+		redisClient.AddHook(redisguard.New())
 		defer func() { _ = redisClient.Close() }()
 		rLimiter := throttle.New(redisClient, cfg.RedisKeyPrefix)
 		rLimiter.SetGraceMargin(cfg.BudgetGraceMargin)

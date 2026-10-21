@@ -6,15 +6,21 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofrs/uuid"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/ai-process/ktms/internal/observability"
 	usagev1 "github.com/ai-process/ktms/internal/usagereport/gen/usage/v1"
 )
 
@@ -23,6 +29,14 @@ import (
 type UsageCollectorClient struct {
 	client    usagev1.UsageServiceClient
 	conn      *grpc.ClientConn
+	queue     chan *usagev1.UsageEvent
+	stop      chan struct{}
+	done      chan struct{}
+	ctx       context.Context // cancelled on Close, cutting an in-flight send short
+	cancel    context.CancelFunc
+	stopOnce  sync.Once
+	closeMu   sync.RWMutex // held for reading by RecordUsage; Close takes it to shut the door
+	closed    bool
 	projectID string
 	// projectFor resolves the project from event meta (the proxy attributes
 	// spend to the calling service, not to itself). Empty result falls back
@@ -56,13 +70,194 @@ func NewUsageCollectorClient(host, projectID string, useTLS bool) (*UsageCollect
 		return nil, err
 	}
 
-	client := usagev1.NewUsageServiceClient(conn)
+	c := newClient(usagev1.NewUsageServiceClient(conn), projectID, queueSize)
+	c.conn = conn
+	return c, nil
+}
 
-	return &UsageCollectorClient{
+// Sending is decoupled from requests: events queue here and one sender ships
+// them in batches, retrying until the collector takes them. Event IDs make
+// retries safe; the collector drops duplicates.
+const (
+	queueSize     = 10000
+	maxBatch      = 500 // the collector's limit for RecordUsageEvents
+	flushEvery    = time.Second
+	sendTimeout   = 5 * time.Second
+	retryMax      = 30 * time.Second
+	closeDeadline = 5 * time.Second
+)
+
+func newClient(client usagev1.UsageServiceClient, projectID string, size int) *UsageCollectorClient {
+	ctx, cancel := context.WithCancel(context.Background())
+	c := &UsageCollectorClient{
 		client:    client,
-		conn:      conn,
+		queue:     make(chan *usagev1.UsageEvent, size),
+		stop:      make(chan struct{}),
+		done:      make(chan struct{}),
+		ctx:       ctx,
+		cancel:    cancel,
 		projectID: projectID,
-	}, nil
+	}
+	go c.sendLoop()
+	return c
+}
+
+func (c *UsageCollectorClient) sendLoop() {
+	defer close(c.done)
+	ticker := time.NewTicker(flushEvery)
+	defer ticker.Stop()
+	batch := make([]*usagev1.UsageEvent, 0, maxBatch)
+	backoff := flushEvery
+	for {
+		in := c.queue
+		if len(batch) >= maxBatch {
+			in = nil // a held batch is full: retry it before taking more
+		}
+		select {
+		case ev := <-in:
+			batch = append(batch, ev)
+			if len(batch) < maxBatch {
+				continue
+			}
+		case <-ticker.C:
+		case <-c.stop:
+			c.drain(batch)
+			return
+		}
+		if len(batch) == 0 {
+			continue
+		}
+		var err error
+		batch, err = c.deliver(c.ctx, batch)
+		if err != nil && c.ctx.Err() != nil {
+			c.drain(batch) // Close cut the send short; that is not a collector failure
+			return
+		}
+		if err != nil {
+			// Keep the batch and retry later; new events keep queueing meanwhile.
+			observability.DependencyErrorsTotal.WithLabelValues("usage_collector", "record_usage").Inc()
+			if backoff == flushEvery {
+				log.Warn().Err(err).Int("events", len(batch)).Msg("usage collector unreachable, holding events and retrying")
+			}
+			if !c.sleep(backoff) {
+				c.drain(batch)
+				return
+			}
+			backoff = min(2*backoff, retryMax)
+			continue
+		}
+		if backoff != flushEvery {
+			log.Info().Int("events", len(batch)).Msg("usage collector reachable again, held events delivered")
+		}
+		backoff = flushEvery
+	}
+}
+
+func (c *UsageCollectorClient) send(ctx context.Context, batch []*usagev1.UsageEvent) error {
+	ctx, cancel := context.WithTimeout(ctx, sendTimeout)
+	defer cancel()
+	_, err := c.client.RecordUsageEvents(ctx, &usagev1.RecordUsageEventsRequest{Events: batch})
+	return err
+}
+
+// deliver sends a batch and returns what is still to be sent. The collector
+// refuses a whole batch for one invalid event and names its index; that event
+// is dropped (counted once) and the rest resent, so it cannot block delivery.
+func (c *UsageCollectorClient) deliver(ctx context.Context, batch []*usagev1.UsageEvent) ([]*usagev1.UsageEvent, error) {
+	for len(batch) > 0 {
+		err := c.send(ctx, batch)
+		if err == nil {
+			return batch[:0], nil
+		}
+		if status.Code(err) != codes.InvalidArgument {
+			return batch, err
+		}
+		i, ok := rejectedIndex(err, len(batch))
+		if !ok {
+			// No index to go on: settle it one event at a time.
+			return c.deliverEach(ctx, batch)
+		}
+		c.reject(batch[i], err)
+		batch = append(batch[:i], batch[i+1:]...)
+	}
+	return batch, nil
+}
+
+func (c *UsageCollectorClient) deliverEach(ctx context.Context, batch []*usagev1.UsageEvent) ([]*usagev1.UsageEvent, error) {
+	for i, ev := range batch {
+		err := c.send(ctx, []*usagev1.UsageEvent{ev})
+		if status.Code(err) == codes.InvalidArgument {
+			c.reject(ev, err)
+			continue
+		}
+		if err != nil {
+			return batch[i:], err
+		}
+	}
+	return batch[:0], nil
+}
+
+func (c *UsageCollectorClient) reject(ev *usagev1.UsageEvent, err error) {
+	observability.UsageEventsDroppedTotal.WithLabelValues("rejected").Inc()
+	log.Error().Err(err).Str("event_id", ev.GetEventId()).Str("model", ev.GetModel()).Msg("collector rejected usage event, dropped")
+}
+
+// rejectedIndex reads "invalid event at index N" from light-tokenmeter.
+func rejectedIndex(err error, n int) (int, bool) {
+	msg := status.Convert(err).Message()
+	const marker = "at index "
+	j := strings.Index(msg, marker)
+	if j < 0 {
+		return 0, false
+	}
+	digits := msg[j+len(marker):]
+	if k := strings.IndexFunc(digits, func(r rune) bool { return r < '0' || r > '9' }); k >= 0 {
+		digits = digits[:k]
+	}
+	i, err := strconv.Atoi(digits)
+	if err != nil || i < 0 || i >= n {
+		return 0, false
+	}
+	return i, true
+}
+
+func (c *UsageCollectorClient) sleep(d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return true
+	case <-c.stop:
+		return false
+	}
+}
+
+// drain makes one last attempt at shutdown for what is held and queued, in
+// batches, all within closeDeadline, and counts whatever it could not deliver.
+func (c *UsageCollectorClient) drain(batch []*usagev1.UsageEvent) {
+	ctx, cancel := context.WithTimeout(context.Background(), closeDeadline)
+	defer cancel()
+	for {
+		for len(batch) < maxBatch {
+			select {
+			case ev := <-c.queue:
+				batch = append(batch, ev)
+				continue
+			default:
+			}
+			break
+		}
+		if len(batch) == 0 {
+			return
+		}
+		var err error
+		if batch, err = c.deliver(ctx, batch); err != nil {
+			lost := len(batch) + len(c.queue)
+			observability.UsageEventsDroppedTotal.WithLabelValues("shutdown").Add(float64(lost))
+			log.Error().Err(err).Int("events", lost).Msg("usage events not delivered before shutdown")
+			return
+		}
+	}
 }
 
 // SetProjectID sets the project ID (App UUID) for usage tracking
@@ -73,17 +268,27 @@ func (c *UsageCollectorClient) SetProjectID(projectID string) {
 	c.projectID = projectID
 }
 
-// Close closes the gRPC connection
+// Close flushes held and queued events (up to a few seconds), then closes the connection.
 func (c *UsageCollectorClient) Close() error {
-	if c == nil || c.conn == nil {
+	if c == nil {
+		return nil
+	}
+	c.stopOnce.Do(func() {
+		c.closeMu.Lock()
+		c.closed = true // no enqueue can land after the drain below has looked
+		c.closeMu.Unlock()
+		close(c.stop)
+		c.cancel() // an in-flight send must not hold shutdown for its full timeout
+	})
+	<-c.done
+	if c.conn == nil {
 		return nil
 	}
 	return c.conn.Close()
 }
 
-// RecordUsage sends a usage event asynchronously to the collector
-// Returns an error if validation fails. The actual gRPC call happens asynchronously
-// and errors from the gRPC call are logged but not returned.
+// RecordUsage queues a usage event for the collector. It returns an error only
+// when validation fails; delivery is asynchronous and retried.
 func (c *UsageCollectorClient) RecordUsage(
 	userID string,
 	actionID string,
@@ -118,42 +323,40 @@ func (c *UsageCollectorClient) RecordUsage(
 	if projectID == "" {
 		return fmt.Errorf("projectID is required but not set (userID: %s, actionID: %s, vendor: %s, model: %s)", userID, actionID, vendor, model)
 	}
+	if err := validateLimits(userID, projectID, actionID, vendor, model, costNanoUSD, status); err != nil {
+		return err
+	}
 
-	// Send asynchronously in a goroutine
-	go func() {
-		eventID := uuid.Must(uuid.NewV7()).String()
-		now := timestamppb.Now()
-
-		event := &usagev1.UsageEvent{
-			EventId:      eventID,
-			OccurredAt:   now,
-			UserId:       userID,
-			ProjectId:    projectID,
-			ActionId:     actionID,
-			Vendor:       vendor,
-			Model:        model,
-			Status:       status,
-			DurationMs:   durationMs,
-			TokensInput:  int64(inputTokens),
-			TokensOutput: int64(outputTokens),
-			TokensTotal:  int64(inputTokens + outputTokens),
-			Meta:         meta,
-			CostNanousd:  costNanoUSD,
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		_, err := c.client.RecordUsageEvent(ctx, &usagev1.RecordUsageEventRequest{
-			Event: event,
-		})
-
-		if err != nil {
-			log.Error().Stack().Err(err).Str("userID", userID).
-				Str("actionID", actionID).Str("vendor", vendor).Str("model", model).
-				Msg("Failed to send usage event to collector")
-		}
-	}()
+	event := &usagev1.UsageEvent{
+		EventId:      uuid.Must(uuid.NewV7()).String(),
+		OccurredAt:   timestamppb.Now(),
+		UserId:       userID,
+		ProjectId:    projectID,
+		ActionId:     actionID,
+		Vendor:       vendor,
+		Model:        model,
+		Status:       status,
+		DurationMs:   durationMs,
+		TokensInput:  int64(inputTokens),
+		TokensOutput: int64(outputTokens),
+		TokensTotal:  int64(inputTokens + outputTokens),
+		Meta:         meta,
+		CostNanousd:  costNanoUSD,
+	}
+	// Never block a request on accounting: a full queue means the collector has
+	// been down long enough to fill it, and the loss is counted, not hidden.
+	c.closeMu.RLock()
+	defer c.closeMu.RUnlock()
+	if c.closed {
+		observability.UsageEventsDroppedTotal.WithLabelValues("closed").Inc()
+		return nil
+	}
+	select {
+	case c.queue <- event:
+	default:
+		observability.UsageEventsDroppedTotal.WithLabelValues("queue_full").Inc()
+		log.Warn().Str("actionID", actionID).Str("model", model).Msg("usage event queue full, event dropped")
+	}
 
 	return nil
 }
@@ -186,4 +389,28 @@ func NewUsageCollectorClientFromEnv(projectID string) (*UsageCollectorClient, er
 		return nil, nil
 	}
 	return NewUsageCollectorClient(host, projectID, os.Getenv("USAGE_COLLECTOR_TLS") == "true")
+}
+
+// The collector's limits (light-tokenmeter domain.Event.Validate). Checking
+// here keeps a bad event from being refused, with its batch, after the fact.
+const (
+	maxStringLength = 256
+	maxVendorLength = 64
+	maxModelLength  = 128
+)
+
+func validateLimits(userID, projectID, actionID, vendor, model string, cost int64, st usagev1.Status) error {
+	switch {
+	case len(userID) > maxStringLength, len(projectID) > maxStringLength, len(actionID) > maxStringLength:
+		return fmt.Errorf("usage event ids longer than %d bytes (action %q)", maxStringLength, actionID)
+	case vendor == "" || len(vendor) > maxVendorLength:
+		return fmt.Errorf("usage event vendor must be 1-%d bytes, got %q", maxVendorLength, vendor)
+	case model == "" || len(model) > maxModelLength:
+		return fmt.Errorf("usage event model must be 1-%d bytes, got %d", maxModelLength, len(model))
+	case cost < 0:
+		return fmt.Errorf("usage event cost must not be negative, got %d", cost)
+	case st == usagev1.Status_STATUS_UNSPECIFIED:
+		return fmt.Errorf("usage event status must be set (action %q)", actionID)
+	}
+	return nil
 }

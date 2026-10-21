@@ -154,7 +154,12 @@ func (s *NodeRegistryServer) RegisterNode(ctx context.Context, req *pb.RegisterN
 	}
 
 	if err := s.mgr.Register(ctx, meta); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to register: %v", err)
+		if errors.Is(err, nodes.ErrInvalidNode) {
+			return nil, status.Errorf(codes.InvalidArgument, "failed to register: %v", err)
+		}
+		// Pool storage is down: the agent retries, and should not read it as a rejection.
+		log.Error().Err(err).Str("node_id", meta.NodeID).Msg("node registration could not be stored")
+		return nil, status.Error(codes.Unavailable, "node registry unavailable")
 	}
 
 	cfg := s.mgr.Config()
@@ -285,9 +290,12 @@ func (s *AdminServer) RevokeNodeKey(ctx context.Context, req *pb.RevokeNodeKeyRe
 	if err != nil {
 		return nil, dbStatus(err)
 	}
-	// Evict from node pool if nodeMgr is available
+	// Evict from node pool if nodeMgr is available. The key is already revoked,
+	// so a failed eviction only delays it: the node's next heartbeat is refused.
 	if s.nodeMgr != nil && nodeID != "" {
-		_ = s.nodeMgr.Unregister(ctx, nodeID)
+		if err := s.nodeMgr.Unregister(ctx, nodeID); err != nil {
+			log.Warn().Err(err).Str("node_id", nodeID).Msg("revoked node key, but evicting the node failed")
+		}
 	}
 	return &pb.RevokeNodeKeyResponse{}, nil
 }
