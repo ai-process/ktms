@@ -9,8 +9,7 @@ We provide security updates and patches for the following versions:
 | Version | Supported          |
 | ------- | ------------------ |
 | `1.x`, latest minor release | :white_check_mark: |
-| `0.14.x` | :white_check_mark: until 1.0.0 is released |
-| `< 0.14` | :x:                |
+| `0.x`   | :x: (upgrade through 0.14.x to 1.0) |
 
 ## Verifying a Release
 

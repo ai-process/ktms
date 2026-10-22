@@ -1,4 +1,4 @@
-# KTMS Helm Chart
+# Keystone. The Model Switchboard. (KTMS): Helm chart
 
 Official Helm chart for deploying [KTMS (Keystone: The Model Switchboard)](https://github.com/ai-process/ktms) on Kubernetes.
 

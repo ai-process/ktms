@@ -1,4 +1,4 @@
-# Contributing to KTMS
+# Contributing to Keystone. The Model Switchboard. (KTMS)
 
 Thank you for your interest in contributing to `KTMS`! `KTMS (Keystone: The Model Switchboard)` is a high-performance, self-hosted LLM gateway providing unified routing, fail-fast fallbacks, rate and spend limits, and centralized credential encryption for production AI workflows.
 

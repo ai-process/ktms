@@ -1,4 +1,4 @@
-# KTMS (Keystone: The Model Switchboard)
+# Keystone. The Model Switchboard. (KTMS)
 
 [![CI](https://github.com/ai-process/ktms/actions/workflows/test.yml/badge.svg)](https://github.com/ai-process/ktms/actions/workflows/test.yml)
 [![Buf](https://github.com/ai-process/ktms/actions/workflows/buf.yml/badge.svg)](https://github.com/ai-process/ktms/actions/workflows/buf.yml)
@@ -7,7 +7,7 @@
 [![Docker Image](https://img.shields.io/docker/v/coyl/ktms?label=docker%20hub&sort=semver)](https://hub.docker.com/r/coyl/ktms)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A self-hosted LLM gateway and model switchboard. Your services talk to one endpoint; KTMS holds
+A self-hosted LLM gateway and model switchboard. Your services talk to one endpoint; Keystone holds
 the vendor API keys, decides which model answers each request, falls back when a
 vendor is down, enforces rate and spend limits, and records usage.
 
@@ -41,7 +41,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 - [Setting it up: keys, models, rules](#setting-it-up-keys-models-rules)
 - [Run a node](#run-a-node)
 - [Web console](#web-console)
-- [Calling the proxy](#calling-the-proxy)
+- [Calling Keystone](#calling-keystone)
 - [OpenAI-compatible HTTP API](#openai-compatible-http-api)
 - [Concepts](#concepts)
 - [Error contract](#error-contract)
@@ -278,7 +278,7 @@ Or build the image yourself: `docker build -t ktms .`
 ### Node agent
 
 `bin/ktms-node` runs next to a local inference engine (`ollama`, `vllm`, `tgi`, `llamacpp`),
-registers it with KTMS and sends heartbeats with the loaded models, GPU metrics and the
+registers it with Keystone and sends heartbeats with the loaded models, GPU metrics and the
 engine's load: running and waiting requests from the `/metrics` of vLLM, TGI and llama.cpp
 (start `llama-server` with `--metrics`). Ollama has no such API, so its nodes report no queue. It
 authenticates with a node key minted with the `MintNodeKey` admin RPC. KTMS dials the node,
@@ -718,7 +718,7 @@ docker run -d -p 8081:8080 \
   coyl/ktms-admin:latest
 ```
 
-## Calling the proxy
+## Calling Keystone
 
 Authenticate every call with `authorization: Bearer ktms_…` (legacy `llm_…` keys supported) gRPC metadata.
 
@@ -727,32 +727,14 @@ You can import the committed Go stubs directly from this repository:
 go get github.com/ai-process/ktms/gen/ktms/v1
 ```
 
-### Consuming via Buf Schema Registry (BSR)
+### Client SDKs
 
-The gRPC API is published to the [Buf Schema Registry](https://buf.build/ai-process/ktms) (`buf.build/ai-process/ktms`). Pre-generated client SDKs are available across languages:
-
-- **Go (BSR):**
-  ```bash
-  go get buf.build/gen/go/ai-process/ktms/protocolbuffers/go
-  go get buf.build/gen/go/ai-process/ktms/grpc/go
-  ```
-- **TypeScript / Node / Web (Connect / gRPC-Web):**
-  Configure npm for the `@buf` registry, then install the packages:
-  ```bash
-  npm config set @buf:registry https://buf.build/gen/npm/v1/
-  npm install @buf/ai-process_ktms.bufbuild_es @connectrpc/connect
-  ```
-- **Python:**
-  Install from the Buf Python registry:
-  ```bash
-  pip install --extra-index-url https://buf.build/gen/python \
-    ai-process-ktms-protocolbuffers-python \
-    ai-process-ktms-grpc-python
-  ```
+Generate a client for your language from `proto/ktms/v1` (below). Pre-built SDKs on the Buf
+Schema Registry are planned and will be announced in the CHANGELOG when they are published.
 
 ### Local Client Generation
 
-Or generate client stubs locally with `buf` without installing local compiler plugins:
+Generate client stubs with `buf`, without installing local compiler plugins:
 ```bash
 make proto     # Go stubs in gen/
 make proto-py  # Python stubs in gen/python/
@@ -1214,8 +1196,8 @@ These work and are supported, but may change in a minor release. The change is t
   new kind of limit), so finish rolls promptly.
 - **Downgrades are not supported.** Migrations have no down step; to go back, restore the
   database backup taken before the upgrade.
-- **From 0.x, upgrade to 1.0 first,** then to later 1.x releases: 0.x made no compatibility
-  promise, and only the 0.13 → 1.0 step is tested (by the 1.0 release).
+- **From 0.x, go through 0.14.x to 1.0,** then to later 1.x releases: 0.x made no
+  compatibility promise, and only the 0.14 → 1.0 step is tested (by the 1.0 release).
 - **Read the [CHANGELOG](CHANGELOG.md)** before upgrading: it lists every change in Added,
   Changed, Deprecated, Removed, Fixed and Security.
 

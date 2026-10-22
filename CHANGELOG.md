@@ -7,6 +7,17 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-22
+
+The first stable release of Keystone. The Model Switchboard. (KTMS). From here on, the public API
+listed in [API stability](README.md#api-stability) changes incompatibly only in a new major
+version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.14.x first.
+
+### Changed
+- The README names the product Keystone. The Model Switchboard. (KTMS).
+- The README no longer offers SDK installs from the Buf Schema Registry, which is not published
+  yet; generate a client from `proto/ktms/v1` instead.
+
 ## [0.14.0] - 2026-10-22
 
 ### Added
@@ -120,7 +131,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/ai-process/ktms/compare/v0.14.0...v1.0.0
 [0.14.0]: https://github.com/ai-process/ktms/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/ai-process/ktms/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/ai-process/ktms/compare/v0.12.0...v0.13.0
