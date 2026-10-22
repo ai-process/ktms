@@ -1,0 +1,41 @@
+name: Compatibility
+
+# Called on every v* tag by release.yml and docker-publish.yml, so neither the
+# binaries nor the images go out when the release breaks the one before it.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  # A release must stay compatible with the one before it: same proto, and a
+  # database it can take over. A tag that breaks an Experimental element on
+  # purpose is named in the ALLOW_BREAKING_TAG repository variable.
+  compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache: true
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+      - name: Previous stable release
+        id: prev
+        run: |
+          prev=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vx "$GITHUB_REF_NAME" | head -n 1)
+          echo "tag=$prev" >> "$GITHUB_OUTPUT"
+      - name: Proto compatible with the previous release
+        if: vars.ALLOW_BREAKING_TAG != github.ref_name
+        run: |
+          buf breaking --against ".git#tag=${{ steps.prev.outputs.tag }}"
+          cd usage-proto && buf breaking . --against "../.git#tag=${{ steps.prev.outputs.tag }},subdir=usage-proto" \
+            --config '{"version":"v2","breaking":{"use":["FILE"]}}'
+      - name: Upgrade from the previous release
+        run: PREV=${{ steps.prev.outputs.tag }} ./scripts/upgrade-test.sh
+

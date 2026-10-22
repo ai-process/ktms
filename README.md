@@ -1175,10 +1175,25 @@ These work and are supported, but may change in a minor release. The change is t
 - **Shadow traffic and its evaluation:** the `shadow_model`, `shadow_percentage` and `shadow_eval`
   rule fields, and the `ktms_shadow_*` metrics.
 - **Latent features:** the semantic cache (`SEMANTIC_CACHE_*`), latent guardrails
-  (`GUARDRAILS_LATENT_*`), the encoder settings (`LATENT_*`) and `EmbeddingPart` in judge state.
-- **`JudgeStream` and `EvaluateRollouts`.**
+  (`GUARDRAILS_LATENT_*`), the encoder settings (`LATENT_*`), and embeddings in judge state
+  (`EmbeddingPart`, `input_embedding` over HTTP).
+- **`JudgeStream` and `EvaluateRollouts`**, and `POST /v1/decisions/rollouts` over HTTP.
 - **The Helm chart** in `deploy/helm/ktms`, until it is published as a versioned OCI chart. Until
   then its values may change.
+
+### Upgrading
+
+- **Within 1.x, upgrade in one step** from any earlier 1.x release: migrations run forward at
+  startup and cover every release in between. CI runs an upgrade from the previous release
+  (`scripts/upgrade-test.sh`) on every pull request and before each release.
+- **Rolling upgrades work within 1.x:** migrations only add, so replicas of the previous release
+  keep serving while new ones start. A change that cannot be additive waits for 2.0.
+- **Downgrades are not supported.** Migrations have no down step; to go back, restore the
+  database backup taken before the upgrade.
+- **From 0.x to 1.0,** read the CHANGELOG first: 0.x releases made no compatibility promise. The
+  upgrade from 0.13.1 is tested like any other.
+- **Read the [CHANGELOG](CHANGELOG.md)** before upgrading: it lists every change in Added,
+  Changed, Deprecated, Removed, Fixed and Security.
 
 ### Deprecated
 
@@ -1239,12 +1254,20 @@ Pull requests are welcome; read [`CONTRIBUTING.md`](CONTRIBUTING.md) first.
 
 ### Releasing
 
-Push a `vX.Y.Z` tag (the `v` matters: it makes the tag a valid Go module version, so
-`go install github.com/ai-process/ktms/cmd/node-agent@vX.Y.Z` works):
+1. Move the `[Unreleased]` entries in [CHANGELOG.md](CHANGELOG.md) under the new version and
+   date, and pick the version by [API stability](#api-stability): a fix is a patch, a feature is a
+   minor, a break of the public API is a major.
+2. Push a `vX.Y.Z` tag (the `v` matters: it makes the tag a valid Go module version, so
+   `go install github.com/ai-process/ktms/cmd/node-agent@vX.Y.Z` works):
 
 ```bash
-git tag v0.10.0 && git push origin v0.10.0
+git tag v1.0.0 && git push origin v1.0.0
 ```
+
+Both publishing workflows first run `.github/workflows/compat.yml`: `buf breaking` against the
+previous stable tag and the upgrade test from it. If either fails, nothing is published. A
+release that changes an Experimental element on purpose sets the repository variable
+`ALLOW_BREAKING_TAG` to its tag, which skips the proto check (the upgrade test still runs).
 
 - **GitHub Release** (GoReleaser, `.github/workflows/release.yml`): `ktms-node` and
   `ktms-server` archives for darwin and linux, amd64 and arm64, plus `checksums.txt`.

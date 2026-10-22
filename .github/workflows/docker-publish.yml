@@ -9,7 +9,14 @@ on:
       - '*'
 
 jobs:
+  compat:
+    if: startsWith(github.ref_name, 'v')
+    uses: ./.github/workflows/compat.yml
+
   publish:
+    needs: compat
+    # Tags outside the v* scheme skip the check; a failed check stops the images.
+    if: ${{ !cancelled() && (needs.compat.result == 'success' || needs.compat.result == 'skipped') }}
     runs-on: ubuntu-latest
     strategy:
       matrix:

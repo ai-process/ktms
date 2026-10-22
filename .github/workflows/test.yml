@@ -26,6 +26,19 @@ jobs:
       - name: Installer script tests
         run: sh scripts/install-node_test.sh
 
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the script picks the previous release from the tags
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache: true
+      - name: Upgrade from the previous release
+        run: ./scripts/upgrade-test.sh
+
   docker:
     runs-on: ubuntu-latest
     steps:
