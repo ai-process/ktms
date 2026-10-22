@@ -11,6 +11,10 @@ import (
 // Config holds the application configuration. Load never fails; main.go
 // fatals on missing required values.
 type Config struct {
+	// Deprecations names deprecated settings in use, for a startup warning.
+	// They keep working through 1.x and are removed in 2.0.
+	Deprecations []string
+
 	DatabaseURL string
 	// EncryptionKeys is the versioned AES-256-GCM keyring spec
 	// ("1:<base64 32B>,2:..."); vendor keys are unreadable without it.
@@ -138,7 +142,7 @@ type Config struct {
 
 // Load loads configuration from environment variables
 func Load() *Config {
-	return &Config{
+	c := &Config{
 		DatabaseURL:                     getEnv("DATABASE_URL", ""),
 		EncryptionKeys:                  getEnvFirst([]string{"KTMS_ENCRYPTION_KEYS", "LLMPROXY_ENCRYPTION_KEYS"}, ""),
 		GRPCAddr:                        getEnv("GRPC_ADDR", ":9090"),
@@ -169,7 +173,7 @@ func Load() *Config {
 		BootstrapAdminKey:               getEnv("BOOTSTRAP_ADMIN_KEY", ""),
 		UsageCollectorHost:              getEnv("USAGE_COLLECTOR_HOST", ""),
 		UsageCollectorTLS:               getBoolEnv("USAGE_COLLECTOR_TLS", false),
-		UsageProjectID:                  getEnv("USAGE_PROJECT_ID", "llm-proxy"),
+		UsageProjectID:                  getEnv("USAGE_PROJECT_ID", "ktms"),
 		BatchMaxItems:                   getIntEnv("BATCH_MAX_ITEMS", 10000),
 		BatchPollInterval:               time.Duration(getIntEnv("BATCH_POLL_SECONDS", 60)) * time.Second,
 		ResultsRetention:                getRetentionEnv("RESULTS_RETENTION_DAYS", 7*24*time.Hour),
@@ -212,7 +216,16 @@ func Load() *Config {
 		SentryRelease:                   getEnv("SENTRY_RELEASE", ""),
 		SentryTracing:                   getEnv("SENTRY_ENABLE_TRACING", "false") == "true",
 	}
+	for old, cur := range legacyEnv {
+		if os.Getenv(old) != "" && os.Getenv(cur) == "" {
+			c.Deprecations = append(c.Deprecations, old+" is deprecated: rename it to "+cur)
+		}
+	}
+	return c
 }
+
+// legacyEnv maps names from the llm-proxy era to their KTMS replacements.
+var legacyEnv = map[string]string{"LLMPROXY_ENCRYPTION_KEYS": "KTMS_ENCRYPTION_KEYS"}
 
 // RedisConfigured reports whether throttling has a backing store; without it
 // all requests are allowed (fail-open by design).

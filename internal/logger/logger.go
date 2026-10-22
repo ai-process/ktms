@@ -87,7 +87,7 @@ func Init() {
 	if err != nil {
 		hostname = "unknown"
 	}
-	log.Logger = log.Logger.With().Str("host", hostname).Str("service", "llm-proxy").Logger()
+	log.Logger = log.Logger.With().Str("host", hostname).Str("service", "ktms").Logger()
 
 	zerolog.DefaultContextLogger = &log.Logger
 }

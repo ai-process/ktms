@@ -49,6 +49,9 @@ func main() {
 
 	logger.Init()
 	cfg := config.Load()
+	for _, d := range cfg.Deprecations {
+		log.Warn().Msg(d)
+	}
 	if cfg.SpendLimitsFailMode != "open" && cfg.SpendLimitsFailMode != "closed" {
 		log.Fatal().Str("value", cfg.SpendLimitsFailMode).Msg(`SPEND_LIMITS_FAIL_MODE must be "open" or "closed"`)
 	}
@@ -81,7 +84,7 @@ func main() {
 	}
 	keyring, err := crypto.ParseKeyring(cfg.EncryptionKeys)
 	if err != nil {
-		log.Fatal().Err(err).Msg("LLMPROXY_ENCRYPTION_KEYS is required and must parse")
+		log.Fatal().Err(err).Msg("KTMS_ENCRYPTION_KEYS is required and must parse")
 	}
 
 	poolCfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)

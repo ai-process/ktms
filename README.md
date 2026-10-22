@@ -45,6 +45,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 - [OpenAI-compatible HTTP API](#openai-compatible-http-api)
 - [Concepts](#concepts)
 - [Error contract](#error-contract)
+- [API stability](#api-stability)
 - [Operations](#operations)
 - [Development](#development)
 - [License](#license)
@@ -404,14 +405,14 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `GUARDRAILS_ENABLED` | `false` | Enable input/output security guardrails (PII masking and prompt injection detection). |
 | `GUARDRAILS_PII_ACTION` | `block` | Action on detected PII: `block` (reject with `guardrail_violation`) or `redact` (mask with placeholders and desanitize in output). |
 | `GUARDRAILS_PROMPT_INJECTION_ACTION` | `block` | Action on detected prompt injection: `block` or `log`. |
-| `GUARDRAILS_LATENT_ENABLED` | `false` | With `GUARDRAILS_ENABLED`, also screen prompts in latent space against injection, jailbreak, prompt-leak and exfiltration centroids (see [Latent guardrails](#semantic-cache-and-latent-guardrails)). |
+| `GUARDRAILS_LATENT_ENABLED` | `false` | Experimental. With `GUARDRAILS_ENABLED`, also screen prompts in latent space against injection, jailbreak, prompt-leak and exfiltration centroids (see [Latent guardrails](#semantic-cache-and-latent-guardrails)). |
 | `GUARDRAILS_LATENT_THRESHOLD` | `0.70` | Cosine similarity to a malicious centroid at which a prompt is flagged. Tuned for the local encoder; recalibrate for a JEPA encoder. |
 | `GUARDRAILS_LATENT_ACTION` | `block` | `block` (reject with `guardrail_violation`) or `log`. |
 | `GUARDRAILS_LATENT_CATEGORIES_FILE` | empty | JSON array of extra categories (`name`, `phrases`, and/or precomputed `centroids` of `{model, vector}`), added to the built-in set. |
-| `SEMANTIC_CACHE_ENABLED` | `false` | Serve `enable_cache` requests whose final user message is semantically close to a cached one. Needs Redis; uses `CACHE_TTL` and `CACHE_MAX_BYTES`. |
+| `SEMANTIC_CACHE_ENABLED` | `false` | Experimental. Serve `enable_cache` requests whose final user message is semantically close to a cached one. Needs Redis; uses `CACHE_TTL` and `CACHE_MAX_BYTES`. |
 | `SEMANTIC_CACHE_SIMILARITY_THRESHOLD` | `0.95` | Minimum cosine similarity for a semantic hit. |
 | `SEMANTIC_CACHE_MAX_ENTRIES` | `256` | Vectors kept (and scanned per lookup) for one exact context; older entries are trimmed. |
-| `LATENT_ENCODER_URL` | empty | OpenAI-compatible `/v1/embeddings` endpoint, e.g. a node serving a JEPA encoder. Empty uses the local hash encoder; failures fall back to it. |
+| `LATENT_ENCODER_URL` | empty | Experimental. OpenAI-compatible `/v1/embeddings` endpoint, e.g. a node serving a JEPA encoder. Empty uses the local hash encoder; failures fall back to it. |
 | `LATENT_ENCODER_MODEL` | `jepa-text` | Model name sent to the encoder; also namespaces cached vectors. |
 | `LATENT_ENCODER_API_KEY` | empty | Bearer token for the encoder, if it needs one. |
 | `LATENT_ENCODER_TIMEOUT` | `50ms` | Bound for one encoder call before falling back to the local encoder. |
@@ -1126,6 +1127,57 @@ Items returned in `ListBatchResults` that failed have an `error` containing a gR
 | `vendor_error` | Vendor error occurred during processing or structured schema validation failed. | Retry synchronously or resubmit in another batch. |
 | `batch_expired` | Vendor batch expired (after 48 h) before the item finished. | Re-submit the item. |
 | `batch_cancelled` | Batch was cancelled before the item completed. | Re-submit if still needed. |
+
+## API stability
+
+From 1.0, KTMS follows [semantic versioning](https://semver.org): within 1.x nothing in the public
+API below changes incompatibly. Breaking changes wait for 2.0. Minor releases add features; patch
+releases fix bugs.
+
+### What is public
+
+| Surface | What stays compatible in 1.x |
+| --- | --- |
+| gRPC `ktms.v1` (`GatewayService`, `AdminService`, `NodeRegistryService`) | No RPC, field, enum value or message is removed or renamed, and no field number or type changes. New RPCs and fields may appear. CI runs `buf breaking` against the latest release tag. |
+| HTTP `/v1` (OpenAI-compatible) and `X-KTMS-*` headers | Paths, request and response fields, and header names. New fields and endpoints may appear. |
+| Error contract | The status codes and reason strings in [Error contract](#error-contract) and the HTTP [Errors](#errors) table keep their meaning. New reasons may appear, so treat unknown ones like their status code. |
+| Environment variables | Names, defaults and meaning of every variable in [Configuration reference](#configuration-reference). |
+| Database | Any 1.x release upgrades the database of an earlier one by itself (`AUTO_MIGRATE`, forward-only). No manual SQL steps. The tables are not an API: read and write through the RPCs. |
+| Prometheus metrics | Names and labels of `ktms_*` metrics. |
+| Usage events (`usage.v1`) | Field numbers and meaning, as for `ktms.v1`. |
+| Node agent | A 1.x agent works with any 1.x gateway, in both directions. |
+
+Not public, and free to change in any release: Redis key layout, log message text, the
+`internal/` Go packages, CLI output of the tools in `cmd/` other than their flags, and benchmark
+numbers.
+
+### Experimental
+
+These work and are supported, but may change in a minor release. The change is then listed in the
+[CHANGELOG](CHANGELOG.md). In the proto they carry an `Experimental:` comment.
+
+- **Smart routing:** a judge picks the effort when the caller pins none (`model: "auto"` without
+  an effort over HTTP, `auto_route` in gRPC). That covers the `auto-*` values of `route_mode`,
+  `judge_score` and `judge_model`. Placement policies, `auto:<effort>` and `model_override` are
+  stable.
+- **Shadow traffic and its evaluation:** the `shadow_model`, `shadow_percentage` and `shadow_eval`
+  rule fields.
+- **Latent features:** the semantic cache (`SEMANTIC_CACHE_*`), latent guardrails
+  (`GUARDRAILS_LATENT_*`), the encoder settings (`LATENT_*`) and `EmbeddingPart` in judge state.
+- **`JudgeStream` and `EvaluateRollouts`.**
+- **The Helm chart** in `deploy/helm/ktms`, until it is published as a versioned OCI chart. Until
+  then its values may change.
+
+### Deprecated
+
+Deprecated names keep working through 1.x, log a warning (or count in
+`ktms_legacy_headers_requests_total`), and are removed in 2.0. One exception is announced in
+advance:
+
+| Deprecated | Use instead | Removed |
+| --- | --- | --- |
+| `LLMPROXY_ENCRYPTION_KEYS` | `KTMS_ENCRYPTION_KEYS` | 2.0 |
+| `X-LLM-Proxy-*` request and response headers | `X-KTMS-*` | On their `Sunset` date, 2027-03-01, as already announced in the responses |
 
 ## Operations
 

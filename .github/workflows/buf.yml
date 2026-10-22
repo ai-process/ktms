@@ -17,6 +17,15 @@ jobs:
       BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The 1.x promise is compatibility with what was released, so the check
+      # compares against the newest v* tag, not main. A deliberate change to an
+      # Experimental element takes the "buf skip breaking" PR label.
+      - name: Latest release tag
+        id: release
+        run: echo "tag=$(git describe --tags --abbrev=0 --match 'v*')" >> "$GITHUB_OUTPUT"
 
       - name: Lint and Breaking Change Check
         uses: bufbuild/buf-action@v1
@@ -24,7 +33,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           lint: true
           breaking: true
-          breaking_against: "https://github.com/ai-process/ktms.git#branch=main"
+          breaking_against: "https://github.com/ai-process/ktms.git#tag=${{ steps.release.outputs.tag }}"
           push: false
 
       - name: Push to Buf Schema Registry

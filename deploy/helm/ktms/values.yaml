@@ -138,9 +138,10 @@ probes:
 # Secret credentials: can be provided inline (creates a Secret) or via an existingSecret
 secrets:
   # If set, secrets.databaseUrl and secrets.encryptionKeys are read from this secret instead.
-  # Expected keys: DATABASE_URL, LLMPROXY_ENCRYPTION_KEYS, and optionally BOOTSTRAP_ADMIN_KEY, REDIS_PASSWORD.
+  # Expected keys: DATABASE_URL, KTMS_ENCRYPTION_KEYS (LLMPROXY_ENCRYPTION_KEYS is still read, deprecated),
+  # and optionally BOOTSTRAP_ADMIN_KEY, REDIS_PASSWORD.
   existingSecret: ""
-  # PostgreSQL connection URL (e.g., postgres://user:pass@postgres-host:5432/llmproxy?sslmode=require)
+  # PostgreSQL connection URL (e.g., postgres://user:pass@postgres-host:5432/ktms?sslmode=require)
   databaseUrl: ""
   # Versioned AES-256-GCM keyring spec (e.g., "1:<base64-32B-key>,2:...")
   encryptionKeys: ""

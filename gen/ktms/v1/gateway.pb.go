@@ -1297,12 +1297,14 @@ type GenerateTextRequest struct {
 	ModelOverride         string            `protobuf:"bytes,10,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`                          // exact registry model id; bypasses rules, not throttles
 	Tools                 []*Tool           `protobuf:"bytes,11,rep,name=tools,proto3" json:"tools,omitempty"`
 	ToolChoice            *ToolChoice       `protobuf:"bytes,12,opt,name=tool_choice,json=toolChoice,proto3" json:"tool_choice,omitempty"`
-	EnableCache           bool              `protobuf:"varint,13,opt,name=enable_cache,json=enableCache,proto3" json:"enable_cache,omitempty"`             // opt-in response cache: exact match, plus latent-similarity match when the proxy enables SEMANTIC_CACHE_ENABLED
-	Placement             string            `protobuf:"bytes,14,opt,name=placement,proto3" json:"placement,omitempty"`                                     // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
-	AutoRoute             bool              `protobuf:"varint,15,opt,name=auto_route,json=autoRoute,proto3" json:"auto_route,omitempty"`                   // true when smart model routing is enabled
-	EffortSpecified       bool              `protobuf:"varint,16,opt,name=effort_specified,json=effortSpecified,proto3" json:"effort_specified,omitempty"` // true when effort was explicitly pinned by caller
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	EnableCache           bool              `protobuf:"varint,13,opt,name=enable_cache,json=enableCache,proto3" json:"enable_cache,omitempty"` // opt-in response cache: exact match, plus latent-similarity match when the proxy enables SEMANTIC_CACHE_ENABLED (that match is experimental)
+	Placement             string            `protobuf:"bytes,14,opt,name=placement,proto3" json:"placement,omitempty"`                         // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
+	// Experimental: smart routing, where a judge picks the effort when none is
+	// pinned. Its decisions and these two fields may change in a 1.x minor release.
+	AutoRoute       bool `protobuf:"varint,15,opt,name=auto_route,json=autoRoute,proto3" json:"auto_route,omitempty"`                   // true when smart model routing is enabled
+	EffortSpecified bool `protobuf:"varint,16,opt,name=effort_specified,json=effortSpecified,proto3" json:"effort_specified,omitempty"` // true when effort was explicitly pinned by caller
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *GenerateTextRequest) Reset() {
@@ -1576,10 +1578,10 @@ type GenerateTextResponse struct {
 	MatchedRule    string                 `protobuf:"bytes,5,opt,name=matched_rule,json=matchedRule,proto3" json:"matched_rule,omitempty"`          // rule name, "" on model_override
 	Details        []*Choice              `protobuf:"bytes,6,rep,name=details,proto3" json:"details,omitempty"`
 	Cached         bool                   `protobuf:"varint,7,opt,name=cached,proto3" json:"cached,omitempty"`                             // true when served from cache
-	RouteMode      string                 `protobuf:"bytes,8,opt,name=route_mode,json=routeMode,proto3" json:"route_mode,omitempty"`       // "direct" | "override" | "auto-judge" | "auto-default" | "auto-effort"
+	RouteMode      string                 `protobuf:"bytes,8,opt,name=route_mode,json=routeMode,proto3" json:"route_mode,omitempty"`       // "direct" | "override" | "auto-judge" | "auto-default" | "auto-effort"; the auto-* values are experimental
 	Placement      string                 `protobuf:"bytes,9,opt,name=placement,proto3" json:"placement,omitempty"`                        // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
-	JudgeScore     float64                `protobuf:"fixed64,10,opt,name=judge_score,json=judgeScore,proto3" json:"judge_score,omitempty"` // score or confidence from judge evaluation
-	JudgeModel     string                 `protobuf:"bytes,11,opt,name=judge_model,json=judgeModel,proto3" json:"judge_model,omitempty"`   // judge model id if judge was invoked
+	JudgeScore     float64                `protobuf:"fixed64,10,opt,name=judge_score,json=judgeScore,proto3" json:"judge_score,omitempty"` // Experimental: score or confidence from judge evaluation
+	JudgeModel     string                 `protobuf:"bytes,11,opt,name=judge_model,json=judgeModel,proto3" json:"judge_model,omitempty"`   // Experimental: judge model id if judge was invoked
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1701,10 +1703,10 @@ type GenerateTextChunk struct {
 	MatchedRule    string                 `protobuf:"bytes,6,opt,name=matched_rule,json=matchedRule,proto3" json:"matched_rule,omitempty"`
 	ToolCallChunks []*ToolCallChunk       `protobuf:"bytes,7,rep,name=tool_call_chunks,json=toolCallChunks,proto3" json:"tool_call_chunks,omitempty"`
 	Cached         bool                   `protobuf:"varint,8,opt,name=cached,proto3" json:"cached,omitempty"`                             // true when served from cache
-	RouteMode      string                 `protobuf:"bytes,9,opt,name=route_mode,json=routeMode,proto3" json:"route_mode,omitempty"`       // "direct" | "override" | "auto-judge" | "auto-default" | "auto-effort"
+	RouteMode      string                 `protobuf:"bytes,9,opt,name=route_mode,json=routeMode,proto3" json:"route_mode,omitempty"`       // "direct" | "override" | "auto-judge" | "auto-default" | "auto-effort"; the auto-* values are experimental
 	Placement      string                 `protobuf:"bytes,10,opt,name=placement,proto3" json:"placement,omitempty"`                       // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
-	JudgeScore     float64                `protobuf:"fixed64,11,opt,name=judge_score,json=judgeScore,proto3" json:"judge_score,omitempty"` // score or confidence from judge evaluation
-	JudgeModel     string                 `protobuf:"bytes,12,opt,name=judge_model,json=judgeModel,proto3" json:"judge_model,omitempty"`   // judge model id if judge was invoked
+	JudgeScore     float64                `protobuf:"fixed64,11,opt,name=judge_score,json=judgeScore,proto3" json:"judge_score,omitempty"` // Experimental: score or confidence from judge evaluation
+	JudgeModel     string                 `protobuf:"bytes,12,opt,name=judge_model,json=judgeModel,proto3" json:"judge_model,omitempty"`   // Experimental: judge model id if judge was invoked
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -2555,6 +2557,7 @@ func (x *JudgeAnswer) GetLegend() map[string]string {
 
 // EmbeddingPart is a latent state vector (JEPA, CLIP, ...) judged as-is, so a
 // caller with an encoder never has to decode it back to text first.
+// Experimental: may change in a 1.x minor release (README, API stability).
 type EmbeddingPart struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Values        []float32              `protobuf:"fixed32,1,rep,packed,name=values,proto3" json:"values,omitempty"`

@@ -55,3 +55,16 @@ func TestEnvVarDocumentationConsistency(t *testing.T) {
 		}
 	}
 }
+
+func TestLegacyEncryptionKeysWarns(t *testing.T) {
+	t.Setenv("KTMS_ENCRYPTION_KEYS", "")
+	t.Setenv("LLMPROXY_ENCRYPTION_KEYS", "1:abc")
+	c := Load()
+	if c.EncryptionKeys != "1:abc" || len(c.Deprecations) != 1 {
+		t.Fatalf("keys %q, deprecations %v: the old name must still work and warn", c.EncryptionKeys, c.Deprecations)
+	}
+	t.Setenv("KTMS_ENCRYPTION_KEYS", "1:def")
+	if c := Load(); c.EncryptionKeys != "1:def" || len(c.Deprecations) != 0 {
+		t.Fatalf("keys %q, deprecations %v: the new name wins without a warning", c.EncryptionKeys, c.Deprecations)
+	}
+}

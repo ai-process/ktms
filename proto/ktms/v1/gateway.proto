@@ -157,8 +157,10 @@ message GenerateTextRequest {
   string model_override = 10; // exact registry model id; bypasses rules, not throttles
   repeated Tool tools = 11;
   ToolChoice tool_choice = 12;
-  bool enable_cache = 13; // opt-in response cache: exact match, plus latent-similarity match when the proxy enables SEMANTIC_CACHE_ENABLED
+  bool enable_cache = 13; // opt-in response cache: exact match, plus latent-similarity match when the proxy enables SEMANTIC_CACHE_ENABLED (that match is experimental)
   string placement = 14; // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
+  // Experimental: smart routing, where a judge picks the effort when none is
+  // pinned. Its decisions and these two fields may change in a 1.x minor release.
   bool auto_route = 15; // true when smart model routing is enabled
   bool effort_specified = 16; // true when effort was explicitly pinned by caller
 }
@@ -183,10 +185,10 @@ message GenerateTextResponse {
   string matched_rule = 5; // rule name, "" on model_override
   repeated Choice details = 6;
   bool cached = 7; // true when served from cache
-  string route_mode = 8; // "direct" | "override" | "auto-judge" | "auto-default" | "auto-effort"
+  string route_mode = 8; // "direct" | "override" | "auto-judge" | "auto-default" | "auto-effort"; the auto-* values are experimental
   string placement = 9; // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
-  double judge_score = 10; // score or confidence from judge evaluation
-  string judge_model = 11; // judge model id if judge was invoked
+  double judge_score = 10; // Experimental: score or confidence from judge evaluation
+  string judge_model = 11; // Experimental: judge model id if judge was invoked
 }
 
 message GenerateTextChunk {
@@ -198,10 +200,10 @@ message GenerateTextChunk {
   string matched_rule = 6;
   repeated ToolCallChunk tool_call_chunks = 7;
   bool cached = 8; // true when served from cache
-  string route_mode = 9; // "direct" | "override" | "auto-judge" | "auto-default" | "auto-effort"
+  string route_mode = 9; // "direct" | "override" | "auto-judge" | "auto-default" | "auto-effort"; the auto-* values are experimental
   string placement = 10; // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
-  double judge_score = 11; // score or confidence from judge evaluation
-  string judge_model = 12; // judge model id if judge was invoked
+  double judge_score = 11; // Experimental: score or confidence from judge evaluation
+  string judge_model = 12; // Experimental: judge model id if judge was invoked
 }
 
 message ListModelsRequest {}
@@ -267,9 +269,11 @@ service GatewayService {
   rpc GetEmbeddings(GetEmbeddingsRequest) returns (GetEmbeddingsResponse);
   // JudgeStream provides bidirectional streaming decisions for real-time
   // agent evaluation and robotics control loops.
+  // Experimental: may change in a 1.x minor release (README, API stability).
   rpc JudgeStream(stream JudgeRequest) returns (stream JudgeResponse);
   // EvaluateRollouts scores candidate trajectories against state and criteria
   // for speculative decoding and Best-of-N selection.
+  // Experimental: may change in a 1.x minor release (README, API stability).
   rpc EvaluateRollouts(EvaluateRolloutsRequest) returns (EvaluateRolloutsResponse);
   rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
 
@@ -344,6 +348,7 @@ message JudgeAnswer {
 
 // EmbeddingPart is a latent state vector (JEPA, CLIP, ...) judged as-is, so a
 // caller with an encoder never has to decode it back to text first.
+// Experimental: may change in a 1.x minor release (README, API stability).
 message EmbeddingPart {
   repeated float values = 1;
   string model = 2; // encoder that produced the vector, e.g. "v-jepa-2"

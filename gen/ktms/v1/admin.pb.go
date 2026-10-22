@@ -207,17 +207,19 @@ func (x *ModelSpec) GetBudgetGraceMargin() float64 {
 }
 
 type RuleSpec struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Name             string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                                                                       // unique, logged and put in usage meta
-	Priority         int32                  `protobuf:"varint,2,opt,name=priority,proto3" json:"priority,omitempty"`                                                                              // unique; higher wins, first match takes the request
-	Effort           Effort                 `protobuf:"varint,3,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"`                                                              // EFFORT_UNSPECIFIED = matches any effort
-	Attributes       map[string]string      `protobuf:"bytes,4,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // equality predicates over request attributes
-	Use              []string               `protobuf:"bytes,5,rep,name=use,proto3" json:"use,omitempty"`                                                                                         // ordered fallback chain of model ids, cheaper-first
-	Enabled          bool                   `protobuf:"varint,6,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	Weights          []int32                `protobuf:"varint,7,rep,packed,name=weights,proto3" json:"weights,omitempty"`                                     // traffic weights per model in use; empty means deterministic (100% on use[0]). Canary distribution is deterministic and sticky when request attribute canary_key or user_id is provided, or weighted random if omitted or canary_mode="random".
-	ShadowModel      string                 `protobuf:"bytes,8,opt,name=shadow_model,json=shadowModel,proto3" json:"shadow_model,omitempty"`                  // optional model id for async traffic mirroring
-	ShadowPercentage float64                `protobuf:"fixed64,9,opt,name=shadow_percentage,json=shadowPercentage,proto3" json:"shadow_percentage,omitempty"` // percentage of requests to mirror (0.0 - 100.0)
-	ShadowEval       bool                   `protobuf:"varint,10,opt,name=shadow_eval,json=shadowEval,proto3" json:"shadow_eval,omitempty"`                   // optional automated quality evaluation using Judge
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Name       string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                                                                       // unique, logged and put in usage meta
+	Priority   int32                  `protobuf:"varint,2,opt,name=priority,proto3" json:"priority,omitempty"`                                                                              // unique; higher wins, first match takes the request
+	Effort     Effort                 `protobuf:"varint,3,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"`                                                              // EFFORT_UNSPECIFIED = matches any effort
+	Attributes map[string]string      `protobuf:"bytes,4,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // equality predicates over request attributes
+	Use        []string               `protobuf:"bytes,5,rep,name=use,proto3" json:"use,omitempty"`                                                                                         // ordered fallback chain of model ids, cheaper-first
+	Enabled    bool                   `protobuf:"varint,6,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Weights    []int32                `protobuf:"varint,7,rep,packed,name=weights,proto3" json:"weights,omitempty"` // traffic weights per model in use; empty means deterministic (100% on use[0]). Canary distribution is deterministic and sticky when request attribute canary_key or user_id is provided, or weighted random if omitted or canary_mode="random".
+	// Experimental: shadow traffic and its evaluation may change in a 1.x minor
+	// release (README, API stability).
+	ShadowModel      string  `protobuf:"bytes,8,opt,name=shadow_model,json=shadowModel,proto3" json:"shadow_model,omitempty"`                  // optional model id for async traffic mirroring
+	ShadowPercentage float64 `protobuf:"fixed64,9,opt,name=shadow_percentage,json=shadowPercentage,proto3" json:"shadow_percentage,omitempty"` // percentage of requests to mirror (0.0 - 100.0)
+	ShadowEval       bool    `protobuf:"varint,10,opt,name=shadow_eval,json=shadowEval,proto3" json:"shadow_eval,omitempty"`                   // optional automated quality evaluation using Judge
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
