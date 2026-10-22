@@ -11,6 +11,8 @@ All notable changes to KTMS are listed here. The format follows
 - Organizations and teams: team keys share a model allowlist and a monthly budget enforced
   by the gateway (`CreateOrganization`, `CreateTeam`, `UpdateTeam`, `GetTeamSpend`, ...).
   `ListModels` lists only the models a team may call.
+- Operations: backups and the keyring, and a safe key rotation procedure, tested against
+  Postgres; CI now runs the Postgres-backed tests (they used to skip).
 - An upgrade test on every pull request and before each release: the previous release and the
   oldest release of the same major write a database, this build must keep and serve it, and the
   old release must still serve on the migrated database (rolling upgrades).

@@ -609,8 +609,19 @@ Without such a rule the call fails with `FAILED_PRECONDITION no_capable_model`.
 
 ### Rotating the encryption key
 
-Add a higher version to the keyring (`1:…,2:…`), redeploy, call `RotateEncryption` to
-re-encrypt every stored vendor key, then drop the old version.
+New writes use the highest version in `KTMS_ENCRYPTION_KEYS`; every listed version can decrypt.
+
+1. Add a new version and deploy it to **every** replica: `1:<old>,2:<new>`. Until all replicas run
+   the new keyring, do not add or change vendor keys: a replica still on `1:<old>` cannot read a
+   key written with version 2.
+2. Call `RotateEncryption` once, on any replica. It re-encrypts every vendor key with version 2
+   in one transaction and returns how many it changed; calling it again changes nothing.
+3. Remove version 1 and redeploy, but only when no database backup you may restore still holds
+   keys encrypted with it (see [Backups](#backups-and-the-encryption-keyring)). Until then,
+   leaving it listed is harmless. Cached responses encrypted with a removed version are
+   treated as cache misses.
+
+`TestRotateEncryptionLetsTheOldKeyGo` runs this sequence against Postgres in CI.
 
 ## Run a node
 
@@ -1217,8 +1228,26 @@ advance:
 - **Config changes** are picked up by all replicas within `ROUTING_RELOAD_SECONDS`; the replica that
   handled the admin call applies them immediately.
 - **Upgrades:** migrations run at startup under a database advisory lock, so rolling deploys are
-  safe. Roll forward by deploying a newer image tag.
+  safe. Roll forward by deploying a newer image tag; see [Upgrading](#upgrading).
 - **Graceful shutdown:** on SIGTERM in-flight calls get `SHUTDOWN_TIMEOUT` to finish.
+
+### Backups and the encryption keyring
+
+- **Back up Postgres.** It holds everything durable: client keys (as hashes), vendor keys
+  (encrypted), models, rules, limits, tenants, node keys and batches. Use `pg_dump` or your
+  provider's snapshots, and test a restore.
+- **Back up the keyring separately.** `KTMS_ENCRYPTION_KEYS` is not in the database. Keep it in a
+  secret manager, not next to the dumps: a dump plus the keyring is every vendor key in
+  plaintext. **If the keyring is lost, every stored vendor key is lost**, and each has to be set
+  again with `SetVendorKey`; client keys, config and limits survive.
+- **Keep old key versions as long as the backups that need them.** A dump taken before a
+  rotation can only be read with the versions it was written with.
+- **Restore:** stop every replica, restore the dump, then start a release at least as new as the
+  one that took it. Migrations only run forward, so an older release cannot read a newer
+  schema.
+- **Redis is not backed up.** It holds rate and spend counters and the response cache. Losing it
+  resets the current day's and month's counters, so spend limits allow up to one more full cap
+  in the current period, and the cache starts empty.
 
 ### When a dependency fails
 
