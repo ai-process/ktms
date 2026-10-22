@@ -1175,10 +1175,29 @@ These work and are supported, but may change in a minor release. The change is t
 - **Shadow traffic and its evaluation:** the `shadow_model`, `shadow_percentage` and `shadow_eval`
   rule fields, and the `ktms_shadow_*` metrics.
 - **Latent features:** the semantic cache (`SEMANTIC_CACHE_*`), latent guardrails
-  (`GUARDRAILS_LATENT_*`), the encoder settings (`LATENT_*`) and `EmbeddingPart` in judge state.
-- **`JudgeStream` and `EvaluateRollouts`.**
+  (`GUARDRAILS_LATENT_*`), the encoder settings (`LATENT_*`), and embeddings in judge state
+  (`EmbeddingPart`, `input_embedding` over HTTP).
+- **`JudgeStream` and `EvaluateRollouts`**, and `POST /v1/decisions/rollouts` over HTTP.
 - **The Helm chart** in `deploy/helm/ktms`, until it is published as a versioned OCI chart. Until
   then its values may change.
+
+### Upgrading
+
+- **Within 1.x, upgrade in one step** from any earlier 1.x release: migrations run forward at
+  startup and cover every release in between. `scripts/upgrade-test.sh` upgrades from the
+  previous release and from the oldest release of the same major on every pull request and
+  before each release.
+- **Rolling upgrades work within 1.x:** migrations only add, so replicas of the previous release
+  keep serving on the migrated database while new ones start; the upgrade test runs the old
+  release again after the new one migrated. A change that cannot be additive waits for 2.0.
+  Until the roll finishes, old replicas do not apply what the new release added (for example a
+  new kind of limit), so finish rolls promptly.
+- **Downgrades are not supported.** Migrations have no down step; to go back, restore the
+  database backup taken before the upgrade.
+- **From 0.x, upgrade to 1.0 first,** then to later 1.x releases: 0.x made no compatibility
+  promise, and only the 0.13 → 1.0 step is tested (by the 1.0 release).
+- **Read the [CHANGELOG](CHANGELOG.md)** before upgrading: it lists every change in Added,
+  Changed, Deprecated, Removed, Fixed and Security.
 
 ### Deprecated
 
@@ -1239,12 +1258,25 @@ Pull requests are welcome; read [`CONTRIBUTING.md`](CONTRIBUTING.md) first.
 
 ### Releasing
 
-Push a `vX.Y.Z` tag (the `v` matters: it makes the tag a valid Go module version, so
-`go install github.com/ai-process/ktms/cmd/node-agent@vX.Y.Z` works):
+1. Move the `[Unreleased]` entries in [CHANGELOG.md](CHANGELOG.md) under the new version and
+   date, and pick the version by [API stability](#api-stability): a fix is a patch, a feature is a
+   minor, a break of the public API is a major.
+2. Push a `vX.Y.Z` tag (the `v` matters: it makes the tag a valid Go module version, so
+   `go install github.com/ai-process/ktms/cmd/node-agent@vX.Y.Z` works):
 
 ```bash
-git tag v0.10.0 && git push origin v0.10.0
+git tag v1.0.0 && git push origin v1.0.0
 ```
+
+The release workflow first runs `.github/workflows/compat.yml`: `buf breaking` against the
+previous published release in the tag's history, and the upgrade test from it (and from the
+oldest release of the same major). If it fails, nothing is published. Then GoReleaser publishes
+the binaries and, after it, the Docker images: an image on Docker Hub marks a complete release,
+which is how the next release finds its predecessor (re-run a failed image job before tagging
+again). A release that breaks the proto on purpose (an Experimental change, or a new major) sets
+the repository variable `ALLOW_BREAKING_TAG` to its tag, which skips the proto checks; the
+upgrade test still runs. Only the newest stable tag moves `latest`, `slim` and `audio`, so a
+backport does not.
 
 - **GitHub Release** (GoReleaser, `.github/workflows/release.yml`): `ktms-node` and
   `ktms-server` archives for darwin and linux, amd64 and arm64, plus `checksums.txt`.

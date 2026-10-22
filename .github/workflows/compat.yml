@@ -1,0 +1,48 @@
+name: Compatibility
+
+# Called once per v* tag by release.yml; the binaries and the images both wait
+# for it, so neither goes out when the release breaks the one before it.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  # ALLOW_BREAKING_TAG names a tag allowed to break the proto on purpose: an
+  # Experimental change, or a new major. The upgrade test runs regardless.
+  compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache: true
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+      - name: Previous published releases
+        id: prev
+        env:
+          CUR: ${{ github.ref_name }}
+        run: |
+          list=$(./scripts/upgrade-test.sh --print-prev)
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+          echo "tag=${list%% *}" >> "$GITHUB_OUTPUT"
+      - name: ktms.v1 compatible with the previous release
+        if: vars.ALLOW_BREAKING_TAG != github.ref_name
+        run: buf breaking --against ".git#tag=${{ steps.prev.outputs.tag }}"
+      - name: usage.v1 compatible with the previous release
+        if: vars.ALLOW_BREAKING_TAG != github.ref_name
+        working-directory: usage-proto
+        run: |
+          buf breaking . --against "../.git#tag=${{ steps.prev.outputs.tag }},subdir=usage-proto" \
+            --config '{"version":"v2","breaking":{"use":["FILE"]}}'
+      - name: Upgrade from the previous releases
+        env:
+          PREV: ${{ steps.prev.outputs.list }}
+        run: ./scripts/upgrade-test.sh
+
