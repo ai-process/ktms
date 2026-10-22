@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -380,7 +381,7 @@ func (c *UsageCollectorClient) RecordUsage(
 		TokensInput:  int64(inputTokens),
 		TokensOutput: int64(outputTokens),
 		TokensTotal:  int64(inputTokens + outputTokens),
-		Meta:         meta,
+		Meta:         fitMeta(meta, actionID),
 		CostNanousd:  costNanoUSD,
 	}
 	// Never block a request on accounting: a full queue means the collector has
@@ -407,7 +408,43 @@ const (
 	maxStringLength = 256
 	maxVendorLength = 64
 	maxModelLength  = 128
+	maxMetaBytes    = 16 << 10 // keys plus values
 )
+
+// fitMeta keeps an event within the collector's meta limit by leaving out
+// empty keys and, largest first, values that do not fit: the tokens still
+// count, which they would not if the collector refused the event.
+func fitMeta(meta map[string]string, actionID string) map[string]string {
+	size, bad := 0, false
+	for k, v := range meta {
+		size += len(k) + len(v)
+		bad = bad || k == ""
+	}
+	if size <= maxMetaBytes && !bad {
+		return meta
+	}
+	keys := make([]string, 0, len(meta))
+	for k := range meta {
+		if k != "" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool { return len(keys[i])+len(meta[keys[i]]) < len(keys[j])+len(meta[keys[j]]) })
+	out := make(map[string]string, len(keys))
+	size = 0
+	var dropped []string
+	for _, k := range keys {
+		if n := len(k) + len(meta[k]); size+n <= maxMetaBytes {
+			out[k], size = meta[k], size+n
+		} else {
+			dropped = append(dropped, k)
+		}
+	}
+	if len(dropped) > 0 {
+		log.Warn().Str("action_id", actionID).Strs("dropped_keys", dropped).Msg("usage event meta over 16 KiB; largest entries left out")
+	}
+	return out
+}
 
 func validateLimits(userID, projectID, actionID, vendor, model string, cost int64, st usagev1.Status) error {
 	switch {
