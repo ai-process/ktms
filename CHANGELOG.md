@@ -7,6 +7,8 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-22
+
 ### Added
 - Organizations and teams: team keys share a model allowlist and a monthly budget enforced
   by the gateway (`CreateOrganization`, `CreateTeam`, `UpdateTeam`, `GetTeamSpend`, ...).
@@ -118,7 +120,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/ai-process/ktms/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/ai-process/ktms/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/ai-process/ktms/compare/v0.12.0...v0.13.0
 [0.12.1]: https://github.com/ai-process/ktms/compare/v0.12.0...v0.12.1
