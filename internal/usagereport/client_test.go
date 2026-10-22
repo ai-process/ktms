@@ -300,3 +300,24 @@ func TestAuthRefusalHoldsEvents(t *testing.T) {
 		})
 	}
 }
+
+func TestFitMetaKeepsEventsWithinTheCollectorLimit(t *testing.T) {
+	small := map[string]string{"rule": "r1", "team": "t"}
+	if got := fitMeta(small, "a"); len(got) != 2 {
+		t.Fatalf("small meta changed: %v", got)
+	}
+	big := map[string]string{"rule": "r1", "prompt": strings.Repeat("x", maxMetaBytes), "": "empty key"}
+	got := fitMeta(big, "a")
+	if _, ok := got["prompt"]; ok {
+		t.Error("an entry over the limit was kept")
+	}
+	if _, ok := got[""]; ok {
+		t.Error("an empty key was kept")
+	}
+	if got["rule"] != "r1" {
+		t.Errorf("small entries must survive: %v", got)
+	}
+	if big["prompt"] == "" {
+		t.Error("the caller's map was modified")
+	}
+}
