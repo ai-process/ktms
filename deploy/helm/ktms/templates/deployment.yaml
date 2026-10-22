@@ -138,13 +138,13 @@ spec:
               value: {{ .Values.config.usageCollectorHost | quote }}
             - name: USAGE_COLLECTOR_TLS
               value: {{ .Values.config.usageCollectorTLS | quote }}
+            {{- end }}
             - name: USAGE_COLLECTOR_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "ktms.secretName" . }}
                   key: USAGE_COLLECTOR_TOKEN
                   optional: true
-            {{- end }}
             {{- if .Values.config.usageProjectID }}
             - name: USAGE_PROJECT_ID
               value: {{ .Values.config.usageProjectID | quote }}
