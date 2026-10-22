@@ -148,7 +148,7 @@ $G "$ADMIN" -d '{"rules":[
   localhost:9090 ktms.v1.AdminService/ReplaceRules
 
 # 5. Call gRPC GenerateText with your client key
-$G "authorization: Bearer llm_<your key>" -d '{
+$G "authorization: Bearer ktms_<your key>" -d '{
   "effort":"EFFORT_LOW",
   "messages":[{"role":"MESSAGE_ROLE_USER","text":"Say hi in three words."}]}' \
   localhost:9090 ktms.v1.GatewayService/GenerateText
@@ -437,7 +437,7 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
   localhost:9090 ktms.v1.AdminService/MintAPIKey
 ```
 
-Keys look like `llm_<hex>`. Only a hash is stored, and the plaintext is returned once.
+Keys look like `ktms_<hex>` (keys minted before the rename start with `llm_` and keep working). Only a hash is stored, and the plaintext is returned once.
 Scopes: `generate` (data plane) and `admin` (implies everything).
 `ListAPIKeys` and `RevokeAPIKey` do what they say.
 
@@ -618,7 +618,7 @@ Lend a machine's GPU to the proxy: an Apple Silicon Mac, or Linux with an NVIDIA
 CPU, slowly). Three steps; no tunnels or service files to write by hand, and no admin rights on macOS.
 
 **1. Get a key.** Whoever runs the proxy mints one key per machine, bound to a node id, and gives
-you the key (`llm_node_...`), the node id and the proxy address. They also need a `local` model
+you the key (`ktms_node_...`), the node id and the proxy address. They also need a `local` model
 whose `id` is exactly the Ollama tag the node serves (`G` and `ADMIN` as in the quick start;
 drop `-plaintext` for a proxy behind TLS):
 
@@ -797,7 +797,7 @@ For offline or bulk workflows (such as page generation, backfills, or data pipel
 Takes a list of items (`custom_id` unique within the batch, and standard `GenerateTextRequest`), batch-level `effort` and `attributes`, and an optional `client_batch_id` for idempotency (resubmitting with the same client batch ID returns the existing batch):
 
 ```bash
-grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
+grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
   "effort": "EFFORT_LOW",
   "attributes": {"task": "catalog_enrichment"},
   "client_batch_id": "job-2026-10-07-001",
@@ -827,7 +827,7 @@ Returns a `Batch` with status `BATCH_STATE_PENDING` (or `BATCH_STATE_RUNNING`), 
 Polls batch state (`PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `EXPIRED`) and progress counts (`total`, `done`, `failed`):
 
 ```bash
-grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
+grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
   "batch_id": "0199c0a0-6228-7e10-91b5-685d996cbfa1"
 }' localhost:9090 ktms.v1.GatewayService/GetBatch
 ```
@@ -837,7 +837,7 @@ grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
 Pages through completed items with `page_token` (and `next_page_token`). Each item contains its `custom_id` and either a successful `response` (`GenerateTextResponse` with choices, usage, resolved_model, resolved_vendor, matched_rule) or an `error` (`BatchItemError` with gRPC code, message, and error reason):
 
 ```bash
-grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
+grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
   "batch_id": "0199c0a0-6228-7e10-91b5-685d996cbfa1",
   "page_size": 100
 }' localhost:9090 ktms.v1.GatewayService/ListBatchResults
@@ -848,7 +848,7 @@ grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
 Requests cancellation of an unfinished batch job at the vendor. The batch remains `RUNNING` until vendor confirmation is polled: already completed items preserve their results, while remaining unfinished items fail with reason `batch_cancelled`.
 
 ```bash
-grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
+grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
   "batch_id": "0199c0a0-6228-7e10-91b5-685d996cbfa1"
 }' localhost:9090 ktms.v1.GatewayService/CancelBatch
 ```
@@ -896,7 +896,7 @@ Supported decision vendors are [TypeSafe](https://typesafe.ai) (`jev-latest`, bi
 Vector representations of text. Vector space isolation is strictly enforced: `auto` model routing and cross-model fallbacks are disallowed to prevent corrupting downstream vector indices. Models must declare the `embedding` capability.
 
 ```bash
-grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
+grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
   "model": "text-embedding-3-small",
   "inputs": ["Hello world", "Search document"]
 }' localhost:9090 ktms.v1.GatewayService/GetEmbeddings
@@ -912,13 +912,13 @@ efforts, capabilities, rpm and prices.
 The data plane is also available as HTTP/JSON in the OpenAI wire format, so existing
 OpenAI SDKs, LangChain, `curl` and similar tools work by changing the base URL and key.
 It runs on `HTTP_ADDR` (default `:8080`) and shares everything with gRPC: the same
-`llm_…` API keys (scope `generate`), vendor credentials, rules, fallbacks, throttling and
+`ktms_…` API keys (scope `generate`), vendor credentials, rules, fallbacks, throttling and
 usage reporting. Set `HTTP_API_ENABLED=false` to turn it off.
 
 ```python
 from openai import OpenAI
 
-client = OpenAI(base_url="http://localhost:8080/v1", api_key="llm_<your key>")
+client = OpenAI(base_url="http://localhost:8080/v1", api_key="ktms_<your key>")
 reply = client.chat.completions.create(
     model="auto",                                # let the rules choose
     messages=[{"role": "user", "content": "Say hi in three words."}],
@@ -928,7 +928,7 @@ print(reply.choices[0].message.content, reply.model)   # `model` is the one that
 
 ```bash
 curl -s localhost:8080/v1/chat/completions \
-  -H "Authorization: Bearer llm_<your key>" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ktms_<your key>" -H "Content-Type: application/json" \
   -d '{"model":"auto","messages":[{"role":"user","content":"Say hi in three words."}]}'
 ```
 
@@ -1037,7 +1037,7 @@ Errors use OpenAI's shape, `{"error": {"message", "type", "param", "code"}}`, an
 | 429 | `insufficient_quota` | `insufficient_quota`; the message names the cap, e.g. `throttled:spend_key_daily`. `Retry-After` is the seconds until the period resets (UTC midnight or month start). |
 | 501 | `server_error` | `ffmpeg_missing` (Gemini speech synthesis invoked without ffmpeg on PATH or in container) |
 | 502 | `server_error` | `vendor_error` |
-| 503 | `server_error` | `vendors_unavailable` (the only error worth retrying); `throttled:spend_unavailable` with `SPEND_LIMITS_FAIL_MODE=closed` |
+| 503 | `server_error` | `vendors_unavailable`, `auth_unavailable`, `storage_unavailable`, `throttled:spend_unavailable` (with `SPEND_LIMITS_FAIL_MODE=closed`): retry with backoff |
 
 OpenAI SDKs retry 429 and 5xx automatically; for `throttled:*` and `vendor_error` you may want to
 disable that (`max_retries=0`) and handle them yourself.
@@ -1106,7 +1106,7 @@ lexical hash encoder that folds case, homoglyphs, zero-width and spaced-out lett
 | `INVALID_ARGUMENT` | `guardrail_violation` | Blocked due to detected prompt injection, PII, or a latent-space threat match. Clean input before retrying. |
 | `INVALID_ARGUMENT` | `bad_request: <message>` | Empty batch, duplicate `custom_id`, too many items (> `BATCH_MAX_ITEMS`), or invalid parameters. |
 | `UNAVAILABLE` | `vendors_unavailable` | The whole chain failed: retry with backoff. When vendors paused every model in the chain with `Retry-After`, details carry `RetryInfo` (HTTP: `Retry-After` header): wait that long first. |
-| `UNAVAILABLE` | `auth backend unavailable`, `proxy configuration not ready`, `storage unavailable` | Postgres is unreachable for a key check or a batch or admin write, or a replica has not loaded its config yet. Retry with backoff. |
+| `UNAVAILABLE` | `auth_unavailable`, `storage_unavailable` | Postgres is unreachable for a key check (past `AUTH_STALE_IF_ERROR`) or a batch or admin write. Retry with backoff. |
 | `RESOURCE_EXHAUSTED` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` | Back off; don't hot-retry. Daily budget exhausted before batch submission. |
 | `RESOURCE_EXHAUSTED` | `throttled:spend_key_daily`, `throttled:spend_key_monthly`, `throttled:spend_user_daily`, `throttled:spend_user_monthly`, `throttled:spend_team_monthly` | Spend limit reached. Details carry `ErrorInfo{reason: "insufficient_quota"}` and `RetryInfo` until the period resets. |
 | `UNAVAILABLE` | `throttled:spend_unavailable` | Spend counters unreachable with `SPEND_LIMITS_FAIL_MODE=closed`. Retry with backoff. |
@@ -1120,8 +1120,9 @@ lexical hash encoder that folds case, homoglyphs, zero-width and spaced-out lett
 | `INTERNAL` | `vendor_error` | Terminal vendor failure. |
 | `UNAUTHENTICATED` / `PERMISSION_DENIED` | – | Missing/invalid key, or key lacks the scope. |
 
-Only `UNAVAILABLE` errors are worth retrying, and only with backoff. Everything else fails the same
-way on a retry.
+When to retry: `UNAVAILABLE` with backoff, and `RESOURCE_EXHAUSTED` after the wait it carries
+(`RetryInfo`, HTTP `Retry-After`) or with backoff when it carries none. Every other code fails the
+same way until the request or the configuration changes.
 
 ### Batch item error reasons
 
@@ -1137,8 +1138,9 @@ Items returned in `ListBatchResults` that failed have an `error` containing a gR
 ## API stability
 
 From 1.0, KTMS follows [semantic versioning](https://semver.org): within 1.x nothing in the public
-API below changes incompatibly. Breaking changes wait for 2.0. Minor releases add features; patch
-releases fix bugs.
+API below changes incompatibly. Breaking changes wait for 2.0, except the one removal announced
+before 1.0 and listed under [Deprecated](#deprecated). Minor releases add features; patch releases
+fix bugs.
 
 ### What is public
 
@@ -1163,11 +1165,13 @@ numbers.
 These work and are supported, but may change in a minor release. The change is then listed in the
 [CHANGELOG](CHANGELOG.md). In the proto they carry an `Experimental:` comment.
 
-- **Smart routing:** a judge picks the effort when the caller pins none: `model: "auto"` or
-  `auto:<placement>` over HTTP without `reasoning_effort`, `auto_route` in gRPC. That covers the
-  `auto-*` values of `route_mode`, `judge_score`, `judge_model` and the `X-KTMS-Route-Mode`,
-  `X-KTMS-Judge-Score` and `X-KTMS-Judge-Model` headers. Placement policies themselves,
-  `auto:<effort>`, `auto:<placement>:<effort>` and `model_override` are stable.
+- **The judge's effort choice:** when a request is auto-routed without a pinned effort
+  (`model: "auto"` or `auto:<placement>` over HTTP without `reasoning_effort`; `auto_route` with
+  `effort_specified` false in gRPC), a judge picks the effort. Its choice, the `auto-judge` and
+  `auto-default` values of `route_mode`, `judge_score`, `judge_model` and the
+  `X-KTMS-Judge-Score` and `X-KTMS-Judge-Model` headers are experimental. Auto-routing with a
+  pinned effort (`auto:<effort>`, `auto:<placement>:<effort>`, route mode `auto-effort`),
+  placement policies, `model_override` and the `X-KTMS-Route-Mode` header are stable.
 - **Shadow traffic and its evaluation:** the `shadow_model`, `shadow_percentage` and `shadow_eval`
   rule fields, and the `ktms_shadow_*` metrics.
 - **Latent features:** the semantic cache (`SEMANTIC_CACHE_*`), latent guardrails

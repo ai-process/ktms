@@ -138,6 +138,8 @@ type Config struct {
 	SentryEnvironment string
 	SentryRelease     string
 	SentryTracing     bool
+	SentryDebug       bool
+	SentryBreadcrumbs bool
 }
 
 // Load loads configuration from environment variables
@@ -214,11 +216,13 @@ func Load() *Config {
 		SentryDSN:                       getEnv("SENTRY_DSN", ""),
 		SentryEnvironment:               getEnv("SENTRY_ENVIRONMENT", "development"),
 		SentryRelease:                   getEnv("SENTRY_RELEASE", ""),
-		SentryTracing:                   getEnv("SENTRY_ENABLE_TRACING", "false") == "true",
+		SentryTracing:                   getBoolEnv("SENTRY_ENABLE_TRACING", false),
+		SentryDebug:                     getBoolEnv("SENTRY_DEBUG", false),
+		SentryBreadcrumbs:               getBoolEnv("SENTRY_WITH_BREADCRUMBS", false),
 	}
 	// The default moved from llm-proxy to ktms before 1.0; without this note
 	// an upgrade silently splits usage history between two project names.
-	if c.UsageCollectorHost != "" && os.Getenv("USAGE_PROJECT_ID") == "" {
+	if c.UsageConfigured() && os.Getenv("USAGE_PROJECT_ID") == "" {
 		c.Notices = append(c.Notices, "USAGE_PROJECT_ID is unset: usage goes to project ktms (llm-proxy before 1.0); set it to silence this")
 	}
 	for old, cur := range legacyEnv {

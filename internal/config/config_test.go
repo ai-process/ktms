@@ -28,14 +28,6 @@ func TestEnvVarDocumentationConsistency(t *testing.T) {
 
 	reEnv := regexp.MustCompile(`get(?:Bool|Int|Float|Duration|Retention)?Env\("([A-Z0-9_]+)"`)
 	matches := reEnv.FindAllStringSubmatch(string(configSrc), -1)
-	// Sentry is set up by the logger before config loads; its variables are
-	// just as public, so they must be documented too.
-	loggerSrc, err := os.ReadFile(filepath.Join("..", "logger", "logger.go"))
-	if err != nil {
-		t.Fatalf("read logger.go: %v", err)
-	}
-	reRaw := regexp.MustCompile(`(?:os\.Getenv|envOr)\("([A-Z0-9_]+)"`)
-	matches = append(matches, reRaw.FindAllStringSubmatch(string(loggerSrc), -1)...)
 
 	var foundVars []string
 	seen := make(map[string]bool)
@@ -65,6 +57,7 @@ func TestEnvVarDocumentationConsistency(t *testing.T) {
 }
 
 func TestLegacyEncryptionKeysWarns(t *testing.T) {
+	t.Setenv("USAGE_COLLECTOR_HOST", "") // keeps the usage-project notice out
 	t.Setenv("KTMS_ENCRYPTION_KEYS", "")
 	t.Setenv("LLMPROXY_ENCRYPTION_KEYS", "1:abc")
 	c := Load()
@@ -74,5 +67,18 @@ func TestLegacyEncryptionKeysWarns(t *testing.T) {
 	t.Setenv("KTMS_ENCRYPTION_KEYS", "1:def")
 	if c := Load(); c.EncryptionKeys != "1:def" || len(c.Notices) != 0 {
 		t.Fatalf("keys %q, deprecations %v: the new name wins without a warning", c.EncryptionKeys, c.Notices)
+	}
+}
+
+func TestUsageProjectNoticeOnlyWhenReportingWithDefault(t *testing.T) {
+	t.Setenv("KTMS_ENCRYPTION_KEYS", "1:x")
+	t.Setenv("USAGE_COLLECTOR_HOST", "tm:443")
+	t.Setenv("USAGE_PROJECT_ID", "")
+	if c := Load(); c.UsageProjectID != "ktms" || len(c.Notices) != 1 {
+		t.Fatalf("project %q, notices %v: want default ktms and one notice", c.UsageProjectID, c.Notices)
+	}
+	t.Setenv("USAGE_PROJECT_ID", "llm-proxy")
+	if c := Load(); len(c.Notices) != 0 {
+		t.Fatalf("notices %v: an explicit project needs no notice", c.Notices)
 	}
 }

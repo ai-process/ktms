@@ -31,13 +31,14 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           lint: true
           breaking: true
-          breaking_against: "https://github.com/ai-process/ktms.git#branch=main"
+          breaking_against: "https://github.com/ai-process/ktms.git#branch=${{ github.base_ref || 'main' }}"
           push: false
 
       # usage.v1 is public too (light-tokenmeter reads it) but is not a module
-      # of buf.yaml, so it gets its own check.
+      # of buf.yaml, so it gets its own check. It has no experimental parts, so
+      # the skip label does not apply to it.
       - name: usage.v1 breaking check
-        if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'buf skip breaking')
+        if: github.event_name == 'pull_request'
         working-directory: usage-proto
         run: |
           buf breaking . --against "../.git#ref=origin/${{ github.base_ref }},subdir=usage-proto" \

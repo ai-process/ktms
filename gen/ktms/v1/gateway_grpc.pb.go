@@ -38,7 +38,8 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Error contract: retry only on UNAVAILABLE ("vendors_unavailable", or
+// Error contract: retry UNAVAILABLE with backoff ("vendors_unavailable";
+// "auth_unavailable" or "storage_unavailable" while Postgres is down;
 // "throttled:spend_unavailable" when spend limits fail closed). When vendors
 // paused every model in the chain with Retry-After, "vendors_unavailable"
 // carries RetryInfo with the soonest one frees up: wait that long first.
@@ -245,7 +246,8 @@ func (c *gatewayServiceClient) CancelBatch(ctx context.Context, in *CancelBatchR
 // All implementations must embed UnimplementedGatewayServiceServer
 // for forward compatibility.
 //
-// Error contract: retry only on UNAVAILABLE ("vendors_unavailable", or
+// Error contract: retry UNAVAILABLE with backoff ("vendors_unavailable";
+// "auth_unavailable" or "storage_unavailable" while Postgres is down;
 // "throttled:spend_unavailable" when spend limits fail closed). When vendors
 // paused every model in the chain with Retry-After, "vendors_unavailable"
 // carries RetryInfo with the soonest one frees up: wait that long first.

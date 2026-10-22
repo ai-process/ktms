@@ -47,8 +47,12 @@ const initialLoadTimeout = 30 * time.Second
 func main() {
 	_ = godotenv.Load() // .env is absent in prod on purpose
 
-	logger.Init()
 	cfg := config.Load()
+	logger.Init(logger.Options{
+		Level: cfg.LogLevel, SentryDSN: cfg.SentryDSN, SentryEnvironment: cfg.SentryEnvironment,
+		SentryRelease: cfg.SentryRelease, SentryTracing: cfg.SentryTracing,
+		SentryDebug: cfg.SentryDebug, SentryBreadcrumbs: cfg.SentryBreadcrumbs,
+	})
 	for _, d := range cfg.Notices {
 		log.Warn().Msg(d)
 	}

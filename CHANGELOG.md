@@ -23,6 +23,11 @@ All notable changes to KTMS are listed here. The format follows
 - A cache hit refused by the rpm limit returns the documented `throttled:rpm` reason instead of
   `resource_exhausted: rpm limit exceeded`.
 - `SENTRY_ENVIRONMENT` defaults to `development`, as documented; it was sent empty.
+- Postgres outages return the reasons `auth_unavailable` and `storage_unavailable` (were
+  `auth backend unavailable` and `storage unavailable`), so the HTTP API puts them in `code`.
+- `DrainNode` without node support returns `FAILED_PRECONDITION` instead of `UNAVAILABLE`.
 
 ### Deprecated
 - `LLMPROXY_ENCRYPTION_KEYS`: use `KTMS_ENCRYPTION_KEYS`. It is removed in 2.0.
+- `X-LLM-Proxy-*` headers: use `X-KTMS-*`. They are removed on their announced `Sunset` date,
+  2027-03-01, the one removal inside 1.x.

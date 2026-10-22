@@ -120,7 +120,7 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 			// Unknown is not "new": submitting now could pay the vendor for the same batch twice.
 			observability.DependencyErrorsTotal.WithLabelValues("postgres", "batch").Inc()
 			log.Error().Err(err).Str("client_batch_id", req.GetClientBatchId()).Msg("batch idempotency check failed")
-			return nil, status.Error(codes.Unavailable, "storage unavailable")
+			return nil, status.Error(codes.Unavailable, "storage_unavailable")
 		}
 	}
 

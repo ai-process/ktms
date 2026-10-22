@@ -12,11 +12,23 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// Options come from config.Load, the one place settings and their defaults
+// are read.
+type Options struct {
+	Level             string
+	SentryDSN         string
+	SentryEnvironment string
+	SentryRelease     string
+	SentryTracing     bool
+	SentryDebug       bool
+	SentryBreadcrumbs bool
+}
+
 // Init initializes the global logger with proper configuration
-func Init() {
+func Init(o Options) {
 	zerolog.TimeFieldFormat = time.RFC3339
 
-	logLevel := os.Getenv("LOG_LEVEL")
+	logLevel := o.Level
 	if logLevel == "" {
 		logLevel = "info"
 	}
@@ -47,14 +59,14 @@ func Init() {
 
 	// Initialize Sentry if DSN is provided
 	var sentryWriter *sentryzerolog.Writer
-	if sentryDSN := os.Getenv("SENTRY_DSN"); sentryDSN != "" {
+	if sentryDSN := o.SentryDSN; sentryDSN != "" {
 		err := sentry.Init(sentry.ClientOptions{
 			Dsn:              sentryDSN,
-			Debug:            os.Getenv("SENTRY_DEBUG") == "true",
-			EnableTracing:    os.Getenv("SENTRY_ENABLE_TRACING") == "true",
+			Debug:            o.SentryDebug,
+			EnableTracing:    o.SentryTracing,
 			TracesSampleRate: 1.0,
-			Environment:      envOr("SENTRY_ENVIRONMENT", "development"),
-			Release:          os.Getenv("SENTRY_RELEASE"),
+			Environment:      o.SentryEnvironment,
+			Release:          o.SentryRelease,
 		})
 		if err != nil {
 			log.Fatal().Err(err).Msg("sentry.Init failed")
@@ -66,7 +78,7 @@ func Init() {
 			},
 			Options: sentryzerolog.Options{
 				Levels:          []zerolog.Level{zerolog.ErrorLevel, zerolog.FatalLevel, zerolog.PanicLevel},
-				WithBreadcrumbs: os.Getenv("SENTRY_WITH_BREADCRUMBS") == "true",
+				WithBreadcrumbs: o.SentryBreadcrumbs,
 				FlushTimeout:    3 * time.Second,
 			},
 		})
@@ -90,12 +102,4 @@ func Init() {
 	log.Logger = log.Logger.With().Str("host", hostname).Str("service", "ktms").Logger()
 
 	zerolog.DefaultContextLogger = &log.Logger
-}
-
-// envOr applies the documented default; Init runs before config.Load.
-func envOr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
 }

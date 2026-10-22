@@ -328,7 +328,7 @@ func mutationStatus(err error) error {
 		}
 	}
 	log.Error().Err(err).Msg("config mutation failed")
-	return status.Error(codes.Unavailable, "storage unavailable")
+	return status.Error(codes.Unavailable, "storage_unavailable")
 }
 
 // --- api keys ---
@@ -522,7 +522,7 @@ func dbStatus(err error) error {
 	if !errors.As(err, &pgErr) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 		observability.DependencyErrorsTotal.WithLabelValues("postgres", "admin").Inc()
 	}
-	return status.Error(codes.Unavailable, "storage unavailable")
+	return status.Error(codes.Unavailable, "storage_unavailable")
 }
 
 // --- organizations and teams ---
