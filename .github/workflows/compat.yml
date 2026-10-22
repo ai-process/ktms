@@ -24,8 +24,9 @@ jobs:
       # The release ships darwin binaries too, so both targets are checked.
       - name: govulncheck
         run: |
-          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
-          GOOS=darwin go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          govulncheck ./...
+          GOOS=darwin govulncheck ./... # GOOS picks the code to scan, not the tool's build
       - uses: bufbuild/buf-action@v1
         with:
           setup_only: true

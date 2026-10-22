@@ -38,8 +38,9 @@ jobs:
           cache: true
       - name: govulncheck
         run: |
-          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
-          GOOS=darwin go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          govulncheck ./...
+          GOOS=darwin govulncheck ./... # GOOS picks the code to scan, not the tool's build
 
   upgrade:
     runs-on: ubuntu-latest
