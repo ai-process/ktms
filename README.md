@@ -1184,10 +1184,14 @@ These work and are supported, but may change in a minor release. The change is t
 ### Upgrading
 
 - **Within 1.x, upgrade in one step** from any earlier 1.x release: migrations run forward at
-  startup and cover every release in between. CI runs an upgrade from the previous release
-  (`scripts/upgrade-test.sh`) on every pull request and before each release.
+  startup and cover every release in between. `scripts/upgrade-test.sh` upgrades from the
+  previous release and from the oldest 1.x release on every pull request and before each
+  release.
 - **Rolling upgrades work within 1.x:** migrations only add, so replicas of the previous release
-  keep serving while new ones start. A change that cannot be additive waits for 2.0.
+  keep serving on the migrated database while new ones start; the upgrade test runs the old
+  release again after the new one migrated. A change that cannot be additive waits for 2.0.
+  Until the roll finishes, old replicas do not apply what the new release added (for example a
+  new kind of limit), so finish rolls promptly.
 - **Downgrades are not supported.** Migrations have no down step; to go back, restore the
   database backup taken before the upgrade.
 - **From 0.x to 1.0,** read the CHANGELOG first: 0.x releases made no compatibility promise. The
@@ -1264,10 +1268,11 @@ Pull requests are welcome; read [`CONTRIBUTING.md`](CONTRIBUTING.md) first.
 git tag v1.0.0 && git push origin v1.0.0
 ```
 
-Both publishing workflows first run `.github/workflows/compat.yml`: `buf breaking` against the
-previous stable tag and the upgrade test from it. If either fails, nothing is published. A
-release that changes an Experimental element on purpose sets the repository variable
-`ALLOW_BREAKING_TAG` to its tag, which skips the proto check (the upgrade test still runs).
+The release workflow first runs `.github/workflows/compat.yml` once: `buf breaking` against the
+previous published release in the tag's history, and the upgrade test from it (and from the
+oldest 1.x release). GoReleaser and the Docker images both wait for it, so if it fails nothing is
+published. A release that changes an Experimental `ktms.v1` element on purpose sets the
+repository variable `ALLOW_BREAKING_TAG` to its tag, which skips only that check.
 
 - **GitHub Release** (GoReleaser, `.github/workflows/release.yml`): `ktms-node` and
   `ktms-server` archives for darwin and linux, amd64 and arm64, plus `checksums.txt`.

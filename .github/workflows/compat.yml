@@ -1,7 +1,7 @@
 name: Compatibility
 
-# Called on every v* tag by release.yml and docker-publish.yml, so neither the
-# binaries nor the images go out when the release breaks the one before it.
+# Called once per v* tag by release.yml; the binaries and the images both wait
+# for it, so neither goes out when the release breaks the one before it.
 on:
   workflow_call:
 
@@ -10,8 +10,9 @@ permissions:
 
 jobs:
   # A release must stay compatible with the one before it: same proto, and a
-  # database it can take over. A tag that breaks an Experimental element on
-  # purpose is named in the ALLOW_BREAKING_TAG repository variable.
+  # database it can take over. A tag that changes an Experimental ktms.v1
+  # element on purpose is named in the ALLOW_BREAKING_TAG repository variable;
+  # usage.v1 has nothing experimental and is always checked.
   compat:
     runs-on: ubuntu-latest
     steps:
@@ -25,17 +26,21 @@ jobs:
       - uses: bufbuild/buf-action@v1
         with:
           setup_only: true
-      - name: Previous stable release
+      - name: Previous published release
         id: prev
-        run: |
-          prev=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vx "$GITHUB_REF_NAME" | head -n 1)
-          echo "tag=$prev" >> "$GITHUB_OUTPUT"
-      - name: Proto compatible with the previous release
+        env:
+          CUR: ${{ github.ref_name }}
+        run: echo "tag=$(./scripts/upgrade-test.sh --print-prev | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: ktms.v1 compatible with the previous release
         if: vars.ALLOW_BREAKING_TAG != github.ref_name
+        run: buf breaking --against ".git#tag=${{ steps.prev.outputs.tag }}"
+      - name: usage.v1 compatible with the previous release
+        working-directory: usage-proto
         run: |
-          buf breaking --against ".git#tag=${{ steps.prev.outputs.tag }}"
-          cd usage-proto && buf breaking . --against "../.git#tag=${{ steps.prev.outputs.tag }},subdir=usage-proto" \
+          buf breaking . --against "../.git#tag=${{ steps.prev.outputs.tag }},subdir=usage-proto" \
             --config '{"version":"v2","breaking":{"use":["FILE"]}}'
-      - name: Upgrade from the previous release
-        run: PREV=${{ steps.prev.outputs.tag }} ./scripts/upgrade-test.sh
+      - name: Upgrade from the previous releases
+        env:
+          CUR: ${{ github.ref_name }}
+        run: ./scripts/upgrade-test.sh
 

@@ -17,6 +17,11 @@ jobs:
   compat:
     uses: ./.github/workflows/compat.yml
 
+  images:
+    needs: compat
+    uses: ./.github/workflows/docker-publish.yml
+    secrets: inherit
+
   release:
     needs: compat
     runs-on: ubuntu-latest

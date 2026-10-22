@@ -2,7 +2,8 @@
 
 // Package upgrade checks that a database written by the previous release keeps
 // working after this build takes over. scripts/upgrade-test.sh runs TestSeed
-// against the old release, swaps the server, then runs TestVerify.
+// against the old release, TestVerify on this build, then TestServe on the old
+// release again.
 package upgrade
 
 import (
@@ -124,7 +125,8 @@ func TestSeed(t *testing.T) {
 	}
 }
 
-func TestVerify(t *testing.T) {
+func loadState(t *testing.T) state {
+	t.Helper()
 	raw, err := os.ReadFile(env(t, "UPGRADE_STATE"))
 	if err != nil {
 		t.Fatalf("seed state: %v", err)
@@ -133,6 +135,11 @@ func TestVerify(t *testing.T) {
 	if err := json.Unmarshal(raw, &st); err != nil {
 		t.Fatal(err)
 	}
+	return st
+}
+
+func TestVerify(t *testing.T) {
+	st := loadState(t)
 	conn := dial(t)
 	admin := pb.NewAdminServiceClient(conn)
 	ctx, cancel := as(env(t, "ADMIN_KEY"))
@@ -177,4 +184,16 @@ func TestVerify(t *testing.T) {
 	ok(t, "CreateOrganization", err)
 	_, err = admin.CreateTeam(ctx, &pb.CreateTeamRequest{OrgId: org.GetOrganization().GetId(), Name: "upgrade-team", MonthlyBudgetUsd: 5})
 	ok(t, "CreateTeam", err)
+}
+
+// TestServe runs on the old release after the new one migrated the database,
+// as during a rolling upgrade: it must keep serving its own clients.
+func TestServe(t *testing.T) {
+	st := loadState(t)
+	conn := dial(t)
+	ctx, cancel := as(env(t, "ADMIN_KEY"))
+	defer cancel()
+	_, err := pb.NewAdminServiceClient(conn).ListAPIKeys(ctx, &pb.ListAPIKeysRequest{})
+	ok(t, "ListAPIKeys", err)
+	generate(t, conn, st.ClientKey)
 }

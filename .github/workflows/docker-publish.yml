@@ -1,22 +1,14 @@
 name: Publish Docker image
 
-# Every pushed tag becomes images on Docker Hub: coyl/ktms:<tag> (server slim & audio)
+# Every v* release becomes images on Docker Hub: coyl/ktms:<tag> (server slim & audio)
 # and coyl/ktms-node:<tag> (node agent).
 # Needs the repository secrets DOCKER_USERNAME and DOCKER_PASSWORD (an access token).
+# Called by release.yml after the compatibility check passed.
 on:
-  push:
-    tags:
-      - '*'
+  workflow_call:
 
 jobs:
-  compat:
-    if: startsWith(github.ref_name, 'v')
-    uses: ./.github/workflows/compat.yml
-
   publish:
-    needs: compat
-    # Tags outside the v* scheme skip the check; a failed check stops the images.
-    if: ${{ !cancelled() && (needs.compat.result == 'success' || needs.compat.result == 'skipped') }}
     runs-on: ubuntu-latest
     strategy:
       matrix:

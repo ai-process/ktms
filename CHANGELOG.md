@@ -60,6 +60,13 @@ All notable changes to KTMS are listed here. The format follows
 - The project is renamed from llm-proxy to KTMS: gRPC package `ktms.v1`, `KTMS_*` settings and
   `X-KTMS-*` headers. The old names keep working where listed under Deprecated in the README.
 
+## [0.12.1] - 2026-10-22
+
+Backport on the 0.12 line.
+
+### Security
+- Go 1.27.3, Alpine 3.23 and `ca-certificates` >= 20261020-r0.
+
 ## [0.12.0] - 2026-10-16
 
 ### Added
@@ -92,6 +99,7 @@ Releases before 0.10.0 are described on the
 [Unreleased]: https://github.com/ai-process/ktms/compare/v0.13.1...HEAD
 [0.13.1]: https://github.com/ai-process/ktms/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/ai-process/ktms/compare/v0.12.0...v0.13.0
+[0.12.1]: https://github.com/ai-process/ktms/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/ai-process/ktms/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/ai-process/ktms/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/ai-process/ktms/compare/v0.10.3...v0.11.0
