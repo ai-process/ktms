@@ -36,6 +36,9 @@ type chatRequest struct {
 
 type server struct {
 	defaults timing
+	// requireKey, when set, is the only bearer token accepted, so a test can
+	// prove the gateway decrypted and sent the vendor key it stores.
+	requireKey string
 	requests atomic.Int64
 	streams  atomic.Int64
 }
@@ -49,7 +52,7 @@ func main() {
 		Latency:    envMs("MOCK_LATENCY_MS", 0),
 		Chunks:     envInt("MOCK_CHUNKS", 20),
 		ChunkDelay: envMs("MOCK_CHUNK_DELAY_MS", 15),
-	}}
+	}, requireKey: os.Getenv("MOCK_REQUIRE_KEY")}
 	addr := ":" + envStr("PORT", "8000")
 	srv := &http.Server{Addr: addr, Handler: s.routes(), ReadHeaderTimeout: 10 * time.Second}
 	log.Printf("mock-upstream listening on %s (defaults %+v)", addr, s.defaults)
@@ -76,6 +79,10 @@ func (s *server) routes() http.Handler {
 }
 
 func (s *server) chatCompletions(w http.ResponseWriter, r *http.Request) {
+	if s.requireKey != "" && r.Header.Get("Authorization") != "Bearer "+s.requireKey {
+		http.Error(w, `{"error":{"message":"invalid api key","type":"invalid_request_error"}}`, http.StatusUnauthorized)
+		return
+	}
 	var req chatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":{"message":"invalid JSON body","type":"invalid_request_error"}}`, http.StatusBadRequest)

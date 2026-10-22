@@ -115,3 +115,23 @@ func TestInvalidBody(t *testing.T) {
 		t.Fatal("invalid request must not be counted")
 	}
 }
+
+func TestRequireKey(t *testing.T) {
+	s := &server{defaults: timing{Chunks: 1}, requireKey: "vk"}
+	ts := httptest.NewServer(s.routes())
+	t.Cleanup(ts.Close)
+	body := `{"model":"m","messages":[{"content":"hi"}]}`
+	if resp := post(t, ts.URL, body); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("no key: status %d, want 401", resp.StatusCode)
+	}
+	req, _ := http.NewRequest("POST", ts.URL+"/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer vk")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("right key: status %d", resp.StatusCode)
+	}
+}
