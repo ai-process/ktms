@@ -28,19 +28,26 @@ type querier interface {
 
 func (d *DB) GetAPIKeyByLookup(ctx context.Context, lookup string) (*APIKey, error) {
 	return scanAPIKey(d.pool.QueryRow(ctx,
-		`SELECT id, name, key_lookup, key_hash, scopes, disabled_at, created_at
-		 FROM api_key WHERE key_lookup = $1`, lookup))
+		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
+		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}')
+		 FROM api_key k
+		 LEFT JOIN team t ON t.id = k.team_id
+		 WHERE k.key_lookup = $1`, lookup))
 }
 
 func (d *DB) GetAPIKeyByName(ctx context.Context, name string) (*APIKey, error) {
 	return scanAPIKey(d.pool.QueryRow(ctx,
-		`SELECT id, name, key_lookup, key_hash, scopes, disabled_at, created_at
-		 FROM api_key WHERE name = $1`, name))
+		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
+		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}')
+		 FROM api_key k
+		 LEFT JOIN team t ON t.id = k.team_id
+		 WHERE k.name = $1`, name))
 }
 
 func scanAPIKey(row pgx.Row) (*APIKey, error) {
 	var k APIKey
-	err := row.Scan(&k.ID, &k.Name, &k.KeyLookup, &k.KeyHash, &k.Scopes, &k.DisabledAt, &k.CreatedAt)
+	err := row.Scan(&k.ID, &k.Name, &k.KeyLookup, &k.KeyHash, &k.Scopes, &k.DisabledAt, &k.CreatedAt,
+		&k.OrgID, &k.TeamID, &k.TeamAllowedModels)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -52,8 +59,8 @@ func scanAPIKey(row pgx.Row) (*APIKey, error) {
 
 func (d *DB) InsertAPIKey(ctx context.Context, k *APIKey) error {
 	_, err := d.pool.Exec(ctx,
-		`INSERT INTO api_key (id, name, key_lookup, key_hash, scopes) VALUES ($1, $2, $3, $4, $5)`,
-		k.ID, k.Name, k.KeyLookup, k.KeyHash, k.Scopes)
+		`INSERT INTO api_key (id, name, key_lookup, key_hash, scopes, org_id, team_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		k.ID, k.Name, k.KeyLookup, k.KeyHash, k.Scopes, k.OrgID, k.TeamID)
 	return err
 }
 
@@ -71,8 +78,11 @@ func (d *DB) DisableAPIKey(ctx context.Context, name string) error {
 
 func (d *DB) ListAPIKeys(ctx context.Context) ([]*APIKey, error) {
 	rows, err := d.pool.Query(ctx,
-		`SELECT id, name, key_lookup, key_hash, scopes, disabled_at, created_at
-		 FROM api_key ORDER BY created_at`)
+		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
+		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}')
+		 FROM api_key k
+		 LEFT JOIN team t ON t.id = k.team_id
+		 ORDER BY k.created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -418,6 +428,180 @@ func DeleteSpendLimit(ctx context.Context, tx pgx.Tx, subjectType, subjectID, pe
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+// --- organizations and teams ---
+
+func (d *DB) CreateOrganization(ctx context.Context, org *Organization) error {
+	_, err := d.pool.Exec(ctx,
+		`INSERT INTO organization (id, name, created_at) VALUES ($1, $2, $3)`,
+		org.ID, org.Name, org.CreatedAt)
+	return err
+}
+
+func (d *DB) ListOrganizations(ctx context.Context) ([]*Organization, error) {
+	rows, err := d.pool.Query(ctx,
+		`SELECT id, name, created_at FROM organization ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Organization
+	for rows.Next() {
+		var o Organization
+		if err := rows.Scan(&o.ID, &o.Name, &o.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &o)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) GetOrganization(ctx context.Context, id string) (*Organization, error) {
+	var o Organization
+	err := d.pool.QueryRow(ctx,
+		`SELECT id, name, created_at FROM organization WHERE id = $1`, id).
+		Scan(&o.ID, &o.Name, &o.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &o, nil
+}
+
+// DeleteOrganizationTx removes an organization, its teams (cascade) and their
+// spend limits, detaching disabled keys like DeleteTeamTx; active keys refuse it.
+func DeleteOrganizationTx(ctx context.Context, tx pgx.Tx, id string) error {
+	if _, err := tx.Exec(ctx,
+		`UPDATE api_key SET team_id = NULL, org_id = NULL WHERE org_id = $1 AND disabled_at IS NOT NULL`, id); err != nil {
+		return err
+	}
+	if err := refuseActiveKeys(ctx, tx, `org_id = $1`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM spend_limit WHERE subject_type = 'team' AND subject_id IN (SELECT id::text FROM team WHERE org_id = $1)`, id); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM organization WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetTeamBudgetTx makes the team's monthly spend limit match its budget: the
+// team row and spend_limit change together, so they cannot drift apart.
+func SetTeamBudgetTx(ctx context.Context, tx pgx.Tx, teamID string, limitNanoUSD int64) error {
+	if limitNanoUSD > 0 {
+		return UpsertSpendLimit(ctx, tx, &SpendLimit{SubjectType: "team", SubjectID: teamID, Period: "month", LimitNanoUSD: limitNanoUSD})
+	}
+	_, err := tx.Exec(ctx, `DELETE FROM spend_limit WHERE subject_type = 'team' AND subject_id = $1`, teamID)
+	return err
+}
+
+func CreateTeamTx(ctx context.Context, tx pgx.Tx, team *Team) error {
+	_, err := tx.Exec(ctx,
+		`INSERT INTO team (id, org_id, name, monthly_budget_usd, allowed_models, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)`,
+		team.ID, team.OrgID, team.Name, team.MonthlyBudgetUSD, team.AllowedModels, team.CreatedAt)
+	return err
+}
+
+func (d *DB) GetTeam(ctx context.Context, id string) (*Team, error) {
+	var t Team
+	err := d.pool.QueryRow(ctx,
+		`SELECT id, org_id, name, monthly_budget_usd, allowed_models, created_at
+		 FROM team WHERE id = $1`, id).
+		Scan(&t.ID, &t.OrgID, &t.Name, &t.MonthlyBudgetUSD, &t.AllowedModels, &t.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (d *DB) ListTeams(ctx context.Context, orgID string) ([]*Team, error) {
+	var (
+		rows pgx.Rows
+		err  error
+	)
+	if orgID != "" {
+		rows, err = d.pool.Query(ctx,
+			`SELECT id, org_id, name, monthly_budget_usd, allowed_models, created_at
+			 FROM team WHERE org_id = $1 ORDER BY created_at DESC`, orgID)
+	} else {
+		rows, err = d.pool.Query(ctx,
+			`SELECT id, org_id, name, monthly_budget_usd, allowed_models, created_at
+			 FROM team ORDER BY created_at DESC`)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Team
+	for rows.Next() {
+		var t Team
+		if err := rows.Scan(&t.ID, &t.OrgID, &t.Name, &t.MonthlyBudgetUSD, &t.AllowedModels, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &t)
+	}
+	return out, rows.Err()
+}
+
+func UpdateTeamTx(ctx context.Context, tx pgx.Tx, team *Team) error {
+	tag, err := tx.Exec(ctx,
+		`UPDATE team SET name = $2, monthly_budget_usd = $3, allowed_models = $4
+		 WHERE id = $1`,
+		team.ID, team.Name, team.MonthlyBudgetUSD, team.AllowedModels)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// DeleteTeamTx removes a team and its spend limits. Disabled keys are detached
+// (keys are never deleted, so they would pin the team forever); active keys
+// make it ErrTenantInUse: revoke or move them first.
+func DeleteTeamTx(ctx context.Context, tx pgx.Tx, id string) error {
+	if _, err := tx.Exec(ctx,
+		`UPDATE api_key SET team_id = NULL, org_id = NULL WHERE team_id = $1 AND disabled_at IS NOT NULL`, id); err != nil {
+		return err
+	}
+	if err := refuseActiveKeys(ctx, tx, `team_id = $1`, id); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM team WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	_, err = tx.Exec(ctx, `DELETE FROM spend_limit WHERE subject_type = 'team' AND subject_id = $1`, id)
+	return err
+}
+
+func refuseActiveKeys(ctx context.Context, tx pgx.Tx, where, id string) error {
+	var n int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM api_key WHERE `+where, id).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return fmt.Errorf("%w: %d active api key(s)", ErrTenantInUse, n)
 	}
 	return nil
 }

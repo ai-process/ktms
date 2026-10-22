@@ -56,6 +56,7 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 		Chain:   plan.chain,
 		KeyName: plan.identity.Name,
 		UserID:  router.UserID(plan.attrs, plan.identity.Name),
+		TeamID:  plan.identity.TeamID,
 		// Input-side estimate only; Settle replaces it with what the vendor
 		// billed, which for speech is audio tokens and far larger.
 		Estimate:        int64(len([]rune(speechText))/4 + 1),
@@ -120,6 +121,7 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 		Chain:   plan.chain,
 		KeyName: plan.identity.Name,
 		UserID:  router.UserID(plan.attrs, plan.identity.Name),
+		TeamID:  plan.identity.TeamID,
 		// Input-side estimate only; image output tokens dwarf it, so Settle is
 		// what makes the budget accounting true.
 		Estimate:        int64(len([]rune(prompt))/4 + 1),
@@ -179,16 +181,15 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 
 	// The modality is the proxy's to state, not the caller's: rules match on it
 	// and a caller could otherwise route image work to a speech chain.
-	clean := router.SanitizeAttributes(attrs)
-	routing := make(map[string]string, len(clean)+1)
-	for k, v := range clean {
-		routing[k] = v
-	}
+	routing := routingAttributes(attrs, id)
 	routing[ModalityAttribute] = modality
 
 	var chain []string
 	var ruleName string
 	if override != "" {
+		if !id.CanAccessModel(override) {
+			return nil, status.Errorf(codes.PermissionDenied, "model %q not allowed for team", override)
+		}
 		if _, ok := snap.Models[override]; !ok {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: unknown model %q", override)
 		}
@@ -211,11 +212,11 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 		return nil, router.ToStatus(err)
 	}
 
-	meta := make(map[string]string, len(routing)+2)
-	for k, v := range routing {
-		meta[k] = v
+	if models, err = teamModels(ctx, id, models); err != nil {
+		return nil, err
 	}
-	meta[APIKeyAttribute] = id.Name
+
+	meta := usageMeta(routing, id)
 	if ruleName != "" {
 		meta["rule"] = ruleName
 	}

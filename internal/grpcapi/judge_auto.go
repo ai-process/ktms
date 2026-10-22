@@ -102,7 +102,7 @@ func (s *ProxyServer) judgeEffort(ctx context.Context, attrs map[string]string, 
 		return registry.EffortMedium, 0.5, "", nil
 	}
 
-	judgeCtx, cancel := context.WithTimeout(ctx, judgeAutoTimeout)
+	judgeCtx, cancel := context.WithTimeout(withInternalCall(ctx), judgeAutoTimeout)
 	defer cancel()
 
 	plan, err := s.planMedia(judgeCtx, attrs, "", modalityJudge, registry.CapabilityJudge)
@@ -135,6 +135,7 @@ func (s *ProxyServer) judgeEffort(ctx context.Context, attrs map[string]string, 
 		Chain:           plan.chain,
 		KeyName:         plan.identity.Name,
 		UserID:          router.UserID(plan.attrs, plan.identity.Name),
+		TeamID:          plan.identity.TeamID,
 		Estimate:        50,
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,
@@ -210,6 +211,9 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 	switch {
 	case req.GetModelOverride() != "":
 		routeMode = router.RouteModeOverride
+		if !id.CanAccessModel(req.GetModelOverride()) {
+			return nil, status.Errorf(codes.PermissionDenied, "model %q not allowed for team", req.GetModelOverride())
+		}
 		m, ok := snap.Models[req.GetModelOverride()]
 		if !ok {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: unknown model %q", req.GetModelOverride())
@@ -254,7 +258,7 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 		return nil, status.Error(codes.InvalidArgument, "bad_request: effort is required")
 	}
 
-	rule := router.Match(snap, effort, req.GetAttributes())
+	rule := router.Match(snap, effort, routingAttributes(req.GetAttributes(), id))
 	if rule == nil {
 		return nil, router.ToStatus(router.ErrNotConfigured)
 	}
@@ -265,6 +269,10 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 	models, err := router.FilterChain(snap, chain, id.KeyID, effort, req.GetEnableGoogleSearch(), reqCaps...)
 	if err != nil {
 		return nil, router.ToStatus(err)
+	}
+
+	if models, err = teamModels(ctx, id, models); err != nil {
+		return nil, err
 	}
 
 	if placement != "" {
@@ -279,7 +287,7 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 		shadowPct   float64
 		shadowEval  bool
 	)
-	if rule.ShadowModel != "" && rule.ShadowPercentage > 0 {
+	if rule.ShadowModel != "" && rule.ShadowPercentage > 0 && id.CanAccessModel(rule.ShadowModel) {
 		shadowChain, sErr := router.FilterChain(snap, []string{rule.ShadowModel}, id.KeyID, effort, req.GetEnableGoogleSearch(), reqCaps...)
 		if sErr == nil && len(shadowChain) > 0 {
 			if placement != "" {

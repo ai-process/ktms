@@ -10,16 +10,35 @@ import (
 var (
 	ErrNotFound      = errors.New("proxydb: not found")
 	ErrAlreadyExists = errors.New("proxydb: already exists")
+	ErrTenantInUse   = errors.New("proxydb: tenant still has active api keys")
 )
 
+type Organization struct {
+	ID        string
+	Name      string
+	CreatedAt time.Time
+}
+
+type Team struct {
+	ID               string
+	OrgID            string
+	Name             string
+	MonthlyBudgetUSD float64
+	AllowedModels    []string
+	CreatedAt        time.Time
+}
+
 type APIKey struct {
-	ID         string
-	Name       string
-	KeyLookup  string
-	KeyHash    string
-	Scopes     []string
-	DisabledAt *time.Time
-	CreatedAt  time.Time
+	ID                string
+	Name              string
+	KeyLookup         string
+	KeyHash           string
+	Scopes            []string
+	DisabledAt        *time.Time
+	CreatedAt         time.Time
+	OrgID             *string
+	TeamID            *string
+	TeamAllowedModels []string
 }
 
 func (k *APIKey) Active() bool { return k.DisabledAt == nil }
@@ -137,6 +156,10 @@ type Batch struct {
 	CreatedAt     time.Time
 	CompletedAt   *time.Time
 	LeasedUntil   *time.Time
+	// The submitting key's tenant, read on lease: stored attributes predate
+	// the reserved team keys and may carry a caller's own team_id.
+	OrgID  string
+	TeamID string
 }
 
 type BatchItem struct {

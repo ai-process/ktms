@@ -231,7 +231,7 @@ func (r *recordingThrottle) AllowRPM(_ context.Context, _, _ string, m *proxydb.
 	return !r.rpmDeny[m.ID]
 }
 
-func (r *recordingThrottle) Reserve(context.Context, *proxydb.Model, string, string, int64, int64) (*Reservation, string) {
+func (r *recordingThrottle) Reserve(context.Context, *proxydb.Model, string, string, string, int64, int64) (*Reservation, string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.reserves++

@@ -101,6 +101,8 @@ message GetConfigResponse {
 message MintAPIKeyRequest {
   string name = 1;
   repeated string scopes = 2; // "generate" | "admin"
+  string org_id = 3;
+  string team_id = 4;
 }
 
 message MintAPIKeyResponse {
@@ -120,6 +122,8 @@ message APIKeyInfo {
   repeated string scopes = 2;
   google.protobuf.Timestamp created_at = 3;
   bool disabled = 4;
+  string org_id = 5;
+  string team_id = 6;
 }
 
 message ListAPIKeysResponse {
@@ -238,7 +242,9 @@ message ListUserRateLimitsResponse {
 // reserved up front, and a request that would cross the cap is refused with
 // throttled:spend_<subject>_<daily|monthly> (HTTP 429 insufficient_quota).
 message SpendLimitSpec {
-  string subject_type = 1; // "key" (api key name) | "user" (attributes["user_id"] or svc:<key_name>)
+  // "key" (api key name) | "user" (attributes["user_id"] or svc:<key_name>).
+  // Team caps ("team", monthly) are listed here but set only via Create/UpdateTeam.
+  string subject_type = 1;
   string subject_id = 2; // key name / user id, or "*" for the default of that subject type
   string period = 3; // "day" | "month", UTC calendar periods
   int64 limit_nanousd = 4; // cap in nano-USD (1e-9 USD), > 0
@@ -267,6 +273,104 @@ message ListSpendLimitsResponse {
   repeated SpendLimitSpec spend_limits = 1;
 }
 
+message Organization {
+  string id = 1;
+  string name = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+// A team's keys may call only allowed_models (empty = any) and spend at most
+// monthly_budget_usd per UTC month across all its keys (0 = no cap). Deleting a
+// team or organization detaches revoked keys and is refused while active ones remain.
+message Team {
+  string id = 1;
+  string org_id = 2;
+  string name = 3;
+  double monthly_budget_usd = 4;
+  repeated string allowed_models = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message CreateOrganizationRequest {
+  string name = 1;
+}
+
+message CreateOrganizationResponse {
+  Organization organization = 1;
+}
+
+message ListOrganizationsRequest {}
+
+message ListOrganizationsResponse {
+  repeated Organization organizations = 1;
+}
+
+message DeleteOrganizationRequest {
+  string id = 1;
+}
+
+message DeleteOrganizationResponse {}
+
+message CreateTeamRequest {
+  string org_id = 1;
+  string name = 2;
+  double monthly_budget_usd = 3;
+  repeated string allowed_models = 4;
+}
+
+message CreateTeamResponse {
+  Team team = 1;
+}
+
+message GetTeamRequest {
+  string id = 1;
+}
+
+message GetTeamResponse {
+  Team team = 1;
+}
+
+message ListTeamsRequest {
+  string org_id = 1; // optional filter
+}
+
+message ListTeamsResponse {
+  repeated Team teams = 1;
+}
+
+// Replaces the team: an omitted budget removes the cap and omitted
+// allowed_models lifts the restriction, so send every field.
+message UpdateTeamRequest {
+  string id = 1;
+  string name = 2;
+  double monthly_budget_usd = 3;
+  repeated string allowed_models = 4;
+}
+
+message UpdateTeamResponse {
+  Team team = 1;
+}
+
+message DeleteTeamRequest {
+  string id = 1;
+}
+
+message DeleteTeamResponse {}
+
+message GetTeamSpendRequest {
+  string id = 1;
+}
+
+// The team's spend this UTC month as the gateway enforces it (the same counter
+// that refuses calls with throttled:spend_team_monthly). Only capped teams are
+// counted, from the moment the budget was set.
+message GetTeamSpendResponse {
+  int64 spent_nanousd = 1;
+  int64 limit_nanousd = 2; // 0 = no cap
+  google.protobuf.Timestamp resets_at = 3;
+  bool metered = 4; // false: no budget set, or no Redis (spend is not counted)
+}
+
 // All admin RPCs require the "admin" scope. Every config mutation validates
 // the resulting full config in one transaction and bumps the config version.
 service AdminService {
@@ -291,4 +395,14 @@ service AdminService {
   rpc SetSpendLimit(SetSpendLimitRequest) returns (SetSpendLimitResponse);
   rpc DeleteSpendLimit(DeleteSpendLimitRequest) returns (DeleteSpendLimitResponse);
   rpc ListSpendLimits(ListSpendLimitsRequest) returns (ListSpendLimitsResponse);
+
+  rpc CreateOrganization(CreateOrganizationRequest) returns (CreateOrganizationResponse);
+  rpc ListOrganizations(ListOrganizationsRequest) returns (ListOrganizationsResponse);
+  rpc DeleteOrganization(DeleteOrganizationRequest) returns (DeleteOrganizationResponse);
+  rpc CreateTeam(CreateTeamRequest) returns (CreateTeamResponse);
+  rpc GetTeam(GetTeamRequest) returns (GetTeamResponse);
+  rpc ListTeams(ListTeamsRequest) returns (ListTeamsResponse);
+  rpc UpdateTeam(UpdateTeamRequest) returns (UpdateTeamResponse);
+  rpc DeleteTeam(DeleteTeamRequest) returns (DeleteTeamResponse);
+  rpc GetTeamSpend(GetTeamSpendRequest) returns (GetTeamSpendResponse);
 }

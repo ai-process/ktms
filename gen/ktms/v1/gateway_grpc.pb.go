@@ -44,8 +44,11 @@ const (
 // carries RetryInfo with the soonest one frees up: wait that long first.
 // RESOURCE_EXHAUSTED = throttled ("throttled:rpm" | "throttled:budget_key" |
 // "throttled:budget_user") — back off, do not hot-retry; or a spend limit
-// ("throttled:spend_<key|user>_<daily|monthly>") with ErrorInfo
-// "insufficient_quota" and RetryInfo until the UTC period resets.
+// ("throttled:spend_<key|user>_<daily|monthly>", "throttled:spend_team_monthly")
+// with ErrorInfo "insufficient_quota" and RetryInfo until the UTC period resets.
+// PERMISSION_DENIED: the key's team may not use the model ("model \"<id>\" not
+// allowed for team", "no models in chain allowed for team", "model access
+// denied by team policy"); do not retry.
 // FAILED_PRECONDITION: "output_truncated" (raise max_output_tokens, do not
 // retry as-is), "no_capable_model", "no_vendor_key", "not_configured",
 // "batch not configured".
@@ -246,8 +249,11 @@ func (c *gatewayServiceClient) CancelBatch(ctx context.Context, in *CancelBatchR
 // carries RetryInfo with the soonest one frees up: wait that long first.
 // RESOURCE_EXHAUSTED = throttled ("throttled:rpm" | "throttled:budget_key" |
 // "throttled:budget_user") — back off, do not hot-retry; or a spend limit
-// ("throttled:spend_<key|user>_<daily|monthly>") with ErrorInfo
-// "insufficient_quota" and RetryInfo until the UTC period resets.
+// ("throttled:spend_<key|user>_<daily|monthly>", "throttled:spend_team_monthly")
+// with ErrorInfo "insufficient_quota" and RetryInfo until the UTC period resets.
+// PERMISSION_DENIED: the key's team may not use the model ("model \"<id>\" not
+// allowed for team", "no models in chain allowed for team", "model access
+// denied by team policy"); do not retry.
 // FAILED_PRECONDITION: "output_truncated" (raise max_output_tokens, do not
 // retry as-is), "no_capable_model", "no_vendor_key", "not_configured",
 // "batch not configured".

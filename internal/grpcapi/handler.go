@@ -157,6 +157,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		Chain:            plan.models,
 		KeyName:          id.Name,
 		UserID:           router.UserID(req.GetAttributes(), id.Name),
+		TeamID:           id.TeamID,
 		Estimate:         estimateTokens(req),
 		Chat:             chat,
 		CircuitBreaker:   s.circuitBreaker,
@@ -287,6 +288,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		Chain:            plan.models,
 		KeyName:          id.Name,
 		UserID:           router.UserID(inner.GetAttributes(), id.Name),
+		TeamID:           id.TeamID,
 		Estimate:         estimateTokens(inner),
 		Chat:             chat,
 		CircuitBreaker:   s.circuitBreaker,
@@ -623,11 +625,7 @@ func buildChat(req *pb.GenerateTextRequest, id *apikeys.Identity, ruleName, effo
 	// Attributes flow into usage meta, plus what the proxy resolved. A caller's
 	// own usage_project survives the copy — it names the usage project, with
 	// the api key as the fallback (resolver in cmd/server/main.go).
-	meta := make(map[string]string, len(req.GetAttributes())+3)
-	for k, v := range req.GetAttributes() {
-		meta[k] = v
-	}
-	meta[APIKeyAttribute] = id.Name
+	meta := usageMeta(req.GetAttributes(), id)
 	meta["effort"] = effort
 	if ruleName != "" {
 		meta["rule"] = ruleName
@@ -696,7 +694,8 @@ func requiredCapabilities(req *pb.GenerateTextRequest) []string {
 	return caps
 }
 
-// ListModels returns only models the calling client holds a vendor key for.
+// ListModels returns only models the calling client may call: it holds their
+// vendor key, and its team (if any) allows them.
 func (s *ProxyServer) ListModels(ctx context.Context, _ *pb.ListModelsRequest) (*pb.ListModelsResponse, error) {
 	id := apikeys.IdentityFrom(ctx)
 	if id == nil {
@@ -705,6 +704,9 @@ func (s *ProxyServer) ListModels(ctx context.Context, _ *pb.ListModelsRequest) (
 	snap := s.snapshots.Snapshot()
 	resp := &pb.ListModelsResponse{}
 	for _, m := range snap.ClientModels(id.KeyID) {
+		if !id.CanAccessModel(m.ID) {
+			continue
+		}
 		resp.Models = append(resp.Models, modelInfo(m))
 	}
 	return resp, nil
