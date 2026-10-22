@@ -26,6 +26,22 @@ jobs:
       - name: Installer script tests
         run: sh scripts/install-node_test.sh
 
+  # A known vulnerability that our code reaches fails the build; one in a
+  # dependency we never call is only reported.
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache: true
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          govulncheck ./...
+          GOOS=darwin govulncheck ./... # GOOS picks the code to scan, not the tool's build
+
   upgrade:
     runs-on: ubuntu-latest
     steps:
