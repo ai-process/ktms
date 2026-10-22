@@ -11,9 +11,9 @@ import (
 // Config holds the application configuration. Load never fails; main.go
 // fatals on missing required values.
 type Config struct {
-	// Deprecations names deprecated settings in use, for a startup warning.
-	// They keep working through 1.x and are removed in 2.0.
-	Deprecations []string
+	// Notices are startup warnings about settings: deprecated names, which keep
+	// working through 1.x, and defaults that changed before 1.0.
+	Notices []string
 
 	DatabaseURL string
 	// EncryptionKeys is the versioned AES-256-GCM keyring spec
@@ -216,9 +216,14 @@ func Load() *Config {
 		SentryRelease:                   getEnv("SENTRY_RELEASE", ""),
 		SentryTracing:                   getEnv("SENTRY_ENABLE_TRACING", "false") == "true",
 	}
+	// The default moved from llm-proxy to ktms before 1.0; without this note
+	// an upgrade silently splits usage history between two project names.
+	if c.UsageCollectorHost != "" && os.Getenv("USAGE_PROJECT_ID") == "" {
+		c.Notices = append(c.Notices, "USAGE_PROJECT_ID is unset: usage goes to project ktms (llm-proxy before 1.0); set it to silence this")
+	}
 	for old, cur := range legacyEnv {
 		if os.Getenv(old) != "" && os.Getenv(cur) == "" {
-			c.Deprecations = append(c.Deprecations, old+" is deprecated: rename it to "+cur)
+			c.Notices = append(c.Notices, old+" is deprecated: rename it to "+cur)
 		}
 	}
 	return c

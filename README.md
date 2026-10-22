@@ -130,28 +130,28 @@ G="grpcurl -plaintext -H"
 
 # 1. Mint a client API key (plaintext is returned once)
 $G "$ADMIN" -d '{"name":"my-app","scopes":["generate"]}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/MintAPIKey
+  localhost:9090 ktms.v1.AdminService/MintAPIKey
 
 # 2. Assign vendor credential to the client key
 $G "$ADMIN" -d '{"api_key_name":"my-app","vendor":"openai","plain_key":"sk-..."}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/SetVendorKey
+  localhost:9090 ktms.v1.AdminService/SetVendorKey
 
 # 3. Register a model
 $G "$ADMIN" -d '{"model":{"id":"gpt-4o-mini","vendor":"openai",
   "efforts":["EFFORT_LOW","EFFORT_MEDIUM","EFFORT_HIGH"],
   "price_in_per_mtok":0.15,"price_out_per_mtok":0.60,"enabled":true}}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/UpsertModel
+  localhost:9090 ktms.v1.AdminService/UpsertModel
 
 # 4. Set routing rules (catch-all for each effort tier is mandatory)
 $G "$ADMIN" -d '{"rules":[
   {"name":"default","priority":1,"use":["gpt-4o-mini"],"enabled":true}]}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/ReplaceRules
+  localhost:9090 ktms.v1.AdminService/ReplaceRules
 
 # 5. Call gRPC GenerateText with your client key
 $G "authorization: Bearer llm_<your key>" -d '{
   "effort":"EFFORT_LOW",
   "messages":[{"role":"MESSAGE_ROLE_USER","text":"Say hi in three words."}]}' \
-  localhost:9090 llmproxy.v1.LLMProxyService/GenerateText
+  localhost:9090 ktms.v1.GatewayService/GenerateText
 ```
 
 Once real keys exist in production, unset `BOOTSTRAP_ADMIN_KEY`.
@@ -397,6 +397,8 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `SENTRY_DSN` | empty | Error reporting; empty disables it. |
 | `SENTRY_ENVIRONMENT` / `SENTRY_RELEASE` | `development` / empty | Sentry metadata. |
 | `SENTRY_ENABLE_TRACING` | `false` | Sentry performance tracing. |
+| `SENTRY_DEBUG` | `false` | Sentry SDK debug logging. |
+| `SENTRY_WITH_BREADCRUMBS` | `false` | Attach recent log lines to Sentry events as breadcrumbs. |
 | `OTEL_SERVICE_NAME` | `ktms` | Service name reported in OpenTelemetry traces. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | OTLP gRPC endpoint (`host:port`) for distributed tracing; empty disables remote export. |
 | `CACHE_ENABLED` | `false` | Enable prompt and completion exact-match cache in Redis. |
@@ -422,7 +424,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 
 ## Setting it up: keys, models, rules
 
-All of this is done with the admin service (`LLMProxyAdminService`) using a key that has
+All of this is done with the admin service (`AdminService`) using a key that has
 the `admin` scope. Mutations are validated in a transaction together with the existing
 config, so an invalid state can never become active. Prefer a browser to `grpcurl`? See the
 [web console](#web-console).
@@ -432,7 +434,7 @@ config, so an invalid state can never become active. Prefer a browser to `grpcur
 ```bash
 grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
   -d '{"name":"billing-service","scopes":["generate"]}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/MintAPIKey
+  localhost:9090 ktms.v1.AdminService/MintAPIKey
 ```
 
 Keys look like `llm_<hex>`. Only a hash is stored, and the plaintext is returned once.
@@ -449,7 +451,7 @@ client can call them.
 ```bash
 grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
   -d '{"api_key_name":"billing-service","vendor":"google","plain_key":"AIza..."}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/SetVendorKey
+  localhost:9090 ktms.v1.AdminService/SetVendorKey
 ```
 
 Vendors: `openai`, `anthropic`, `google`, `deepseek` (OpenAI-compatible API, default endpoint
@@ -514,7 +516,7 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"rules":[
    "use":["deepseek-chat","gpt-4o-mini"], "enabled":true},
   {"name":"anything-else", "priority":1,
    "use":["gpt-4o-mini"], "enabled":true}
-]}' localhost:9090 llmproxy.v1.LLMProxyAdminService/ReplaceRules
+]}' localhost:9090 ktms.v1.AdminService/ReplaceRules
 ```
 
 - The **highest priority** matching rule wins; priorities and names are unique.
@@ -524,7 +526,7 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"rules":[
   is throttled or its vendor is unavailable, the next is tried.
 - `weights` (optional) enables **weighted traffic routing** (Canary or A/B testing). If specified, `weights` must contain exactly one positive integer per model in `use` (e.g. `[90, 10]`). When an explicit `canary_key` or `user_id` attribute is provided, distribution is deterministic and sticky per key (salted per rule name). If omitted or when `canary_mode: "random"` is passed, routing uses weighted random distribution. When `weights` is omitted, routing is strictly deterministic (100% on `use[0]`).
 - `shadow_model` and `shadow_percentage` (optional) enable **Shadow Routing (Request Mirroring)**: asynchronously duplicates a sample (0.0–100.0%) of incoming traffic to a candidate shadow model in the background without affecting caller latency or responses. Shadow calls are non-billable to end-users (recorded at 0 nano-USD cost in usage events), carry `is_shadow: "true"` and `shadow: "true"` metadata, do not count against caller spend limits or daily token budgets, respect model RPM limits and global concurrency semaphores (512 for shadow, 256 for evaluation) to protect proxy resources and upstream providers, and never trip circuit breakers for primary traffic.
-- `shadow_eval` (optional boolean, requires `shadow_model`): enables automated quality evaluation comparing primary vs shadow model outputs using an internal `Judge` model asynchronously in the background. The judge evaluates preference (`primary`, `shadow`, or `tie`) and quality scores without adding latency to the primary caller, respects judge model RPM and circuit breakers without consuming caller spend limits, and exports results via Prometheus metrics (`llmproxy_shadow_judge_evaluations_total` and `llmproxy_shadow_judge_scores`).
+- `shadow_eval` (optional boolean, requires `shadow_model`): enables automated quality evaluation comparing primary vs shadow model outputs using an internal `Judge` model asynchronously in the background. The judge evaluates preference (`primary`, `shadow`, or `tie`) and quality scores without adding latency to the primary caller, respects judge model RPM and circuit breakers without consuming caller spend limits, and exports results via Prometheus metrics (`ktms_shadow_judge_evaluations_total` and `ktms_shadow_judge_scores`).
 - Validation requires a **catch-all** (no attribute predicates) for every effort, so no
   request can ever fall through. `anything-else` above covers all three at once.
 - `ReplaceRules` swaps the whole set atomically; there is no per-rule CRUD.
@@ -540,10 +542,10 @@ drift. Calls are priced from the model's `price_*_per_mtok` (peak and batch rate
 # $50 a day for the "support-bot" key, and $20 a month for every end user by default.
 grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"spend_limit":
   {"subject_type":"key","subject_id":"support-bot","period":"day","limit_nanousd":50000000000}}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/SetSpendLimit
+  localhost:9090 ktms.v1.AdminService/SetSpendLimit
 grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"spend_limit":
   {"subject_type":"user","subject_id":"*","period":"month","limit_nanousd":20000000000}}' \
-  localhost:9090 llmproxy.v1.LLMProxyAdminService/SetSpendLimit
+  localhost:9090 ktms.v1.AdminService/SetSpendLimit
 ```
 
 - `subject_type` is `key` (API key name) or `user` (`attributes["user_id"]`, or
@@ -623,7 +625,7 @@ drop `-plaintext` for a proxy behind TLS):
 ```bash
 # admin, once per machine
 $G "$ADMIN" -d '{"name":"anna-mac","node_id":"anna-mac"}' \
-  proxy.example.com:443 llmproxy.v1.LLMProxyAdminService/MintNodeKey      # plain_key shown once
+  proxy.example.com:443 ktms.v1.AdminService/MintNodeKey      # plain_key shown once
 
 # admin, once per model; no_thinking turns Gemma's reasoning off
 $G "$ADMIN" -d '{"model":{"id":"gemma4:26b-a4b-it-qat","vendor":"local",
@@ -815,7 +817,7 @@ grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
       }
     }
   ]
-}' localhost:9090 llmproxy.v1.LLMProxyService/SubmitBatch
+}' localhost:9090 ktms.v1.GatewayService/SubmitBatch
 ```
 
 Returns a `Batch` with status `BATCH_STATE_PENDING` (or `BATCH_STATE_RUNNING`), total item count, model, and creation timestamp.
@@ -827,7 +829,7 @@ Polls batch state (`PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `EX
 ```bash
 grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
   "batch_id": "0199c0a0-6228-7e10-91b5-685d996cbfa1"
-}' localhost:9090 llmproxy.v1.LLMProxyService/GetBatch
+}' localhost:9090 ktms.v1.GatewayService/GetBatch
 ```
 
 #### ListBatchResults
@@ -838,7 +840,7 @@ Pages through completed items with `page_token` (and `next_page_token`). Each it
 grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
   "batch_id": "0199c0a0-6228-7e10-91b5-685d996cbfa1",
   "page_size": 100
-}' localhost:9090 llmproxy.v1.LLMProxyService/ListBatchResults
+}' localhost:9090 ktms.v1.GatewayService/ListBatchResults
 ```
 
 #### CancelBatch
@@ -848,7 +850,7 @@ Requests cancellation of an unfinished batch job at the vendor. The batch remain
 ```bash
 grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
   "batch_id": "0199c0a0-6228-7e10-91b5-685d996cbfa1"
-}' localhost:9090 llmproxy.v1.LLMProxyService/CancelBatch
+}' localhost:9090 ktms.v1.GatewayService/CancelBatch
 ```
 
 ### SynthesizeSpeech, GenerateImage
@@ -897,7 +899,7 @@ Vector representations of text. Vector space isolation is strictly enforced: `au
 grpcurl -plaintext -H "authorization: Bearer llm_<key>" -d '{
   "model": "text-embedding-3-small",
   "inputs": ["Hello world", "Search document"]
-}' localhost:9090 llmproxy.v1.LLMProxyService/GetEmbeddings
+}' localhost:9090 ktms.v1.GatewayService/GetEmbeddings
 ```
 
 ### ListModels
@@ -1103,7 +1105,8 @@ lexical hash encoder that folds case, homoglyphs, zero-width and spaced-out lett
 | `NOT_FOUND` | – | Unknown batch ID. |
 | `INVALID_ARGUMENT` | `guardrail_violation` | Blocked due to detected prompt injection, PII, or a latent-space threat match. Clean input before retrying. |
 | `INVALID_ARGUMENT` | `bad_request: <message>` | Empty batch, duplicate `custom_id`, too many items (> `BATCH_MAX_ITEMS`), or invalid parameters. |
-| `UNAVAILABLE` | `vendors_unavailable` | The whole chain failed. **The only retryable error.** When vendors paused every model in the chain with `Retry-After`, details carry `RetryInfo` (HTTP: `Retry-After` header): wait that long first. |
+| `UNAVAILABLE` | `vendors_unavailable` | The whole chain failed: retry with backoff. When vendors paused every model in the chain with `Retry-After`, details carry `RetryInfo` (HTTP: `Retry-After` header): wait that long first. |
+| `UNAVAILABLE` | `auth backend unavailable`, `proxy configuration not ready`, `storage unavailable` | Postgres is unreachable for a key check or a batch or admin write, or a replica has not loaded its config yet. Retry with backoff. |
 | `RESOURCE_EXHAUSTED` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` | Back off; don't hot-retry. Daily budget exhausted before batch submission. |
 | `RESOURCE_EXHAUSTED` | `throttled:spend_key_daily`, `throttled:spend_key_monthly`, `throttled:spend_user_daily`, `throttled:spend_user_monthly`, `throttled:spend_team_monthly` | Spend limit reached. Details carry `ErrorInfo{reason: "insufficient_quota"}` and `RetryInfo` until the period resets. |
 | `UNAVAILABLE` | `throttled:spend_unavailable` | Spend counters unreachable with `SPEND_LIMITS_FAIL_MODE=closed`. Retry with backoff. |
@@ -1116,6 +1119,9 @@ lexical hash encoder that folds case, homoglyphs, zero-width and spaced-out lett
 | `UNIMPLEMENTED` | `ffmpeg_missing` | Gemini speech synthesis invoked without ffmpeg on PATH or running slim container. Install ffmpeg or switch to `:audio` image. |
 | `INTERNAL` | `vendor_error` | Terminal vendor failure. |
 | `UNAUTHENTICATED` / `PERMISSION_DENIED` | – | Missing/invalid key, or key lacks the scope. |
+
+Only `UNAVAILABLE` errors are worth retrying, and only with backoff. Everything else fails the same
+way on a retry.
 
 ### Batch item error reasons
 
@@ -1138,13 +1144,14 @@ releases fix bugs.
 
 | Surface | What stays compatible in 1.x |
 | --- | --- |
-| gRPC `ktms.v1` (`GatewayService`, `AdminService`, `NodeRegistryService`) | No RPC, field, enum value or message is removed or renamed, and no field number or type changes. New RPCs and fields may appear. CI runs `buf breaking` against the latest release tag. |
-| HTTP `/v1` (OpenAI-compatible) and `X-KTMS-*` headers | Paths, request and response fields, and header names. New fields and endpoints may appear. |
+| gRPC `ktms.v1` (`GatewayService`, `AdminService`, `NodeRegistryService`) | No RPC, field, enum value or message is removed or renamed, and no field number or type changes. New RPCs and fields may appear. `buf breaking` checks every pull request. |
+| HTTP `/v1` (OpenAI-compatible) and `X-KTMS-*` headers | Paths, request and response fields, and header names, except the experimental ones listed below. New fields and endpoints may appear. |
+| Probes and metrics endpoints | `/healthz` and `/readyz` on `HTTP_ADDR`, `/metrics` and `/healthz` on `METRICS_ADDR`. |
 | Error contract | The status codes and reason strings in [Error contract](#error-contract) and the HTTP [Errors](#errors) table keep their meaning. New reasons may appear, so treat unknown ones like their status code. |
 | Environment variables | Names, defaults and meaning of every variable in [Configuration reference](#configuration-reference). |
 | Database | Any 1.x release upgrades the database of an earlier one by itself (`AUTO_MIGRATE`, forward-only). No manual SQL steps. The tables are not an API: read and write through the RPCs. |
-| Prometheus metrics | Names and labels of `ktms_*` metrics. |
-| Usage events (`usage.v1`) | Field numbers and meaning, as for `ktms.v1`. |
+| Prometheus metrics | Names and labels of `ktms_*` metrics, except the experimental ones listed below. |
+| Usage events (`usage.v1`) | Field numbers and meaning, checked by `buf breaking` like `ktms.v1`. |
 | Node agent | A 1.x agent works with any 1.x gateway, in both directions. |
 
 Not public, and free to change in any release: Redis key layout, log message text, the
@@ -1156,12 +1163,13 @@ numbers.
 These work and are supported, but may change in a minor release. The change is then listed in the
 [CHANGELOG](CHANGELOG.md). In the proto they carry an `Experimental:` comment.
 
-- **Smart routing:** a judge picks the effort when the caller pins none (`model: "auto"` without
-  an effort over HTTP, `auto_route` in gRPC). That covers the `auto-*` values of `route_mode`,
-  `judge_score` and `judge_model`. Placement policies, `auto:<effort>` and `model_override` are
-  stable.
+- **Smart routing:** a judge picks the effort when the caller pins none: `model: "auto"` or
+  `auto:<placement>` over HTTP without `reasoning_effort`, `auto_route` in gRPC. That covers the
+  `auto-*` values of `route_mode`, `judge_score`, `judge_model` and the `X-KTMS-Route-Mode`,
+  `X-KTMS-Judge-Score` and `X-KTMS-Judge-Model` headers. Placement policies themselves,
+  `auto:<effort>`, `auto:<placement>:<effort>` and `model_override` are stable.
 - **Shadow traffic and its evaluation:** the `shadow_model`, `shadow_percentage` and `shadow_eval`
-  rule fields.
+  rule fields, and the `ktms_shadow_*` metrics.
 - **Latent features:** the semantic cache (`SEMANTIC_CACHE_*`), latent guardrails
   (`GUARDRAILS_LATENT_*`), the encoder settings (`LATENT_*`) and `EmbeddingPart` in judge state.
 - **`JudgeStream` and `EvaluateRollouts`.**

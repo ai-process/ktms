@@ -28,6 +28,14 @@ func TestEnvVarDocumentationConsistency(t *testing.T) {
 
 	reEnv := regexp.MustCompile(`get(?:Bool|Int|Float|Duration|Retention)?Env\("([A-Z0-9_]+)"`)
 	matches := reEnv.FindAllStringSubmatch(string(configSrc), -1)
+	// Sentry is set up by the logger before config loads; its variables are
+	// just as public, so they must be documented too.
+	loggerSrc, err := os.ReadFile(filepath.Join("..", "logger", "logger.go"))
+	if err != nil {
+		t.Fatalf("read logger.go: %v", err)
+	}
+	reRaw := regexp.MustCompile(`(?:os\.Getenv|envOr)\("([A-Z0-9_]+)"`)
+	matches = append(matches, reRaw.FindAllStringSubmatch(string(loggerSrc), -1)...)
 
 	var foundVars []string
 	seen := make(map[string]bool)
@@ -60,11 +68,11 @@ func TestLegacyEncryptionKeysWarns(t *testing.T) {
 	t.Setenv("KTMS_ENCRYPTION_KEYS", "")
 	t.Setenv("LLMPROXY_ENCRYPTION_KEYS", "1:abc")
 	c := Load()
-	if c.EncryptionKeys != "1:abc" || len(c.Deprecations) != 1 {
-		t.Fatalf("keys %q, deprecations %v: the old name must still work and warn", c.EncryptionKeys, c.Deprecations)
+	if c.EncryptionKeys != "1:abc" || len(c.Notices) != 1 {
+		t.Fatalf("keys %q, deprecations %v: the old name must still work and warn", c.EncryptionKeys, c.Notices)
 	}
 	t.Setenv("KTMS_ENCRYPTION_KEYS", "1:def")
-	if c := Load(); c.EncryptionKeys != "1:def" || len(c.Deprecations) != 0 {
-		t.Fatalf("keys %q, deprecations %v: the new name wins without a warning", c.EncryptionKeys, c.Deprecations)
+	if c := Load(); c.EncryptionKeys != "1:def" || len(c.Notices) != 0 {
+		t.Fatalf("keys %q, deprecations %v: the new name wins without a warning", c.EncryptionKeys, c.Notices)
 	}
 }

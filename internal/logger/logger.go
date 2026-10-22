@@ -53,7 +53,7 @@ func Init() {
 			Debug:            os.Getenv("SENTRY_DEBUG") == "true",
 			EnableTracing:    os.Getenv("SENTRY_ENABLE_TRACING") == "true",
 			TracesSampleRate: 1.0,
-			Environment:      os.Getenv("SENTRY_ENVIRONMENT"),
+			Environment:      envOr("SENTRY_ENVIRONMENT", "development"),
 			Release:          os.Getenv("SENTRY_RELEASE"),
 		})
 		if err != nil {
@@ -90,4 +90,12 @@ func Init() {
 	log.Logger = log.Logger.With().Str("host", hostname).Str("service", "ktms").Logger()
 
 	zerolog.DefaultContextLogger = &log.Logger
+}
+
+// envOr applies the documented default; Init runs before config.Load.
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }

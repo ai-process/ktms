@@ -49,7 +49,7 @@ func main() {
 
 	logger.Init()
 	cfg := config.Load()
-	for _, d := range cfg.Deprecations {
+	for _, d := range cfg.Notices {
 		log.Warn().Msg(d)
 	}
 	if cfg.SpendLimitsFailMode != "open" && cfg.SpendLimitsFailMode != "closed" {

@@ -15,10 +15,14 @@ All notable changes to KTMS are listed here. The format follows
 
 ### Changed
 - `USAGE_PROJECT_ID` now defaults to `ktms`, as the README already documented (it was
-  `llm-proxy`). Set it explicitly to keep usage under the old project name.
+  `llm-proxy`). Set it explicitly to keep usage under the old project name; while it is unset
+  and usage reporting is on, the gateway logs this at startup.
 - Logs carry `service=ktms` instead of `service=llm-proxy`.
 - The `ffmpeg_missing` message names the `coyl/ktms:audio` image.
-- CI checks proto compatibility against the latest release tag instead of `main`.
+- CI also checks `usage.v1` for breaking changes. Adding the `buf skip breaking` label re-runs the check.
+- A cache hit refused by the rpm limit returns the documented `throttled:rpm` reason instead of
+  `resource_exhausted: rpm limit exceeded`.
+- `SENTRY_ENVIRONMENT` defaults to `development`, as documented; it was sent empty.
 
 ### Deprecated
 - `LLMPROXY_ENCRYPTION_KEYS`: use `KTMS_ENCRYPTION_KEYS`. It is removed in 2.0.
