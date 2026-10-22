@@ -1329,9 +1329,14 @@ func (*RotateEncryptionRequest) Descriptor() ([]byte, []int) {
 	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{22}
 }
 
+// RotateEncryption re-encrypts every vendor key and registered node auth token
+// with the active keyring version; calling it again changes nothing. A vendor
+// key encrypted with a version the keyring lacks fails it with
+// FAILED_PRECONDITION and nothing changes. UNAVAILABLE after the vendor keys
+// committed means only the node tokens are left: call it again.
 type RotateEncryptionResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Reencrypted   int32                  `protobuf:"varint,1,opt,name=reencrypted,proto3" json:"reencrypted,omitempty"` // vendor keys re-encrypted with the active keyring version
+	Reencrypted   int32                  `protobuf:"varint,1,opt,name=reencrypted,proto3" json:"reencrypted,omitempty"` // vendor keys and node auth tokens re-encrypted
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

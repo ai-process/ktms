@@ -331,8 +331,8 @@ Cloudflare tunnel per attempt.
 - **TLS.** The server speaks plaintext gRPC. Terminate TLS in front of it (Envoy, nginx
   with `grpc_pass`, a service mesh, a cloud load balancer) or keep it on a private network.
   Node agents that reach the proxy through that TLS endpoint run with `--tls`.
-- **Back up the encryption keyring.** Without `KTMS_ENCRYPTION_KEYS` (or legacy `LLMPROXY_ENCRYPTION_KEYS`) the stored vendor
-  keys are unreadable. Treat it like any other root secret.
+- **Back up the encryption keyring**, apart from the database: without `KTMS_ENCRYPTION_KEYS` the
+  stored vendor keys are unreadable. See [Backups](#backups-and-the-encryption-keyring).
 - **Mint real keys, then unset `BOOTSTRAP_ADMIN_KEY`.** It is accepted as an implicit admin key.
 - **Run Redis if you want limits.** With `REDIS_ADDR` empty, RPM, token budgets and spend
   limits are **not enforced** (the proxy fails open by design, and does the same if Redis
@@ -341,7 +341,7 @@ Cloudflare tunnel per attempt.
   and revocation are per client.
 - **Mind your Postgres connection count.** Each replica holds up to `DB_MAX_CONNS`
   (default 25) connections.
-- **Back up Postgres.** All configuration lives there.
+- **Back up Postgres.** All configuration lives there; see [Backups](#backups-and-the-encryption-keyring).
 
 ## Configuration reference
 
@@ -609,8 +609,28 @@ Without such a rule the call fails with `FAILED_PRECONDITION no_capable_model`.
 
 ### Rotating the encryption key
 
-Add a higher version to the keyring (`1:…,2:…`), redeploy, call `RotateEncryption` to
-re-encrypt every stored vendor key, then drop the old version.
+New writes use the highest version in `KTMS_ENCRYPTION_KEYS`; every listed version can decrypt.
+
+1. Add a new version and deploy it to **every** replica: `1:<old>,2:<new>`. Until all replicas run
+   the new keyring, do not add or change vendor keys (or the `SEED_*_KEY` values with
+   `AUTO_SEED`): a replica still on `1:<old>` cannot read a key written with version 2. It logs
+   an error, counts `ktms_dependency_errors_total{dependency="keyring"}`, and keeps the
+   credential it already had for that client and vendor; a replica that starts in that state
+   has none, so that client's requests skip that vendor's models (the next model in the chain
+   serves, or `no_vendor_key` if none can). The rest of the config keeps loading either way. A
+   keyring that can read no vendor key at all is refused at startup: that is a wrong keyring,
+   not a rotation.
+2. Call `RotateEncryption` once, on any replica. It re-encrypts every vendor key with version 2
+   (in one transaction that locks the rows it rewrites, so a key set at the same moment is not
+   lost) and the auth tokens of registered nodes, and returns how many it changed; calling it
+   again changes nothing. If a vendor key needs a version the keyring lacks, it fails with
+   `FAILED_PRECONDITION` naming the key and changes nothing.
+3. Remove version 1 and redeploy, but only when no database backup you may restore still holds
+   keys encrypted with it (see [Backups](#backups-and-the-encryption-keyring)). Until then,
+   leaving it listed is harmless. Cached responses encrypted with a removed version are
+   treated as cache misses.
+
+`TestRotateEncryptionLetsTheOldKeyGo` runs this sequence against Postgres in CI.
 
 ## Run a node
 
@@ -1217,8 +1237,32 @@ advance:
 - **Config changes** are picked up by all replicas within `ROUTING_RELOAD_SECONDS`; the replica that
   handled the admin call applies them immediately.
 - **Upgrades:** migrations run at startup under a database advisory lock, so rolling deploys are
-  safe. Roll forward by deploying a newer image tag.
+  safe. Roll forward by deploying a newer image tag; see [Upgrading](#upgrading).
 - **Graceful shutdown:** on SIGTERM in-flight calls get `SHUTDOWN_TIMEOUT` to finish.
+
+### Backups and the encryption keyring
+
+- **Back up Postgres.** It holds everything durable: client keys (as hashes), vendor keys
+  (encrypted), models, rules, limits, tenants, node keys and batches. Use `pg_dump` or your
+  provider's snapshots, and test a restore.
+- **Back up the keyring separately.** `KTMS_ENCRYPTION_KEYS` is not in the database. Keep it in a
+  secret manager, not next to the dumps: a dump plus the keyring is every vendor key in
+  plaintext. **If the keyring is lost, every stored vendor key is lost**, and each has to be set
+  again with `SetVendorKey`; client keys, config and limits survive.
+- **Keep old key versions as long as the backups that need them.** A dump taken before a
+  rotation can only be read with the versions it was written with.
+- **Restore:** stop every replica, restore the dump, **flush the gateway's Redis keys** (the
+  `REDIS_KEY_PREFIX` namespace), then start a release at least as new as the one that took the
+  dump. The flush matters: cached responses are keyed by the config version, which the restore
+  rolls back, so later changes would reuse version numbers whose cache entries belong to another
+  config. An older release could run on the restored schema but would ignore what was added
+  after it, so do not restore with one.
+- **Redis is not backed up.** It holds rate, token and spend counters, the response and semantic
+  caches, and the node pool: registrations (with encrypted node auth tokens), heartbeats, slot
+  leases, the node circuit breaker and drain flags. Losing it resets the current day's and
+  month's counters (spend limits then allow up to one more full cap in the current period),
+  empties the caches, drops every node from routing until its next heartbeat re-registers it,
+  and clears drain flags, so drained nodes take traffic again.
 
 ### When a dependency fails
 

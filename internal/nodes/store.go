@@ -87,6 +87,45 @@ func (s *Store) GetMeta(ctx context.Context, nodeID string) (*NodeMeta, error) {
 	return &meta, nil
 }
 
+// UpdateMeta rewrites a node's meta in place when fn reports a change. It
+// keeps the remaining TTL and, through WATCH, gives up rather than overwrite
+// a registration or removal that happened meanwhile; a missing node is left
+// missing.
+func (s *Store) UpdateMeta(ctx context.Context, nodeID string, fn func(*NodeMeta) bool) (bool, error) {
+	key := s.keys.NodeMeta(nodeID)
+	changed := false
+	err := s.rdb.Watch(ctx, func(tx *redis.Tx) error {
+		val, err := tx.Get(ctx, key).Bytes()
+		if errors.Is(err, redis.Nil) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		var meta NodeMeta
+		if err := json.Unmarshal(val, &meta); err != nil {
+			return fmt.Errorf("%w: unmarshal node meta: %w", ErrCorruptNode, err)
+		}
+		if !fn(&meta) {
+			return nil
+		}
+		data, err := json.Marshal(&meta)
+		if err != nil {
+			return err
+		}
+		_, err = tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
+			p.SetArgs(ctx, key, data, redis.SetArgs{KeepTTL: true})
+			return nil
+		})
+		changed = err == nil
+		return err
+	}, key)
+	if errors.Is(err, redis.TxFailedErr) {
+		return false, nil // changed under us: the newer write wins
+	}
+	return changed, err
+}
+
 // SaveHeartbeat updates the dynamic heartbeat record with TTL.
 func (s *Store) SaveHeartbeat(ctx context.Context, hb *NodeHeartbeatData, ttl time.Duration) error {
 	data, err := json.Marshal(hb)

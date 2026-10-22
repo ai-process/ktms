@@ -11,6 +11,8 @@ All notable changes to KTMS are listed here. The format follows
 - Organizations and teams: team keys share a model allowlist and a monthly budget enforced
   by the gateway (`CreateOrganization`, `CreateTeam`, `UpdateTeam`, `GetTeamSpend`, ...).
   `ListModels` lists only the models a team may call.
+- Operations: backups and the keyring, and a safe key rotation procedure, tested against
+  Postgres; CI now runs the Postgres-backed tests (they used to skip).
 - An upgrade test on every pull request and before each release: the previous release and the
   oldest release of the same major write a database, this build must keep and serve it, and the
   old release must still serve on the migrated database (rolling upgrades).
@@ -39,6 +41,17 @@ All notable changes to KTMS are listed here. The format follows
 - `DrainNode` without node support returns `FAILED_PRECONDITION` instead of `UNAVAILABLE`.
 - Docker images are built only for `v*` release tags (any tag used to produce images), and
   `latest`, `slim` and `audio` follow only the newest stable release.
+
+### Fixed
+- `RotateEncryption` also re-encrypts the auth tokens of registered nodes, so dropping the old
+  key version no longer breaks calls to nodes, and it locks the vendor key rows, so a key set
+  during a rotation is no longer overwritten with the previous one.
+- A vendor key the replica's keyring cannot read no longer stops that replica from loading
+  config: it keeps the credential it had (or skips the key), logs and counts it. A keyring that
+  reads no vendor key at all still refuses to start. `RotateEncryption` over such a key fails
+  with `FAILED_PRECONDITION` instead of `UNAVAILABLE storage_unavailable`.
+- With `AUTO_SEED`, starting a replica no longer rewrites unchanged seeded vendor keys, or keys
+  a newer keyring already rotated, which broke rotations.
 
 ### Deprecated
 - `LLMPROXY_ENCRYPTION_KEYS`: use `KTMS_ENCRYPTION_KEYS`. It is removed in 2.0.
