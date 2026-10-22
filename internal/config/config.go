@@ -11,6 +11,10 @@ import (
 // Config holds the application configuration. Load never fails; main.go
 // fatals on missing required values.
 type Config struct {
+	// Notices are startup warnings about settings: deprecated names, which keep
+	// working through 1.x, and defaults that changed before 1.0.
+	Notices []string
+
 	DatabaseURL string
 	// EncryptionKeys is the versioned AES-256-GCM keyring spec
 	// ("1:<base64 32B>,2:..."); vendor keys are unreadable without it.
@@ -134,11 +138,13 @@ type Config struct {
 	SentryEnvironment string
 	SentryRelease     string
 	SentryTracing     bool
+	SentryDebug       bool
+	SentryBreadcrumbs bool
 }
 
 // Load loads configuration from environment variables
 func Load() *Config {
-	return &Config{
+	c := &Config{
 		DatabaseURL:                     getEnv("DATABASE_URL", ""),
 		EncryptionKeys:                  getEnvFirst([]string{"KTMS_ENCRYPTION_KEYS", "LLMPROXY_ENCRYPTION_KEYS"}, ""),
 		GRPCAddr:                        getEnv("GRPC_ADDR", ":9090"),
@@ -169,7 +175,7 @@ func Load() *Config {
 		BootstrapAdminKey:               getEnv("BOOTSTRAP_ADMIN_KEY", ""),
 		UsageCollectorHost:              getEnv("USAGE_COLLECTOR_HOST", ""),
 		UsageCollectorTLS:               getBoolEnv("USAGE_COLLECTOR_TLS", false),
-		UsageProjectID:                  getEnv("USAGE_PROJECT_ID", "llm-proxy"),
+		UsageProjectID:                  getEnv("USAGE_PROJECT_ID", "ktms"),
 		BatchMaxItems:                   getIntEnv("BATCH_MAX_ITEMS", 10000),
 		BatchPollInterval:               time.Duration(getIntEnv("BATCH_POLL_SECONDS", 60)) * time.Second,
 		ResultsRetention:                getRetentionEnv("RESULTS_RETENTION_DAYS", 7*24*time.Hour),
@@ -210,9 +216,25 @@ func Load() *Config {
 		SentryDSN:                       getEnv("SENTRY_DSN", ""),
 		SentryEnvironment:               getEnv("SENTRY_ENVIRONMENT", "development"),
 		SentryRelease:                   getEnv("SENTRY_RELEASE", ""),
-		SentryTracing:                   getEnv("SENTRY_ENABLE_TRACING", "false") == "true",
+		SentryTracing:                   getBoolEnv("SENTRY_ENABLE_TRACING", false),
+		SentryDebug:                     getBoolEnv("SENTRY_DEBUG", false),
+		SentryBreadcrumbs:               getBoolEnv("SENTRY_WITH_BREADCRUMBS", false),
 	}
+	// The default moved from llm-proxy to ktms before 1.0; without this note
+	// an upgrade silently splits usage history between two project names.
+	if c.UsageConfigured() && os.Getenv("USAGE_PROJECT_ID") == "" {
+		c.Notices = append(c.Notices, "USAGE_PROJECT_ID is unset: usage goes to project ktms (llm-proxy before 1.0); set it to silence this")
+	}
+	for old, cur := range legacyEnv {
+		if os.Getenv(old) != "" && os.Getenv(cur) == "" {
+			c.Notices = append(c.Notices, old+" is deprecated: rename it to "+cur)
+		}
+	}
+	return c
 }
+
+// legacyEnv maps names from the llm-proxy era to their KTMS replacements.
+var legacyEnv = map[string]string{"LLMPROXY_ENCRYPTION_KEYS": "KTMS_ENCRYPTION_KEYS"}
 
 // RedisConfigured reports whether throttling has a backing store; without it
 // all requests are allowed (fail-open by design).

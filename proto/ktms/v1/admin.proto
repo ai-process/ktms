@@ -40,9 +40,10 @@ message RuleSpec {
   repeated string use = 5; // ordered fallback chain of model ids, cheaper-first
   bool enabled = 6;
   repeated int32 weights = 7; // traffic weights per model in use; empty means deterministic (100% on use[0]). Canary distribution is deterministic and sticky when request attribute canary_key or user_id is provided, or weighted random if omitted or canary_mode="random".
-  string shadow_model = 8; // optional model id for async traffic mirroring
-  double shadow_percentage = 9; // percentage of requests to mirror (0.0 - 100.0)
-  bool shadow_eval = 10; // optional automated quality evaluation using Judge
+  // Shadow traffic and its evaluation may change in a 1.x minor release.
+  string shadow_model = 8; // Experimental: optional model id for async traffic mirroring
+  double shadow_percentage = 9; // Experimental: percentage of requests to mirror (0.0 - 100.0)
+  bool shadow_eval = 10; // Experimental: optional automated quality evaluation using Judge
 }
 
 message UpsertModelRequest {

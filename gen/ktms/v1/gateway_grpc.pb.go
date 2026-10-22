@@ -38,7 +38,8 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Error contract: retry only on UNAVAILABLE ("vendors_unavailable", or
+// Error contract: retry UNAVAILABLE with backoff ("vendors_unavailable";
+// "auth_unavailable" or "storage_unavailable" while Postgres is down;
 // "throttled:spend_unavailable" when spend limits fail closed). When vendors
 // paused every model in the chain with Retry-After, "vendors_unavailable"
 // carries RetryInfo with the soonest one frees up: wait that long first.
@@ -77,9 +78,11 @@ type GatewayServiceClient interface {
 	GetEmbeddings(ctx context.Context, in *GetEmbeddingsRequest, opts ...grpc.CallOption) (*GetEmbeddingsResponse, error)
 	// JudgeStream provides bidirectional streaming decisions for real-time
 	// agent evaluation and robotics control loops.
+	// Experimental: may change in a 1.x minor release (README, API stability).
 	JudgeStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[JudgeRequest, JudgeResponse], error)
 	// EvaluateRollouts scores candidate trajectories against state and criteria
 	// for speculative decoding and Best-of-N selection.
+	// Experimental: may change in a 1.x minor release (README, API stability).
 	EvaluateRollouts(ctx context.Context, in *EvaluateRolloutsRequest, opts ...grpc.CallOption) (*EvaluateRolloutsResponse, error)
 	ListModels(ctx context.Context, in *ListModelsRequest, opts ...grpc.CallOption) (*ListModelsResponse, error)
 	// Batch generation RPCs.
@@ -243,7 +246,8 @@ func (c *gatewayServiceClient) CancelBatch(ctx context.Context, in *CancelBatchR
 // All implementations must embed UnimplementedGatewayServiceServer
 // for forward compatibility.
 //
-// Error contract: retry only on UNAVAILABLE ("vendors_unavailable", or
+// Error contract: retry UNAVAILABLE with backoff ("vendors_unavailable";
+// "auth_unavailable" or "storage_unavailable" while Postgres is down;
 // "throttled:spend_unavailable" when spend limits fail closed). When vendors
 // paused every model in the chain with Retry-After, "vendors_unavailable"
 // carries RetryInfo with the soonest one frees up: wait that long first.
@@ -282,9 +286,11 @@ type GatewayServiceServer interface {
 	GetEmbeddings(context.Context, *GetEmbeddingsRequest) (*GetEmbeddingsResponse, error)
 	// JudgeStream provides bidirectional streaming decisions for real-time
 	// agent evaluation and robotics control loops.
+	// Experimental: may change in a 1.x minor release (README, API stability).
 	JudgeStream(grpc.BidiStreamingServer[JudgeRequest, JudgeResponse]) error
 	// EvaluateRollouts scores candidate trajectories against state and criteria
 	// for speculative decoding and Best-of-N selection.
+	// Experimental: may change in a 1.x minor release (README, API stability).
 	EvaluateRollouts(context.Context, *EvaluateRolloutsRequest) (*EvaluateRolloutsResponse, error)
 	ListModels(context.Context, *ListModelsRequest) (*ListModelsResponse, error)
 	// Batch generation RPCs.

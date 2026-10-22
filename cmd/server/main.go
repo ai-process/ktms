@@ -47,8 +47,15 @@ const initialLoadTimeout = 30 * time.Second
 func main() {
 	_ = godotenv.Load() // .env is absent in prod on purpose
 
-	logger.Init()
 	cfg := config.Load()
+	logger.Init(logger.Options{
+		Level: cfg.LogLevel, SentryDSN: cfg.SentryDSN, SentryEnvironment: cfg.SentryEnvironment,
+		SentryRelease: cfg.SentryRelease, SentryTracing: cfg.SentryTracing,
+		SentryDebug: cfg.SentryDebug, SentryBreadcrumbs: cfg.SentryBreadcrumbs,
+	})
+	for _, d := range cfg.Notices {
+		log.Warn().Msg(d)
+	}
 	if cfg.SpendLimitsFailMode != "open" && cfg.SpendLimitsFailMode != "closed" {
 		log.Fatal().Str("value", cfg.SpendLimitsFailMode).Msg(`SPEND_LIMITS_FAIL_MODE must be "open" or "closed"`)
 	}
@@ -81,7 +88,7 @@ func main() {
 	}
 	keyring, err := crypto.ParseKeyring(cfg.EncryptionKeys)
 	if err != nil {
-		log.Fatal().Err(err).Msg("LLMPROXY_ENCRYPTION_KEYS is required and must parse")
+		log.Fatal().Err(err).Msg("KTMS_ENCRYPTION_KEYS is required and must parse")
 	}
 
 	poolCfg, err := pgxpool.ParseConfig(cfg.DatabaseURL)
