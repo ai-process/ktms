@@ -382,16 +382,14 @@ func UpdateVendorKeyCiphertext(ctx context.Context, tx pgx.Tx, id string, cipher
 	return err
 }
 
-func LoadVendorKeysTx(ctx context.Context, tx pgx.Tx) ([]*VendorKey, error) {
-	return loadVendorKeys(ctx, tx)
-}
-
-// LockVendorKeysTx reads every vendor key and locks the rows until the
-// transaction ends, so a key set meanwhile cannot be overwritten by a stale
-// re-encryption of the previous one.
-func LockVendorKeysTx(ctx context.Context, tx pgx.Tx) ([]*VendorKey, error) {
+// LockStaleVendorKeysTx reads the vendor keys not at version and locks them
+// until the transaction ends, so a key set meanwhile cannot be overwritten by
+// a stale re-encryption of the previous one. Keys already at version are left
+// unlocked: a rotation never rewrites them.
+func LockStaleVendorKeysTx(ctx context.Context, tx pgx.Tx, version int32) ([]*VendorKey, error) {
 	rows, err := tx.Query(ctx,
-		`SELECT id, api_key_id, vendor, key_ciphertext, key_version FROM vendor_key ORDER BY id FOR UPDATE`)
+		`SELECT id, api_key_id, vendor, key_ciphertext, key_version FROM vendor_key
+		 WHERE key_version <> $1 ORDER BY id FOR UPDATE`, version)
 	if err != nil {
 		return nil, err
 	}

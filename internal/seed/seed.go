@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -139,55 +140,11 @@ func Run(ctx context.Context, pool *pgxpool.Pool, keyring *crypto.Keyring, cfg C
 	}
 
 	var seededVendors []string
-	if cfg.OpenAIKey != "" {
-		ct, v, err := keyring.Encrypt(cfg.OpenAIKey)
-		if err != nil {
-			return nil, fmt.Errorf("encrypt openai key: %w", err)
+	for _, sv := range seedVendors(cfg) {
+		if err := writeVendorKey(ctx, tx, keyring, apiKeyID, sv.vendor, sv.key); err != nil {
+			return nil, err
 		}
-		if err := proxydb.SetVendorKey(ctx, tx, &proxydb.VendorKey{
-			ID:            uuid.NewString(),
-			APIKeyID:      apiKeyID,
-			Vendor:        registry.VendorOpenAI,
-			KeyCiphertext: ct,
-			KeyVersion:    int32(v),
-		}); err != nil {
-			return nil, fmt.Errorf("set openai vendor key: %w", err)
-		}
-		seededVendors = append(seededVendors, registry.VendorOpenAI)
-	}
-
-	if cfg.GeminiKey != "" {
-		ct, v, err := keyring.Encrypt(cfg.GeminiKey)
-		if err != nil {
-			return nil, fmt.Errorf("encrypt gemini key: %w", err)
-		}
-		if err := proxydb.SetVendorKey(ctx, tx, &proxydb.VendorKey{
-			ID:            uuid.NewString(),
-			APIKeyID:      apiKeyID,
-			Vendor:        registry.VendorGoogle,
-			KeyCiphertext: ct,
-			KeyVersion:    int32(v),
-		}); err != nil {
-			return nil, fmt.Errorf("set gemini vendor key: %w", err)
-		}
-		seededVendors = append(seededVendors, registry.VendorGoogle)
-	}
-
-	if cfg.AnthropicKey != "" {
-		ct, v, err := keyring.Encrypt(cfg.AnthropicKey)
-		if err != nil {
-			return nil, fmt.Errorf("encrypt anthropic key: %w", err)
-		}
-		if err := proxydb.SetVendorKey(ctx, tx, &proxydb.VendorKey{
-			ID:            uuid.NewString(),
-			APIKeyID:      apiKeyID,
-			Vendor:        registry.VendorAnthropic,
-			KeyCiphertext: ct,
-			KeyVersion:    int32(v),
-		}); err != nil {
-			return nil, fmt.Errorf("set anthropic vendor key: %w", err)
-		}
-		seededVendors = append(seededVendors, registry.VendorAnthropic)
+		seededVendors = append(seededVendors, sv.vendor)
 	}
 
 	models := DefaultModels()
@@ -250,14 +207,7 @@ func syncVendorKeys(ctx context.Context, conn *pgxpool.Conn, keyring *crypto.Key
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var updated bool
-	for _, sv := range []struct{ vendor, key string }{
-		{registry.VendorOpenAI, cfg.OpenAIKey},
-		{registry.VendorGoogle, cfg.GeminiKey},
-		{registry.VendorAnthropic, cfg.AnthropicKey},
-	} {
-		if sv.key == "" {
-			continue
-		}
+	for _, sv := range seedVendors(cfg) {
 		// Every replica runs this at start. Rewriting an unchanged key would
 		// re-encrypt it with this replica's newest version, which replicas
 		// still on the old keyring could not read during a rotation.
@@ -268,18 +218,8 @@ func syncVendorKeys(ctx context.Context, conn *pgxpool.Conn, keyring *crypto.Key
 		if same {
 			continue
 		}
-		ct, v, err := keyring.Encrypt(sv.key)
-		if err != nil {
-			return false, fmt.Errorf("encrypt %s key: %w", sv.vendor, err)
-		}
-		if err := proxydb.SetVendorKey(ctx, tx, &proxydb.VendorKey{
-			ID:            uuid.NewString(),
-			APIKeyID:      apiKeyID,
-			Vendor:        sv.vendor,
-			KeyCiphertext: ct,
-			KeyVersion:    int32(v),
-		}); err != nil {
-			return false, fmt.Errorf("set %s vendor key: %w", sv.vendor, err)
+		if err := writeVendorKey(ctx, tx, keyring, apiKeyID, sv.vendor, sv.key); err != nil {
+			return false, err
 		}
 		updated = true
 	}
@@ -295,8 +235,43 @@ func syncVendorKeys(ctx context.Context, conn *pgxpool.Conn, keyring *crypto.Key
 	return updated, nil
 }
 
-// storedKeyIs reports whether the client's stored key for vendor already holds
-// plain; a row this keyring cannot read counts as different.
+type seedVendor struct{ vendor, key string }
+
+// seedVendors lists the SEED_*_KEY values that are set.
+func seedVendors(cfg Config) []seedVendor {
+	var out []seedVendor
+	for _, sv := range []seedVendor{
+		{registry.VendorOpenAI, cfg.OpenAIKey},
+		{registry.VendorGoogle, cfg.GeminiKey},
+		{registry.VendorAnthropic, cfg.AnthropicKey},
+	} {
+		if sv.key != "" {
+			out = append(out, sv)
+		}
+	}
+	return out
+}
+
+func writeVendorKey(ctx context.Context, tx pgx.Tx, keyring *crypto.Keyring, apiKeyID, vendor, plain string) error {
+	ct, v, err := keyring.Encrypt(plain)
+	if err != nil {
+		return fmt.Errorf("encrypt %s key: %w", vendor, err)
+	}
+	if err := proxydb.SetVendorKey(ctx, tx, &proxydb.VendorKey{
+		ID:            uuid.NewString(),
+		APIKeyID:      apiKeyID,
+		Vendor:        vendor,
+		KeyCiphertext: ct,
+		KeyVersion:    int32(v),
+	}); err != nil {
+		return fmt.Errorf("set %s vendor key: %w", vendor, err)
+	}
+	return nil
+}
+
+// storedKeyIs reports whether the client's stored key for vendor needs no
+// rewrite: it holds plain, or it was written with a key version this replica
+// lacks (a newer keyring rotated it; an older replica must not undo that).
 func storedKeyIs(ctx context.Context, tx pgx.Tx, keyring *crypto.Keyring, apiKeyID, vendor, plain string) (bool, error) {
 	var ct []byte
 	var version int32
@@ -307,6 +282,9 @@ func storedKeyIs(ctx context.Context, tx pgx.Tx, keyring *crypto.Keyring, apiKey
 	}
 	if err != nil {
 		return false, fmt.Errorf("read stored %s key: %w", vendor, err)
+	}
+	if !slices.Contains(keyring.Versions(), int(version)) {
+		return true, nil
 	}
 	got, err := keyring.Decrypt(ct, int(version))
 	return err == nil && got == plain, nil

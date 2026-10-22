@@ -133,8 +133,13 @@ message ListAPIKeysResponse {
 
 message RotateEncryptionRequest {}
 
+// RotateEncryption re-encrypts every vendor key and registered node auth token
+// with the active keyring version; calling it again changes nothing. A vendor
+// key encrypted with a version the keyring lacks fails it with
+// FAILED_PRECONDITION and nothing changes. UNAVAILABLE after the vendor keys
+// committed means only the node tokens are left: call it again.
 message RotateEncryptionResponse {
-  int32 reencrypted = 1; // vendor keys re-encrypted with the active keyring version
+  int32 reencrypted = 1; // vendor keys and node auth tokens re-encrypted
 }
 
 message MintNodeKeyRequest {

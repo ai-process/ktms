@@ -47,9 +47,11 @@ All notable changes to KTMS are listed here. The format follows
   key version no longer breaks calls to nodes, and it locks the vendor key rows, so a key set
   during a rotation is no longer overwritten with the previous one.
 - A vendor key the replica's keyring cannot read no longer stops that replica from loading
-  config (and from starting): the key is skipped, logged and counted.
-- With `AUTO_SEED`, starting a replica no longer rewrites unchanged seeded vendor keys, which
-  broke rotations by writing a key version older replicas could not read.
+  config: it keeps the credential it had (or skips the key), logs and counts it. A keyring that
+  reads no vendor key at all still refuses to start. `RotateEncryption` over such a key fails
+  with `FAILED_PRECONDITION` instead of `UNAVAILABLE storage_unavailable`.
+- With `AUTO_SEED`, starting a replica no longer rewrites unchanged seeded vendor keys, or keys
+  a newer keyring already rotated, which broke rotations.
 
 ### Deprecated
 - `LLMPROXY_ENCRYPTION_KEYS`: use `KTMS_ENCRYPTION_KEYS`. It is removed in 2.0.

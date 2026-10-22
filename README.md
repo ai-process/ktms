@@ -614,13 +614,17 @@ New writes use the highest version in `KTMS_ENCRYPTION_KEYS`; every listed versi
 1. Add a new version and deploy it to **every** replica: `1:<old>,2:<new>`. Until all replicas run
    the new keyring, do not add or change vendor keys (or the `SEED_*_KEY` values with
    `AUTO_SEED`): a replica still on `1:<old>` cannot read a key written with version 2. It logs
-   an error, counts `ktms_dependency_errors_total{dependency="keyring"}`, and that client gets
-   `no_vendor_key` for that vendor until the replica has the new keyring; the rest of its
-   config keeps loading.
+   an error, counts `ktms_dependency_errors_total{dependency="keyring"}`, and keeps the
+   credential it already had for that client and vendor; a replica that starts in that state
+   has none, so that client's requests skip that vendor's models (the next model in the chain
+   serves, or `no_vendor_key` if none can). The rest of the config keeps loading either way. A
+   keyring that can read no vendor key at all is refused at startup: that is a wrong keyring,
+   not a rotation.
 2. Call `RotateEncryption` once, on any replica. It re-encrypts every vendor key with version 2
-   (in one transaction that locks the rows, so a key set at the same moment is not lost) and the
-   auth tokens of registered nodes, and returns how many it changed; calling it again changes
-   nothing.
+   (in one transaction that locks the rows it rewrites, so a key set at the same moment is not
+   lost) and the auth tokens of registered nodes, and returns how many it changed; calling it
+   again changes nothing. If a vendor key needs a version the keyring lacks, it fails with
+   `FAILED_PRECONDITION` naming the key and changes nothing.
 3. Remove version 1 and redeploy, but only when no database backup you may restore still holds
    keys encrypted with it (see [Backups](#backups-and-the-encryption-keyring)). Until then,
    leaving it listed is harmless. Cached responses encrypted with a removed version are

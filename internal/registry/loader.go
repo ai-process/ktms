@@ -178,21 +178,36 @@ func (l *Loader) build(ctx context.Context, version int64) (*Snapshot, error) {
 			snap.Rules = append(snap.Rules, r)
 		}
 	}
+	prev := l.current.Load()
+	unreadable := 0
 	for _, vk := range vendorKeys {
-		plain, err := l.keyring.Decrypt(vk.KeyCiphertext, int(vk.KeyVersion))
-		if err != nil {
-			// One unreadable key (a version this replica's keyring lacks, during
-			// a rotation) must cost only that key, not every config change.
-			// Never log key material; id and version identify the row safely.
-			log.Error().Err(err).Str("vendor_key_id", vk.ID).Int32("key_version", vk.KeyVersion).
-				Msg("vendor key cannot be decrypted with KTMS_ENCRYPTION_KEYS; its client gets no_vendor_key for that vendor")
+		cred, err := l.keyring.Decrypt(vk.KeyCiphertext, int(vk.KeyVersion))
+		var vc vendorCred
+		if err == nil {
+			vc = newVendorCred(cred)
+		} else {
+			// A key written with a version this replica lacks (mid-rotation)
+			// must not stop every other config change: keep the credential the
+			// last snapshot had for it, as a failed rebuild used to.
+			unreadable++
 			observability.DependencyErrorsTotal.WithLabelValues("keyring", "decrypt").Inc()
-			continue
+			old, ok := prev.vendorKeys[vk.APIKeyID][vk.Vendor]
+			// Never log key material; id and version identify the row safely.
+			log.Error().Err(err).Str("vendor_key_id", vk.ID).Int32("key_version", vk.KeyVersion).Bool("kept_previous", ok).
+				Msg("vendor key cannot be decrypted with KTMS_ENCRYPTION_KEYS")
+			if !ok {
+				continue
+			}
+			vc = old
 		}
 		if snap.vendorKeys[vk.APIKeyID] == nil {
 			snap.vendorKeys[vk.APIKeyID] = map[string]vendorCred{}
 		}
-		snap.vendorKeys[vk.APIKeyID][vk.Vendor] = newVendorCred(plain)
+		snap.vendorKeys[vk.APIKeyID][vk.Vendor] = vc
+	}
+	// Not one readable key means a wrong keyring, not a rotation in progress.
+	if len(vendorKeys) > 0 && unreadable == len(vendorKeys) {
+		return nil, fmt.Errorf("no vendor key can be decrypted with KTMS_ENCRYPTION_KEYS (%d keys): wrong keyring?", unreadable)
 	}
 	return snap, nil
 }

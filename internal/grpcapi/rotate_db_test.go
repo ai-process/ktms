@@ -10,6 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 	"github.com/ai-process/ktms/internal/crypto"
@@ -47,7 +49,9 @@ func rotateTestDB(t *testing.T) *proxydb.DB {
 		t.Fatalf("create database: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
+		if _, err := admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
+			t.Logf("drop test database %s: %v", name, err)
+		}
 	})
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
@@ -125,19 +129,62 @@ func TestRotateEncryptionLetsTheOldKeyGo(t *testing.T) {
 	t.Fatal("vendor key not found")
 }
 
+func keyIDs(t *testing.T, db *proxydb.DB) map[string]string {
+	t.Helper()
+	keys, err := db.LoadVendorKeys(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]string{}
+	for _, k := range keys {
+		out[k.APIKeyName] = k.APIKeyID
+	}
+	return out
+}
+
 // During a rotation a replica may meet a key written with a version its
-// keyring lacks; that key is skipped and the rest of the config still loads.
-func TestLoaderSkipsAnUnreadableVendorKey(t *testing.T) {
+// keyring lacks: it keeps the credential it already had, skips a key it never
+// had, still loads the rest, and refuses to start only on a wrong keyring.
+func TestLoaderAcrossARotation(t *testing.T) {
 	db := rotateTestDB(t)
 	ctx := context.Background()
+	old := NewAdminServer(db, keyring(t, 1), nil)
+	for _, name := range []string{"steady", "rotated"} {
+		if _, err := old.MintAPIKey(ctx, &pb.MintAPIKeyRequest{Name: name, Scopes: []string{"generate"}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := old.SetVendorKey(ctx, &pb.SetVendorKeyRequest{ApiKeyName: name, Vendor: "openai", PlainKey: name + "-v1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := old.UpsertModel(ctx, &pb.UpsertModelRequest{Model: &pb.ModelSpec{Id: "m", Vendor: "openai", Enabled: true,
+		Efforts: []pb.Effort{pb.Effort_EFFORT_LOW, pb.Effort_EFFORT_MEDIUM, pb.Effort_EFFORT_HIGH}}}); err != nil {
+		t.Fatal(err)
+	}
+	ids := keyIDs(t, db)
+	canCall := func(l *registry.Loader, name string) bool { return len(l.Snapshot().ClientModels(ids[name])) == 1 }
+
+	running := registry.NewLoader(db, keyring(t, 1), nil)
+	if err := running.Load(ctx); err != nil || !canCall(running, "rotated") {
+		t.Fatalf("baseline: %v", err)
+	}
+	// A newer replica sets the key again with version 2.
 	newer := NewAdminServer(db, keyring(t, 1, 2), nil)
-	if _, err := newer.MintAPIKey(ctx, &pb.MintAPIKeyRequest{Name: "c", Scopes: []string{"generate"}}); err != nil {
+	if _, err := newer.SetVendorKey(ctx, &pb.SetVendorKeyRequest{ApiKeyName: "rotated", Vendor: "openai", PlainKey: "rotated-v2"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := newer.SetVendorKey(ctx, &pb.SetVendorKeyRequest{ApiKeyName: "c", Vendor: "openai", PlainKey: "v2-secret"}); err != nil {
-		t.Fatal(err)
+	if err := running.Load(ctx); err != nil || !canCall(running, "rotated") || !canCall(running, "steady") {
+		t.Fatalf("a running old-keyring replica must keep its credential and its config: %v", err)
 	}
-	if err := registry.NewLoader(db, keyring(t, 1), nil).Load(ctx); err != nil {
-		t.Fatalf("a replica on the old keyring must still load its config: %v", err)
+	fresh := registry.NewLoader(db, keyring(t, 1), nil)
+	if err := fresh.Load(ctx); err != nil || canCall(fresh, "rotated") || !canCall(fresh, "steady") {
+		t.Fatalf("a fresh old-keyring replica skips only the unreadable key: %v", err)
+	}
+	if err := registry.NewLoader(db, keyring(t, 3), nil).Load(ctx); err == nil {
+		t.Fatal("a keyring that reads no key at all must refuse to start")
+	}
+	// Rotation must not report success while a key needs a missing version.
+	if _, err := NewAdminServer(db, keyring(t, 1, 3), nil).RotateEncryption(ctx, &pb.RotateEncryptionRequest{}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("rotation over an unreadable key = %v, want FailedPrecondition", err)
 	}
 }
