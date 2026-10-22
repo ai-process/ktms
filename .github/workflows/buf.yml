@@ -7,6 +7,9 @@ on:
     # labeled/unlabeled so adding "buf skip breaking" re-runs the check.
     types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
+  # light-tokenmeter owns usage.proto; a daily run notices when it moved on.
+  schedule:
+    - cron: "17 6 * * *"
 
 permissions:
   contents: read
@@ -43,6 +46,16 @@ jobs:
         run: |
           buf breaking . --against "../.git#ref=origin/${{ github.base_ref }},subdir=usage-proto" \
             --config '{"version":"v2","breaking":{"use":["FILE"]}}'
+
+      # The copy must match light-tokenmeter's main except for go_package, or
+      # KTMS reports usage its sink does not expect.
+      - name: usage.proto matches light-tokenmeter
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/ai-process/light-tokenmeter/main/proto/usage/v1/usage.proto \
+            | grep -v '^option go_package' > /tmp/upstream.proto
+          grep -v '^option go_package' usage-proto/usage/v1/usage.proto \
+            | diff -u /tmp/upstream.proto - \
+            || { echo "usage-proto/usage/v1/usage.proto differs from light-tokenmeter: copy it over and run make proto"; exit 1; }
 
       - name: Push to Buf Schema Registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.BUF_TOKEN != ''

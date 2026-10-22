@@ -1296,6 +1296,9 @@ make clients    # regenerate the usage-sink stubs from usage-proto/
 docker compose up --build   # local stack with Postgres + Redis
 ```
 
+`usage-proto/usage/v1/usage.proto` is a copy of light-tokenmeter's, which owns it. CI fails when
+the copy differs (other than `go_package`); copy the file over and run `make clients`.
+
 Layout: `cmd/server` (entrypoint), `internal/router` (rule matching, fallback, admission),
 `internal/registry` (validated config snapshots), `internal/llm` (vendor-neutral chat model and
 adapters), `internal/throttle` (Redis limits), `internal/grpcapi` (RPC handlers),
