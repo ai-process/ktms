@@ -22,7 +22,7 @@ type spendThrottle struct {
 	maxOutputs []int64
 }
 
-func (s *spendThrottle) Reserve(_ context.Context, m *proxydb.Model, _, _ string, _, maxOutput int64) (*Reservation, string) {
+func (s *spendThrottle) Reserve(_ context.Context, m *proxydb.Model, _, _, _ string, _, maxOutput int64) (*Reservation, string) {
 	s.maxOutputs = append(s.maxOutputs, maxOutput)
 	return nil, s.deny[m.ID]
 }

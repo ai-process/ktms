@@ -119,13 +119,15 @@ func (t *fakeUsageTracker) RecordUsage(userID, actionID, vendor, model string, i
 type fakeThrottle struct {
 	router.NoopThrottle
 	chargedTokens map[string]int64
+	chargedTeams  []string
 }
 
-func (th *fakeThrottle) ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string, usage llm.TokensUsage) {
+func (th *fakeThrottle) ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID, teamID string, usage llm.TokensUsage) {
 	if th.chargedTokens == nil {
 		th.chargedTokens = make(map[string]int64)
 	}
 	th.chargedTokens[m.ID+":"+keyName+":"+userID] += int64(usage.Input + usage.Output)
+	th.chargedTeams = append(th.chargedTeams, teamID)
 }
 
 type fakeBatchAdapter struct {
@@ -202,8 +204,10 @@ func TestPoller_ProcessSucceededBatch(t *testing.T) {
 		Model:         "gemini-flash",
 		VendorJobName: "vendor-job-100",
 		State:         "RUNNING",
-		Attributes:    map[string]string{"env": "prod", "user_id": "u-42"},
-		ActionID:      "test.batch_action",
+		// A batch stored before team_id was reserved may carry a caller's own.
+		Attributes: map[string]string{"env": "prod", "user_id": "u-42", "team_id": "forged"},
+		ActionID:   "test.batch_action",
+		TeamID:     "team-real",
 	}
 	db.batches["b-100"] = batchRecord
 	db.leased = []*proxydb.Batch{batchRecord}
@@ -234,7 +238,7 @@ func TestPoller_ProcessSucceededBatch(t *testing.T) {
 	if ev1.userID != "u-42" || ev1.actionID != "test.batch_action" || ev1.inputTokens != 100 || ev1.outputTokens != 50 {
 		t.Fatalf("unexpected event 1: %+v", ev1)
 	}
-	if ev1.meta["batch_id"] != "b-100" || ev1.meta["custom_id"] != "c1" || ev1.meta["env"] != "prod" {
+	if ev1.meta["batch_id"] != "b-100" || ev1.meta["custom_id"] != "c1" || ev1.meta["env"] != "prod" || ev1.meta["team_id"] != "team-real" {
 		t.Fatalf("unexpected event 1 meta: %+v", ev1.meta)
 	}
 	if ev1.meta["price_in_batch_per_mtok"] != "0.5" || ev1.meta["price_out_batch_per_mtok"] != "2" {
@@ -257,6 +261,9 @@ func TestPoller_ProcessSucceededBatch(t *testing.T) {
 	charged := th.chargedTokens["gemini-flash:client-app-label:u-42"]
 	if charged != 150 { // 100 in + 50 out
 		t.Fatalf("expected 150 tokens charged to daily budget, got %d", charged)
+	}
+	if len(th.chargedTeams) != 1 || th.chargedTeams[0] != "team-real" {
+		t.Fatalf("charged teams = %v, want the key's team", th.chargedTeams)
 	}
 }
 

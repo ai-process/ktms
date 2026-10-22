@@ -341,7 +341,7 @@ func (p *Poller) completeBatch(
 
 	if p.throttle != nil && total.Input+total.Output > 0 {
 		userID := router.UserID(b.Attributes, b.KeyName)
-		p.throttle.ChargeDailyBudget(ctx, m, b.KeyName, userID, total)
+		p.throttle.ChargeDailyBudget(ctx, m, b.KeyName, userID, b.TeamID, total)
 	}
 
 	return nil
@@ -359,9 +359,15 @@ func (p *Poller) emitUsage(
 		return
 	}
 
-	meta := make(map[string]string, len(b.Attributes)+6)
-	for k, v := range b.Attributes {
-		meta[k] = v
+	meta := router.SanitizeAttributes(b.Attributes)
+	if meta == nil {
+		meta = map[string]string{}
+	}
+	if b.OrgID != "" {
+		meta["org_id"] = b.OrgID
+	}
+	if b.TeamID != "" {
+		meta["team_id"] = b.TeamID
 	}
 	meta["batch_id"] = b.ID
 	meta["custom_id"] = customID

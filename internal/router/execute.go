@@ -39,14 +39,14 @@ type Throttle interface {
 	// Reserve books the token estimate against daily budgets and the priced worst
 	// case (estimate in, maxOutput out) against spend limits. tripped names the
 	// refusing limit (budget_*, spend_*); empty means reserved, res may be nil.
-	Reserve(ctx context.Context, m *proxydb.Model, keyName, userID string, estimate, maxOutput int64) (res *Reservation, tripped string)
+	Reserve(ctx context.Context, m *proxydb.Model, keyName, userID, teamID string, estimate, maxOutput int64) (res *Reservation, tripped string)
 	// Settle adjusts reserved budgets to actual usage; usage zero = release.
 	Settle(res *Reservation, usage llm.TokensUsage)
 	// CheckDailyBudget reports if daily budget is already exhausted ("budget_key" | "budget_user"), or "" if OK.
-	CheckDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string) string
+	CheckDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID, teamID string) string
 	// ChargeDailyBudget books actual batch usage against daily token budgets
 	// and, priced at the batch rate, against spend limits.
-	ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string, usage llm.TokensUsage)
+	ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID, teamID string, usage llm.TokensUsage)
 }
 
 // CircuitBreaker fails fast on degraded upstream models without network IO.
@@ -78,14 +78,14 @@ type SpendHold struct {
 type NoopThrottle struct{}
 
 func (NoopThrottle) AllowRPM(context.Context, string, string, *proxydb.Model) bool { return true }
-func (NoopThrottle) Reserve(context.Context, *proxydb.Model, string, string, int64, int64) (*Reservation, string) {
+func (NoopThrottle) Reserve(context.Context, *proxydb.Model, string, string, string, int64, int64) (*Reservation, string) {
 	return nil, ""
 }
 func (NoopThrottle) Settle(*Reservation, llm.TokensUsage) {}
-func (NoopThrottle) CheckDailyBudget(context.Context, *proxydb.Model, string, string) string {
+func (NoopThrottle) CheckDailyBudget(context.Context, *proxydb.Model, string, string, string) string {
 	return ""
 }
-func (NoopThrottle) ChargeDailyBudget(context.Context, *proxydb.Model, string, string, llm.TokensUsage) {
+func (NoopThrottle) ChargeDailyBudget(context.Context, *proxydb.Model, string, string, string, llm.TokensUsage) {
 }
 
 // UserID resolves user identity from attributes with an svc:<keyName> fallback.
@@ -115,6 +115,7 @@ type Request struct {
 	Chain          []*proxydb.Model // pre-filtered candidates, in fallback order
 	KeyName        string           // api_key name: throttle keys, logs
 	UserID         string           // attributes["user_id"] or svc:<keyName> fallback
+	TeamID         string           // team identity for team budget enforcement
 	Estimate       int64            // estimated input tokens to reserve
 	Chat           *llm.ChatContext
 	CircuitBreaker CircuitBreaker
@@ -338,7 +339,7 @@ func Execute(ctx context.Context, th Throttle, r Request) (*llm.Response, *proxy
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in chain")
 			continue
 		}
-		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate, r.maxOutput())
+		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.TeamID, r.Estimate, r.maxOutput())
 		if tripped != "" {
 			if r.CircuitBreaker != nil {
 				r.CircuitBreaker.Release(m.Vendor, m.ID)
@@ -485,7 +486,7 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in stream chain")
 			continue
 		}
-		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate, r.maxOutput())
+		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.TeamID, r.Estimate, r.maxOutput())
 		if tripped != "" {
 			if r.CircuitBreaker != nil {
 				r.CircuitBreaker.Release(m.Vendor, m.ID)
@@ -891,6 +892,7 @@ type MediaRequest struct {
 	Chain          []*proxydb.Model
 	KeyName        string
 	UserID         string
+	TeamID         string
 	Estimate       int64
 	CircuitBreaker CircuitBreaker
 	// Cooldown skips models paused by a vendor Retry-After; nil disables it.
@@ -944,7 +946,7 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 			log.Warn().Str("model", m.ID).Str("key", r.KeyName).Str("user", r.UserID).Msg("model rpm-saturated, trying next in chain")
 			continue
 		}
-		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.Estimate, 0)
+		res, tripped := th.Reserve(ctx, m, r.KeyName, r.UserID, r.TeamID, r.Estimate, 0)
 		if tripped != "" {
 			if r.CircuitBreaker != nil {
 				r.CircuitBreaker.Release(m.Vendor, m.ID)

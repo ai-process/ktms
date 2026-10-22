@@ -14,7 +14,7 @@ type mockBudgetThrottle struct {
 	trippedKind string
 }
 
-func (m mockBudgetThrottle) CheckDailyBudget(ctx context.Context, model *proxydb.Model, keyName, userID string) string {
+func (m mockBudgetThrottle) CheckDailyBudget(ctx context.Context, model *proxydb.Model, keyName, userID, teamID string) string {
 	return m.trippedKind
 }
 
@@ -31,7 +31,7 @@ func TestResolveBatchModel_NoCapableModel(t *testing.T) {
 		nil,
 	)
 
-	_, err := ResolveBatchModel(context.Background(), snap, NoopThrottle{}, []string{"m1", "m2"}, "key1", "gen", "user1")
+	_, err := ResolveBatchModel(context.Background(), snap, NoopThrottle{}, []string{"m1", "m2"}, "key1", "gen", "user1", "", nil)
 	if !errors.Is(err, ErrNoCapableModel) {
 		t.Fatalf("expected ErrNoCapableModel, got %v", err)
 	}
@@ -54,7 +54,7 @@ func TestResolveBatchModel_NoVendorKey(t *testing.T) {
 		nil,
 	)
 
-	_, err := ResolveBatchModel(context.Background(), snap, NoopThrottle{}, []string{"m-batch"}, "key1", "gen", "user1")
+	_, err := ResolveBatchModel(context.Background(), snap, NoopThrottle{}, []string{"m-batch"}, "key1", "gen", "user1", "", nil)
 	if !errors.Is(err, ErrNoVendorKey) {
 		t.Fatalf("expected ErrNoVendorKey when vendor key is missing, got %v", err)
 	}
@@ -67,7 +67,7 @@ func TestResolveBatchModel_LocalNeedsNoVendorKey(t *testing.T) {
 		map[string]map[string]string{"key1": {}},
 		nil,
 	)
-	m, err := ResolveBatchModel(context.Background(), snap, NoopThrottle{}, []string{"m-local"}, "key1", "gen", "user1")
+	m, err := ResolveBatchModel(context.Background(), snap, NoopThrottle{}, []string{"m-local"}, "key1", "gen", "user1", "", nil)
 	if err != nil || m.ID != "m-local" {
 		t.Fatalf("got %v, %v; a local model must not require a vendor key", m, err)
 	}
@@ -91,7 +91,7 @@ func TestResolveBatchModel_BudgetExhausted(t *testing.T) {
 	)
 
 	th := mockBudgetThrottle{trippedKind: "budget_key"}
-	_, err := ResolveBatchModel(context.Background(), snap, th, []string{"m-batch"}, "key1", "gen", "user1")
+	_, err := ResolveBatchModel(context.Background(), snap, th, []string{"m-batch"}, "key1", "gen", "user1", "", nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -133,11 +133,36 @@ func TestResolveBatchModel_SuccessFirstCapableWithKeyAndBudget(t *testing.T) {
 		nil,
 	)
 
-	m, err := ResolveBatchModel(context.Background(), snap, NoopThrottle{}, []string{"m-sync-only", "m-batch-no-key", "m-batch-ok"}, "key1", "gen", "user1")
+	m, err := ResolveBatchModel(context.Background(), snap, NoopThrottle{}, []string{"m-sync-only", "m-batch-no-key", "m-batch-ok"}, "key1", "gen", "user1", "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if m.ID != "m-batch-ok" {
 		t.Fatalf("expected m-batch-ok, got %s", m.ID)
+	}
+}
+
+func TestResolveBatchModel_AccessDenied(t *testing.T) {
+	snap := registry.NewSnapshotForTest(
+		[]*proxydb.Model{
+			{
+				ID:           "m-batch",
+				Vendor:       registry.VendorGoogle,
+				Capabilities: []string{registry.CapabilityBatch},
+				Enabled:      true,
+			},
+		},
+		nil,
+		map[string]map[string]string{
+			"key1": {registry.VendorGoogle: "g-key"},
+		},
+		nil,
+	)
+
+	_, err := ResolveBatchModel(context.Background(), snap, NoopThrottle{}, []string{"m-batch"}, "key1", "gen", "user1", "team-1", func(modelID string) bool {
+		return false
+	})
+	if !errors.Is(err, ErrModelAccessDenied) {
+		t.Fatalf("expected ErrModelAccessDenied when team disallows all capable models, got: %v", err)
 	}
 }

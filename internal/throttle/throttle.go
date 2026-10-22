@@ -285,15 +285,18 @@ type spendTarget struct {
 	reason string
 }
 
-func (t *Redis) spendTargets(keyName, userID string, now time.Time) []spendTarget {
+func (t *Redis) spendTargets(keyName, userID, teamID string, now time.Time) []spendTarget {
 	if t.spendLimits == nil {
 		return nil
 	}
 	var targets []spendTarget
 	for _, e := range spendlimit.Enforced {
-		subjectID, short := keyName, "k"
-		if e.Subject == spendlimit.SubjectUser {
-			subjectID, short = userID, "u"
+		subjectID := keyName
+		switch e.Subject {
+		case spendlimit.SubjectUser:
+			subjectID = userID
+		case spendlimit.SubjectTeam:
+			subjectID = teamID
 		}
 		if subjectID == "" {
 			continue
@@ -304,7 +307,7 @@ func (t *Redis) spendTargets(keyName, userID string, now time.Time) []spendTarge
 		}
 		window, end := spendlimit.Window(e.Period, now)
 		targets = append(targets, spendTarget{
-			key:    t.keys.Spend(short, subjectID, window),
+			key:    t.keys.Spend(spendShort(e.Subject), subjectID, window),
 			limit:  limit,
 			ttl:    int64((end.Sub(now) + spendGrace) / time.Second),
 			reason: spendlimit.Reason(e.Subject, e.Period),
@@ -313,16 +316,38 @@ func (t *Redis) spendTargets(keyName, userID string, now time.Time) []spendTarge
 	return targets
 }
 
+// spendShort is the subject tag in its Redis spend counter key.
+func spendShort(subject string) string {
+	switch subject {
+	case spendlimit.SubjectUser:
+		return "u"
+	case spendlimit.SubjectTeam:
+		return "t"
+	}
+	return "k"
+}
+
+// SpendSoFar reads a subject's spend counter for the current window, the one
+// Reserve checks; nano-USD, 0 when nothing has been spent yet.
+func (t *Redis) SpendSoFar(ctx context.Context, subject, subjectID, period string) (int64, time.Time, error) {
+	window, end := spendlimit.Window(period, t.currentTime())
+	val, err := t.client.Get(ctx, t.keys.Spend(spendShort(subject), subjectID, window)).Int64()
+	if errors.Is(err, redis.Nil) {
+		return 0, end, nil
+	}
+	return val, end, err
+}
+
 // Reserve books the estimate against every applicable daily budget, then the
 // priced worst case against every spend limit. Supports budget_grace_margin:
 // allows the call if the token budget was not already exhausted before.
-func (t *Redis) Reserve(ctx context.Context, m *proxydb.Model, keyName, userID string, estimate, maxOutput int64) (*router.Reservation, string) {
+func (t *Redis) Reserve(ctx context.Context, m *proxydb.Model, keyName, userID, teamID string, estimate, maxOutput int64) (*router.Reservation, string) {
 	if t.client == nil {
 		return nil, ""
 	}
 	now := t.currentTime().UTC()
 	budgets := t.tokenBudgets(m, keyName, userID, now.Format("20060102"))
-	targets := t.spendTargets(keyName, userID, now)
+	targets := t.spendTargets(keyName, userID, teamID, now)
 	if len(budgets) == 0 && len(targets) == 0 {
 		return nil, ""
 	}
@@ -469,7 +494,7 @@ func (t *Redis) adjustSpend(ctx context.Context, keys []string, ttls []int64, de
 
 // CheckDailyBudget reports a daily token budget or spend limit for this model
 // that is already at or beyond its cap, or "" if the call may proceed.
-func (t *Redis) CheckDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string) string {
+func (t *Redis) CheckDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID, teamID string) string {
 	if t.client == nil {
 		return ""
 	}
@@ -486,7 +511,7 @@ func (t *Redis) CheckDailyBudget(ctx context.Context, m *proxydb.Model, keyName,
 			return b.kind
 		}
 	}
-	for _, tg := range t.spendTargets(keyName, userID, now) {
+	for _, tg := range t.spendTargets(keyName, userID, teamID, now) {
 		val, err := t.client.Get(ctx, tg.key).Int64()
 		if errors.Is(err, redis.Nil) {
 			continue
@@ -510,7 +535,7 @@ func (t *Redis) CheckDailyBudget(ctx context.Context, m *proxydb.Model, keyName,
 
 // ChargeDailyBudget books actual batch usage against the daily token budgets
 // and, priced at the batch rate, against the spend limits.
-func (t *Redis) ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID string, usage llm.TokensUsage) {
+func (t *Redis) ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName, userID, teamID string, usage llm.TokensUsage) {
 	tokens := int64(usage.Input + usage.Output)
 	if t.client == nil || tokens <= 0 {
 		return
@@ -522,7 +547,7 @@ func (t *Redis) ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName
 	}
 	var spendKeys []string
 	var spendTTLs []int64
-	for _, tg := range t.spendTargets(keyName, userID, now) {
+	for _, tg := range t.spendTargets(keyName, userID, teamID, now) {
 		spendKeys = append(spendKeys, tg.key)
 		spendTTLs = append(spendTTLs, tg.ttl)
 	}

@@ -216,6 +216,9 @@ func main() {
 	loader.Start(rootCtx, cfg.RoutingReload)
 
 	adminSrv := grpcapi.NewAdminServer(db, keyring, loader.Refresh)
+	if rl, ok := limiter.(*throttle.Redis); ok {
+		adminSrv.SetSpendReader(rl.SpendSoFar)
+	}
 	if nodeMgr != nil {
 		adminSrv.SetNodeManager(nodeMgr)
 	}

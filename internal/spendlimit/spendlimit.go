@@ -12,7 +12,7 @@ import (
 const (
 	SubjectKey  = "key"  // api key name
 	SubjectUser = "user" // router.UserID: attributes["user_id"] or svc:<key_name>
-	SubjectTeam = "team" // reserved in the schema; not enforced yet
+	SubjectTeam = "team" // team id
 )
 
 // Periods are UTC calendar windows.
@@ -37,10 +37,11 @@ var Enforced = []struct{ Subject, Period string }{
 	{SubjectKey, PeriodMonth},
 	{SubjectUser, PeriodDay},
 	{SubjectUser, PeriodMonth},
+	{SubjectTeam, PeriodMonth},
 }
 
 // ValidSubject reports a subject type that is enforced.
-func ValidSubject(s string) bool { return s == SubjectKey || s == SubjectUser }
+func ValidSubject(s string) bool { return s == SubjectKey || s == SubjectUser || s == SubjectTeam }
 
 // ValidPeriod reports a known period.
 func ValidPeriod(p string) bool { return p == PeriodDay || p == PeriodMonth }

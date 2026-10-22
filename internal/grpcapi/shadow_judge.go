@@ -21,7 +21,7 @@ type judgeThrottle struct {
 	router.Throttle
 }
 
-func (j judgeThrottle) Reserve(context.Context, *proxydb.Model, string, string, int64, int64) (*router.Reservation, string) {
+func (j judgeThrottle) Reserve(context.Context, *proxydb.Model, string, string, string, int64, int64) (*router.Reservation, string) {
 	return nil, ""
 }
 
@@ -67,7 +67,7 @@ func (s *ProxyServer) evaluateShadowJudge(ctx context.Context, id *apikeys.Ident
 	shadowText = truncateRunes(shadowText, 4000)
 	prompt = truncateRunes(prompt, 4000)
 
-	judgeCtx, cancel := context.WithTimeout(llm.WithShadowTraffic(apikeys.WithIdentity(ctx, id)), 15*time.Second)
+	judgeCtx, cancel := context.WithTimeout(withInternalCall(llm.WithShadowTraffic(apikeys.WithIdentity(ctx, id))), 15*time.Second)
 	defer cancel()
 
 	plan, err := s.planMedia(judgeCtx, attrs, "", modalityJudge, registry.CapabilityJudge)
@@ -116,7 +116,7 @@ func (s *ProxyServer) evaluateShadowJudge(ctx context.Context, id *apikeys.Ident
 		},
 	}
 
-	estTokens := int64((len([]rune(prompt)) + len([]rune(primaryText)) + len([]rune(shadowText)))/4 + 100)
+	estTokens := int64((len([]rune(prompt))+len([]rune(primaryText))+len([]rune(shadowText)))/4 + 100)
 	var th router.Throttle = router.NoopThrottle{}
 	if s.throttle != nil {
 		th = judgeThrottle{s.throttle}
@@ -126,6 +126,7 @@ func (s *ProxyServer) evaluateShadowJudge(ctx context.Context, id *apikeys.Ident
 		Chain:          plan.chain,
 		KeyName:        plan.identity.Name,
 		UserID:         router.UserID(plan.attrs, plan.identity.Name),
+		TeamID:         plan.identity.TeamID,
 		Estimate:       estTokens,
 		CircuitBreaker: s.circuitBreaker,
 		Cooldown:       plan.cooldown,

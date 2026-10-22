@@ -56,6 +56,16 @@ var methodScopes = map[string]string{
 	method(pb.AdminService_DeleteSpendLimit_FullMethodName):    apikeys.ScopeAdmin,
 	method(pb.AdminService_ListSpendLimits_FullMethodName):     apikeys.ScopeAdmin,
 
+	method(pb.AdminService_CreateOrganization_FullMethodName): apikeys.ScopeAdmin,
+	method(pb.AdminService_ListOrganizations_FullMethodName):  apikeys.ScopeAdmin,
+	method(pb.AdminService_DeleteOrganization_FullMethodName): apikeys.ScopeAdmin,
+	method(pb.AdminService_CreateTeam_FullMethodName):         apikeys.ScopeAdmin,
+	method(pb.AdminService_GetTeam_FullMethodName):            apikeys.ScopeAdmin,
+	method(pb.AdminService_ListTeams_FullMethodName):          apikeys.ScopeAdmin,
+	method(pb.AdminService_UpdateTeam_FullMethodName):         apikeys.ScopeAdmin,
+	method(pb.AdminService_DeleteTeam_FullMethodName):         apikeys.ScopeAdmin,
+	method(pb.AdminService_GetTeamSpend_FullMethodName):       apikeys.ScopeAdmin,
+
 	method(pb.NodeRegistryService_RegisterNode_FullMethodName):   apikeys.ScopeNode,
 	method(pb.NodeRegistryService_ValidateNode_FullMethodName):   apikeys.ScopeNode,
 	method(pb.NodeRegistryService_Heartbeat_FullMethodName):      apikeys.ScopeNode,
