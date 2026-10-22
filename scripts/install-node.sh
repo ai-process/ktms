@@ -243,7 +243,7 @@ store_key() {
 		key=$(printf '%s' "$key" | tr -d ' \t\r\n')
 	fi
 	[ -n "$key" ] || die "empty node key"
-	case $key in llm_node_*) ;; *) warn "That does not look like a node key (they start with llm_node_); continuing." ;; esac
+	case $key in ktms_node_* | llm_node_*) ;; *) warn "That does not look like a node key (they start with ktms_node_); continuing." ;; esac
 	(umask 077 && printf '%s\n' "$key" >"$KEY_FILE.tmp") && chmod 600 "$KEY_FILE.tmp" && mv "$KEY_FILE.tmp" "$KEY_FILE"
 	key=""
 }

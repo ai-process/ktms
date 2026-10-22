@@ -38,7 +38,7 @@ services:
       DATABASE_URL: "${DATABASE_URL:-postgres://ktms:ktms@db:5432/ktms?sslmode=disable}"
       # Dev-only keyring; generate a real one for prod:
       #   echo "1:$(head -c 32 /dev/urandom | base64)"
-      KTMS_ENCRYPTION_KEYS: "${KTMS_ENCRYPTION_KEYS:-${LLMPROXY_ENCRYPTION_KEYS:-1:LS1kZXYtb25seS1rZXktLWRldi1vbmx5LWtleS0tISE=}}"
+      KTMS_ENCRYPTION_KEYS: "${KTMS_ENCRYPTION_KEYS:-1:LS1kZXYtb25seS1rZXktLWRldi1vbmx5LWtleS0tISE=}"
       BOOTSTRAP_ADMIN_KEY: "${BOOTSTRAP_ADMIN_KEY:-dev-bootstrap}"
       REDIS_ADDR: redis:6379
       REDIS_KEY_PREFIX: dev

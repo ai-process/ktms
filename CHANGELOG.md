@@ -18,6 +18,10 @@ version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.
 - The README no longer offers SDK installs from the Buf Schema Registry, which is not published
   yet; generate a client from `proto/ktms/v1` instead.
 
+### Fixed
+- `install-node.sh` no longer warns that a `ktms_node_` key does not look like a node key.
+- CONTRIBUTING and `compose.yaml` use the KTMS database and `KTMS_ENCRYPTION_KEYS` names.
+
 ## [0.14.0] - 2026-10-22
 
 ### Added

@@ -76,7 +76,7 @@ To help us triage and resolve the issue quickly, please provide:
 `KTMS` is designed with defense-in-depth principles:
 
 1. **Envelope Encryption for Vendor Credentials:**  
-   All upstream provider API keys (OpenAI, Anthropic, Gemini, DeepSeek, Bedrock, etc.) are encrypted at rest in PostgreSQL using AES-256-GCM with versioned keyrings (`KTMS_ENCRYPTION_KEYS` / `LLMPROXY_ENCRYPTION_KEYS`). Plaintext keys are decrypted only into volatile in-memory snapshot caches.
+   All upstream provider API keys (OpenAI, Anthropic, Gemini, DeepSeek, Bedrock, etc.) are encrypted at rest in PostgreSQL using AES-256-GCM with versioned keyrings (`KTMS_ENCRYPTION_KEYS`). Plaintext keys are decrypted only into volatile in-memory snapshot caches.
 
 2. **Zero-Log Secret Guarantee:**  
    The codebase strictly enforces that vendor API keys, client API keys, and encryption master keys are never logged to stdout, file logs, OpenTelemetry traces, Prometheus metrics, Sentry, or gRPC error details.
