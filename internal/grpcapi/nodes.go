@@ -386,7 +386,7 @@ func (s *AdminServer) ListNodes(ctx context.Context, _ *pb.ListNodesRequest) (*p
 
 func (s *AdminServer) DrainNode(ctx context.Context, req *pb.DrainNodeRequest) (*pb.DrainNodeResponse, error) {
 	if s.nodeMgr == nil {
-		return nil, status.Error(codes.Unavailable, "node manager disabled")
+		return nil, status.Error(codes.FailedPrecondition, "node manager disabled")
 	}
 	if err := s.nodeMgr.Drain(ctx, req.GetNodeId()); err != nil {
 		log.Error().Err(err).Str("node_id", req.GetNodeId()).Msg("drain node failed")

@@ -92,7 +92,7 @@ func (s *ProxyServer) admitCacheHit(ctx context.Context, snap *registry.Snapshot
 	userID := router.UserID(req.GetAttributes(), id.Name)
 	if m, ok := snap.Models[cached.ResolvedModel]; ok && m != nil {
 		if !s.throttle.AllowRPM(ctx, id.Name, userID, m) {
-			return status.Error(codes.ResourceExhausted, "resource_exhausted: rpm limit exceeded")
+			return status.Error(codes.ResourceExhausted, "throttled:rpm")
 		}
 	}
 	tracker := snap.Tracker()

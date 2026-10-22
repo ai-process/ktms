@@ -149,7 +149,7 @@ func authorize(ctx context.Context, verifier *apikeys.Verifier, fullMethod strin
 		return nil, status.Error(codes.PermissionDenied, "insufficient scope: "+scope)
 	case err != nil:
 		// A store failure must never fall through to allow.
-		return nil, status.Error(codes.Unavailable, "auth backend unavailable")
+		return nil, status.Error(codes.Unavailable, "auth_unavailable")
 	}
 	return id, nil
 }

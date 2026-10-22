@@ -331,7 +331,7 @@ func TestToStatusMapping(t *testing.T) {
 		}
 	}
 	st := status.Convert(ToStatus(audio.ErrFFmpegMissing))
-	wantMsg := "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/llm-proxy:audio' container image"
+	wantMsg := "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/ktms:audio' container image"
 	if st.Message() != wantMsg {
 		t.Errorf("ToStatus(ErrFFmpegMissing) message = %q, want %q", st.Message(), wantMsg)
 	}

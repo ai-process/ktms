@@ -30,7 +30,7 @@ const (
 	AttrKTMSClientKey = attribute.Key("ktms.client_key")
 )
 
-// Tracer returns the named tracer for llm-proxy.
+// Tracer returns the named tracer for KTMS.
 func Tracer() trace.Tracer {
 	return otel.GetTracerProvider().Tracer(TracerName)
 }

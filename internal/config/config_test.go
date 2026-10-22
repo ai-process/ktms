@@ -55,3 +55,30 @@ func TestEnvVarDocumentationConsistency(t *testing.T) {
 		}
 	}
 }
+
+func TestLegacyEncryptionKeysWarns(t *testing.T) {
+	t.Setenv("USAGE_COLLECTOR_HOST", "") // keeps the usage-project notice out
+	t.Setenv("KTMS_ENCRYPTION_KEYS", "")
+	t.Setenv("LLMPROXY_ENCRYPTION_KEYS", "1:abc")
+	c := Load()
+	if c.EncryptionKeys != "1:abc" || len(c.Notices) != 1 {
+		t.Fatalf("keys %q, deprecations %v: the old name must still work and warn", c.EncryptionKeys, c.Notices)
+	}
+	t.Setenv("KTMS_ENCRYPTION_KEYS", "1:def")
+	if c := Load(); c.EncryptionKeys != "1:def" || len(c.Notices) != 0 {
+		t.Fatalf("keys %q, deprecations %v: the new name wins without a warning", c.EncryptionKeys, c.Notices)
+	}
+}
+
+func TestUsageProjectNoticeOnlyWhenReportingWithDefault(t *testing.T) {
+	t.Setenv("KTMS_ENCRYPTION_KEYS", "1:x")
+	t.Setenv("USAGE_COLLECTOR_HOST", "tm:443")
+	t.Setenv("USAGE_PROJECT_ID", "")
+	if c := Load(); c.UsageProjectID != "ktms" || len(c.Notices) != 1 {
+		t.Fatalf("project %q, notices %v: want default ktms and one notice", c.UsageProjectID, c.Notices)
+	}
+	t.Setenv("USAGE_PROJECT_ID", "llm-proxy")
+	if c := Load(); len(c.Notices) != 0 {
+		t.Fatalf("notices %v: an explicit project needs no notice", c.Notices)
+	}
+}
