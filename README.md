@@ -5,7 +5,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/ai-process/ktms)](https://goreportcard.com/report/github.com/ai-process/ktms)
 [![Release](https://img.shields.io/github/v/release/ai-process/ktms?sort=semver)](https://github.com/ai-process/ktms/releases)
 [![Docker Image](https://img.shields.io/docker/v/coyl/ktms?label=docker%20hub&sort=semver)](https://hub.docker.com/r/coyl/ktms)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
 
 A self-hosted LLM gateway and model switchboard. Your services talk to one endpoint; KTMS holds
 the vendor API keys, decides which model answers each request, falls back when a
@@ -1339,4 +1339,4 @@ Dry run: `go run github.com/goreleaser/goreleaser/v2@latest release --snapshot -
 
 ## License
 
-[MIT](LICENSE)
+[Apache 2.0](LICENSE)

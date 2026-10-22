@@ -26,12 +26,12 @@ archives:
     ids: [node]
     formats: [tar.gz]
     name_template: "ktms-node_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    files: [LICENSE]
+    files: [LICENSE, NOTICE]
   - id: server
     ids: [server]
     formats: [tar.gz]
     name_template: "ktms-server_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    files: [LICENSE]
+    files: [LICENSE, NOTICE]
 
 checksum:
   name_template: checksums.txt
@@ -68,7 +68,7 @@ brews:
     ids: [node]
     homepage: https://github.com/ai-process/ktms
     description: Node agent that registers a local inference engine with KTMS
-    license: MIT
+    license: Apache-2.0
     repository:
       owner: ai-process
       name: homebrew-tap
