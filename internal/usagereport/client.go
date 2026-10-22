@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -54,8 +53,9 @@ func (c *UsageCollectorClient) SetProjectResolver(fn func(meta map[string]string
 
 // NewUsageCollectorClient creates a new usage collector client
 // If host is empty, returns nil (usage collection disabled)
-// projectID is the default project events are attributed to
-func NewUsageCollectorClient(host, projectID string, useTLS bool) (*UsageCollectorClient, error) {
+// projectID is the default project events are attributed to; a non-empty
+// token is sent as a bearer token on every call.
+func NewUsageCollectorClient(host, projectID string, useTLS bool, token string) (*UsageCollectorClient, error) {
 	if host == "" {
 		return nil, nil
 	}
@@ -65,7 +65,11 @@ func NewUsageCollectorClient(host, projectID string, useTLS bool) (*UsageCollect
 	if useTLS {
 		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 	}
-	conn, err := grpc.NewClient(host, grpc.WithTransportCredentials(creds))
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
+	if token != "" {
+		opts = append(opts, grpc.WithPerRPCCredentials(bearerToken(token)))
+	}
+	conn, err := grpc.NewClient(host, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +78,16 @@ func NewUsageCollectorClient(host, projectID string, useTLS bool) (*UsageCollect
 	c.conn = conn
 	return c, nil
 }
+
+// bearerToken may travel in plaintext: USAGE_COLLECTOR_TLS=false is for a
+// private network, where the collector's auth guards against stray callers.
+type bearerToken string
+
+func (t bearerToken) GetRequestMetadata(context.Context, ...string) (map[string]string, error) {
+	return map[string]string{"authorization": "Bearer " + string(t)}, nil
+}
+
+func (bearerToken) RequireTransportSecurity() bool { return false }
 
 // Sending is decoupled from requests: events queue here and one sender ships
 // them in batches, retrying until the collector takes them. Event IDs make
@@ -137,7 +151,12 @@ func (c *UsageCollectorClient) sendLoop() {
 			// Keep the batch and retry later; new events keep queueing meanwhile.
 			observability.DependencyErrorsTotal.WithLabelValues("usage_collector", "record_usage").Inc()
 			if backoff == flushEvery {
-				log.Warn().Err(err).Int("events", len(batch)).Msg("usage collector unreachable, holding events and retrying")
+				switch status.Code(err) {
+				case codes.Unauthenticated, codes.PermissionDenied:
+					log.Error().Err(err).Int("events", len(batch)).Msg("usage collector refused USAGE_COLLECTOR_TOKEN (it needs the write scope), holding events and retrying")
+				default:
+					log.Warn().Err(err).Int("events", len(batch)).Msg("usage collector unreachable, holding events and retrying")
+				}
 			}
 			if !c.sleep(backoff) {
 				c.drain(batch)
@@ -378,17 +397,6 @@ func (c *UsageCollectorClient) GetUsageByMeta(ctx context.Context, metaKey, meta
 		return nil, err
 	}
 	return resp.Rows, nil
-}
-
-// NewUsageCollectorClientFromEnv creates a usage collector client by reading configuration from environment variables
-// If USAGE_COLLECTOR_HOST is not set, returns nil (usage collection disabled)
-// projectID is the default project events are attributed to
-func NewUsageCollectorClientFromEnv(projectID string) (*UsageCollectorClient, error) {
-	host := os.Getenv("USAGE_COLLECTOR_HOST")
-	if host == "" {
-		return nil, nil
-	}
-	return NewUsageCollectorClient(host, projectID, os.Getenv("USAGE_COLLECTOR_TLS") == "true")
 }
 
 // The collector's limits (light-tokenmeter domain.Event.Validate). Checking

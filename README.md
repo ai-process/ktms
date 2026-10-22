@@ -393,6 +393,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `BOOTSTRAP_ADMIN_KEY` | empty | Implicit admin key for creating the first real key. Unset afterwards. |
 | `USAGE_COLLECTOR_HOST` | empty | `host:port` of a gRPC usage sink. Empty disables reporting. |
 | `USAGE_COLLECTOR_TLS` | `false` | Reach the sink over TLS, e.g. light-tokenmeter on Cloud Run (`host:443`). |
+| `USAGE_COLLECTOR_TOKEN` | empty | Bearer token sent to the sink on every call; for light-tokenmeter, a token with the `write` scope. Empty sends none. |
 | `USAGE_PROJECT_ID` | `ktms` | Default project name on usage events. |
 | `SENTRY_DSN` | empty | Error reporting; empty disables it. |
 | `SENTRY_ENVIRONMENT` / `SENTRY_RELEASE` | `development` / empty | Sentry metadata. |
@@ -1094,7 +1095,9 @@ purpose travels in free-form attributes, so the proxy knows nothing about your p
 model, tokens, duration, status, `action_id`, rule name and your attributes as metadata) to a
 gRPC service implementing [`usage-proto/usage/v1/usage.proto`](usage-proto/usage/v1/usage.proto).
 Events are attributed to the project named by the `usage_project` attribute, falling back to the
-API key's name. Any service implementing `RecordUsageEvent(s)` works as a sink.
+API key's name. Any service implementing `RecordUsageEvent(s)` works as a sink. When
+light-tokenmeter has authentication on, give KTMS a token with the `write` scope in
+`USAGE_COLLECTOR_TOKEN`; a refused token is logged as an error and events are held and retried.
 
 ### Semantic cache and latent guardrails
 

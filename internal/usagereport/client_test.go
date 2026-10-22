@@ -3,6 +3,7 @@ package usagereport
 import (
 	"context"
 	"errors"
+	"net"
 	"strings"
 	"sync"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/ai-process/ktms/internal/observability"
@@ -224,5 +226,46 @@ func TestCloseDoesNotWaitOutAHungSend(t *testing.T) {
 	_ = c.Close()
 	if elapsed := time.Since(start); elapsed > closeDeadline+time.Second {
 		t.Fatalf("Close took %v, want at most about closeDeadline", elapsed)
+	}
+}
+
+// tokenCollector is a real gRPC sink that remembers the authorization header.
+type tokenCollector struct {
+	usagev1.UnimplementedUsageServiceServer
+	got chan string
+}
+
+func (s *tokenCollector) RecordUsageEvents(ctx context.Context, in *usagev1.RecordUsageEventsRequest) (*usagev1.RecordUsageEventsResponse, error) {
+	md, _ := metadata.FromIncomingContext(ctx)
+	s.got <- strings.Join(md.Get("authorization"), ",")
+	return &usagev1.RecordUsageEventsResponse{CreatedCount: int32(len(in.GetEvents()))}, nil
+}
+
+func TestTokenIsSentAsBearer(t *testing.T) {
+	for _, tc := range []struct{ token, want string }{{"s3cret", "Bearer s3cret"}, {"", ""}} {
+		lis, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		sink := &tokenCollector{got: make(chan string, 8)}
+		srv := grpc.NewServer()
+		usagev1.RegisterUsageServiceServer(srv, sink)
+		go func() { _ = srv.Serve(lis) }()
+
+		c, err := NewUsageCollectorClient(lis.Addr().String(), "p", false, tc.token)
+		if err != nil {
+			t.Fatal(err)
+		}
+		record(t, c, 1)
+		select {
+		case got := <-sink.got:
+			if got != tc.want {
+				t.Errorf("token %q: authorization %q, want %q", tc.token, got, tc.want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("token %q: no batch reached the sink", tc.token)
+		}
+		_ = c.Close()
+		srv.Stop()
 	}
 }

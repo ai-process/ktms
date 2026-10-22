@@ -70,7 +70,9 @@ type Config struct {
 	// UsageCollectorTLS reaches the usage sink over TLS, as a managed
 	// platform (Cloud Run) serves it; plaintext otherwise.
 	UsageCollectorTLS bool
-	UsageProjectID    string
+	// UsageCollectorToken is the collector's bearer token (write scope).
+	UsageCollectorToken string
+	UsageProjectID      string
 
 	BatchMaxItems     int
 	BatchPollInterval time.Duration
@@ -175,6 +177,7 @@ func Load() *Config {
 		BootstrapAdminKey:               getEnv("BOOTSTRAP_ADMIN_KEY", ""),
 		UsageCollectorHost:              getEnv("USAGE_COLLECTOR_HOST", ""),
 		UsageCollectorTLS:               getBoolEnv("USAGE_COLLECTOR_TLS", false),
+		UsageCollectorToken:             getEnv("USAGE_COLLECTOR_TOKEN", ""),
 		UsageProjectID:                  getEnv("USAGE_PROJECT_ID", "ktms"),
 		BatchMaxItems:                   getIntEnv("BATCH_MAX_ITEMS", 10000),
 		BatchPollInterval:               time.Duration(getIntEnv("BATCH_POLL_SECONDS", 60)) * time.Second,
