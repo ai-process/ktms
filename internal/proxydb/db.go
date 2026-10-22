@@ -473,7 +473,20 @@ func (d *DB) GetOrganization(ctx context.Context, id string) (*Organization, err
 	return &o, nil
 }
 
+// DeleteOrganizationTx removes an organization, its teams (cascade) and their
+// spend limits, detaching disabled keys like DeleteTeamTx; active keys refuse it.
 func DeleteOrganizationTx(ctx context.Context, tx pgx.Tx, id string) error {
+	if _, err := tx.Exec(ctx,
+		`UPDATE api_key SET team_id = NULL, org_id = NULL WHERE org_id = $1 AND disabled_at IS NOT NULL`, id); err != nil {
+		return err
+	}
+	if err := refuseActiveKeys(ctx, tx, `org_id = $1`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM spend_limit WHERE subject_type = 'team' AND subject_id IN (SELECT id::text FROM team WHERE org_id = $1)`, id); err != nil {
+		return err
+	}
 	tag, err := tx.Exec(ctx, `DELETE FROM organization WHERE id = $1`, id)
 	if err != nil {
 		return err
@@ -484,27 +497,18 @@ func DeleteOrganizationTx(ctx context.Context, tx pgx.Tx, id string) error {
 	return nil
 }
 
-func (d *DB) DeleteOrganization(ctx context.Context, id string) error {
-	tag, err := d.pool.Exec(ctx, `DELETE FROM organization WHERE id = $1`, id)
-	if err != nil {
-		return err
+// SetTeamBudgetTx makes the team's monthly spend limit match its budget: the
+// team row and spend_limit change together, so they cannot drift apart.
+func SetTeamBudgetTx(ctx context.Context, tx pgx.Tx, teamID string, limitNanoUSD int64) error {
+	if limitNanoUSD > 0 {
+		return UpsertSpendLimit(ctx, tx, &SpendLimit{SubjectType: "team", SubjectID: teamID, Period: "month", LimitNanoUSD: limitNanoUSD})
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	_, err := tx.Exec(ctx, `DELETE FROM spend_limit WHERE subject_type = 'team' AND subject_id = $1`, teamID)
+	return err
 }
 
 func CreateTeamTx(ctx context.Context, tx pgx.Tx, team *Team) error {
 	_, err := tx.Exec(ctx,
-		`INSERT INTO team (id, org_id, name, monthly_budget_usd, allowed_models, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		team.ID, team.OrgID, team.Name, team.MonthlyBudgetUSD, team.AllowedModels, team.CreatedAt)
-	return err
-}
-
-func (d *DB) CreateTeam(ctx context.Context, team *Team) error {
-	_, err := d.pool.Exec(ctx,
 		`INSERT INTO team (id, org_id, name, monthly_budget_usd, allowed_models, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6)`,
 		team.ID, team.OrgID, team.Name, team.MonthlyBudgetUSD, team.AllowedModels, team.CreatedAt)
@@ -569,21 +573,17 @@ func UpdateTeamTx(ctx context.Context, tx pgx.Tx, team *Team) error {
 	return nil
 }
 
-func (d *DB) UpdateTeam(ctx context.Context, team *Team) error {
-	tag, err := d.pool.Exec(ctx,
-		`UPDATE team SET name = $2, monthly_budget_usd = $3, allowed_models = $4
-		 WHERE id = $1`,
-		team.ID, team.Name, team.MonthlyBudgetUSD, team.AllowedModels)
-	if err != nil {
+// DeleteTeamTx removes a team and its spend limits. Disabled keys are detached
+// (keys are never deleted, so they would pin the team forever); active keys
+// make it ErrTenantInUse: revoke or move them first.
+func DeleteTeamTx(ctx context.Context, tx pgx.Tx, id string) error {
+	if _, err := tx.Exec(ctx,
+		`UPDATE api_key SET team_id = NULL, org_id = NULL WHERE team_id = $1 AND disabled_at IS NOT NULL`, id); err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+	if err := refuseActiveKeys(ctx, tx, `team_id = $1`, id); err != nil {
+		return err
 	}
-	return nil
-}
-
-func DeleteTeamTx(ctx context.Context, tx pgx.Tx, id string) error {
 	tag, err := tx.Exec(ctx, `DELETE FROM team WHERE id = $1`, id)
 	if err != nil {
 		return err
@@ -591,16 +591,17 @@ func DeleteTeamTx(ctx context.Context, tx pgx.Tx, id string) error {
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	return nil
+	_, err = tx.Exec(ctx, `DELETE FROM spend_limit WHERE subject_type = 'team' AND subject_id = $1`, id)
+	return err
 }
 
-func (d *DB) DeleteTeam(ctx context.Context, id string) error {
-	tag, err := d.pool.Exec(ctx, `DELETE FROM team WHERE id = $1`, id)
-	if err != nil {
+func refuseActiveKeys(ctx context.Context, tx pgx.Tx, where, id string) error {
+	var n int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM api_key WHERE `+where, id).Scan(&n); err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+	if n > 0 {
+		return fmt.Errorf("%w: %d active api key(s)", ErrTenantInUse, n)
 	}
 	return nil
 }

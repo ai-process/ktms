@@ -10,6 +10,7 @@ import (
 var (
 	ErrNotFound      = errors.New("proxydb: not found")
 	ErrAlreadyExists = errors.New("proxydb: already exists")
+	ErrTenantInUse   = errors.New("proxydb: tenant still has active api keys")
 )
 
 type Organization struct {

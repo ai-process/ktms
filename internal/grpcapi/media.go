@@ -181,17 +181,13 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 
 	// The modality is the proxy's to state, not the caller's: rules match on it
 	// and a caller could otherwise route image work to a speech chain.
-	clean := router.SanitizeAttributes(attrs)
-	routing := make(map[string]string, len(clean)+1)
-	for k, v := range clean {
-		routing[k] = v
-	}
+	routing := routingAttributes(attrs, id)
 	routing[ModalityAttribute] = modality
 
 	var chain []string
 	var ruleName string
 	if override != "" {
-		if !id.CanAccessModel(override) {
+		if !isInternalCall(ctx) && !id.CanAccessModel(override) {
 			return nil, status.Errorf(codes.PermissionDenied, "model %q not allowed for team", override)
 		}
 		if _, ok := snap.Models[override]; !ok {
@@ -216,17 +212,8 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 		return nil, router.ToStatus(err)
 	}
 
-	if len(id.TeamAllowedModels) > 0 {
-		var allowed []*proxydb.Model
-		for _, m := range models {
-			if id.CanAccessModel(m.ID) {
-				allowed = append(allowed, m)
-			}
-		}
-		if len(allowed) == 0 {
-			return nil, status.Error(codes.PermissionDenied, "no models in chain allowed for team")
-		}
-		models = allowed
+	if models, err = teamModels(ctx, id, models); err != nil {
+		return nil, err
 	}
 
 	meta := make(map[string]string, len(routing)+4)

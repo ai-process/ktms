@@ -67,7 +67,7 @@ func (s *ProxyServer) evaluateShadowJudge(ctx context.Context, id *apikeys.Ident
 	shadowText = truncateRunes(shadowText, 4000)
 	prompt = truncateRunes(prompt, 4000)
 
-	judgeCtx, cancel := context.WithTimeout(llm.WithShadowTraffic(apikeys.WithIdentity(ctx, id)), 15*time.Second)
+	judgeCtx, cancel := context.WithTimeout(withInternalCall(llm.WithShadowTraffic(apikeys.WithIdentity(ctx, id))), 15*time.Second)
 	defer cancel()
 
 	plan, err := s.planMedia(judgeCtx, attrs, "", modalityJudge, registry.CapabilityJudge)

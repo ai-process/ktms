@@ -211,8 +211,12 @@ func (s *AdminServer) ListUserRateLimits(ctx context.Context, req *pb.ListUserRa
 }
 
 func validateSpendScope(subjectType, subjectID, period string) error {
+	if subjectType == spendlimit.SubjectTeam {
+		// One owner for a team's cap, so the team row and the limit never disagree.
+		return status.Error(codes.InvalidArgument, "team budgets are set with CreateTeam/UpdateTeam")
+	}
 	if !spendlimit.ValidSubject(subjectType) {
-		return status.Error(codes.InvalidArgument, `subject_type must be "key", "user", or "team"`)
+		return status.Error(codes.InvalidArgument, `subject_type must be "key" or "user"`)
 	}
 	if subjectID == "" {
 		return status.Error(codes.InvalidArgument, "subject_id is required")
@@ -302,17 +306,14 @@ func mutationStatus(err error) error {
 	if errors.Is(err, proxydb.ErrNotFound) {
 		return status.Error(codes.NotFound, "not found")
 	}
-	if errors.Is(err, errInvalidConfig) {
+	if errors.Is(err, errInvalidConfig) || errors.Is(err, proxydb.ErrTenantInUse) {
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		// FK/unique violations are config mistakes (unknown model id in a
 		// chain, duplicate), not infrastructure failures.
-		if pgErr.Code == "23505" {
-			return status.Error(codes.AlreadyExists, pgErr.Message)
-		}
-		if pgErr.Code == "23503" {
+		if pgErr.Code == "23503" || pgErr.Code == "23505" {
 			return status.Error(codes.InvalidArgument, pgErr.Message)
 		}
 	}
@@ -565,8 +566,9 @@ func (s *AdminServer) CreateTeam(ctx context.Context, req *pb.CreateTeamRequest)
 	if req.GetName() == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
-	if req.GetMonthlyBudgetUsd() < 0 {
-		return nil, status.Error(codes.InvalidArgument, "monthly_budget_usd must be non-negative")
+	budget, err := teamBudgetNano(req.GetMonthlyBudgetUsd())
+	if err != nil {
+		return nil, err
 	}
 	if _, err := s.db.GetOrganization(ctx, req.GetOrgId()); err != nil {
 		if errors.Is(err, proxydb.ErrNotFound) {
@@ -586,20 +588,11 @@ func (s *AdminServer) CreateTeam(ctx context.Context, req *pb.CreateTeamRequest)
 		AllowedModels:    allowed,
 		CreatedAt:        time.Now().UTC(),
 	}
-	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {
+	_, err = s.db.Mutate(ctx, func(tx pgx.Tx) error {
 		if err := proxydb.CreateTeamTx(ctx, tx, team); err != nil {
 			return err
 		}
-		if team.MonthlyBudgetUSD > 0 {
-			limitNano := int64(math.Round(team.MonthlyBudgetUSD * 1e9))
-			return proxydb.UpsertSpendLimit(ctx, tx, &proxydb.SpendLimit{
-				SubjectType:  spendlimit.SubjectTeam,
-				SubjectID:    team.ID,
-				Period:       spendlimit.PeriodMonth,
-				LimitNanoUSD: limitNano,
-			})
-		}
-		return nil
+		return proxydb.SetTeamBudgetTx(ctx, tx, team.ID, budget)
 	}, nil)
 	if err != nil {
 		return nil, mutationStatus(err)
@@ -649,8 +642,9 @@ func (s *AdminServer) UpdateTeam(ctx context.Context, req *pb.UpdateTeamRequest)
 	if req.GetName() == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
-	if req.GetMonthlyBudgetUsd() < 0 {
-		return nil, status.Error(codes.InvalidArgument, "monthly_budget_usd must be non-negative")
+	budget, err := teamBudgetNano(req.GetMonthlyBudgetUsd())
+	if err != nil {
+		return nil, err
 	}
 	allowed := req.GetAllowedModels()
 	if allowed == nil {
@@ -662,20 +656,11 @@ func (s *AdminServer) UpdateTeam(ctx context.Context, req *pb.UpdateTeamRequest)
 		MonthlyBudgetUSD: req.GetMonthlyBudgetUsd(),
 		AllowedModels:    allowed,
 	}
-	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {
+	_, err = s.db.Mutate(ctx, func(tx pgx.Tx) error {
 		if err := proxydb.UpdateTeamTx(ctx, tx, t); err != nil {
 			return err
 		}
-		if t.MonthlyBudgetUSD > 0 {
-			limitNano := int64(math.Round(t.MonthlyBudgetUSD * 1e9))
-			return proxydb.UpsertSpendLimit(ctx, tx, &proxydb.SpendLimit{
-				SubjectType:  spendlimit.SubjectTeam,
-				SubjectID:    t.ID,
-				Period:       spendlimit.PeriodMonth,
-				LimitNanoUSD: limitNano,
-			})
-		}
-		return proxydb.DeleteSpendLimit(ctx, tx, spendlimit.SubjectTeam, t.ID, spendlimit.PeriodMonth)
+		return proxydb.SetTeamBudgetTx(ctx, tx, t.ID, budget)
 	}, nil)
 	if err != nil {
 		return nil, mutationStatus(err)
@@ -696,16 +681,23 @@ func (s *AdminServer) DeleteTeam(ctx context.Context, req *pb.DeleteTeamRequest)
 		return nil, err
 	}
 	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {
-		if err := proxydb.DeleteTeamTx(ctx, tx, req.GetId()); err != nil {
-			return err
-		}
-		return proxydb.DeleteSpendLimit(ctx, tx, spendlimit.SubjectTeam, req.GetId(), spendlimit.PeriodMonth)
+		return proxydb.DeleteTeamTx(ctx, tx, req.GetId())
 	}, nil)
 	if err != nil {
 		return nil, mutationStatus(err)
 	}
 	s.onChange()
 	return &pb.DeleteTeamResponse{}, nil
+}
+
+// maxTeamBudgetUSD keeps the nano-USD conversion inside int64 with room to spare.
+const maxTeamBudgetUSD = 1e9
+
+func teamBudgetNano(usd float64) (int64, error) {
+	if math.IsNaN(usd) || math.IsInf(usd, 0) || usd < 0 || usd > maxTeamBudgetUSD {
+		return 0, status.Errorf(codes.InvalidArgument, "monthly_budget_usd must be between 0 and %.0f", maxTeamBudgetUSD)
+	}
+	return int64(math.Round(usd * 1e9)), nil
 }
 
 func orgToProto(o *proxydb.Organization) *pb.Organization {

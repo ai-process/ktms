@@ -242,7 +242,9 @@ message ListUserRateLimitsResponse {
 // reserved up front, and a request that would cross the cap is refused with
 // throttled:spend_<subject>_<daily|monthly> (HTTP 429 insufficient_quota).
 message SpendLimitSpec {
-  string subject_type = 1; // "key" (api key name) | "user" (attributes["user_id"] or svc:<key_name>)
+  // "key" (api key name) | "user" (attributes["user_id"] or svc:<key_name>).
+  // Team caps ("team", monthly) are listed here but set only via Create/UpdateTeam.
+  string subject_type = 1;
   string subject_id = 2; // key name / user id, or "*" for the default of that subject type
   string period = 3; // "day" | "month", UTC calendar periods
   int64 limit_nanousd = 4; // cap in nano-USD (1e-9 USD), > 0
@@ -277,6 +279,9 @@ message Organization {
   google.protobuf.Timestamp created_at = 3;
 }
 
+// A team's keys may call only allowed_models (empty = any) and spend at most
+// monthly_budget_usd per UTC month across all its keys (0 = no cap). Deleting a
+// team or organization detaches revoked keys and is refused while active ones remain.
 message Team {
   string id = 1;
   string org_id = 2;

@@ -61,7 +61,7 @@ var methodScopes = map[string]string{
 	method(pb.AdminService_DeleteOrganization_FullMethodName): apikeys.ScopeAdmin,
 	method(pb.AdminService_CreateTeam_FullMethodName):         apikeys.ScopeAdmin,
 	method(pb.AdminService_GetTeam_FullMethodName):            apikeys.ScopeAdmin,
-	method(pb.AdminService_ListTeams_FullMethodName):           apikeys.ScopeAdmin,
+	method(pb.AdminService_ListTeams_FullMethodName):          apikeys.ScopeAdmin,
 	method(pb.AdminService_UpdateTeam_FullMethodName):         apikeys.ScopeAdmin,
 	method(pb.AdminService_DeleteTeam_FullMethodName):         apikeys.ScopeAdmin,
 

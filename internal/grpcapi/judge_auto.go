@@ -102,7 +102,7 @@ func (s *ProxyServer) judgeEffort(ctx context.Context, attrs map[string]string, 
 		return registry.EffortMedium, 0.5, "", nil
 	}
 
-	judgeCtx, cancel := context.WithTimeout(ctx, judgeAutoTimeout)
+	judgeCtx, cancel := context.WithTimeout(withInternalCall(ctx), judgeAutoTimeout)
 	defer cancel()
 
 	plan, err := s.planMedia(judgeCtx, attrs, "", modalityJudge, registry.CapabilityJudge)
@@ -258,7 +258,7 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 		return nil, status.Error(codes.InvalidArgument, "bad_request: effort is required")
 	}
 
-	rule := router.Match(snap, effort, req.GetAttributes())
+	rule := router.Match(snap, effort, routingAttributes(req.GetAttributes(), id))
 	if rule == nil {
 		return nil, router.ToStatus(router.ErrNotConfigured)
 	}
@@ -271,17 +271,8 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 		return nil, router.ToStatus(err)
 	}
 
-	if len(id.TeamAllowedModels) > 0 {
-		var allowed []*proxydb.Model
-		for _, m := range models {
-			if id.CanAccessModel(m.ID) {
-				allowed = append(allowed, m)
-			}
-		}
-		if len(allowed) == 0 {
-			return nil, status.Error(codes.PermissionDenied, "no models in chain allowed for team")
-		}
-		models = allowed
+	if models, err = teamModels(ctx, id, models); err != nil {
+		return nil, err
 	}
 
 	if placement != "" {

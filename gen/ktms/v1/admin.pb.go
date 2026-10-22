@@ -2461,11 +2461,13 @@ func (x *ListUserRateLimitsResponse) GetRateLimits() []*UserRateLimitSpec {
 // reserved up front, and a request that would cross the cap is refused with
 // throttled:spend_<subject>_<daily|monthly> (HTTP 429 insufficient_quota).
 type SpendLimitSpec struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SubjectType   string                 `protobuf:"bytes,1,opt,name=subject_type,json=subjectType,proto3" json:"subject_type,omitempty"`     // "key" (api key name) | "user" (attributes["user_id"] or svc:<key_name>)
-	SubjectId     string                 `protobuf:"bytes,2,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`           // key name / user id, or "*" for the default of that subject type
-	Period        string                 `protobuf:"bytes,3,opt,name=period,proto3" json:"period,omitempty"`                                  // "day" | "month", UTC calendar periods
-	LimitNanousd  int64                  `protobuf:"varint,4,opt,name=limit_nanousd,json=limitNanousd,proto3" json:"limit_nanousd,omitempty"` // cap in nano-USD (1e-9 USD), > 0
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// "key" (api key name) | "user" (attributes["user_id"] or svc:<key_name>).
+	// Team caps ("team", monthly) are listed here but set only via Create/UpdateTeam.
+	SubjectType   string `protobuf:"bytes,1,opt,name=subject_type,json=subjectType,proto3" json:"subject_type,omitempty"`
+	SubjectId     string `protobuf:"bytes,2,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`           // key name / user id, or "*" for the default of that subject type
+	Period        string `protobuf:"bytes,3,opt,name=period,proto3" json:"period,omitempty"`                                  // "day" | "month", UTC calendar periods
+	LimitNanousd  int64  `protobuf:"varint,4,opt,name=limit_nanousd,json=limitNanousd,proto3" json:"limit_nanousd,omitempty"` // cap in nano-USD (1e-9 USD), > 0
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2860,6 +2862,9 @@ func (x *Organization) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// A team's keys may call only allowed_models (empty = any) and spend at most
+// monthly_budget_usd per UTC month across all its keys (0 = no cap). Deleting a
+// team or organization detaches revoked keys and is refused while active ones remain.
 type Team struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Id               string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`

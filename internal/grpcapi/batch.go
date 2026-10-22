@@ -134,13 +134,7 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 		return nil, status.Error(codes.InvalidArgument, "bad_request: effort is required")
 	}
 
-	cleanAttrs := router.SanitizeAttributes(req.GetAttributes())
-	if id.OrgID != "" {
-		cleanAttrs["org_id"] = id.OrgID
-	}
-	if id.TeamID != "" {
-		cleanAttrs["team_id"] = id.TeamID
-	}
+	cleanAttrs := routingAttributes(req.GetAttributes(), id)
 	rule := router.Match(snap, effort, cleanAttrs)
 	if rule == nil {
 		return nil, router.ToStatus(router.ErrNotConfigured)

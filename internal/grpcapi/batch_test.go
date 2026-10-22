@@ -665,3 +665,20 @@ func TestSubmitBatch_IdempotencyLookupFailureRefuses(t *testing.T) {
 		t.Fatal("nothing may reach the vendor when idempotency is unknown")
 	}
 }
+
+// A team key submitting a batch without attributes used to write into a nil map.
+func TestSubmitBatch_TeamKeyWithoutAttributes(t *testing.T) {
+	server, _, _ := batchServerFixture()
+	ctx := apikeys.WithIdentity(context.Background(), &apikeys.Identity{
+		KeyID: "key-1", Name: "test-client", Scopes: []string{apikeys.ScopeGenerate}, OrgID: "org-1", TeamID: "team-1",
+	})
+	_, err := server.SubmitBatch(ctx, &pb.SubmitBatchRequest{
+		Effort: pb.Effort_EFFORT_MEDIUM,
+		Items: []*pb.BatchItemRequest{
+			{CustomId: "c1", Request: &pb.GenerateTextRequest{Messages: []*pb.ChatMessage{{Text: "hi"}}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitBatch: %v", err)
+	}
+}

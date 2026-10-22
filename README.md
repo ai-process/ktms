@@ -562,6 +562,32 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"spend_limit":
 - `ListSpendLimits`, `DeleteSpendLimit` and `GetConfig` show and lift caps. Every usage event
   carries its `cost_nanousd`, which light-tokenmeter sums per day, model, user or job.
 
+### 6. Organizations and teams (optional)
+
+Group keys into organizations and teams to give each team its own models and monthly budget:
+
+```bash
+grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"name":"acme"}' \
+  localhost:9090 ktms.v1.AdminService/CreateOrganization
+grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"org_id":"<org id>","name":"search",
+  "monthly_budget_usd":500,"allowed_models":["gpt-5.1","local-qwen3-32b"]}' \
+  localhost:9090 ktms.v1.AdminService/CreateTeam
+grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"name":"search-service",
+  "scopes":["generate"],"org_id":"<org id>","team_id":"<team id>"}' \
+  localhost:9090 ktms.v1.AdminService/MintAPIKey
+```
+
+- A team key may call only the team's `allowed_models` (empty means any). A model override
+  outside them is `PERMISSION_DENIED`; a chain is filtered to them, and a chain with none
+  left is `PERMISSION_DENIED`. The proxy's own judge calls (auto effort, shadow evaluation)
+  are not restricted.
+- `monthly_budget_usd` is a spend limit on all the team's keys together (UTC month), refused
+  with `RESOURCE_EXHAUSTED throttled:spend_team_monthly`. It is set only through
+  `CreateTeam`/`UpdateTeam` (`0` lifts it); `SetSpendLimit` refuses `subject_type: "team"`.
+- Rules can match `org_id` and `team_id`. The proxy sets them from the key; callers cannot.
+- Deleting a team or organization detaches revoked keys and is `FAILED_PRECONDITION` while
+  active keys remain: revoke or move them first.
+
 ### Speech, image and judgment rules
 
 These modalities carry no effort. The proxy routes them at `EFFORT_LOW` with a reserved
@@ -1075,8 +1101,9 @@ lexical hash encoder that folds case, homoglyphs, zero-width and spaced-out lett
 | `INVALID_ARGUMENT` | `bad_request: <message>` | Empty batch, duplicate `custom_id`, too many items (> `BATCH_MAX_ITEMS`), or invalid parameters. |
 | `UNAVAILABLE` | `vendors_unavailable` | The whole chain failed. **The only retryable error.** When vendors paused every model in the chain with `Retry-After`, details carry `RetryInfo` (HTTP: `Retry-After` header): wait that long first. |
 | `RESOURCE_EXHAUSTED` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` | Back off; don't hot-retry. Daily budget exhausted before batch submission. |
-| `RESOURCE_EXHAUSTED` | `throttled:spend_key_daily`, `throttled:spend_key_monthly`, `throttled:spend_user_daily`, `throttled:spend_user_monthly` | Spend limit reached. Details carry `ErrorInfo{reason: "insufficient_quota"}` and `RetryInfo` until the period resets. |
+| `RESOURCE_EXHAUSTED` | `throttled:spend_key_daily`, `throttled:spend_key_monthly`, `throttled:spend_user_daily`, `throttled:spend_user_monthly`, `throttled:spend_team_monthly` | Spend limit reached. Details carry `ErrorInfo{reason: "insufficient_quota"}` and `RetryInfo` until the period resets. |
 | `UNAVAILABLE` | `throttled:spend_unavailable` | Spend counters unreachable with `SPEND_LIMITS_FAIL_MODE=closed`. Retry with backoff. |
+| `PERMISSION_DENIED` | `model "<id>" not allowed for team`, `no models in chain allowed for team` | The key's team may not use that model. |
 | `FAILED_PRECONDITION` | `output_truncated` | Raise `max_output_tokens`; don't retry as-is. |
 | `FAILED_PRECONDITION` | `no_capable_model` | No model in the matched chain can serve this request, modality, or batch capability. |
 | `FAILED_PRECONDITION` | `no_vendor_key` | The client key holds no credential for the chain's vendors. `local` models never cause this. |

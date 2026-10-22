@@ -22,8 +22,13 @@ ALTER TABLE api_key
     ADD COLUMN IF NOT EXISTS org_id UUID REFERENCES organization(id) ON DELETE RESTRICT,
     ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES team(id) ON DELETE RESTRICT;
 
-ALTER TABLE api_key
-    ADD CONSTRAINT fk_api_key_team_org FOREIGN KEY (team_id, org_id) REFERENCES team(id, org_id) ON DELETE RESTRICT;
+-- Guarded: migrations must be safe to re-run (see migrations/embed.go).
+DO $$
+BEGIN
+    ALTER TABLE api_key
+        ADD CONSTRAINT fk_api_key_team_org FOREIGN KEY (team_id, org_id) REFERENCES team(id, org_id) ON DELETE RESTRICT;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_api_key_org_id ON api_key(org_id);
 CREATE INDEX IF NOT EXISTS idx_api_key_team_id ON api_key(team_id);

@@ -384,4 +384,3 @@ func TestSpendTeamMonthly(t *testing.T) {
 		t.Fatalf("other team must pass, got: %s (res=%v)", tripped3, res3)
 	}
 }
-
