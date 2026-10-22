@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -481,7 +483,7 @@ func (s *AdminServer) RotateEncryption(ctx context.Context, _ *pb.RotateEncrypti
 	active := int32(s.keyring.ActiveVersion())
 	var count int32
 	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {
-		keys, err := proxydb.LoadVendorKeysTx(ctx, tx)
+		keys, err := proxydb.LockVendorKeysTx(ctx, tx)
 		if err != nil {
 			return err
 		}
@@ -508,7 +510,55 @@ func (s *AdminServer) RotateEncryption(ctx context.Context, _ *pb.RotateEncrypti
 		return nil, dbStatus(err)
 	}
 	s.onChange()
-	return &pb.RotateEncryptionResponse{Reencrypted: count}, nil
+	tokens, err := s.rotateNodeTokens(ctx, int(active))
+	if err != nil {
+		log.Error().Err(err).Msg("node auth token rotation failed")
+		return nil, status.Error(codes.Unavailable, "node registry unavailable: vendor keys were re-encrypted, call again")
+	}
+	return &pb.RotateEncryptionResponse{Reencrypted: count + tokens}, nil
+}
+
+// rotateNodeTokens re-encrypts the node auth tokens kept in Redis with the
+// same keyring, so dropping an old key version does not break node calls.
+func (s *AdminServer) rotateNodeTokens(ctx context.Context, active int) (int32, error) {
+	if s.nodeMgr == nil || s.keyring == nil {
+		return 0, nil
+	}
+	store := s.nodeMgr.Store()
+	ids, err := store.GetAllNodeIDs(ctx)
+	if err != nil {
+		return 0, err
+	}
+	prefix := strconv.Itoa(active) + ":"
+	var n int32
+	for _, id := range ids {
+		meta, err := store.GetMeta(ctx, id)
+		if errors.Is(err, nodes.ErrNodeNotFound) {
+			continue
+		}
+		if err != nil {
+			return n, err
+		}
+		if meta.AuthToken == "" || strings.HasPrefix(meta.AuthToken, prefix) {
+			continue
+		}
+		plain, err := s.keyring.DecodeVersioned(meta.AuthToken)
+		if err != nil {
+			// Unreadable already; the node gets a fresh token when it re-registers.
+			log.Warn().Err(err).Str("node_id", id).Msg("node auth token cannot be decrypted, skipped")
+			continue
+		}
+		ct, v, err := s.keyring.Encrypt(plain)
+		if err != nil {
+			return n, err
+		}
+		meta.AuthToken = crypto.EncodeVersioned(ct, v)
+		if err := store.SaveMeta(ctx, meta, s.nodeMgr.Config().RetentionTTL); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
 }
 
 func dbStatus(err error) error {

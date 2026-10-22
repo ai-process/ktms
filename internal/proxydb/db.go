@@ -386,6 +386,27 @@ func LoadVendorKeysTx(ctx context.Context, tx pgx.Tx) ([]*VendorKey, error) {
 	return loadVendorKeys(ctx, tx)
 }
 
+// LockVendorKeysTx reads every vendor key and locks the rows until the
+// transaction ends, so a key set meanwhile cannot be overwritten by a stale
+// re-encryption of the previous one.
+func LockVendorKeysTx(ctx context.Context, tx pgx.Tx) ([]*VendorKey, error) {
+	rows, err := tx.Query(ctx,
+		`SELECT id, api_key_id, vendor, key_ciphertext, key_version FROM vendor_key ORDER BY id FOR UPDATE`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*VendorKey
+	for rows.Next() {
+		var v VendorKey
+		if err := rows.Scan(&v.ID, &v.APIKeyID, &v.Vendor, &v.KeyCiphertext, &v.KeyVersion); err != nil {
+			return nil, err
+		}
+		out = append(out, &v)
+	}
+	return out, rows.Err()
+}
+
 func (d *DB) LoadSpendLimits(ctx context.Context) ([]*SpendLimit, error) {
 	return loadSpendLimits(ctx, d.pool)
 }

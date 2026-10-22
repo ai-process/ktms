@@ -331,8 +331,8 @@ Cloudflare tunnel per attempt.
 - **TLS.** The server speaks plaintext gRPC. Terminate TLS in front of it (Envoy, nginx
   with `grpc_pass`, a service mesh, a cloud load balancer) or keep it on a private network.
   Node agents that reach the proxy through that TLS endpoint run with `--tls`.
-- **Back up the encryption keyring.** Without `KTMS_ENCRYPTION_KEYS` (or legacy `LLMPROXY_ENCRYPTION_KEYS`) the stored vendor
-  keys are unreadable. Treat it like any other root secret.
+- **Back up the encryption keyring**, apart from the database: without `KTMS_ENCRYPTION_KEYS` the
+  stored vendor keys are unreadable. See [Backups](#backups-and-the-encryption-keyring).
 - **Mint real keys, then unset `BOOTSTRAP_ADMIN_KEY`.** It is accepted as an implicit admin key.
 - **Run Redis if you want limits.** With `REDIS_ADDR` empty, RPM, token budgets and spend
   limits are **not enforced** (the proxy fails open by design, and does the same if Redis
@@ -341,7 +341,7 @@ Cloudflare tunnel per attempt.
   and revocation are per client.
 - **Mind your Postgres connection count.** Each replica holds up to `DB_MAX_CONNS`
   (default 25) connections.
-- **Back up Postgres.** All configuration lives there.
+- **Back up Postgres.** All configuration lives there; see [Backups](#backups-and-the-encryption-keyring).
 
 ## Configuration reference
 
@@ -612,10 +612,15 @@ Without such a rule the call fails with `FAILED_PRECONDITION no_capable_model`.
 New writes use the highest version in `KTMS_ENCRYPTION_KEYS`; every listed version can decrypt.
 
 1. Add a new version and deploy it to **every** replica: `1:<old>,2:<new>`. Until all replicas run
-   the new keyring, do not add or change vendor keys: a replica still on `1:<old>` cannot read a
-   key written with version 2.
+   the new keyring, do not add or change vendor keys (or the `SEED_*_KEY` values with
+   `AUTO_SEED`): a replica still on `1:<old>` cannot read a key written with version 2. It logs
+   an error, counts `ktms_dependency_errors_total{dependency="keyring"}`, and that client gets
+   `no_vendor_key` for that vendor until the replica has the new keyring; the rest of its
+   config keeps loading.
 2. Call `RotateEncryption` once, on any replica. It re-encrypts every vendor key with version 2
-   in one transaction and returns how many it changed; calling it again changes nothing.
+   (in one transaction that locks the rows, so a key set at the same moment is not lost) and the
+   auth tokens of registered nodes, and returns how many it changed; calling it again changes
+   nothing.
 3. Remove version 1 and redeploy, but only when no database backup you may restore still holds
    keys encrypted with it (see [Backups](#backups-and-the-encryption-keyring)). Until then,
    leaving it listed is harmless. Cached responses encrypted with a removed version are
@@ -1242,12 +1247,18 @@ advance:
   again with `SetVendorKey`; client keys, config and limits survive.
 - **Keep old key versions as long as the backups that need them.** A dump taken before a
   rotation can only be read with the versions it was written with.
-- **Restore:** stop every replica, restore the dump, then start a release at least as new as the
-  one that took it. Migrations only run forward, so an older release cannot read a newer
-  schema.
-- **Redis is not backed up.** It holds rate and spend counters and the response cache. Losing it
-  resets the current day's and month's counters, so spend limits allow up to one more full cap
-  in the current period, and the cache starts empty.
+- **Restore:** stop every replica, restore the dump, **flush the gateway's Redis keys** (the
+  `REDIS_KEY_PREFIX` namespace), then start a release at least as new as the one that took the
+  dump. The flush matters: cached responses are keyed by the config version, which the restore
+  rolls back, so later changes would reuse version numbers whose cache entries belong to another
+  config. An older release could run on the restored schema but would ignore what was added
+  after it, so do not restore with one.
+- **Redis is not backed up.** It holds rate, token and spend counters, the response and semantic
+  caches, and the node pool: registrations (with encrypted node auth tokens), heartbeats, slot
+  leases, the node circuit breaker and drain flags. Losing it resets the current day's and
+  month's counters (spend limits then allow up to one more full cap in the current period),
+  empties the caches, drops every node from routing until its next heartbeat re-registers it,
+  and clears drain flags, so drained nodes take traffic again.
 
 ### When a dependency fails
 

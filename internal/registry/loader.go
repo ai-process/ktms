@@ -181,8 +181,13 @@ func (l *Loader) build(ctx context.Context, version int64) (*Snapshot, error) {
 	for _, vk := range vendorKeys {
 		plain, err := l.keyring.Decrypt(vk.KeyCiphertext, int(vk.KeyVersion))
 		if err != nil {
+			// One unreadable key (a version this replica's keyring lacks, during
+			// a rotation) must cost only that key, not every config change.
 			// Never log key material; id and version identify the row safely.
-			return nil, fmt.Errorf("decrypt vendor key %s (version %d): %w", vk.ID, vk.KeyVersion, err)
+			log.Error().Err(err).Str("vendor_key_id", vk.ID).Int32("key_version", vk.KeyVersion).
+				Msg("vendor key cannot be decrypted with KTMS_ENCRYPTION_KEYS; its client gets no_vendor_key for that vendor")
+			observability.DependencyErrorsTotal.WithLabelValues("keyring", "decrypt").Inc()
+			continue
 		}
 		if snap.vendorKeys[vk.APIKeyID] == nil {
 			snap.vendorKeys[vk.APIKeyID] = map[string]vendorCred{}

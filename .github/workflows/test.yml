@@ -32,6 +32,8 @@ jobs:
         run: go vet ./...
 
       - name: Run tests
+        env:
+          REQUIRE_DB: "1" # the Postgres-backed tests fail rather than skip
         run: go test -race ./...
 
       - name: Installer script tests

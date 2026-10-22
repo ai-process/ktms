@@ -13,6 +13,7 @@ import (
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/crypto"
 	"github.com/ai-process/ktms/internal/nodes"
 	"github.com/ai-process/ktms/internal/rediskeys"
 )
@@ -138,5 +139,36 @@ func TestRegisterAndHeartbeatDropDisallowedModels(t *testing.T) {
 	}
 	if _, err := s.Heartbeat(ctx, &pb.HeartbeatRequest{NodeId: "node-1", Models: specs("gemma4:latest")}); status.Code(err) != codes.PermissionDenied {
 		t.Errorf("heartbeat with only disallowed models: code = %v, want PermissionDenied", status.Code(err))
+	}
+}
+
+// Node auth tokens live in Redis under the same keyring; rotation must move
+// them to the active version so the old one can be dropped.
+func TestRotateNodeTokens(t *testing.T) {
+	_, mgr := newRegistry(t)
+	ctx := context.Background()
+	old := keyring(t, 1)
+	ct, v, err := old.Encrypt("node-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta := &nodes.NodeMeta{NodeID: "n1", Endpoint: "http://127.0.0.1:1", AuthToken: crypto.EncodeVersioned(ct, v)}
+	if err := mgr.Store().SaveMeta(ctx, meta, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	s := &AdminServer{keyring: keyring(t, 1, 2), nodeMgr: mgr}
+	n, err := s.rotateNodeTokens(ctx, 2)
+	if err != nil || n != 1 {
+		t.Fatalf("rotateNodeTokens = %d, %v", n, err)
+	}
+	got, err := mgr.Store().GetMeta(ctx, "n1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain, err := keyring(t, 2).DecodeVersioned(got.AuthToken); err != nil || plain != "node-secret" {
+		t.Fatalf("token after rotation decodes to %q, %v with version 2 alone", plain, err)
+	}
+	if n, _ := s.rotateNodeTokens(ctx, 2); n != 0 {
+		t.Fatalf("second rotation changed %d tokens", n)
 	}
 }
