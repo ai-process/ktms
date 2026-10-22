@@ -37,15 +37,14 @@ jobs:
           breaking_against: "https://github.com/ai-process/ktms.git#branch=${{ github.base_ref || 'main' }}"
           push: false
 
-      # usage.v1 is public too (light-tokenmeter reads it) but is not a module
-      # of buf.yaml, so it gets its own check. It has no experimental parts, so
-      # the skip label does not apply to it.
+      # usage.v1 (light-tokenmeter's, not a buf.yaml module) has its own check,
+      # without the skip label; go_package is exempt, as buf.gen.usage.yaml sets it.
       - name: usage.v1 breaking check
         if: github.event_name == 'pull_request'
         working-directory: usage-proto
         run: |
           buf breaking . --against "../.git#ref=origin/${{ github.base_ref }},subdir=usage-proto" \
-            --config '{"version":"v2","breaking":{"use":["FILE"]}}'
+            --config '{"version":"v2","breaking":{"use":["FILE"],"except":["FILE_SAME_GO_PACKAGE"]}}'
 
       - name: Push to Buf Schema Registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.BUF_TOKEN != ''
