@@ -44,11 +44,13 @@ helm install ktms ./deploy/helm/ktms \
 | `replicaCount` | Number of pods to run | `2` |
 | `image.repository` | Container image repository | `coyl/ktms` |
 | `image.tag` | Container image tag | `""` (uses `appVersion`) |
-| `secrets.existingSecret` | Name of existing Secret with `DATABASE_URL`, `KTMS_ENCRYPTION_KEYS`, `BOOTSTRAP_ADMIN_KEY`, `REDIS_PASSWORD` | `""` |
+| `secrets.existingSecret` | Name of existing Secret with `DATABASE_URL`, `KTMS_ENCRYPTION_KEYS`, `BOOTSTRAP_ADMIN_KEY`, `REDIS_PASSWORD`, `USAGE_COLLECTOR_TOKEN` | `""` |
 | `config.routingReloadSeconds` | Replicas config poll interval in seconds | `60` |
 | `config.redisAddr` | Optional Redis address for rate limiting | `""` |
 | `config.vendorCooldownMax` | Longest pause honoured when a vendor answers `429`/`503` with `Retry-After` (`"0"` disables pauses) | `5m` |
 | `config.spendLimitsFailMode` | Spend limit fail mode (`closed` fails safe, `open` allows unmetered; chart defaults to `closed` for production safety) | `closed` |
+| `config.usageCollectorHost` / `config.usageCollectorTLS` | Optional gRPC usage sink (`host:port`) and whether to reach it over TLS | `""` / `false` |
+| `secrets.usageCollectorToken` | Bearer token for the usage sink (light-tokenmeter `write` scope) | `""` |
 | `config.logLevel` | Application log level (`debug`, `info`, `warn`, `error`) | `info` |
 | `probes.startup.enabled` | Startup probe to accommodate database schema migrations | `true` |
 | `service.httpPort` | Kubernetes Service HTTP port (mapped to container :8080) | `8080` |

@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,6 +36,7 @@ type UsageCollectorClient struct {
 	stopOnce  sync.Once
 	closeMu   sync.RWMutex // held for reading by RecordUsage; Close takes it to shut the door
 	closed    bool
+	hasToken  bool // only to word the log when the collector refuses us
 	projectID string
 	// projectFor resolves the project from event meta (the proxy attributes
 	// spend to the calling service, not to itself). Empty result falls back
@@ -54,8 +54,9 @@ func (c *UsageCollectorClient) SetProjectResolver(fn func(meta map[string]string
 
 // NewUsageCollectorClient creates a new usage collector client
 // If host is empty, returns nil (usage collection disabled)
-// projectID is the default project events are attributed to
-func NewUsageCollectorClient(host, projectID string, useTLS bool) (*UsageCollectorClient, error) {
+// projectID is the default project events are attributed to; a non-empty
+// token is sent as a bearer token on every call.
+func NewUsageCollectorClient(host, projectID string, useTLS bool, token string) (*UsageCollectorClient, error) {
 	if host == "" {
 		return nil, nil
 	}
@@ -65,15 +66,33 @@ func NewUsageCollectorClient(host, projectID string, useTLS bool) (*UsageCollect
 	if useTLS {
 		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 	}
-	conn, err := grpc.NewClient(host, grpc.WithTransportCredentials(creds))
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
+	if token != "" {
+		opts = append(opts, grpc.WithPerRPCCredentials(bearerToken{"authorization": "Bearer " + token}))
+		if !useTLS {
+			log.Info().Msg("USAGE_COLLECTOR_TOKEN is sent without TLS; keep the usage sink on a private network or set USAGE_COLLECTOR_TLS")
+		}
+	}
+	conn, err := grpc.NewClient(host, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	c := newClient(usagev1.NewUsageServiceClient(conn), projectID, queueSize)
 	c.conn = conn
+	c.hasToken = token != ""
 	return c, nil
 }
+
+// bearerToken may travel in plaintext: USAGE_COLLECTOR_TLS=false is for a
+// private network, where the collector's auth guards against stray callers.
+type bearerToken map[string]string
+
+func (t bearerToken) GetRequestMetadata(context.Context, ...string) (map[string]string, error) {
+	return t, nil
+}
+
+func (bearerToken) RequireTransportSecurity() bool { return false }
 
 // Sending is decoupled from requests: events queue here and one sender ships
 // them in batches, retrying until the collector takes them. Event IDs make
@@ -108,6 +127,7 @@ func (c *UsageCollectorClient) sendLoop() {
 	defer ticker.Stop()
 	batch := make([]*usagev1.UsageEvent, 0, maxBatch)
 	backoff := flushEvery
+	authLogged := false // a refusal is logged once until a send succeeds again
 	for {
 		in := c.queue
 		if len(batch) >= maxBatch {
@@ -136,7 +156,12 @@ func (c *UsageCollectorClient) sendLoop() {
 		if err != nil {
 			// Keep the batch and retry later; new events keep queueing meanwhile.
 			observability.DependencyErrorsTotal.WithLabelValues("usage_collector", "record_usage").Inc()
-			if backoff == flushEvery {
+			if msg := c.refusal(err); msg != "" {
+				if !authLogged {
+					log.Error().Err(err).Int("events", len(batch)).Msg(msg + ", holding events and retrying")
+					authLogged = true
+				}
+			} else if backoff == flushEvery {
 				log.Warn().Err(err).Int("events", len(batch)).Msg("usage collector unreachable, holding events and retrying")
 			}
 			if !c.sleep(backoff) {
@@ -149,8 +174,23 @@ func (c *UsageCollectorClient) sendLoop() {
 		if backoff != flushEvery {
 			log.Info().Int("events", len(batch)).Msg("usage collector reachable again, held events delivered")
 		}
+		authLogged = false
 		backoff = flushEvery
 	}
+}
+
+// refusal explains an auth error from the collector; "" for any other error.
+func (c *UsageCollectorClient) refusal(err error) string {
+	switch status.Code(err) {
+	case codes.Unauthenticated:
+		if !c.hasToken {
+			return "usage collector requires a token: set USAGE_COLLECTOR_TOKEN"
+		}
+		return "usage collector rejected USAGE_COLLECTOR_TOKEN"
+	case codes.PermissionDenied:
+		return "USAGE_COLLECTOR_TOKEN lacks the collector's write scope"
+	}
+	return ""
 }
 
 func (c *UsageCollectorClient) send(ctx context.Context, batch []*usagev1.UsageEvent) error {
@@ -359,36 +399,6 @@ func (c *UsageCollectorClient) RecordUsage(
 	}
 
 	return nil
-}
-
-// GetUsageByMeta returns usage aggregated over events carrying the given meta
-// key/value (e.g. one batch job via "job_id"), split by groupByMetaKey
-// (e.g. "gentask_id") plus vendor and model. Scoped to this client's project.
-func (c *UsageCollectorClient) GetUsageByMeta(ctx context.Context, metaKey, metaValue, groupByMetaKey string) ([]*usagev1.UsageByMetaRow, error) {
-	if c == nil {
-		return nil, errors.New("usage collector is not configured")
-	}
-	resp, err := c.client.GetUsageByMeta(ctx, &usagev1.GetUsageByMetaRequest{
-		MetaKey:        metaKey,
-		MetaValue:      metaValue,
-		GroupByMetaKey: groupByMetaKey,
-		ProjectId:      c.projectID,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return resp.Rows, nil
-}
-
-// NewUsageCollectorClientFromEnv creates a usage collector client by reading configuration from environment variables
-// If USAGE_COLLECTOR_HOST is not set, returns nil (usage collection disabled)
-// projectID is the default project events are attributed to
-func NewUsageCollectorClientFromEnv(projectID string) (*UsageCollectorClient, error) {
-	host := os.Getenv("USAGE_COLLECTOR_HOST")
-	if host == "" {
-		return nil, nil
-	}
-	return NewUsageCollectorClient(host, projectID, os.Getenv("USAGE_COLLECTOR_TLS") == "true")
 }
 
 // The collector's limits (light-tokenmeter domain.Event.Validate). Checking

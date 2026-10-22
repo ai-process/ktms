@@ -7,6 +7,11 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `USAGE_COLLECTOR_TOKEN` (Helm: `secrets.usageCollectorToken`): a bearer token sent to the
+  usage sink on every call, for light-tokenmeter with authentication on. A refused token is
+  logged as an error; events are held and retried.
+
 ## [0.14.0] - 2026-10-22
 
 ### Added
