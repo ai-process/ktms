@@ -17,10 +17,14 @@ jobs:
   compat:
     uses: ./.github/workflows/compat.yml
 
+  # Images go last: an image on Docker Hub then means the whole release went
+  # out, which is how the next release finds its predecessor.
   images:
-    needs: compat
+    needs: release
     uses: ./.github/workflows/docker-publish.yml
-    secrets: inherit
+    secrets:
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
   release:
     needs: compat

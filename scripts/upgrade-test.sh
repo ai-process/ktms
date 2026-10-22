@@ -1,13 +1,7 @@
 #!/bin/sh
-# Upgrade test: a previous release writes a database, this build takes it over,
-# and test/upgrade checks that keys, config, limits and a real call survive.
-# Then the old release runs once more on the migrated database, as during a
-# rolling upgrade. Needs docker, curl and go.
-#
-# PREV lists the releases to upgrade from (default: the previous published
-# release in this branch's history and the oldest published 1.x release);
-# --print-prev prints it and exits. CUR is the tag being released, never its
-# own predecessor. NEW_IMAGE skips building this checkout.
+# Proves the upgrade promise in README "API stability": an older release's
+# database must keep working under this build, and under the old one again.
+# Env: PREV (tags to upgrade from), CUR (tag being released), NEW_IMAGE.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -17,7 +11,18 @@ cd "$(dirname "$0")/.."
 stable_tags() {
 	git tag --merged HEAD --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vx "${CUR:-none}" || true
 }
-has_image() { docker manifest inspect "coyl/ktms:${1#v}" >/dev/null 2>&1; }
+# has_image fails the run on registry errors: reading a rate limit as "never
+# published" would quietly compare against an older release.
+has_image() {
+	if out=$(docker manifest inspect "coyl/ktms:${1#v}" 2>&1); then
+		return 0
+	fi
+	case $out in
+	*"no such manifest"* | *"manifest unknown"*) return 1 ;;
+	esac
+	echo "cannot check coyl/ktms:${1#v}: $out" >&2
+	exit 1
+}
 
 # A tag whose release failed has no image; the one before it is the real
 # predecessor.
@@ -29,8 +34,11 @@ pick_prev() {
 		fi
 	done
 }
-pick_oldest_1x() {
-	for t in $(stable_tags | grep '^v1\.' | sort -t. -k2,2n -k3,3n); do
+# The oldest release of the same major line: "one step from any earlier
+# release" is promised within a major only.
+pick_oldest_same_major() {
+	major=$(echo "${CUR:-$1}" | sed -E 's/^v([0-9]+)\..*/\1/')
+	for t in $(stable_tags | grep "^v$major\." | sort -t. -k2,2n -k3,3n); do
 		if has_image "$t"; then
 			echo "$t"
 			return
@@ -40,7 +48,7 @@ pick_oldest_1x() {
 
 if [ -z "${PREV:-}" ]; then
 	prev=$(pick_prev)
-	oldest=$(pick_oldest_1x)
+	oldest=$([ -n "$prev" ] && pick_oldest_same_major "$prev" || true)
 	PREV=$prev
 	[ -n "$oldest" ] && [ "$oldest" != "$prev" ] && PREV="$prev $oldest"
 fi
@@ -54,6 +62,7 @@ P=ktms-upgrade-$$
 NET=$P-net
 NEW_IMAGE=${NEW_IMAGE:-}
 BUILT=""
+PULLED=""
 KEYS="1:$(printf 'upgrade-test-only-key-32-bytes!!' | base64)"
 export ADMIN_KEY=upgrade-admin
 STATE=$(mktemp)
@@ -62,7 +71,7 @@ export UPGRADE_STATE="$STATE"
 cleanup() {
 	docker rm -f -v "$P-old" "$P-new" "$P-old-again" "$P-pg" "$P-mock" >/dev/null 2>&1 || true
 	docker network rm "$NET" >/dev/null 2>&1 || true
-	docker rmi -f "$P-mock" $BUILT >/dev/null 2>&1 || true
+	docker rmi -f "$P-mock" $BUILT $PULLED >/dev/null 2>&1 || true
 	rm -f "$STATE"
 }
 trap cleanup EXIT
@@ -114,6 +123,10 @@ for from in $PREV; do
 	until docker exec "$P-pg" pg_isready -U ktms -d ktms >/dev/null 2>&1; do sleep 1; done
 
 	old="coyl/ktms:${from#v}"
+	if ! docker image inspect "$old" >/dev/null 2>&1; then
+		PULLED="$PULLED $old"
+	fi
+	docker pull -q "$old" >/dev/null
 	run_gateway "$P-old" "$old"
 	phase TestSeed
 	docker stop -t 30 "$P-old" >/dev/null

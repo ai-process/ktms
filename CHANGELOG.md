@@ -11,7 +11,11 @@ All notable changes to KTMS are listed here. The format follows
 - Organizations and teams: team keys share a model allowlist and a monthly budget enforced
   by the gateway (`CreateOrganization`, `CreateTeam`, `UpdateTeam`, `GetTeamSpend`, ...).
   `ListModels` lists only the models a team may call.
-- An upgrade test in CI: the previous release writes a database, this build serves it.
+- An upgrade test on every pull request and before each release: the previous release and the
+  oldest release of the same major write a database, this build must keep and serve it, and the
+  old release must still serve on the migrated database (rolling upgrades).
+- Releases are gated: binaries and images are published only after the proto and upgrade checks
+  against the previous release pass, and images only after the binaries.
 - The public API for 1.x is defined in the README ([API stability](README.md#api-stability)),
   with experimental elements marked `Experimental:` in the proto.
 - A startup warning when the deprecated `LLMPROXY_ENCRYPTION_KEYS` is used instead of
@@ -30,6 +34,8 @@ All notable changes to KTMS are listed here. The format follows
 - Postgres outages return the reasons `auth_unavailable` and `storage_unavailable` (were
   `auth backend unavailable` and `storage unavailable`), so the HTTP API puts them in `code`.
 - `DrainNode` without node support returns `FAILED_PRECONDITION` instead of `UNAVAILABLE`.
+- Docker images are built only for `v*` release tags (any tag used to produce images), and
+  `latest`, `slim` and `audio` follow only the newest stable release.
 
 ### Deprecated
 - `LLMPROXY_ENCRYPTION_KEYS`: use `KTMS_ENCRYPTION_KEYS`. It is removed in 2.0.

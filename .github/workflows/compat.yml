@@ -9,10 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  # A release must stay compatible with the one before it: same proto, and a
-  # database it can take over. A tag that changes an Experimental ktms.v1
-  # element on purpose is named in the ALLOW_BREAKING_TAG repository variable;
-  # usage.v1 has nothing experimental and is always checked.
+  # ALLOW_BREAKING_TAG names a tag allowed to break the proto on purpose: an
+  # Experimental change, or a new major. The upgrade test runs regardless.
   compat:
     runs-on: ubuntu-latest
     steps:
@@ -26,21 +24,25 @@ jobs:
       - uses: bufbuild/buf-action@v1
         with:
           setup_only: true
-      - name: Previous published release
+      - name: Previous published releases
         id: prev
         env:
           CUR: ${{ github.ref_name }}
-        run: echo "tag=$(./scripts/upgrade-test.sh --print-prev | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+        run: |
+          list=$(./scripts/upgrade-test.sh --print-prev)
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+          echo "tag=${list%% *}" >> "$GITHUB_OUTPUT"
       - name: ktms.v1 compatible with the previous release
         if: vars.ALLOW_BREAKING_TAG != github.ref_name
         run: buf breaking --against ".git#tag=${{ steps.prev.outputs.tag }}"
       - name: usage.v1 compatible with the previous release
+        if: vars.ALLOW_BREAKING_TAG != github.ref_name
         working-directory: usage-proto
         run: |
           buf breaking . --against "../.git#tag=${{ steps.prev.outputs.tag }},subdir=usage-proto" \
             --config '{"version":"v2","breaking":{"use":["FILE"]}}'
       - name: Upgrade from the previous releases
         env:
-          CUR: ${{ github.ref_name }}
+          PREV: ${{ steps.prev.outputs.list }}
         run: ./scripts/upgrade-test.sh
 
