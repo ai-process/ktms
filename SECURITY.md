@@ -17,27 +17,31 @@ We provide security updates and patches for the following versions:
 From 1.0.0 on, release artifacts are signed with [Sigstore cosign](https://docs.sigstore.dev/)
 using GitHub Actions' OIDC identity (keyless: there is no key to leak), and carry an SBOM.
 
-Docker images (signature, SBOM and SLSA provenance are attached to the image):
+Use cosign 3. Pin the identity to the exact tag you are verifying, so a signature from any other
+build does not pass. Docker images (signature, SBOM and SLSA provenance are attached to the
+image; each platform manifest is signed too):
 
 ```bash
-cosign verify coyl/ktms:1.0.0 \
-  --certificate-identity-regexp '^https://github\.com/ai-process/ktms/\.github/workflows/docker-publish\.yml@refs/tags/v' \
+V=v1.0.0
+cosign verify coyl/ktms:${V#v} \
+  --certificate-identity "https://github.com/ai-process/ktms/.github/workflows/docker-publish.yml@refs/tags/$V" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
-docker buildx imagetools inspect coyl/ktms:1.0.0 --format '{{ json .SBOM }}'
-docker buildx imagetools inspect coyl/ktms:1.0.0 --format '{{ json .Provenance }}'
+docker buildx imagetools inspect coyl/ktms:${V#v} --format '{{ json .SBOM }}'
+docker buildx imagetools inspect coyl/ktms:${V#v} --format '{{ json .Provenance }}'
 ```
 
 Binaries on the GitHub release (`checksums.txt` is signed; each archive has an `.sbom.json`):
 
 ```bash
 cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
-  --certificate-identity-regexp '^https://github\.com/ai-process/ktms/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-identity "https://github.com/ai-process/ktms/.github/workflows/release.yml@refs/tags/$V" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 sha256sum --ignore-missing -c checksums.txt
 ```
 
-Every pull request also runs [`govulncheck`](https://go.dev/doc/security/vuln/): a known
-vulnerability that KTMS code can reach fails the build.
+Every pull request and every release runs [`govulncheck`](https://go.dev/doc/security/vuln/)
+for linux and darwin: a known vulnerability that KTMS code can reach fails the build, and a
+release does not go out.
 
 ## Reporting a Vulnerability
 

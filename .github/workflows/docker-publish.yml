@@ -20,6 +20,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     strategy:
+      # Each image signs itself; one leg failing must not cancel another
+      # between its push and its signature.
+      fail-fast: false
       matrix:
         include:
           - image: coyl/ktms
@@ -96,8 +99,18 @@ jobs:
           provenance: mode=max
           sbom: true
 
-      - uses: sigstore/cosign-installer@v3
+      # Pinned by commit: this job can mint signatures under the release identity.
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
 
-      # Signs the digest, so every tag of this build carries the signature.
+      # Signs the index digest and, with --recursive, each platform manifest, so
+      # a policy checking the pulled linux/arm64 digest finds a signature too.
+      # Retried: a Rekor or Fulcio blip must not leave a pushed tag unsigned.
       - name: Sign the image
-        run: cosign sign --yes "${{ matrix.image }}@${{ steps.build.outputs.digest }}"
+        run: |
+          for i in 1 2 3; do
+            cosign sign --yes --recursive "${{ matrix.image }}@${{ steps.build.outputs.digest }}" && exit 0
+            sleep $((i * 15))
+          done
+          exit 1

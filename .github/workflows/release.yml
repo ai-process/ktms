@@ -45,8 +45,11 @@ jobs:
           go-version: '1.27.3'
           cache: true
 
-      - uses: sigstore/cosign-installer@v3
-      - uses: anchore/sbom-action/download-syft@v0 # GoReleaser calls syft for the SBOMs
+      # Pinned by commit: this job can mint signatures under the release identity.
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      - uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2, syft for the SBOMs
 
       - uses: goreleaser/goreleaser-action@v6
         with:

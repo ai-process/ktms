@@ -18,7 +18,7 @@ All notable changes to KTMS are listed here. The format follows
   against the previous release pass, and images only after the binaries.
 - Signed releases: images and `checksums.txt` are signed with keyless cosign; images carry an
   SBOM and SLSA provenance, archives an SPDX SBOM. See SECURITY.md, Verifying a Release.
-- `govulncheck` on every pull request.
+- `govulncheck` for linux and darwin on every pull request and before every release.
 - The public API for 1.x is defined in the README ([API stability](README.md#api-stability)),
   with experimental elements marked `Experimental:` in the proto.
 - A startup warning when the deprecated `LLMPROXY_ENCRYPTION_KEYS` is used instead of

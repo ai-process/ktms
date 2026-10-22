@@ -21,6 +21,11 @@ jobs:
         with:
           go-version: '1.27.3'
           cache: true
+      # The release ships darwin binaries too, so both targets are checked.
+      - name: govulncheck
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+          GOOS=darwin go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - uses: bufbuild/buf-action@v1
         with:
           setup_only: true
