@@ -202,7 +202,7 @@ docker pull coyl/ktms:audio       # with ffmpeg for Gemini speech synthesis (~19
 
 If Gemini TTS is requested without ffmpeg available (e.g. on the default slim image), the proxy returns gRPC `Codes.Unimplemented` / HTTP 501 Not Implemented: `ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/ktms:audio' container image`. OpenAI TTS produces native Opus directly and works on both variants without ffmpeg.
 
-The image runs as a non-root user (`appuser`, UID 10001), exposes `8080` (HTTP) and `9090` (gRPC), and is configured entirely through environment variables.
+The image runs as a non-root user (`appuser`, UID 10001), exposes `8080` (HTTP) and `9090` (gRPC), and is configured entirely through environment variables. From 1.0.0, images and release binaries are signed with cosign and carry an SBOM and provenance: see [Verifying a Release](SECURITY.md#verifying-a-release).
 
 You need a Postgres database (required; 16 is what the compose file uses) and a Redis (optional, see below):
 

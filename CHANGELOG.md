@@ -16,6 +16,9 @@ All notable changes to KTMS are listed here. The format follows
   old release must still serve on the migrated database (rolling upgrades).
 - Releases are gated: binaries and images are published only after the proto and upgrade checks
   against the previous release pass, and images only after the binaries.
+- Signed releases: images and `checksums.txt` are signed with keyless cosign; images carry an
+  SBOM and SLSA provenance, archives an SPDX SBOM. See SECURITY.md, Verifying a Release.
+- `govulncheck` on every pull request.
 - The public API for 1.x is defined in the README ([API stability](README.md#api-stability)),
   with experimental elements marked `Experimental:` in the proto.
 - A startup warning when the deprecated `LLMPROXY_ENCRYPTION_KEYS` is used instead of
