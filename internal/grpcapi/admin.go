@@ -29,6 +29,7 @@ import (
 
 // AdminServer implements LLMProxyAdminService.
 type AdminServer struct {
+	spendReader SpendReader
 	pb.UnimplementedAdminServiceServer
 	db      *proxydb.DB
 	keyring *crypto.Keyring
@@ -47,6 +48,15 @@ func NewAdminServer(db *proxydb.DB, keyring *crypto.Keyring, onChange func()) *A
 
 func (s *AdminServer) SetNodeManager(mgr *nodes.Manager) {
 	s.nodeMgr = mgr
+}
+
+// SpendReader reads a spend counter as the throttle keeps it.
+type SpendReader func(ctx context.Context, subject, subjectID, period string) (int64, time.Time, error)
+
+// SetSpendReader lets GetTeamSpend report what the gateway enforces; without
+// it (no Redis) spend is unmetered and reported as such.
+func (s *AdminServer) SetSpendReader(fn SpendReader) {
+	s.spendReader = fn
 }
 
 // --- config: models and rules ---
@@ -698,6 +708,29 @@ func teamBudgetNano(usd float64) (int64, error) {
 		return 0, status.Errorf(codes.InvalidArgument, "monthly_budget_usd must be between 0 and %.0f", maxTeamBudgetUSD)
 	}
 	return int64(math.Round(usd * 1e9)), nil
+}
+
+func (s *AdminServer) GetTeamSpend(ctx context.Context, req *pb.GetTeamSpendRequest) (*pb.GetTeamSpendResponse, error) {
+	if err := parseUUID(req.GetId(), "id"); err != nil {
+		return nil, err
+	}
+	team, err := s.db.GetTeam(ctx, req.GetId())
+	if err != nil {
+		return nil, dbStatus(err)
+	}
+	limit, _ := teamBudgetNano(team.MonthlyBudgetUSD)
+	_, resets := spendlimit.Window(spendlimit.PeriodMonth, time.Now())
+	out := &pb.GetTeamSpendResponse{LimitNanousd: limit, ResetsAt: timestamppb.New(resets)}
+	if s.spendReader == nil {
+		return out, nil
+	}
+	spent, resets, err := s.spendReader(ctx, spendlimit.SubjectTeam, team.ID, spendlimit.PeriodMonth)
+	if err != nil {
+		log.Warn().Err(err).Str("team_id", team.ID).Msg("team spend counter unreadable")
+		return nil, status.Error(codes.Unavailable, "spend counters unavailable")
+	}
+	out.SpentNanousd, out.ResetsAt, out.Metered = spent, timestamppb.New(resets), true
+	return out, nil
 }
 
 func orgToProto(o *proxydb.Organization) *pb.Organization {

@@ -316,6 +316,18 @@ func (t *Redis) spendTargets(keyName, userID, teamID string, now time.Time) []sp
 	return targets
 }
 
+// SpendSoFar reads a subject's spend counter for the current window, the one
+// Reserve checks; nano-USD, 0 when nothing has been spent yet.
+func (t *Redis) SpendSoFar(ctx context.Context, subject, subjectID, period string) (int64, time.Time, error) {
+	short := map[string]string{spendlimit.SubjectKey: "k", spendlimit.SubjectUser: "u", spendlimit.SubjectTeam: "t"}[subject]
+	window, end := spendlimit.Window(period, t.currentTime())
+	val, err := t.client.Get(ctx, t.keys.Spend(short, subjectID, window)).Int64()
+	if errors.Is(err, redis.Nil) {
+		return 0, end, nil
+	}
+	return val, end, err
+}
+
 // Reserve books the estimate against every applicable daily budget, then the
 // priced worst case against every spend limit. Supports budget_grace_margin:
 // allows the call if the token budget was not already exhausted before.

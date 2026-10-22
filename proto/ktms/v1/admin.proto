@@ -355,6 +355,19 @@ message DeleteTeamRequest {
 
 message DeleteTeamResponse {}
 
+message GetTeamSpendRequest {
+  string id = 1;
+}
+
+// The team's spend this UTC month as the gateway enforces it (the same counter
+// that refuses calls with throttled:spend_team_monthly).
+message GetTeamSpendResponse {
+  int64 spent_nanousd = 1;
+  int64 limit_nanousd = 2; // 0 = no cap
+  google.protobuf.Timestamp resets_at = 3;
+  bool metered = 4; // false: no Redis, spend is not counted and limits do not apply
+}
+
 // All admin RPCs require the "admin" scope. Every config mutation validates
 // the resulting full config in one transaction and bumps the config version.
 service AdminService {
@@ -388,4 +401,5 @@ service AdminService {
   rpc ListTeams(ListTeamsRequest) returns (ListTeamsResponse);
   rpc UpdateTeam(UpdateTeamRequest) returns (UpdateTeamResponse);
   rpc DeleteTeam(DeleteTeamRequest) returns (DeleteTeamResponse);
+  rpc GetTeamSpend(GetTeamSpendRequest) returns (GetTeamSpendResponse);
 }

@@ -383,4 +383,13 @@ func TestSpendTeamMonthly(t *testing.T) {
 	if tripped3 != "" {
 		t.Fatalf("other team must pass, got: %s (res=%v)", tripped3, res3)
 	}
+
+	// The admin console reads the same counter the cap is enforced on.
+	spent, resets, err := th.SpendSoFar(ctx, "team", "t1", "month")
+	if err != nil || spent != 3_000_000 || !resets.After(now) {
+		t.Fatalf("SpendSoFar = %d, %v, %v; want 3M resetting next month", spent, resets, err)
+	}
+	if spent, _, err := th.SpendSoFar(ctx, "team", "never-spent", "month"); err != nil || spent != 0 {
+		t.Fatalf("an unspent team: %d, %v", spent, err)
+	}
 }

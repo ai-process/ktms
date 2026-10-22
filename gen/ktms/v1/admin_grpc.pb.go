@@ -48,6 +48,7 @@ const (
 	AdminService_ListTeams_FullMethodName           = "/ktms.v1.AdminService/ListTeams"
 	AdminService_UpdateTeam_FullMethodName          = "/ktms.v1.AdminService/UpdateTeam"
 	AdminService_DeleteTeam_FullMethodName          = "/ktms.v1.AdminService/DeleteTeam"
+	AdminService_GetTeamSpend_FullMethodName        = "/ktms.v1.AdminService/GetTeamSpend"
 )
 
 // AdminServiceClient is the client API for AdminService service.
@@ -86,6 +87,7 @@ type AdminServiceClient interface {
 	ListTeams(ctx context.Context, in *ListTeamsRequest, opts ...grpc.CallOption) (*ListTeamsResponse, error)
 	UpdateTeam(ctx context.Context, in *UpdateTeamRequest, opts ...grpc.CallOption) (*UpdateTeamResponse, error)
 	DeleteTeam(ctx context.Context, in *DeleteTeamRequest, opts ...grpc.CallOption) (*DeleteTeamResponse, error)
+	GetTeamSpend(ctx context.Context, in *GetTeamSpendRequest, opts ...grpc.CallOption) (*GetTeamSpendResponse, error)
 }
 
 type adminServiceClient struct {
@@ -386,6 +388,16 @@ func (c *adminServiceClient) DeleteTeam(ctx context.Context, in *DeleteTeamReque
 	return out, nil
 }
 
+func (c *adminServiceClient) GetTeamSpend(ctx context.Context, in *GetTeamSpendRequest, opts ...grpc.CallOption) (*GetTeamSpendResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTeamSpendResponse)
+	err := c.cc.Invoke(ctx, AdminService_GetTeamSpend_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AdminServiceServer is the server API for AdminService service.
 // All implementations must embed UnimplementedAdminServiceServer
 // for forward compatibility.
@@ -422,6 +434,7 @@ type AdminServiceServer interface {
 	ListTeams(context.Context, *ListTeamsRequest) (*ListTeamsResponse, error)
 	UpdateTeam(context.Context, *UpdateTeamRequest) (*UpdateTeamResponse, error)
 	DeleteTeam(context.Context, *DeleteTeamRequest) (*DeleteTeamResponse, error)
+	GetTeamSpend(context.Context, *GetTeamSpendRequest) (*GetTeamSpendResponse, error)
 	mustEmbedUnimplementedAdminServiceServer()
 }
 
@@ -518,6 +531,9 @@ func (UnimplementedAdminServiceServer) UpdateTeam(context.Context, *UpdateTeamRe
 }
 func (UnimplementedAdminServiceServer) DeleteTeam(context.Context, *DeleteTeamRequest) (*DeleteTeamResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteTeam not implemented")
+}
+func (UnimplementedAdminServiceServer) GetTeamSpend(context.Context, *GetTeamSpendRequest) (*GetTeamSpendResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetTeamSpend not implemented")
 }
 func (UnimplementedAdminServiceServer) mustEmbedUnimplementedAdminServiceServer() {}
 func (UnimplementedAdminServiceServer) testEmbeddedByValue()                      {}
@@ -1062,6 +1078,24 @@ func _AdminService_DeleteTeam_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AdminService_GetTeamSpend_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTeamSpendRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).GetTeamSpend(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_GetTeamSpend_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).GetTeamSpend(ctx, req.(*GetTeamSpendRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AdminService_ServiceDesc is the grpc.ServiceDesc for AdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1184,6 +1218,10 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteTeam",
 			Handler:    _AdminService_DeleteTeam_Handler,
+		},
+		{
+			MethodName: "GetTeamSpend",
+			Handler:    _AdminService_GetTeamSpend_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

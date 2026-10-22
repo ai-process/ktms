@@ -3677,6 +3677,120 @@ func (*DeleteTeamResponse) Descriptor() ([]byte, []int) {
 	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{67}
 }
 
+type GetTeamSpendRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTeamSpendRequest) Reset() {
+	*x = GetTeamSpendRequest{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[68]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTeamSpendRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTeamSpendRequest) ProtoMessage() {}
+
+func (x *GetTeamSpendRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[68]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTeamSpendRequest.ProtoReflect.Descriptor instead.
+func (*GetTeamSpendRequest) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{68}
+}
+
+func (x *GetTeamSpendRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+// The team's spend this UTC month as the gateway enforces it (the same counter
+// that refuses calls with throttled:spend_team_monthly).
+type GetTeamSpendResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SpentNanousd  int64                  `protobuf:"varint,1,opt,name=spent_nanousd,json=spentNanousd,proto3" json:"spent_nanousd,omitempty"`
+	LimitNanousd  int64                  `protobuf:"varint,2,opt,name=limit_nanousd,json=limitNanousd,proto3" json:"limit_nanousd,omitempty"` // 0 = no cap
+	ResetsAt      *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=resets_at,json=resetsAt,proto3" json:"resets_at,omitempty"`
+	Metered       bool                   `protobuf:"varint,4,opt,name=metered,proto3" json:"metered,omitempty"` // false: no Redis, spend is not counted and limits do not apply
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTeamSpendResponse) Reset() {
+	*x = GetTeamSpendResponse{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[69]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTeamSpendResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTeamSpendResponse) ProtoMessage() {}
+
+func (x *GetTeamSpendResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[69]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTeamSpendResponse.ProtoReflect.Descriptor instead.
+func (*GetTeamSpendResponse) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{69}
+}
+
+func (x *GetTeamSpendResponse) GetSpentNanousd() int64 {
+	if x != nil {
+		return x.SpentNanousd
+	}
+	return 0
+}
+
+func (x *GetTeamSpendResponse) GetLimitNanousd() int64 {
+	if x != nil {
+		return x.LimitNanousd
+	}
+	return 0
+}
+
+func (x *GetTeamSpendResponse) GetResetsAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ResetsAt
+	}
+	return nil
+}
+
+func (x *GetTeamSpendResponse) GetMetered() bool {
+	if x != nil {
+		return x.Metered
+	}
+	return false
+}
+
 var File_ktms_v1_admin_proto protoreflect.FileDescriptor
 
 const file_ktms_v1_admin_proto_rawDesc = "" +
@@ -3928,7 +4042,14 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x04team\x18\x01 \x01(\v2\r.ktms.v1.TeamR\x04team\"#\n" +
 	"\x11DeleteTeamRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\x14\n" +
-	"\x12DeleteTeamResponse2\x86\x12\n" +
+	"\x12DeleteTeamResponse\"%\n" +
+	"\x13GetTeamSpendRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\xb3\x01\n" +
+	"\x14GetTeamSpendResponse\x12#\n" +
+	"\rspent_nanousd\x18\x01 \x01(\x03R\fspentNanousd\x12#\n" +
+	"\rlimit_nanousd\x18\x02 \x01(\x03R\flimitNanousd\x127\n" +
+	"\tresets_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bresetsAt\x12\x18\n" +
+	"\ametered\x18\x04 \x01(\bR\ametered2\xd3\x12\n" +
 	"\fAdminService\x12H\n" +
 	"\vUpsertModel\x12\x1b.ktms.v1.UpsertModelRequest\x1a\x1c.ktms.v1.UpsertModelResponse\x12H\n" +
 	"\vDeleteModel\x12\x1b.ktms.v1.DeleteModelRequest\x1a\x1c.ktms.v1.DeleteModelResponse\x12K\n" +
@@ -3962,7 +4083,8 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\n" +
 	"UpdateTeam\x12\x1a.ktms.v1.UpdateTeamRequest\x1a\x1b.ktms.v1.UpdateTeamResponse\x12E\n" +
 	"\n" +
-	"DeleteTeam\x12\x1a.ktms.v1.DeleteTeamRequest\x1a\x1b.ktms.v1.DeleteTeamResponseB\x85\x01\n" +
+	"DeleteTeam\x12\x1a.ktms.v1.DeleteTeamRequest\x1a\x1b.ktms.v1.DeleteTeamResponse\x12K\n" +
+	"\fGetTeamSpend\x12\x1c.ktms.v1.GetTeamSpendRequest\x1a\x1d.ktms.v1.GetTeamSpendResponseB\x85\x01\n" +
 	"\vcom.ktms.v1B\n" +
 	"AdminProtoP\x01Z-github.com/ai-process/ktms/gen/ktms/v1;ktmsv1\xa2\x02\x03KXX\xaa\x02\aKtms.V1\xca\x02\aKtms\\V1\xe2\x02\x13Ktms\\V1\\GPBMetadata\xea\x02\bKtms::V1b\x06proto3"
 
@@ -3978,7 +4100,7 @@ func file_ktms_v1_admin_proto_rawDescGZIP() []byte {
 	return file_ktms_v1_admin_proto_rawDescData
 }
 
-var file_ktms_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 69)
+var file_ktms_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 71)
 var file_ktms_v1_admin_proto_goTypes = []any{
 	(*ModelSpec)(nil),                   // 0: ktms.v1.ModelSpec
 	(*RuleSpec)(nil),                    // 1: ktms.v1.RuleSpec
@@ -4048,103 +4170,108 @@ var file_ktms_v1_admin_proto_goTypes = []any{
 	(*UpdateTeamResponse)(nil),          // 65: ktms.v1.UpdateTeamResponse
 	(*DeleteTeamRequest)(nil),           // 66: ktms.v1.DeleteTeamRequest
 	(*DeleteTeamResponse)(nil),          // 67: ktms.v1.DeleteTeamResponse
-	nil,                                 // 68: ktms.v1.RuleSpec.AttributesEntry
-	(Effort)(0),                         // 69: ktms.v1.Effort
-	(*timestamppb.Timestamp)(nil),       // 70: google.protobuf.Timestamp
+	(*GetTeamSpendRequest)(nil),         // 68: ktms.v1.GetTeamSpendRequest
+	(*GetTeamSpendResponse)(nil),        // 69: ktms.v1.GetTeamSpendResponse
+	nil,                                 // 70: ktms.v1.RuleSpec.AttributesEntry
+	(Effort)(0),                         // 71: ktms.v1.Effort
+	(*timestamppb.Timestamp)(nil),       // 72: google.protobuf.Timestamp
 }
 var file_ktms_v1_admin_proto_depIdxs = []int32{
-	69, // 0: ktms.v1.ModelSpec.efforts:type_name -> ktms.v1.Effort
-	69, // 1: ktms.v1.RuleSpec.effort:type_name -> ktms.v1.Effort
-	68, // 2: ktms.v1.RuleSpec.attributes:type_name -> ktms.v1.RuleSpec.AttributesEntry
+	71, // 0: ktms.v1.ModelSpec.efforts:type_name -> ktms.v1.Effort
+	71, // 1: ktms.v1.RuleSpec.effort:type_name -> ktms.v1.Effort
+	70, // 2: ktms.v1.RuleSpec.attributes:type_name -> ktms.v1.RuleSpec.AttributesEntry
 	0,  // 3: ktms.v1.UpsertModelRequest.model:type_name -> ktms.v1.ModelSpec
 	1,  // 4: ktms.v1.ReplaceRulesRequest.rules:type_name -> ktms.v1.RuleSpec
-	70, // 5: ktms.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	72, // 5: ktms.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 6: ktms.v1.GetConfigResponse.models:type_name -> ktms.v1.ModelSpec
 	1,  // 7: ktms.v1.GetConfigResponse.rules:type_name -> ktms.v1.RuleSpec
 	12, // 8: ktms.v1.GetConfigResponse.vendor_keys:type_name -> ktms.v1.VendorKeyInfo
 	36, // 9: ktms.v1.GetConfigResponse.user_rate_limits:type_name -> ktms.v1.UserRateLimitSpec
 	43, // 10: ktms.v1.GetConfigResponse.spend_limits:type_name -> ktms.v1.SpendLimitSpec
-	70, // 11: ktms.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	72, // 11: ktms.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
 	20, // 12: ktms.v1.ListAPIKeysResponse.keys:type_name -> ktms.v1.APIKeyInfo
-	70, // 13: ktms.v1.NodeKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	72, // 13: ktms.v1.NodeKeyInfo.created_at:type_name -> google.protobuf.Timestamp
 	29, // 14: ktms.v1.ListNodeKeysResponse.keys:type_name -> ktms.v1.NodeKeyInfo
-	70, // 15: ktms.v1.NodeInfo.last_heartbeat:type_name -> google.protobuf.Timestamp
+	72, // 15: ktms.v1.NodeInfo.last_heartbeat:type_name -> google.protobuf.Timestamp
 	32, // 16: ktms.v1.ListNodesResponse.nodes:type_name -> ktms.v1.NodeInfo
 	36, // 17: ktms.v1.SetUserRateLimitRequest.rate_limit:type_name -> ktms.v1.UserRateLimitSpec
 	36, // 18: ktms.v1.ListUserRateLimitsResponse.rate_limits:type_name -> ktms.v1.UserRateLimitSpec
 	43, // 19: ktms.v1.SetSpendLimitRequest.spend_limit:type_name -> ktms.v1.SpendLimitSpec
 	43, // 20: ktms.v1.ListSpendLimitsResponse.spend_limits:type_name -> ktms.v1.SpendLimitSpec
-	70, // 21: ktms.v1.Organization.created_at:type_name -> google.protobuf.Timestamp
-	70, // 22: ktms.v1.Team.created_at:type_name -> google.protobuf.Timestamp
+	72, // 21: ktms.v1.Organization.created_at:type_name -> google.protobuf.Timestamp
+	72, // 22: ktms.v1.Team.created_at:type_name -> google.protobuf.Timestamp
 	50, // 23: ktms.v1.CreateOrganizationResponse.organization:type_name -> ktms.v1.Organization
 	50, // 24: ktms.v1.ListOrganizationsResponse.organizations:type_name -> ktms.v1.Organization
 	51, // 25: ktms.v1.CreateTeamResponse.team:type_name -> ktms.v1.Team
 	51, // 26: ktms.v1.GetTeamResponse.team:type_name -> ktms.v1.Team
 	51, // 27: ktms.v1.ListTeamsResponse.teams:type_name -> ktms.v1.Team
 	51, // 28: ktms.v1.UpdateTeamResponse.team:type_name -> ktms.v1.Team
-	2,  // 29: ktms.v1.AdminService.UpsertModel:input_type -> ktms.v1.UpsertModelRequest
-	4,  // 30: ktms.v1.AdminService.DeleteModel:input_type -> ktms.v1.DeleteModelRequest
-	6,  // 31: ktms.v1.AdminService.ReplaceRules:input_type -> ktms.v1.ReplaceRulesRequest
-	8,  // 32: ktms.v1.AdminService.SetVendorKey:input_type -> ktms.v1.SetVendorKeyRequest
-	10, // 33: ktms.v1.AdminService.DeleteVendorKey:input_type -> ktms.v1.DeleteVendorKeyRequest
-	13, // 34: ktms.v1.AdminService.GetConfig:input_type -> ktms.v1.GetConfigRequest
-	15, // 35: ktms.v1.AdminService.MintAPIKey:input_type -> ktms.v1.MintAPIKeyRequest
-	17, // 36: ktms.v1.AdminService.RevokeAPIKey:input_type -> ktms.v1.RevokeAPIKeyRequest
-	19, // 37: ktms.v1.AdminService.ListAPIKeys:input_type -> ktms.v1.ListAPIKeysRequest
-	22, // 38: ktms.v1.AdminService.RotateEncryption:input_type -> ktms.v1.RotateEncryptionRequest
-	24, // 39: ktms.v1.AdminService.MintNodeKey:input_type -> ktms.v1.MintNodeKeyRequest
-	26, // 40: ktms.v1.AdminService.RevokeNodeKey:input_type -> ktms.v1.RevokeNodeKeyRequest
-	28, // 41: ktms.v1.AdminService.ListNodeKeys:input_type -> ktms.v1.ListNodeKeysRequest
-	31, // 42: ktms.v1.AdminService.ListNodes:input_type -> ktms.v1.ListNodesRequest
-	34, // 43: ktms.v1.AdminService.DrainNode:input_type -> ktms.v1.DrainNodeRequest
-	37, // 44: ktms.v1.AdminService.SetUserRateLimit:input_type -> ktms.v1.SetUserRateLimitRequest
-	39, // 45: ktms.v1.AdminService.DeleteUserRateLimit:input_type -> ktms.v1.DeleteUserRateLimitRequest
-	41, // 46: ktms.v1.AdminService.ListUserRateLimits:input_type -> ktms.v1.ListUserRateLimitsRequest
-	44, // 47: ktms.v1.AdminService.SetSpendLimit:input_type -> ktms.v1.SetSpendLimitRequest
-	46, // 48: ktms.v1.AdminService.DeleteSpendLimit:input_type -> ktms.v1.DeleteSpendLimitRequest
-	48, // 49: ktms.v1.AdminService.ListSpendLimits:input_type -> ktms.v1.ListSpendLimitsRequest
-	52, // 50: ktms.v1.AdminService.CreateOrganization:input_type -> ktms.v1.CreateOrganizationRequest
-	54, // 51: ktms.v1.AdminService.ListOrganizations:input_type -> ktms.v1.ListOrganizationsRequest
-	56, // 52: ktms.v1.AdminService.DeleteOrganization:input_type -> ktms.v1.DeleteOrganizationRequest
-	58, // 53: ktms.v1.AdminService.CreateTeam:input_type -> ktms.v1.CreateTeamRequest
-	60, // 54: ktms.v1.AdminService.GetTeam:input_type -> ktms.v1.GetTeamRequest
-	62, // 55: ktms.v1.AdminService.ListTeams:input_type -> ktms.v1.ListTeamsRequest
-	64, // 56: ktms.v1.AdminService.UpdateTeam:input_type -> ktms.v1.UpdateTeamRequest
-	66, // 57: ktms.v1.AdminService.DeleteTeam:input_type -> ktms.v1.DeleteTeamRequest
-	3,  // 58: ktms.v1.AdminService.UpsertModel:output_type -> ktms.v1.UpsertModelResponse
-	5,  // 59: ktms.v1.AdminService.DeleteModel:output_type -> ktms.v1.DeleteModelResponse
-	7,  // 60: ktms.v1.AdminService.ReplaceRules:output_type -> ktms.v1.ReplaceRulesResponse
-	9,  // 61: ktms.v1.AdminService.SetVendorKey:output_type -> ktms.v1.SetVendorKeyResponse
-	11, // 62: ktms.v1.AdminService.DeleteVendorKey:output_type -> ktms.v1.DeleteVendorKeyResponse
-	14, // 63: ktms.v1.AdminService.GetConfig:output_type -> ktms.v1.GetConfigResponse
-	16, // 64: ktms.v1.AdminService.MintAPIKey:output_type -> ktms.v1.MintAPIKeyResponse
-	18, // 65: ktms.v1.AdminService.RevokeAPIKey:output_type -> ktms.v1.RevokeAPIKeyResponse
-	21, // 66: ktms.v1.AdminService.ListAPIKeys:output_type -> ktms.v1.ListAPIKeysResponse
-	23, // 67: ktms.v1.AdminService.RotateEncryption:output_type -> ktms.v1.RotateEncryptionResponse
-	25, // 68: ktms.v1.AdminService.MintNodeKey:output_type -> ktms.v1.MintNodeKeyResponse
-	27, // 69: ktms.v1.AdminService.RevokeNodeKey:output_type -> ktms.v1.RevokeNodeKeyResponse
-	30, // 70: ktms.v1.AdminService.ListNodeKeys:output_type -> ktms.v1.ListNodeKeysResponse
-	33, // 71: ktms.v1.AdminService.ListNodes:output_type -> ktms.v1.ListNodesResponse
-	35, // 72: ktms.v1.AdminService.DrainNode:output_type -> ktms.v1.DrainNodeResponse
-	38, // 73: ktms.v1.AdminService.SetUserRateLimit:output_type -> ktms.v1.SetUserRateLimitResponse
-	40, // 74: ktms.v1.AdminService.DeleteUserRateLimit:output_type -> ktms.v1.DeleteUserRateLimitResponse
-	42, // 75: ktms.v1.AdminService.ListUserRateLimits:output_type -> ktms.v1.ListUserRateLimitsResponse
-	45, // 76: ktms.v1.AdminService.SetSpendLimit:output_type -> ktms.v1.SetSpendLimitResponse
-	47, // 77: ktms.v1.AdminService.DeleteSpendLimit:output_type -> ktms.v1.DeleteSpendLimitResponse
-	49, // 78: ktms.v1.AdminService.ListSpendLimits:output_type -> ktms.v1.ListSpendLimitsResponse
-	53, // 79: ktms.v1.AdminService.CreateOrganization:output_type -> ktms.v1.CreateOrganizationResponse
-	55, // 80: ktms.v1.AdminService.ListOrganizations:output_type -> ktms.v1.ListOrganizationsResponse
-	57, // 81: ktms.v1.AdminService.DeleteOrganization:output_type -> ktms.v1.DeleteOrganizationResponse
-	59, // 82: ktms.v1.AdminService.CreateTeam:output_type -> ktms.v1.CreateTeamResponse
-	61, // 83: ktms.v1.AdminService.GetTeam:output_type -> ktms.v1.GetTeamResponse
-	63, // 84: ktms.v1.AdminService.ListTeams:output_type -> ktms.v1.ListTeamsResponse
-	65, // 85: ktms.v1.AdminService.UpdateTeam:output_type -> ktms.v1.UpdateTeamResponse
-	67, // 86: ktms.v1.AdminService.DeleteTeam:output_type -> ktms.v1.DeleteTeamResponse
-	58, // [58:87] is the sub-list for method output_type
-	29, // [29:58] is the sub-list for method input_type
-	29, // [29:29] is the sub-list for extension type_name
-	29, // [29:29] is the sub-list for extension extendee
-	0,  // [0:29] is the sub-list for field type_name
+	72, // 29: ktms.v1.GetTeamSpendResponse.resets_at:type_name -> google.protobuf.Timestamp
+	2,  // 30: ktms.v1.AdminService.UpsertModel:input_type -> ktms.v1.UpsertModelRequest
+	4,  // 31: ktms.v1.AdminService.DeleteModel:input_type -> ktms.v1.DeleteModelRequest
+	6,  // 32: ktms.v1.AdminService.ReplaceRules:input_type -> ktms.v1.ReplaceRulesRequest
+	8,  // 33: ktms.v1.AdminService.SetVendorKey:input_type -> ktms.v1.SetVendorKeyRequest
+	10, // 34: ktms.v1.AdminService.DeleteVendorKey:input_type -> ktms.v1.DeleteVendorKeyRequest
+	13, // 35: ktms.v1.AdminService.GetConfig:input_type -> ktms.v1.GetConfigRequest
+	15, // 36: ktms.v1.AdminService.MintAPIKey:input_type -> ktms.v1.MintAPIKeyRequest
+	17, // 37: ktms.v1.AdminService.RevokeAPIKey:input_type -> ktms.v1.RevokeAPIKeyRequest
+	19, // 38: ktms.v1.AdminService.ListAPIKeys:input_type -> ktms.v1.ListAPIKeysRequest
+	22, // 39: ktms.v1.AdminService.RotateEncryption:input_type -> ktms.v1.RotateEncryptionRequest
+	24, // 40: ktms.v1.AdminService.MintNodeKey:input_type -> ktms.v1.MintNodeKeyRequest
+	26, // 41: ktms.v1.AdminService.RevokeNodeKey:input_type -> ktms.v1.RevokeNodeKeyRequest
+	28, // 42: ktms.v1.AdminService.ListNodeKeys:input_type -> ktms.v1.ListNodeKeysRequest
+	31, // 43: ktms.v1.AdminService.ListNodes:input_type -> ktms.v1.ListNodesRequest
+	34, // 44: ktms.v1.AdminService.DrainNode:input_type -> ktms.v1.DrainNodeRequest
+	37, // 45: ktms.v1.AdminService.SetUserRateLimit:input_type -> ktms.v1.SetUserRateLimitRequest
+	39, // 46: ktms.v1.AdminService.DeleteUserRateLimit:input_type -> ktms.v1.DeleteUserRateLimitRequest
+	41, // 47: ktms.v1.AdminService.ListUserRateLimits:input_type -> ktms.v1.ListUserRateLimitsRequest
+	44, // 48: ktms.v1.AdminService.SetSpendLimit:input_type -> ktms.v1.SetSpendLimitRequest
+	46, // 49: ktms.v1.AdminService.DeleteSpendLimit:input_type -> ktms.v1.DeleteSpendLimitRequest
+	48, // 50: ktms.v1.AdminService.ListSpendLimits:input_type -> ktms.v1.ListSpendLimitsRequest
+	52, // 51: ktms.v1.AdminService.CreateOrganization:input_type -> ktms.v1.CreateOrganizationRequest
+	54, // 52: ktms.v1.AdminService.ListOrganizations:input_type -> ktms.v1.ListOrganizationsRequest
+	56, // 53: ktms.v1.AdminService.DeleteOrganization:input_type -> ktms.v1.DeleteOrganizationRequest
+	58, // 54: ktms.v1.AdminService.CreateTeam:input_type -> ktms.v1.CreateTeamRequest
+	60, // 55: ktms.v1.AdminService.GetTeam:input_type -> ktms.v1.GetTeamRequest
+	62, // 56: ktms.v1.AdminService.ListTeams:input_type -> ktms.v1.ListTeamsRequest
+	64, // 57: ktms.v1.AdminService.UpdateTeam:input_type -> ktms.v1.UpdateTeamRequest
+	66, // 58: ktms.v1.AdminService.DeleteTeam:input_type -> ktms.v1.DeleteTeamRequest
+	68, // 59: ktms.v1.AdminService.GetTeamSpend:input_type -> ktms.v1.GetTeamSpendRequest
+	3,  // 60: ktms.v1.AdminService.UpsertModel:output_type -> ktms.v1.UpsertModelResponse
+	5,  // 61: ktms.v1.AdminService.DeleteModel:output_type -> ktms.v1.DeleteModelResponse
+	7,  // 62: ktms.v1.AdminService.ReplaceRules:output_type -> ktms.v1.ReplaceRulesResponse
+	9,  // 63: ktms.v1.AdminService.SetVendorKey:output_type -> ktms.v1.SetVendorKeyResponse
+	11, // 64: ktms.v1.AdminService.DeleteVendorKey:output_type -> ktms.v1.DeleteVendorKeyResponse
+	14, // 65: ktms.v1.AdminService.GetConfig:output_type -> ktms.v1.GetConfigResponse
+	16, // 66: ktms.v1.AdminService.MintAPIKey:output_type -> ktms.v1.MintAPIKeyResponse
+	18, // 67: ktms.v1.AdminService.RevokeAPIKey:output_type -> ktms.v1.RevokeAPIKeyResponse
+	21, // 68: ktms.v1.AdminService.ListAPIKeys:output_type -> ktms.v1.ListAPIKeysResponse
+	23, // 69: ktms.v1.AdminService.RotateEncryption:output_type -> ktms.v1.RotateEncryptionResponse
+	25, // 70: ktms.v1.AdminService.MintNodeKey:output_type -> ktms.v1.MintNodeKeyResponse
+	27, // 71: ktms.v1.AdminService.RevokeNodeKey:output_type -> ktms.v1.RevokeNodeKeyResponse
+	30, // 72: ktms.v1.AdminService.ListNodeKeys:output_type -> ktms.v1.ListNodeKeysResponse
+	33, // 73: ktms.v1.AdminService.ListNodes:output_type -> ktms.v1.ListNodesResponse
+	35, // 74: ktms.v1.AdminService.DrainNode:output_type -> ktms.v1.DrainNodeResponse
+	38, // 75: ktms.v1.AdminService.SetUserRateLimit:output_type -> ktms.v1.SetUserRateLimitResponse
+	40, // 76: ktms.v1.AdminService.DeleteUserRateLimit:output_type -> ktms.v1.DeleteUserRateLimitResponse
+	42, // 77: ktms.v1.AdminService.ListUserRateLimits:output_type -> ktms.v1.ListUserRateLimitsResponse
+	45, // 78: ktms.v1.AdminService.SetSpendLimit:output_type -> ktms.v1.SetSpendLimitResponse
+	47, // 79: ktms.v1.AdminService.DeleteSpendLimit:output_type -> ktms.v1.DeleteSpendLimitResponse
+	49, // 80: ktms.v1.AdminService.ListSpendLimits:output_type -> ktms.v1.ListSpendLimitsResponse
+	53, // 81: ktms.v1.AdminService.CreateOrganization:output_type -> ktms.v1.CreateOrganizationResponse
+	55, // 82: ktms.v1.AdminService.ListOrganizations:output_type -> ktms.v1.ListOrganizationsResponse
+	57, // 83: ktms.v1.AdminService.DeleteOrganization:output_type -> ktms.v1.DeleteOrganizationResponse
+	59, // 84: ktms.v1.AdminService.CreateTeam:output_type -> ktms.v1.CreateTeamResponse
+	61, // 85: ktms.v1.AdminService.GetTeam:output_type -> ktms.v1.GetTeamResponse
+	63, // 86: ktms.v1.AdminService.ListTeams:output_type -> ktms.v1.ListTeamsResponse
+	65, // 87: ktms.v1.AdminService.UpdateTeam:output_type -> ktms.v1.UpdateTeamResponse
+	67, // 88: ktms.v1.AdminService.DeleteTeam:output_type -> ktms.v1.DeleteTeamResponse
+	69, // 89: ktms.v1.AdminService.GetTeamSpend:output_type -> ktms.v1.GetTeamSpendResponse
+	60, // [60:90] is the sub-list for method output_type
+	30, // [30:60] is the sub-list for method input_type
+	30, // [30:30] is the sub-list for extension type_name
+	30, // [30:30] is the sub-list for extension extendee
+	0,  // [0:30] is the sub-list for field type_name
 }
 
 func init() { file_ktms_v1_admin_proto_init() }
@@ -4159,7 +4286,7 @@ func file_ktms_v1_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ktms_v1_admin_proto_rawDesc), len(file_ktms_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   69,
+			NumMessages:   71,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
