@@ -8,8 +8,40 @@ We provide security updates and patches for the following versions:
 
 | Version | Supported          |
 | ------- | ------------------ |
-| `v0.12.x` | :white_check_mark: |
-| `< v0.12` | :x:                |
+| `1.x`, latest minor release | :white_check_mark: |
+| `0.13.x` | :white_check_mark: until 1.0.0 is released |
+| `< 0.13` | :x:                |
+
+## Verifying a Release
+
+From 1.0.0 on, release artifacts are signed with [Sigstore cosign](https://docs.sigstore.dev/)
+using GitHub Actions' OIDC identity (keyless: there is no key to leak), and carry an SBOM.
+
+Use cosign 3. Pin the identity to the exact tag you are verifying, so a signature from any other
+build does not pass. Docker images (signature, SBOM and SLSA provenance are attached to the
+image; each platform manifest is signed too):
+
+```bash
+V=v1.0.0
+cosign verify coyl/ktms:${V#v} \
+  --certificate-identity "https://github.com/ai-process/ktms/.github/workflows/docker-publish.yml@refs/tags/$V" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+docker buildx imagetools inspect coyl/ktms:${V#v} --format '{{ json .SBOM }}'
+docker buildx imagetools inspect coyl/ktms:${V#v} --format '{{ json .Provenance }}'
+```
+
+Binaries on the GitHub release (`checksums.txt` is signed; each archive has an `.sbom.json`):
+
+```bash
+cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
+  --certificate-identity "https://github.com/ai-process/ktms/.github/workflows/release.yml@refs/tags/$V" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+sha256sum --ignore-missing -c checksums.txt
+```
+
+Every pull request and every release runs [`govulncheck`](https://go.dev/doc/security/vuln/)
+for linux and darwin: a known vulnerability that KTMS code can reach fails the build, and a
+release does not go out.
 
 ## Reporting a Vulnerability
 
