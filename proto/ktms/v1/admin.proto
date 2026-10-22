@@ -338,6 +338,8 @@ message ListTeamsResponse {
   repeated Team teams = 1;
 }
 
+// Replaces the team: an omitted budget removes the cap and omitted
+// allowed_models lifts the restriction, so send every field.
 message UpdateTeamRequest {
   string id = 1;
   string name = 2;
@@ -360,12 +362,13 @@ message GetTeamSpendRequest {
 }
 
 // The team's spend this UTC month as the gateway enforces it (the same counter
-// that refuses calls with throttled:spend_team_monthly).
+// that refuses calls with throttled:spend_team_monthly). Only capped teams are
+// counted, from the moment the budget was set.
 message GetTeamSpendResponse {
   int64 spent_nanousd = 1;
   int64 limit_nanousd = 2; // 0 = no cap
   google.protobuf.Timestamp resets_at = 3;
-  bool metered = 4; // false: no Redis, spend is not counted and limits do not apply
+  bool metered = 4; // false: no budget set, or no Redis (spend is not counted)
 }
 
 // All admin RPCs require the "admin" scope. Every config mutation validates

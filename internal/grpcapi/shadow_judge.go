@@ -116,7 +116,7 @@ func (s *ProxyServer) evaluateShadowJudge(ctx context.Context, id *apikeys.Ident
 		},
 	}
 
-	estTokens := int64((len([]rune(prompt)) + len([]rune(primaryText)) + len([]rune(shadowText)))/4 + 100)
+	estTokens := int64((len([]rune(prompt))+len([]rune(primaryText))+len([]rune(shadowText)))/4 + 100)
 	var th router.Throttle = router.NoopThrottle{}
 	if s.throttle != nil {
 		th = judgeThrottle{s.throttle}

@@ -387,6 +387,11 @@ func (s *AdminServer) MintAPIKey(ctx context.Context, req *pb.MintAPIKeyRequest)
 	row.TeamID = teamID
 
 	if err := s.db.InsertAPIKey(ctx, row); err != nil {
+		// The team or org was deleted after the checks above.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			return nil, status.Error(codes.InvalidArgument, "team or organization not found")
+		}
 		return nil, dbStatus(err)
 	}
 	// The plain key exists only in this response.
@@ -721,7 +726,9 @@ func (s *AdminServer) GetTeamSpend(ctx context.Context, req *pb.GetTeamSpendRequ
 	limit, _ := teamBudgetNano(team.MonthlyBudgetUSD)
 	_, resets := spendlimit.Window(spendlimit.PeriodMonth, time.Now())
 	out := &pb.GetTeamSpendResponse{LimitNanousd: limit, ResetsAt: timestamppb.New(resets)}
-	if s.spendReader == nil {
+	// The throttle keeps counters only for capped subjects, so an uncapped
+	// team has no number to report.
+	if s.spendReader == nil || limit == 0 {
 		return out, nil
 	}
 	spent, resets, err := s.spendReader(ctx, spendlimit.SubjectTeam, team.ID, spendlimit.PeriodMonth)

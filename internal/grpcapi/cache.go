@@ -99,14 +99,10 @@ func (s *ProxyServer) admitCacheHit(ctx context.Context, snap *registry.Snapshot
 	if tracker == nil {
 		return nil
 	}
-	meta := make(map[string]string, len(req.GetAttributes())+5)
-	for k, v := range req.GetAttributes() {
-		meta[k] = v
-	}
+	meta := usageMeta(req.GetAttributes(), id)
 	if cached.MatchedRule != "" {
 		meta["rule"] = cached.MatchedRule
 	}
-	meta["api_key"] = id.Name
 	meta["cache"] = "hit"
 	if hit.semantic {
 		meta["cache_match"] = "semantic"

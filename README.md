@@ -580,10 +580,13 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"name":"search-ser
 - A team key may call only the team's `allowed_models` (empty means any). A model override
   outside them is `PERMISSION_DENIED`; a chain is filtered to them, and a chain with none
   left is `PERMISSION_DENIED`. The proxy's own judge calls (auto effort, shadow evaluation)
-  are not restricted.
+  are not restricted. `ListModels` (and `/v1/models`) lists only the allowed models.
+- `UpdateTeam` replaces the team: send every field, since an omitted budget or model list
+  lifts the cap or the restriction.
 - `monthly_budget_usd` is a spend limit on all the team's keys together (UTC month), refused
   with `RESOURCE_EXHAUSTED throttled:spend_team_monthly`. It is set only through
   `CreateTeam`/`UpdateTeam` (`0` lifts it); `SetSpendLimit` refuses `subject_type: "team"`.
+  `GetTeamSpend` reads the enforced counter, which runs only while a budget is set.
 - Rules can match `org_id` and `team_id`. The proxy sets them from the key; callers cannot.
 - Deleting a team or organization detaches revoked keys and is `FAILED_PRECONDITION` while
   active keys remain: revoke or move them first.
@@ -1103,7 +1106,7 @@ lexical hash encoder that folds case, homoglyphs, zero-width and spaced-out lett
 | `RESOURCE_EXHAUSTED` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` | Back off; don't hot-retry. Daily budget exhausted before batch submission. |
 | `RESOURCE_EXHAUSTED` | `throttled:spend_key_daily`, `throttled:spend_key_monthly`, `throttled:spend_user_daily`, `throttled:spend_user_monthly`, `throttled:spend_team_monthly` | Spend limit reached. Details carry `ErrorInfo{reason: "insufficient_quota"}` and `RetryInfo` until the period resets. |
 | `UNAVAILABLE` | `throttled:spend_unavailable` | Spend counters unreachable with `SPEND_LIMITS_FAIL_MODE=closed`. Retry with backoff. |
-| `PERMISSION_DENIED` | `model "<id>" not allowed for team`, `no models in chain allowed for team` | The key's team may not use that model. |
+| `PERMISSION_DENIED` | `model "<id>" not allowed for team`, `no models in chain allowed for team`, `model access denied by team policy` (batch) | The key's team may not use that model. |
 | `FAILED_PRECONDITION` | `output_truncated` | Raise `max_output_tokens`; don't retry as-is. |
 | `FAILED_PRECONDITION` | `no_capable_model` | No model in the matched chain can serve this request, modality, or batch capability. |
 | `FAILED_PRECONDITION` | `no_vendor_key` | The client key holds no credential for the chain's vendors. `local` models never cause this. |

@@ -231,6 +231,33 @@ func TestRoutingAttributesComeFromTheKey(t *testing.T) {
 	}
 }
 
+// A key outside any team must not book usage against a team it names.
+func TestUsageMetaIgnoresCallerTenant(t *testing.T) {
+	req := &pb.GenerateTextRequest{Attributes: map[string]string{"team_id": "victim", "org_id": "victim-org", "is_shadow": "true", "service": "s"}}
+	meta := buildChat(req, &apikeys.Identity{Name: "k"}, "", "low").GetMeta()
+	if meta["team_id"] != "" || meta["org_id"] != "" || meta["is_shadow"] != "" || meta["service"] != "s" || meta[APIKeyAttribute] != "k" {
+		t.Fatalf("meta = %v", meta)
+	}
+	meta = buildChat(req, &apikeys.Identity{Name: "k", OrgID: "o", TeamID: "t"}, "", "low").GetMeta()
+	if meta["team_id"] != "t" || meta["org_id"] != "o" {
+		t.Fatalf("team key meta = %v", meta)
+	}
+}
+
+func TestListModelsHonoursTeamAllowlist(t *testing.T) {
+	models := []*proxydb.Model{
+		{ID: "m1", Vendor: registry.VendorOpenAI, Efforts: []string{registry.EffortMedium}, Enabled: true},
+		{ID: "m2", Vendor: registry.VendorOpenAI, Efforts: []string{registry.EffortMedium}, Enabled: true},
+	}
+	snap := registry.NewSnapshotForTest(models, nil, map[string]map[string]string{"key-1": {registry.VendorOpenAI: "k"}}, nil)
+	server := NewProxyServer(fixedSnapshot{snap}, nil)
+	ctx := apikeys.WithIdentity(context.Background(), &apikeys.Identity{KeyID: "key-1", TeamID: "t", TeamAllowedModels: []string{"m2"}})
+	resp, err := server.ListModels(ctx, &pb.ListModelsRequest{})
+	if err != nil || len(resp.GetModels()) != 1 || resp.GetModels()[0].GetId() != "m2" {
+		t.Fatalf("ListModels = %v, %v; want only m2", resp.GetModels(), err)
+	}
+}
+
 // The proxy's own judge calls are not the caller's to restrict.
 func TestInternalCallsBypassTeamAllowlist(t *testing.T) {
 	id := &apikeys.Identity{TeamAllowedModels: []string{"gpt-x"}}

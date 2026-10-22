@@ -3485,6 +3485,8 @@ func (x *ListTeamsResponse) GetTeams() []*Team {
 	return nil
 }
 
+// Replaces the team: an omitted budget removes the cap and omitted
+// allowed_models lifts the restriction, so send every field.
 type UpdateTeamRequest struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Id               string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -3722,13 +3724,14 @@ func (x *GetTeamSpendRequest) GetId() string {
 }
 
 // The team's spend this UTC month as the gateway enforces it (the same counter
-// that refuses calls with throttled:spend_team_monthly).
+// that refuses calls with throttled:spend_team_monthly). Only capped teams are
+// counted, from the moment the budget was set.
 type GetTeamSpendResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SpentNanousd  int64                  `protobuf:"varint,1,opt,name=spent_nanousd,json=spentNanousd,proto3" json:"spent_nanousd,omitempty"`
 	LimitNanousd  int64                  `protobuf:"varint,2,opt,name=limit_nanousd,json=limitNanousd,proto3" json:"limit_nanousd,omitempty"` // 0 = no cap
 	ResetsAt      *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=resets_at,json=resetsAt,proto3" json:"resets_at,omitempty"`
-	Metered       bool                   `protobuf:"varint,4,opt,name=metered,proto3" json:"metered,omitempty"` // false: no Redis, spend is not counted and limits do not apply
+	Metered       bool                   `protobuf:"varint,4,opt,name=metered,proto3" json:"metered,omitempty"` // false: no budget set, or no Redis (spend is not counted)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

@@ -113,3 +113,35 @@ func TestTenancyMigrationIsIdempotent(t *testing.T) {
 		t.Fatalf("re-running the migration: %v", err)
 	}
 }
+
+// The poller bills a batch to its key's team, never to a team_id the caller
+// left in the stored attributes.
+func TestLeasedBatchCarriesTheKeysTeam(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	orgID, teamID := newTenancy(t, d, 0)
+	keyID := uuid.NewString()
+	if err := d.InsertAPIKey(ctx, &APIKey{ID: keyID, Name: "k-" + keyID[:8], KeyLookup: keyID, KeyHash: "h",
+		Scopes: []string{"generate"}, OrgID: &orgID, TeamID: &teamID}); err != nil {
+		t.Fatal(err)
+	}
+	batchID := uuid.NewString()
+	if _, err := d.CreateBatch(ctx, &Batch{ID: batchID, APIKeyID: keyID, KeyName: "k", Model: "m", State: "PENDING",
+		Attributes: map[string]string{"team_id": "forged"}, CreatedAt: time.Now().UTC()}, nil); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = d.pool.Exec(context.Background(), `DELETE FROM batch WHERE id = $1`, batchID) })
+	leased, err := d.LeaseUnfinishedBatches(ctx, time.Minute, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range leased {
+		if b.ID == batchID {
+			if b.TeamID != teamID || b.OrgID != orgID {
+				t.Fatalf("leased batch tenant = %q/%q, want %q/%q", b.OrgID, b.TeamID, orgID, teamID)
+			}
+			return
+		}
+	}
+	t.Fatal("batch not leased")
+}

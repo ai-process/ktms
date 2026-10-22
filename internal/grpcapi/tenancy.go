@@ -28,6 +28,14 @@ func routingAttributes(attrs map[string]string, id *apikeys.Identity) map[string
 	return out
 }
 
+// usageMeta seeds a call's usage-event meta: the attributes as routing sees
+// them and the api key, so no path can attribute spend to a team it is not in.
+func usageMeta(attrs map[string]string, id *apikeys.Identity) map[string]string {
+	meta := routingAttributes(attrs, id)
+	meta[APIKeyAttribute] = id.Name
+	return meta
+}
+
 type internalCallKey struct{}
 
 // withInternalCall marks a call the proxy makes for itself (auto-effort

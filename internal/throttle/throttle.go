@@ -291,12 +291,12 @@ func (t *Redis) spendTargets(keyName, userID, teamID string, now time.Time) []sp
 	}
 	var targets []spendTarget
 	for _, e := range spendlimit.Enforced {
-		subjectID, short := keyName, "k"
+		subjectID := keyName
 		switch e.Subject {
 		case spendlimit.SubjectUser:
-			subjectID, short = userID, "u"
+			subjectID = userID
 		case spendlimit.SubjectTeam:
-			subjectID, short = teamID, "t"
+			subjectID = teamID
 		}
 		if subjectID == "" {
 			continue
@@ -307,7 +307,7 @@ func (t *Redis) spendTargets(keyName, userID, teamID string, now time.Time) []sp
 		}
 		window, end := spendlimit.Window(e.Period, now)
 		targets = append(targets, spendTarget{
-			key:    t.keys.Spend(short, subjectID, window),
+			key:    t.keys.Spend(spendShort(e.Subject), subjectID, window),
 			limit:  limit,
 			ttl:    int64((end.Sub(now) + spendGrace) / time.Second),
 			reason: spendlimit.Reason(e.Subject, e.Period),
@@ -316,12 +316,22 @@ func (t *Redis) spendTargets(keyName, userID, teamID string, now time.Time) []sp
 	return targets
 }
 
+// spendShort is the subject tag in its Redis spend counter key.
+func spendShort(subject string) string {
+	switch subject {
+	case spendlimit.SubjectUser:
+		return "u"
+	case spendlimit.SubjectTeam:
+		return "t"
+	}
+	return "k"
+}
+
 // SpendSoFar reads a subject's spend counter for the current window, the one
 // Reserve checks; nano-USD, 0 when nothing has been spent yet.
 func (t *Redis) SpendSoFar(ctx context.Context, subject, subjectID, period string) (int64, time.Time, error) {
-	short := map[string]string{spendlimit.SubjectKey: "k", spendlimit.SubjectUser: "u", spendlimit.SubjectTeam: "t"}[subject]
 	window, end := spendlimit.Window(period, t.currentTime())
-	val, err := t.client.Get(ctx, t.keys.Spend(short, subjectID, window)).Int64()
+	val, err := t.client.Get(ctx, t.keys.Spend(spendShort(subject), subjectID, window)).Int64()
 	if errors.Is(err, redis.Nil) {
 		return 0, end, nil
 	}

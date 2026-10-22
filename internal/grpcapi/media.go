@@ -187,7 +187,7 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 	var chain []string
 	var ruleName string
 	if override != "" {
-		if !isInternalCall(ctx) && !id.CanAccessModel(override) {
+		if !id.CanAccessModel(override) {
 			return nil, status.Errorf(codes.PermissionDenied, "model %q not allowed for team", override)
 		}
 		if _, ok := snap.Models[override]; !ok {
@@ -216,17 +216,7 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 		return nil, err
 	}
 
-	meta := make(map[string]string, len(routing)+4)
-	for k, v := range routing {
-		meta[k] = v
-	}
-	meta[APIKeyAttribute] = id.Name
-	if id.OrgID != "" {
-		meta["org_id"] = id.OrgID
-	}
-	if id.TeamID != "" {
-		meta["team_id"] = id.TeamID
-	}
+	meta := usageMeta(routing, id)
 	if ruleName != "" {
 		meta["rule"] = ruleName
 	}

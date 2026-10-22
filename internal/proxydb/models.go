@@ -156,6 +156,10 @@ type Batch struct {
 	CreatedAt     time.Time
 	CompletedAt   *time.Time
 	LeasedUntil   *time.Time
+	// The submitting key's tenant, read on lease: stored attributes predate
+	// the reserved team keys and may carry a caller's own team_id.
+	OrgID  string
+	TeamID string
 }
 
 type BatchItem struct {

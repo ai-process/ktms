@@ -226,7 +226,9 @@ func (d *DB) LeaseUnfinishedBatches(ctx context.Context, leaseDuration time.Dura
 		 )
 		 RETURNING id, client_batch_id, api_key_id, key_name, model, vendor_job_name, state,
 		           total_count, done_count, failed_count, attributes, action_id,
-		           created_at, completed_at, leased_until`,
+		           created_at, completed_at, leased_until,
+		           (SELECT COALESCE(org_id::text, '') FROM api_key WHERE id = batch.api_key_id),
+		           (SELECT COALESCE(team_id::text, '') FROM api_key WHERE id = batch.api_key_id)`,
 		leaseDuration, limit)
 	if err != nil {
 		return nil, err
@@ -237,14 +239,20 @@ func (d *DB) LeaseUnfinishedBatches(ctx context.Context, leaseDuration time.Dura
 	for rows.Next() {
 		var b Batch
 		var attrsJSON []byte
-		var clientBatchID *string
+		var clientBatchID, orgID, teamID *string
 		if err := rows.Scan(&b.ID, &clientBatchID, &b.APIKeyID, &b.KeyName, &b.Model, &b.VendorJobName, &b.State,
 			&b.TotalCount, &b.DoneCount, &b.FailedCount, &attrsJSON, &b.ActionID,
-			&b.CreatedAt, &b.CompletedAt, &b.LeasedUntil); err != nil {
+			&b.CreatedAt, &b.CompletedAt, &b.LeasedUntil, &orgID, &teamID); err != nil {
 			return nil, err
 		}
 		if clientBatchID != nil {
 			b.ClientBatchID = *clientBatchID
+		}
+		if orgID != nil {
+			b.OrgID = *orgID
+		}
+		if teamID != nil {
+			b.TeamID = *teamID
 		}
 		if len(attrsJSON) > 0 {
 			_ = json.Unmarshal(attrsJSON, &b.Attributes)
