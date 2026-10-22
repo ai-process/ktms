@@ -26,17 +26,22 @@ func setupTestDB(t *testing.T) *DB {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	// With REQUIRE_DB set (CI), a missing database fails instead of skipping.
+	skip := t.Skipf
+	if os.Getenv("REQUIRE_DB") != "" {
+		skip = t.Fatalf
+	}
 	poolCfg, err := pgxpool.ParseConfig(dbURL)
 	if err != nil {
-		t.Skipf("cannot parse database config: %v", err)
+		skip("cannot parse database config: %v", err)
 	}
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
-		t.Skipf("cannot connect to test postgres: %v", err)
+		skip("cannot connect to test postgres: %v", err)
 	}
 
 	if err := pool.Ping(ctx); err != nil {
-		t.Skipf("cannot ping test postgres: %v", err)
+		skip("cannot ping test postgres: %v", err)
 	}
 
 	// Apply migrations

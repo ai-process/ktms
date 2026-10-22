@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -481,17 +483,14 @@ func (s *AdminServer) RotateEncryption(ctx context.Context, _ *pb.RotateEncrypti
 	active := int32(s.keyring.ActiveVersion())
 	var count int32
 	_, err := s.db.Mutate(ctx, func(tx pgx.Tx) error {
-		keys, err := proxydb.LoadVendorKeysTx(ctx, tx)
+		keys, err := proxydb.LockStaleVendorKeysTx(ctx, tx, active)
 		if err != nil {
 			return err
 		}
 		for _, vk := range keys {
-			if vk.KeyVersion == active {
-				continue
-			}
 			plain, err := s.keyring.Decrypt(vk.KeyCiphertext, int(vk.KeyVersion))
 			if err != nil {
-				return err
+				return &unreadableKeyError{id: vk.ID, version: vk.KeyVersion}
 			}
 			ciphertext, version, err := s.keyring.Encrypt(plain)
 			if err != nil {
@@ -504,11 +503,81 @@ func (s *AdminServer) RotateEncryption(ctx context.Context, _ *pb.RotateEncrypti
 		}
 		return nil
 	}, nil)
+	var unreadable *unreadableKeyError
+	if errors.As(err, &unreadable) {
+		return nil, status.Error(codes.FailedPrecondition, unreadable.Error())
+	}
 	if err != nil {
 		return nil, dbStatus(err)
 	}
 	s.onChange()
-	return &pb.RotateEncryptionResponse{Reencrypted: count}, nil
+	tokens, err := s.rotateNodeTokens(ctx, int(active))
+	if err != nil {
+		log.Error().Err(err).Msg("node auth token rotation failed")
+		return nil, status.Error(codes.Unavailable, "node registry unavailable: vendor keys were re-encrypted, call again")
+	}
+	return &pb.RotateEncryptionResponse{Reencrypted: count + tokens}, nil
+}
+
+// unreadableKeyError stops a rotation that would otherwise report success
+// while a key still needs a version the operator is about to drop.
+type unreadableKeyError struct {
+	id      string
+	version int32
+}
+
+func (e *unreadableKeyError) Error() string {
+	return fmt.Sprintf("vendor key %s is encrypted with version %d, which KTMS_ENCRYPTION_KEYS lacks: add that version back, or set the key again with SetVendorKey", e.id, e.version)
+}
+
+// rotateNodeTokens re-encrypts the node auth tokens kept in Redis with the
+// same keyring, so dropping an old key version does not break node calls.
+func (s *AdminServer) rotateNodeTokens(ctx context.Context, active int) (int32, error) {
+	if s.nodeMgr == nil || s.keyring == nil {
+		return 0, nil
+	}
+	store := s.nodeMgr.Store()
+	ids, err := store.GetAllNodeIDs(ctx)
+	if err != nil {
+		return 0, err
+	}
+	prefix := strconv.Itoa(active) + ":"
+	var n int32
+	for _, id := range ids {
+		var encErr error
+		changed, err := store.UpdateMeta(ctx, id, func(meta *nodes.NodeMeta) bool {
+			if meta.AuthToken == "" || strings.HasPrefix(meta.AuthToken, prefix) {
+				return false
+			}
+			plain, err := s.keyring.DecodeVersioned(meta.AuthToken)
+			if err != nil {
+				// Unreadable already; the node gets a fresh token when it re-registers.
+				log.Warn().Err(err).Str("node_id", id).Msg("node auth token cannot be decrypted, skipped")
+				return false
+			}
+			ct, v, err := s.keyring.Encrypt(plain)
+			if err != nil {
+				encErr = err
+				return false
+			}
+			meta.AuthToken = crypto.EncodeVersioned(ct, v)
+			return true
+		})
+		if errors.Is(err, nodes.ErrCorruptNode) {
+			log.Warn().Err(err).Str("node_id", id).Msg("node meta unreadable, token not rotated")
+			continue
+		}
+		if err == nil {
+			err = encErr
+		}
+		if err != nil {
+			return n, err
+		}
+		if changed {
+			n++
+		}
+	}
+	return n, nil
 }
 
 func dbStatus(err error) error {

@@ -9,6 +9,17 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Without a database the Postgres-backed tests skip, so CI provides one.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: gen
+          POSTGRES_PASSWORD: gen
+          POSTGRES_DB: gen_test
+        ports: ["5442:5432"]
+        options: >-
+          --health-cmd "pg_isready -U gen -d gen_test" --health-interval 2s --health-timeout 3s --health-retries 15
     steps:
       - uses: actions/checkout@v4
 
@@ -21,6 +32,8 @@ jobs:
         run: go vet ./...
 
       - name: Run tests
+        env:
+          REQUIRE_DB: "1" # the Postgres-backed tests fail rather than skip
         run: go test -race ./...
 
       - name: Installer script tests
