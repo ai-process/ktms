@@ -324,7 +324,10 @@ func completionUsage(u openai.CompletionUsage) llm.TokensUsage {
 	cached := u.PromptTokensDetails.CachedTokens
 	if cached == 0 {
 		if f, ok := u.JSON.ExtraFields["prompt_cache_hit_tokens"]; ok {
-			cached, _ = strconv.ParseInt(f.Raw(), 10, 64)
+			// Compatible hosts may send 9000.0; a count still parses as a float.
+			if v, err := strconv.ParseFloat(f.Raw(), 64); err == nil {
+				cached = int64(v)
+			}
 		}
 	}
 	return llm.TokensUsage{

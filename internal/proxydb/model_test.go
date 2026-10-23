@@ -39,7 +39,7 @@ func TestCachePriceDefaults(t *testing.T) {
 		read, write float64
 	}{
 		{"anthropic", 0.3, 3.75},
-		{"bedrock", 3, 3.75},
+		{"bedrock", 0.75, 3.75},
 		{"openai", 3, 3},
 		{"google", 3, 3},
 	} {

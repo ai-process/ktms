@@ -48,7 +48,8 @@ type ModelSpec struct {
 	BudgetGraceMargin    float64 `protobuf:"fixed64,18,opt,name=budget_grace_margin,json=budgetGraceMargin,proto3" json:"budget_grace_margin,omitempty"` // allowed daily budget overdraft (0.0 = system default 0.05, <0.0 = disabled)
 	// Prompt-cache rates, standard (off-peak) like price_in_per_mtok; peak and batch
 	// calls scale them by the same ratio as input. 0 = the vendor default: for
-	// anthropic 0.1x input to read and 1.25x to write, for every other vendor 1x.
+	// anthropic 0.1x input to read and 1.25x to write, for bedrock 0.25x and 1.25x,
+	// for every other vendor 1x.
 	PriceCacheReadPerMtok  float64 `protobuf:"fixed64,19,opt,name=price_cache_read_per_mtok,json=priceCacheReadPerMtok,proto3" json:"price_cache_read_per_mtok,omitempty"`
 	PriceCacheWritePerMtok float64 `protobuf:"fixed64,20,opt,name=price_cache_write_per_mtok,json=priceCacheWritePerMtok,proto3" json:"price_cache_write_per_mtok,omitempty"`
 	unknownFields          protoimpl.UnknownFields

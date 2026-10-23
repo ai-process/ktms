@@ -35,6 +35,12 @@ func TestCacheUsagePerVendor(t *testing.T) {
 	}
 	check(t, "deepseek", completionUsage(ds), llm.TokensUsage{Input: 10000, Output: 10, CacheRead: 9000})
 
+	var dsFloat openai.CompletionUsage
+	if err := json.Unmarshal([]byte(`{"prompt_tokens":100,"completion_tokens":1,"total_tokens":101,"prompt_cache_hit_tokens":90.0}`), &dsFloat); err != nil {
+		t.Fatal(err)
+	}
+	check(t, "deepseek-compatible", completionUsage(dsFloat), llm.TokensUsage{Input: 100, Output: 1, CacheRead: 90})
+
 	if got := geminiCacheRead(80000, 100000); got != 80000 {
 		t.Fatalf("gemini cache read = %d, want 80000", got)
 	}

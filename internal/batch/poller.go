@@ -379,6 +379,11 @@ func (p *Poller) emitUsage(
 	meta["price_out_batch_per_mtok"] = strconv.FormatFloat(priceOut, 'f', -1, 64)
 	meta["price_in_per_mtok"] = strconv.FormatFloat(priceIn, 'f', -1, 64)
 	meta["price_out_per_mtok"] = strconv.FormatFloat(priceOut, 'f', -1, 64)
+	// With cache tokens, cost_usd also used the cache rates, scaled for batch.
+	if usage.CacheRead > 0 || usage.CacheWrite > 0 {
+		meta["price_cache_read_batch_per_mtok"] = strconv.FormatFloat(pricing.Rate(m, pricing.ModeBatch, pricing.CacheRead), 'f', -1, 64)
+		meta["price_cache_write_batch_per_mtok"] = strconv.FormatFloat(pricing.Rate(m, pricing.ModeBatch, pricing.CacheWrite), 'f', -1, 64)
+	}
 	cost := pricing.Cost(m, usage, pricing.ModeBatch)
 	if usage.Input > 0 || usage.Output > 0 {
 		meta["cost_usd"] = strconv.FormatFloat(float64(cost)/pricing.NanoPerUSD, 'f', -1, 64)

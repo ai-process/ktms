@@ -336,9 +336,9 @@ func TestCacheTokensStayWithinInput(t *testing.T) {
 		{llm.TokensUsage{Input: 10, CacheRead: -1, CacheWrite: -1}, 0, 0},
 		{llm.TokensUsage{CacheRead: 5}, 0, 0},
 	} {
-		read, write := cacheTokens(tc.usage)
-		if read != tc.read || write != tc.write {
-			t.Errorf("cacheTokens(%+v) = %d, %d; want %d, %d", tc.usage, read, write, tc.read, tc.write)
+		got := tc.usage.Clamped()
+		if int64(got.CacheRead) != tc.read || int64(got.CacheWrite) != tc.write {
+			t.Errorf("Clamped(%+v) = %d, %d; want %d, %d", tc.usage, got.CacheRead, got.CacheWrite, tc.read, tc.write)
 		}
 	}
 }

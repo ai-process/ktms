@@ -171,3 +171,31 @@ func TestCostScalesCacheRatesWithMode(t *testing.T) {
 		t.Fatalf("peak = %d, want %d (double $0.30)", got, want)
 	}
 }
+
+// Priced by batch or peak rates only, cached input is billed at the mode's
+// input rate, never for free.
+func TestCostCacheWithoutStandardInputPrice(t *testing.T) {
+	m := &proxydb.Model{Vendor: "anthropic", PriceInBatchPerMtok: 1.5}
+	u := llm.TokensUsage{Input: 1_000_000, CacheRead: 900_000}
+	if got, want := Cost(m, u, ModeBatch), int64(1_500_000_000); got != want {
+		t.Fatalf("cost = %d, want %d", got, want)
+	}
+}
+
+// A reservation must cover a prompt that turns out to be all cache writes.
+func TestMaxInputCostCoversCacheWrites(t *testing.T) {
+	m := &proxydb.Model{Vendor: "anthropic", PriceInPerMtok: 3}
+	if got, want := MaxInputCost(m, 1_000_000, ModeStandard), int64(3_750_000_000); got != want {
+		t.Fatalf("anthropic = %d, want %d", got, want)
+	}
+	if got := Cost(m, llm.TokensUsage{Input: 1_000_000, CacheWrite: 1_000_000}, ModeStandard); got > MaxInputCost(m, 1_000_000, ModeStandard) {
+		t.Fatalf("all-write cost %d exceeds the reservation", got)
+	}
+	cheapWrite := &proxydb.Model{Vendor: "openai", PriceInPerMtok: 2, PriceCacheWritePerMtok: 1}
+	if got, want := MaxInputCost(cheapWrite, 1_000_000, ModeStandard), int64(2_000_000_000); got != want {
+		t.Fatalf("cheaper write = %d, want %d (plain input)", got, want)
+	}
+	if got := Rate(m, ModeBatch, CacheWrite); math.Abs(got-1.875) > 1e-9 {
+		t.Fatalf("batch write rate = %v, want 1.875", got)
+	}
+}

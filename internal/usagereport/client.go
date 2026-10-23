@@ -384,7 +384,9 @@ func (c *UsageCollectorClient) RecordUsage(
 		Meta:         fitMeta(meta, actionID),
 		CostNanousd:  costNanoUSD,
 	}
-	event.CacheReadTokens, event.CacheWriteTokens = cacheTokens(usage)
+	// light-tokenmeter refuses cache counts beyond tokens_input, and the batch with them.
+	clamped := usage.Clamped()
+	event.CacheReadTokens, event.CacheWriteTokens = int64(clamped.CacheRead), int64(clamped.CacheWrite)
 	// Never block a request on accounting: a full queue means the collector has
 	// been down long enough to fill it, and the loss is counted, not hidden.
 	c.closeMu.RLock()
@@ -469,13 +471,4 @@ func init() {
 	for _, r := range []string{"queue_full", "rejected", "shutdown", "closed"} {
 		observability.UsageEventsDroppedTotal.WithLabelValues(r)
 	}
-}
-
-// cacheTokens clamps the cache counts to light-tokenmeter's rule (both within
-// tokens_input): an event that breaks it is refused, and its batch with it.
-func cacheTokens(u llm.TokensUsage) (read, write int64) {
-	in := int64(max(u.Input, 0))
-	read = min(int64(max(u.CacheRead, 0)), in)
-	write = min(int64(max(u.CacheWrite, 0)), in-read)
-	return read, write
 }

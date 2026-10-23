@@ -514,10 +514,11 @@ When `price_in_batch_per_mtok` and `price_out_batch_per_mtok` are `0`, the proxy
 
 **Prompt caching.** Input served from or written to the vendor's prompt cache is priced at
 `price_cache_read_per_mtok` and `price_cache_write_per_mtok` (standard rates; peak and batch calls
-scale them like input). At `0` the vendor default applies: for `anthropic`, 0.1x input to read and
-1.25x to write (the 5-minute cache); for `bedrock`, 1.25x to write; for every other vendor, the
-input price, which never undercharges. Set the read rate for OpenAI, Gemini and DeepSeek models
-to get their discount. KTMS reads the cached part from each vendor (`cache_read_input_tokens` and
+scale them like input). At `0` the vendor default applies, chosen never to undercharge: for
+`anthropic`, 0.1x input to read and 1.25x to write (the 5-minute cache); for `bedrock`, 0.25x
+and 1.25x (Claude reads at 0.1x and Nova at 0.25x there); for every other vendor, the input
+price. Set the read rate for OpenAI, Gemini and DeepSeek models to get their discount; the seeded
+OpenAI and Gemini models carry theirs. KTMS reads the cached part from each vendor (`cache_read_input_tokens` and
 `cache_creation_input_tokens`, `prompt_tokens_details.cached_tokens`, DeepSeek's
 `prompt_cache_hit_tokens`, Gemini's `cachedContentTokenCount`, Bedrock's `cacheRead/WriteInputTokens`),
 bills spend limits by it, sends it to light-tokenmeter as `cache_read_tokens` and
@@ -585,8 +586,8 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"spend_limit":
   `svc:<key_name>`); `subject_id` `*` is the default for every subject of that type.
   `period` is a UTC `day` or `month`.
 - Before each model in the chain is called, its worst case
-  (`estimated input × input price + max tokens × output price`, or
-  `SPEND_DEFAULT_OUTPUT_RESERVE_TOKENS` without max tokens) is reserved atomically on every
+  (`estimated input × the dearer of the input and cache-write price + max tokens × output price`,
+  or `SPEND_DEFAULT_OUTPUT_RESERVE_TOKENS` without max tokens) is reserved atomically on every
   applicable counter by one Redis Lua script; when the call ends the reservation is settled
   to the actual cost. A call that would cross any cap is refused, so a cheaper model further
   down the chain may still be tried.
