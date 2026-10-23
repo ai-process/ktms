@@ -2012,7 +2012,7 @@ type NodeInfo struct {
 	NodeId          string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	Name            string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Endpoint        string                 `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
-	State           string                 `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"` // HEALTHY | SUSPECT | DRAINING | CIRCUIT_BROKEN | OFFLINE
+	State           string                 `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"` // HEALTHY | SUSPECT | DRAINING | PAUSED | CIRCUIT_BROKEN | OFFLINE
 	Models          []string               `protobuf:"bytes,5,rep,name=models,proto3" json:"models,omitempty"`
 	EffectiveWeight float64                `protobuf:"fixed64,6,opt,name=effective_weight,json=effectiveWeight,proto3" json:"effective_weight,omitempty"`
 	ActiveRequests  int32                  `protobuf:"varint,7,opt,name=active_requests,json=activeRequests,proto3" json:"active_requests,omitempty"`
@@ -2027,6 +2027,8 @@ type NodeInfo struct {
 	BaseWeight      float64                `protobuf:"fixed64,16,opt,name=base_weight,json=baseWeight,proto3" json:"base_weight,omitempty"`
 	Engine          string                 `protobuf:"bytes,17,opt,name=engine,proto3" json:"engine,omitempty"`
 	WarmModels      []string               `protobuf:"bytes,18,rep,name=warm_models,json=warmModels,proto3" json:"warm_models,omitempty"`
+	CapacityPercent uint32                 `protobuf:"varint,19,opt,name=capacity_percent,json=capacityPercent,proto3" json:"capacity_percent,omitempty"` // current level of the node's schedule
+	EffectiveSlots  int32                  `protobuf:"varint,20,opt,name=effective_slots,json=effectiveSlots,proto3" json:"effective_slots,omitempty"`    // concurrent requests allowed at that level
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -2185,6 +2187,20 @@ func (x *NodeInfo) GetWarmModels() []string {
 		return x.WarmModels
 	}
 	return nil
+}
+
+func (x *NodeInfo) GetCapacityPercent() uint32 {
+	if x != nil {
+		return x.CapacityPercent
+	}
+	return 0
+}
+
+func (x *NodeInfo) GetEffectiveSlots() int32 {
+	if x != nil {
+		return x.EffectiveSlots
+	}
+	return 0
 }
 
 type ListNodesResponse struct {
@@ -4315,7 +4331,7 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x0fmax_concurrency\x18\t \x01(\x05R\x0emaxConcurrency\"@\n" +
 	"\x14ListNodeKeysResponse\x12(\n" +
 	"\x04keys\x18\x01 \x03(\v2\x14.ktms.v1.NodeKeyInfoR\x04keys\"\x12\n" +
-	"\x10ListNodesRequest\"\xe0\x04\n" +
+	"\x10ListNodesRequest\"\xb4\x05\n" +
 	"\bNodeInfo\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
@@ -4339,7 +4355,9 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"baseWeight\x12\x16\n" +
 	"\x06engine\x18\x11 \x01(\tR\x06engine\x12\x1f\n" +
 	"\vwarm_models\x18\x12 \x03(\tR\n" +
-	"warmModels\"<\n" +
+	"warmModels\x12)\n" +
+	"\x10capacity_percent\x18\x13 \x01(\rR\x0fcapacityPercent\x12'\n" +
+	"\x0feffective_slots\x18\x14 \x01(\x05R\x0eeffectiveSlots\"<\n" +
 	"\x11ListNodesResponse\x12'\n" +
 	"\x05nodes\x18\x01 \x03(\v2\x11.ktms.v1.NodeInfoR\x05nodes\"+\n" +
 	"\x10DrainNodeRequest\x12\x17\n" +

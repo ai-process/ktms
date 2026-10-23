@@ -172,3 +172,69 @@ func TestRotateNodeTokens(t *testing.T) {
 		t.Fatalf("second rotation changed %d tokens", n)
 	}
 }
+
+func TestHeartbeatCapacityPercent(t *testing.T) {
+	s, mgr := newRegistry(t)
+	ctx := apikeys.WithIdentity(context.Background(), &apikeys.Identity{NodeID: "node-1"})
+	if _, err := s.RegisterNode(ctx, &pb.RegisterNodeRequest{NodeId: "node-1", Endpoint: "http://127.0.0.1:9", Models: specs("tiny:1b")}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := s.Heartbeat(ctx, &pb.HeartbeatRequest{NodeId: "node-1"})
+	if err != nil || !resp.GetCapacityApplied() {
+		t.Fatalf("Heartbeat: resp=%v err=%v, want capacity_applied", resp, err)
+	}
+	if sn := snapshotOf(t, mgr, "node-1"); sn.Heartbeat.CapacityPercent != nil || sn.Capacity() != 100 {
+		t.Errorf("unset capacity stored as %v, want nil (100%%)", sn.Heartbeat.CapacityPercent)
+	}
+
+	zero := uint32(0)
+	if _, err := s.Heartbeat(ctx, &pb.HeartbeatRequest{NodeId: "node-1", CapacityPercent: &zero}); err != nil {
+		t.Fatal(err)
+	}
+	if st := snapshotOf(t, mgr, "node-1").State; st != pb.NodeState_NODE_STATE_PAUSED {
+		t.Errorf("state at 0%% = %v, want PAUSED", st)
+	}
+
+	over := uint32(101)
+	if _, err := s.Heartbeat(ctx, &pb.HeartbeatRequest{NodeId: "node-1", CapacityPercent: &over}); status.Code(err) != codes.InvalidArgument {
+		t.Errorf("101%%: code = %v, want InvalidArgument", status.Code(err))
+	}
+}
+
+func TestListNodesReportsLevel(t *testing.T) {
+	s, mgr := newRegistry(t)
+	ctx := apikeys.WithIdentity(context.Background(), &apikeys.Identity{NodeID: "node-1"})
+	if _, err := s.RegisterNode(ctx, &pb.RegisterNodeRequest{NodeId: "node-1", Endpoint: "http://127.0.0.1:9", Models: specs("tiny:1b"),
+		Resources: &pb.NodeResources{MaxConcurrent: 3}}); err != nil {
+		t.Fatal(err)
+	}
+	half := uint32(50)
+	if _, err := s.Heartbeat(ctx, &pb.HeartbeatRequest{NodeId: "node-1", CapacityPercent: &half}); err != nil {
+		t.Fatal(err)
+	}
+	// One running request and one cooldown hold: two slots taken, one request.
+	if ok, err := mgr.Slots().AcquireLease(ctx, "node-1", "r1", 2, time.Minute); err != nil || !ok {
+		t.Fatalf("acquire r1: %v %v", ok, err)
+	}
+	if ok, err := mgr.Slots().AcquireLease(ctx, "node-1", "r2", 2, time.Minute); err != nil || !ok {
+		t.Fatalf("acquire r2: %v %v", ok, err)
+	}
+	if err := mgr.Slots().ReleaseLease(ctx, "node-1", "r2", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+
+	admin := &AdminServer{nodeMgr: mgr}
+	resp, err := admin.ListNodes(context.Background(), &pb.ListNodesRequest{})
+	if err != nil || len(resp.GetNodes()) != 1 {
+		t.Fatalf("ListNodes: %v %v", resp, err)
+	}
+	n := resp.GetNodes()[0]
+	if n.GetCapacityPercent() != 50 || n.GetEffectiveSlots() != 2 || n.GetActiveRequests() != 1 {
+		t.Errorf("capacity=%d slots=%d active=%d, want 50, 2, 1", n.GetCapacityPercent(), n.GetEffectiveSlots(), n.GetActiveRequests())
+	}
+	hb, err := s.Heartbeat(ctx, &pb.HeartbeatRequest{NodeId: "node-1", CapacityPercent: &half})
+	if err != nil || hb.GetActiveProxyRequests() != 1 {
+		t.Errorf("heartbeat active_proxy_requests = %d (%v), want 1", hb.GetActiveProxyRequests(), err)
+	}
+}

@@ -7,6 +7,13 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Node capacity levels: `HeartbeatRequest.capacity_percent` (0-100, unset = 100) limits a local
+  node to a share of its time. Slots shrink to `ceil(max_concurrent × level)`, and where that
+  overshoots the level a slot stays held for a cooldown after each request. At 0% the node is
+  `NODE_STATE_PAUSED` and gets no requests. `ListNodes` reports `capacity_percent` and
+  `effective_slots`; `active_requests` counts running requests only.
+
 ### Fixed
 - The release signs the Helm chart again: the 1.0.0 job pushed the chart, then stopped before
   signing it, because `helm pull` needs its destination directory to exist. Chart 1.0.0 stays

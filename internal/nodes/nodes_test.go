@@ -171,7 +171,7 @@ func TestInflightZSetSlotLeases(t *testing.T) {
 	}
 
 	// Release req-1
-	if err := mgr.Slots().ReleaseLease(ctx, nodeID, "req-1"); err != nil {
+	if err := mgr.Slots().ReleaseLease(ctx, nodeID, "req-1", 0); err != nil {
 		t.Fatalf("ReleaseLease: %v", err)
 	}
 
@@ -292,7 +292,7 @@ func TestPoolAdapter_SlotWaitAndAdmission(t *testing.T) {
 	// 1. Test successful wait: slot is released in background after 40ms
 	go func() {
 		time.Sleep(40 * time.Millisecond)
-		_ = mgr.Slots().ReleaseLease(context.Background(), nodeID, firstReqID)
+		_ = mgr.Slots().ReleaseLease(context.Background(), nodeID, firstReqID, 0)
 	}()
 
 	start := time.Now()

@@ -54,23 +54,42 @@ redis.call('ZADD', zkey, deadline, req_id)
 return 1
 `
 
+// Lua script to release a lease, optionally keeping the slot for a cooldown:
+// KEYS[1]: ZSET key
+// ARGV[1]: request ID
+// ARGV[2]: cooldown member (cd:{request ID})
+// ARGV[3]: cooldown deadline (millis)
+// The swap is atomic so no acquire sees the slot free in between. A lease
+// already gone (lapsed, node removed) gets no hold: it would outgrow the slots
+// or recreate a deleted key.
+const releaseCooldownScript = `
+local zkey = KEYS[1]
+if redis.call('ZREM', zkey, ARGV[1]) == 0 then
+    return 0
+end
+redis.call('ZADD', zkey, tonumber(ARGV[3]), ARGV[2])
+return 1
+`
+
 type LeaseManager struct {
 	rdb        redis.UniversalClient
 	store      *Store
 	acquireSha string
 	renewSha   string
+	now        func() time.Time // lease deadlines are wall-clock millis; tests move it
 }
 
 func NewLeaseManager(rdb redis.UniversalClient, store *Store) *LeaseManager {
 	return &LeaseManager{
 		rdb:   rdb,
 		store: store,
+		now:   time.Now,
 	}
 }
 
 // AcquireLease attempts to take a slot on nodeID. Returns true if acquired.
 func (lm *LeaseManager) AcquireLease(ctx context.Context, nodeID, reqID string, maxConc int32, ttl time.Duration) (bool, error) {
-	now := time.Now().UnixMilli()
+	now := lm.now().UnixMilli()
 	deadline := now + ttl.Milliseconds()
 	key := lm.store.keys.NodeInflight(nodeID)
 
@@ -83,7 +102,7 @@ func (lm *LeaseManager) AcquireLease(ctx context.Context, nodeID, reqID string, 
 
 // RenewLease extends lease expiration for streaming or long requests.
 func (lm *LeaseManager) RenewLease(ctx context.Context, nodeID, reqID string, extension time.Duration) (bool, error) {
-	deadline := time.Now().Add(extension).UnixMilli()
+	deadline := lm.now().Add(extension).UnixMilli()
 	key := lm.store.keys.NodeInflight(nodeID)
 
 	res, err := lm.rdb.Eval(ctx, renewLeaseScript, []string{key}, deadline, reqID).Int64()
@@ -93,8 +112,16 @@ func (lm *LeaseManager) RenewLease(ctx context.Context, nodeID, reqID string, ex
 	return res == 1, nil
 }
 
-// ReleaseLease removes the lease from the ZSET.
-func (lm *LeaseManager) ReleaseLease(ctx context.Context, nodeID, reqID string) error {
+// ReleaseLease frees the slot, or with a positive cooldown keeps it taken
+// until the cooldown ends; the hold then expires like any lease.
+func (lm *LeaseManager) ReleaseLease(ctx context.Context, nodeID, reqID string, cooldown time.Duration) error {
 	key := lm.store.keys.NodeInflight(nodeID)
-	return lm.rdb.ZRem(ctx, key, reqID).Err()
+	if cooldown <= 0 {
+		return lm.rdb.ZRem(ctx, key, reqID).Err()
+	}
+	deadline := lm.now().Add(cooldown).UnixMilli()
+	if err := lm.rdb.Eval(ctx, releaseCooldownScript, []string{key}, reqID, cooldownPrefix+reqID, deadline).Err(); err != nil {
+		return fmt.Errorf("eval release lease: %w", err)
+	}
+	return nil
 }
