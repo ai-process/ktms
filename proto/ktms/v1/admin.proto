@@ -91,6 +91,9 @@ message VendorKeyInfo {
   string vendor = 2;
   int32 key_version = 3; // keyring version used to encrypt
   google.protobuf.Timestamp created_at = 4;
+  // First 16 hex characters of the key's SHA-256, so a client can tell whether
+  // the stored key equals one it holds; empty when the keyring cannot read it.
+  string fingerprint = 5;
 }
 
 message GetConfigRequest {}

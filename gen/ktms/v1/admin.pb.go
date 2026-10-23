@@ -769,11 +769,14 @@ func (*DeleteVendorKeyResponse) Descriptor() ([]byte, []int) {
 }
 
 type VendorKeyInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ApiKeyName    string                 `protobuf:"bytes,1,opt,name=api_key_name,json=apiKeyName,proto3" json:"api_key_name,omitempty"`
-	Vendor        string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`
-	KeyVersion    int32                  `protobuf:"varint,3,opt,name=key_version,json=keyVersion,proto3" json:"key_version,omitempty"` // keyring version used to encrypt
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	ApiKeyName string                 `protobuf:"bytes,1,opt,name=api_key_name,json=apiKeyName,proto3" json:"api_key_name,omitempty"`
+	Vendor     string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`
+	KeyVersion int32                  `protobuf:"varint,3,opt,name=key_version,json=keyVersion,proto3" json:"key_version,omitempty"` // keyring version used to encrypt
+	CreatedAt  *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// First 16 hex characters of the key's SHA-256, so a client can tell whether
+	// the stored key equals one it holds; empty when the keyring cannot read it.
+	Fingerprint   string `protobuf:"bytes,5,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -834,6 +837,13 @@ func (x *VendorKeyInfo) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *VendorKeyInfo) GetFingerprint() string {
+	if x != nil {
+		return x.Fingerprint
+	}
+	return ""
 }
 
 type GetConfigRequest struct {
@@ -4251,7 +4261,7 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\fapi_key_name\x18\x01 \x01(\tR\n" +
 	"apiKeyName\x12\x16\n" +
 	"\x06vendor\x18\x02 \x01(\tR\x06vendor\"\x19\n" +
-	"\x17DeleteVendorKeyResponse\"\xa5\x01\n" +
+	"\x17DeleteVendorKeyResponse\"\xc7\x01\n" +
 	"\rVendorKeyInfo\x12 \n" +
 	"\fapi_key_name\x18\x01 \x01(\tR\n" +
 	"apiKeyName\x12\x16\n" +
@@ -4259,7 +4269,8 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\vkey_version\x18\x03 \x01(\x05R\n" +
 	"keyVersion\x129\n" +
 	"\n" +
-	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x12\n" +
+	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12 \n" +
+	"\vfingerprint\x18\x05 \x01(\tR\vfingerprint\"\x12\n" +
 	"\x10GetConfigRequest\"\xbd\x02\n" +
 	"\x11GetConfigResponse\x12*\n" +
 	"\x06models\x18\x01 \x03(\v2\x12.ktms.v1.ModelSpecR\x06models\x12'\n" +

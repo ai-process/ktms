@@ -1,0 +1,52 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ai-process/ktms/main/schema/ktms-config.schema.json
+# A Keystone configuration for `ktms config plan|apply -f`. Vendor keys come from
+# the environment: export TEST_OPENAI_KEY before applying.
+api_version: ktms.ai-process.dev/v1alpha1
+models:
+  - id: gpt-4o-mini
+    vendor: openai
+    efforts: [EFFORT_LOW, EFFORT_MEDIUM, EFFORT_HIGH]
+    price_in_per_mtok: 0.15
+    price_out_per_mtok: 0.6
+    price_cache_read_per_mtok: 0.075
+  - id: gpt-4o
+    vendor: openai
+    efforts: [EFFORT_MEDIUM, EFFORT_HIGH]
+    price_in_per_mtok: 2.5
+    price_out_per_mtok: 10
+rules:
+  - name: high
+    priority: 20
+    effort: EFFORT_HIGH
+    use: [gpt-4o, gpt-4o-mini]
+  - name: default
+    priority: 1
+    use: [gpt-4o-mini]
+organizations:
+  - name: acme
+    teams:
+      - name: search
+        monthly_budget_usd: 100
+        allowed_models: [gpt-4o-mini]
+api_keys:
+  - name: billing
+    scopes: [generate]
+    policy:
+      rpm_limit: 120
+      tpm_limit: 200000
+  - name: search-bot
+    organization: acme
+    team: search
+vendor_keys:
+  - api_key_name: billing
+    vendor: openai
+    plain_key_env: TEST_OPENAI_KEY
+spend_limits:
+  - subject_type: key
+    subject_id: billing
+    period: day
+    limit_usd: 5
+user_rate_limits:
+  - user_id: "*"
+    model_id: gpt-4o
+    rpm: 30

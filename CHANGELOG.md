@@ -7,6 +7,15 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Configuration as a file: `ktms config validate|plan|apply|export|schema` keeps models, rules,
+  organizations and teams, client keys and their policies, vendor keys (from environment
+  variables), spend limits and user rate limits in YAML, plans the changes against the live
+  configuration and applies them in order; `--prune` deletes what the file dropped. JSON Schema
+  in `schema/ktms-config.schema.json`. Experimental (`v1alpha1`).
+- `VendorKeyInfo.fingerprint` in `GetConfig`: the first 16 hex characters of the vendor key's
+  SHA-256, so a client can tell whether the stored key equals one it holds.
+
 ## [1.1.0] - 2026-10-23
 
 ### Added

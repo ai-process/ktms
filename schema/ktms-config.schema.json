@@ -1,0 +1,352 @@
+{
+  "$id": "https://raw.githubusercontent.com/ai-process/ktms/main/schema/ktms-config.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "api_keys": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "organization": {
+            "type": "string"
+          },
+          "policy": {
+            "additionalProperties": false,
+            "properties": {
+              "allowed_models": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "rpm_limit": {
+                "type": "integer"
+              },
+              "tpm_limit": {
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "scopes": {
+            "items": {
+              "enum": [
+                "generate",
+                "admin"
+              ]
+            },
+            "type": "array"
+          },
+          "team": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "api_version": {
+      "const": "ktms.ai-process.dev/v1alpha1"
+    },
+    "models": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "budget_grace_margin": {
+            "type": "number"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "daily_tokens_per_key": {
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "daily_tokens_per_user": {
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "efforts": {
+            "items": {
+              "enum": [
+                "EFFORT_UNSPECIFIED",
+                "EFFORT_LOW",
+                "EFFORT_MEDIUM",
+                "EFFORT_HIGH"
+              ]
+            },
+            "type": "array"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "price_cache_read_per_mtok": {
+            "type": "number"
+          },
+          "price_cache_write_per_mtok": {
+            "type": "number"
+          },
+          "price_in_batch_per_mtok": {
+            "type": "number"
+          },
+          "price_in_peak_per_mtok": {
+            "type": "number"
+          },
+          "price_in_per_mtok": {
+            "type": "number"
+          },
+          "price_out_batch_per_mtok": {
+            "type": "number"
+          },
+          "price_out_peak_per_mtok": {
+            "type": "number"
+          },
+          "price_out_per_mtok": {
+            "type": "number"
+          },
+          "queue_timeout_ms": {
+            "type": "integer"
+          },
+          "rpm": {
+            "type": "integer"
+          },
+          "rpm_burst": {
+            "type": "integer"
+          },
+          "vendor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "vendor"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "organizations": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "teams": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "allowed_models": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "monthly_budget_usd": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "rules": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "attributes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "effort": {
+            "enum": [
+              "EFFORT_UNSPECIFIED",
+              "EFFORT_LOW",
+              "EFFORT_MEDIUM",
+              "EFFORT_HIGH"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "shadow_eval": {
+            "type": "boolean"
+          },
+          "shadow_model": {
+            "type": "string"
+          },
+          "shadow_percentage": {
+            "type": "number"
+          },
+          "use": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "weights": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "priority",
+          "use"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "spend_limits": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "limit_nanousd": {
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "limit_usd": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "period": {
+            "enum": [
+              "day",
+              "month"
+            ]
+          },
+          "subject_id": {
+            "description": "Key name or user id, * for every subject of that type.",
+            "type": "string"
+          },
+          "subject_type": {
+            "enum": [
+              "key",
+              "user"
+            ]
+          }
+        },
+        "required": [
+          "subject_type",
+          "subject_id",
+          "period"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "user_rate_limits": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "daily_tokens": {
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "model_id": {
+            "type": "string"
+          },
+          "queue_timeout_ms": {
+            "type": "integer"
+          },
+          "rpm": {
+            "type": "integer"
+          },
+          "rpm_burst": {
+            "type": "integer"
+          },
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "model_id"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "vendor_keys": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "api_key_name": {
+            "type": "string"
+          },
+          "plain_key_env": {
+            "description": "Environment variable holding the vendor key; the key itself never goes in the file.",
+            "type": "string"
+          },
+          "vendor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_key_name",
+          "vendor",
+          "plain_key_env"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "api_version"
+  ],
+  "title": "Keystone (KTMS) configuration",
+  "type": "object"
+}

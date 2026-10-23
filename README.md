@@ -472,6 +472,57 @@ the `admin` scope. Mutations are validated in a transaction together with the ex
 config, so an invalid state can never become active. Prefer a browser to `grpcurl`? See the
 [web console](#web-console).
 
+### Configuration as a file
+
+Everything below can also live in a YAML file in your repository and be applied with the `ktms`
+command, which plans the changes first, like `terraform plan`:
+
+```bash
+go install github.com/ai-process/ktms/cmd/ktms@latest
+export KTMS_ADDR=localhost:9090 KTMS_ADMIN_KEY=ktms_...   # an admin key; --tls behind TLS
+ktms config export -o ktms.yaml      # start from what is running
+ktms config plan -f ktms.yaml        # what would change; --detailed-exitcode exits 3 on drift
+ktms config apply -f ktms.yaml       # asks before applying; --yes for scripts
+```
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/ai-process/ktms/main/schema/ktms-config.schema.json
+api_version: ktms.ai-process.dev/v1alpha1
+models:
+  - {id: gpt-4o-mini, vendor: openai, efforts: [EFFORT_LOW, EFFORT_MEDIUM, EFFORT_HIGH],
+     price_in_per_mtok: 0.15, price_out_per_mtok: 0.6, price_cache_read_per_mtok: 0.075}
+rules:
+  - {name: default, priority: 1, use: [gpt-4o-mini]}
+organizations:
+  - name: acme
+    teams: [{name: search, monthly_budget_usd: 100, allowed_models: [gpt-4o-mini]}]
+api_keys:
+  - {name: billing, policy: {rpm_limit: 120, tpm_limit: 200000}}
+  - {name: search-bot, organization: acme, team: search}
+vendor_keys:
+  - {api_key_name: billing, vendor: openai, plain_key_env: OPENAI_KEY_BILLING}
+spend_limits:
+  - {subject_type: key, subject_id: billing, period: day, limit_usd: 5}
+user_rate_limits:
+  - {user_id: "*", model_id: gpt-4o-mini, rpm: 30}
+```
+
+- Models, rules, user rate limits and key policies are the Admin API's own messages
+  (`ModelSpec`, `RuleSpec`, …) with the same field names; a model or rule without `enabled`
+  is enabled. The JSON Schema is [`schema/ktms-config.schema.json`](schema/ktms-config.schema.json)
+  (also `ktms config schema`), a full example [`schema/example.yaml`](schema/example.yaml).
+- Only the sections in the file are managed; a missing section is left alone. `--prune` deletes
+  what a managed section does not list, except admin keys, which it only reports.
+- Secrets never go in the file. A vendor key is read from the variable named in
+  `plain_key_env` and compared with the stored one by fingerprint (`VendorKeyInfo.fingerprint`);
+  a new client key is printed once, after apply. Exported vendor keys point at
+  `KTMS_VENDOR_KEY_<KEY>_<VENDOR>`.
+- What the Admin API cannot change is refused before anything is applied: a key's scopes or
+  team, or a revoked key named again. Mint a key under another name instead.
+- A team's cap is its `monthly_budget_usd`; `spend_limits` holds key and user caps.
+- Steps run in dependency order (organizations, models, keys, vendor keys, rules, limits, then
+  deletes). If one fails, the earlier ones stay applied; plan again to see what is left.
+
 ### 1. API keys
 
 ```bash
@@ -1285,6 +1336,9 @@ numbers.
 
 These work and are supported, but may change in a minor release. The change is then listed in the
 [CHANGELOG](CHANGELOG.md). In the proto they carry an `Experimental:` comment.
+
+- **The configuration file format** (`api_version: ktms.ai-process.dev/v1alpha1`) and the
+  `ktms` command, until the format reaches `v1`.
 
 - **The judge's effort choice:** when a request is auto-routed without a pinned effort
   (`model: "auto"` or `auto:<placement>` over HTTP without `reasoning_effort`; `auto_route` with
