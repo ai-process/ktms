@@ -4,8 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -22,6 +24,9 @@ func main() {
 	args := os.Args[1:]
 	if len(args) > 0 && args[0] == "doctor" {
 		os.Exit(runDoctor(args[1:]))
+	}
+	if len(args) > 0 && args[0] == "schedule" {
+		os.Exit(runSchedule(args[1:], os.Stdout, os.Stderr))
 	}
 	os.Exit(runAgent(args))
 }
@@ -42,6 +47,8 @@ type settings struct {
 	keyFile       *string
 	baseWeight    *float64
 	maxConcurrent *uint
+	scheduleFile  *string
+	warmup        *time.Duration
 	onlyModels    stringList
 	judgeModels   stringList
 }
@@ -76,6 +83,8 @@ func newSettings(name string) *settings {
 		keyFile:       fs.String("node-key-file", "", "Path to file containing node authentication key"),
 		baseWeight:    fs.Float64("base-weight", 100.0, "Base routing weight"),
 		maxConcurrent: fs.Uint("max-concurrent", 16, "Maximum concurrent requests"),
+		scheduleFile:  fs.String("schedule-file", "", "Capacity levels by local time, one \"[days] HH:MM-HH:MM level\" rule per line; re-read when it changes, a missing file means 100%"),
+		warmup:        fs.Duration("warmup", 5*time.Minute, "Load the model this long before a paused window ends"),
 	}
 	fs.Var(&s.onlyModels, "only-model", "Report only these engine models to the proxy; repeat the flag or comma-separate (default: every model the engine has)")
 	fs.Var(&s.judgeModels, "judge-model", "Model ID that serves the judge capability; repeat or comma-separate")
@@ -127,6 +136,8 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 		CloudflaredBin: *s.cloudflared,
 		BaseWeight:     *s.baseWeight,
 		MaxConcurrent:  uint32(*s.maxConcurrent),
+		ScheduleFile:   *s.scheduleFile,
+		Warmup:         *s.warmup,
 	}, nil
 }
 
@@ -165,6 +176,35 @@ func runDoctor(args []string) int {
 	d := &nodeagent.Doctor{Cfg: cfg, Model: *model}
 	if nodeagent.Render(os.Stdout, d.Run(context.Background())) > 0 {
 		return 1
+	}
+	return 0
+}
+
+// runSchedule checks a schedule file and prints the level now and the next
+// switch; the installer and the doctor share this parser through it.
+func runSchedule(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("schedule", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	file := fs.String("file", "", "Schedule file to check")
+	quiet := fs.Bool("quiet", false, "Print nothing; only the exit code tells")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *file == "" {
+		fmt.Fprintln(stderr, "schedule: --file is required")
+		return 2
+	}
+	if _, err := os.Stat(*file); err != nil {
+		fmt.Fprintf(stderr, "schedule: %v\n", err)
+		return 1
+	}
+	s, err := nodeagent.LoadSchedule(*file)
+	if err != nil {
+		fmt.Fprintf(stderr, "schedule: %v\n", err)
+		return 1
+	}
+	if !*quiet {
+		fmt.Fprintln(stdout, s.Status(time.Now()))
 	}
 	return 0
 }

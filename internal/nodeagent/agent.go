@@ -38,6 +38,8 @@ type AgentConfig struct {
 	CloudflaredBin string
 	BaseWeight     float64
 	MaxConcurrent  uint32
+	ScheduleFile   string        // capacity levels by local time; missing = 100%
+	Warmup         time.Duration // load the model this long before a paused window ends
 }
 
 type Agent struct {
@@ -50,8 +52,15 @@ type Agent struct {
 	endpoint   string // currently reported address; changes when the tunnel restarts
 	mu         sync.Mutex
 	probe      func(ctx context.Context, url string) error
-	loadOK     bool // last engine load scrape succeeded
-	loadWarned bool // a failed scrape was logged; repeats stay quiet
+	loadOK     bool     // last engine load scrape succeeded
+	loadWarned bool     // a failed scrape was logged; repeats stay quiet
+	gateway    *Gateway // nil unless exposed through the built-in gateway
+
+	pause      pauseState
+	engineDone chan engineResult
+	now        func() time.Time
+	levelEvery time.Duration
+	pauseGrace time.Duration
 
 	retryInitial, retryMax time.Duration // pause between refused registrations
 }
@@ -84,6 +93,12 @@ func NewAgent(cfg AgentConfig) *Agent {
 		stopChan:  make(chan struct{}),
 		endpoint:  cfg.Endpoint,
 		probe:     httpProbe,
+
+		pause:      pauseState{active: -1},
+		engineDone: make(chan engineResult, 1),
+		now:        time.Now,
+		levelEvery: defaultLevelEvery,
+		pauseGrace: defaultPauseGrace,
 
 		retryInitial: retryInitial,
 		retryMax:     retryMax,
@@ -218,6 +233,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 	}()
 
+	// The first heartbeat must carry the level: until it, the proxy sees the node offline.
+	a.refreshLevel()
+
 	// Learn about a permanent refusal before any tunnel is started.
 	if err := a.preflight(authCtx); err != nil {
 		return a.stopOrFail(ctx, err)
@@ -270,6 +288,8 @@ func (a *Agent) Run(ctx context.Context) error {
 	// 2. Heartbeat loop
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	levelTicker := time.NewTicker(a.levelEvery)
+	defer levelTicker.Stop()
 
 	needRegister := false
 	var retryAt time.Time
@@ -288,6 +308,50 @@ func (a *Agent) Run(ctx context.Context) error {
 		log.Info().Str("endpoint", a.currentEndpoint()).Msg("node re-registered")
 	}
 
+	beat := func() {
+		currModels, currRes := a.snapshot(authCtx)
+
+		a.mu.Lock()
+		draining := a.draining
+		a.mu.Unlock()
+
+		active, queued := a.load(authCtx)
+		level := a.pause.level
+		hbResp, err := a.client.Heartbeat(authCtx, &pb.HeartbeatRequest{
+			NodeId:          a.cfg.NodeID,
+			Draining:        draining,
+			ActiveRequests:  active,
+			QueueDepth:      queued,
+			Resources:       currRes,
+			Models:          currModels,
+			CapacityPercent: &level,
+		})
+		if err != nil {
+			log.Warn().Err(err).Msg("heartbeat failed")
+			return
+		}
+
+		if hbResp.ReRegisterRequired {
+			log.Info().Msg("proxy requested re-registration")
+			needRegister = true
+		}
+		if needRegister && !time.Now().Before(retryAt) {
+			reregister()
+		}
+
+		if hbResp.DrainRequested && !draining {
+			log.Info().Msg("proxy requested drain")
+			a.mu.Lock()
+			a.draining = true
+			a.mu.Unlock()
+			select {
+			case a.drainChan <- struct{}{}:
+			default:
+			}
+		}
+		a.afterHeartbeat(hbResp, currModels)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -299,44 +363,16 @@ func (a *Agent) Run(ctx context.Context) error {
 			a.setEndpoint(u)
 			reregister()
 		case <-ticker.C:
-			currModels, currRes := a.snapshot(authCtx)
-
-			a.mu.Lock()
-			draining := a.draining
-			a.mu.Unlock()
-
-			active, queued := a.load(authCtx)
-			hbResp, err := a.client.Heartbeat(authCtx, &pb.HeartbeatRequest{
-				NodeId:         a.cfg.NodeID,
-				Draining:       draining,
-				ActiveRequests: active,
-				QueueDepth:     queued,
-				Resources:      currRes,
-				Models:         currModels,
-			})
-			if err != nil {
-				log.Warn().Err(err).Msg("heartbeat failed")
-				continue
+			beat()
+		case <-levelTicker.C:
+			if a.refreshLevel() {
+				beat() // the proxy learns now, not an interval later
+			} else {
+				a.stepPause()
 			}
-
-			if hbResp.ReRegisterRequired {
-				log.Info().Msg("proxy requested re-registration")
-				needRegister = true
-			}
-			if needRegister && !time.Now().Before(retryAt) {
-				reregister()
-			}
-
-			if hbResp.DrainRequested && !draining {
-				log.Info().Msg("proxy requested drain")
-				a.mu.Lock()
-				a.draining = true
-				a.mu.Unlock()
-				select {
-				case a.drainChan <- struct{}{}:
-				default:
-				}
-			}
+		case r := <-a.engineDone:
+			a.finishEngineCall(r)
+			a.stepPause()
 		}
 	}
 }

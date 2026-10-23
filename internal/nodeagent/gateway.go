@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -30,6 +31,13 @@ type Gateway struct {
 	keepaliveAfter time.Duration
 	keepaliveEvery time.Duration
 	client         *http.Client
+	paused         atomic.Bool
+}
+
+// SetAccepting opens or closes the door to engine routes. Closed, the node
+// answers 503: a proxy that ignores the schedule still cannot reach the engine.
+func (g *Gateway) SetAccepting(ok bool) {
+	g.paused.Store(!ok)
 }
 
 // NewGateway forwards to the engine at engineURL. accessKey is what callers
@@ -54,6 +62,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !g.authorized(r) {
 		w.Header().Set("WWW-Authenticate", "Bearer")
 		writeGatewayError(w, http.StatusUnauthorized, "invalid node access key")
+		return
+	}
+	if g.paused.Load() {
+		writeGatewayError(w, http.StatusServiceUnavailable, "node paused by schedule")
 		return
 	}
 

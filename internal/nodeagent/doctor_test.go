@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	grpclib "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -106,17 +108,22 @@ func TestDoctorModels(t *testing.T) {
 	}
 	for _, c := range cases {
 		d.Model = c.model
-		f := one(t, d.checkModel(models), "Model")
+		f := one(t, d.checkModel(models, false), "Model")
 		if f.Level != c.level || !strings.Contains(f.Message, c.want) {
 			t.Errorf("model %q: got %+v, want level %d containing %q", c.model, f, c.level, c.want)
 		}
 	}
 	d.Model = "qwen3:30b"
-	if f := one(t, d.checkModel(models), "Model"); !strings.Contains(f.Fix, "ollama pull qwen3:30b") {
+	if f := one(t, d.checkModel(models, false), "Model"); !strings.Contains(f.Fix, "ollama pull qwen3:30b") {
 		t.Errorf("missing model should say how to pull it: %+v", f)
 	}
 
-	empty := one(t, newDoctor(AgentConfig{EngineURL: s.URL}).checkModel(nil), "Model")
+	d.Model = "tiny"
+	if f := one(t, d.checkModel(models, true), "Model"); f.Level != LevelOK || !strings.Contains(f.Message, "pauses") {
+		t.Errorf("cold model while paused: %+v, want OK", f)
+	}
+
+	empty := one(t, newDoctor(AgentConfig{EngineURL: s.URL}).checkModel(nil, false), "Model")
 	if empty.Level != LevelProblem || !strings.Contains(empty.Message, "no models") {
 		t.Fatalf("no models: %+v", empty)
 	}
@@ -486,5 +493,36 @@ func TestDoctorRunReportsRefusedRegistration(t *testing.T) {
 	var buf bytes.Buffer
 	if Render(&buf, d.Run(context.Background())) == 0 {
 		t.Fatalf("the doctor said all is well though registration is refused:\n%s", buf.String())
+	}
+}
+
+func TestDoctorSchedule(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, text string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	noon := func() time.Time { return time.Date(2026, 10, 20, 12, 0, 0, 0, time.Local) }
+	for _, c := range []struct {
+		name, file string
+		level      Level
+		want       string
+	}{
+		{"missing file", filepath.Join(dir, "none"), LevelOK, "no schedule, 100%"},
+		{"paused now", write("ok", "10:00-23:00 0\n"), LevelOK, "now 0%, next 23:00 100%. Paused now"},
+		{"broken", write("bad", "10:00-23:00 0\n09:00-11:00 50\n"), LevelProblem, "line 2 overlaps line 1"},
+	} {
+		d := newDoctor(AgentConfig{ScheduleFile: c.file})
+		d.Now = noon
+		_, fs := d.checkSchedule()
+		if f := one(t, fs, "Schedule"); f.Level != c.level || !strings.Contains(f.Message, c.want) {
+			t.Errorf("%s: %+v, want level %d containing %q", c.name, f, c.level, c.want)
+		}
+	}
+	if _, fs := newDoctor(AgentConfig{}).checkSchedule(); len(fs) != 0 {
+		t.Errorf("no --schedule-file: %+v, want no finding", fs)
 	}
 }

@@ -55,6 +55,7 @@ type Doctor struct {
 	LookPath   func(name string) (string, error)
 	RunCmd     func(ctx context.Context, name string, args ...string) error
 	MachOArchs func(path string) ([]string, error)
+	Now        func() time.Time
 	GOOS       string
 	GOARCH     string
 }
@@ -93,6 +94,9 @@ func (d *Doctor) defaults() {
 	if d.MachOArchs == nil {
 		d.MachOArchs = machoArchs
 	}
+	if d.Now == nil {
+		d.Now = time.Now
+	}
 	if d.GOOS == "" {
 		d.GOOS = runtime.GOOS
 	}
@@ -105,10 +109,11 @@ func (d *Doctor) defaults() {
 func (d *Doctor) Run(ctx context.Context) []Finding {
 	d.defaults()
 	var out []Finding
+	sched, schedFindings := d.checkSchedule()
 	models, f, engineUp := d.checkEngine(ctx)
 	out = append(out, f...)
 	if engineUp { // without an engine, "no models" would only repeat the same fault
-		out = append(out, d.checkModel(models)...)
+		out = append(out, d.checkModel(models, sched.Level(d.Now()) == 0)...)
 		out = append(out, d.checkAcceleration(ctx)...)
 	}
 	proxy := d.checkProxy(ctx)
@@ -121,7 +126,25 @@ func (d *Doctor) Run(ctx context.Context) []Finding {
 	} else {
 		out = append(out, d.checkEndpoint(ctx)...)
 	}
-	return out
+	return append(out, schedFindings...)
+}
+
+// ---- schedule -------------------------------------------------------------
+
+func (d *Doctor) checkSchedule() (*Schedule, []Finding) {
+	if d.Cfg.ScheduleFile == "" {
+		return nil, nil
+	}
+	s, err := LoadSchedule(d.Cfg.ScheduleFile)
+	if err != nil {
+		return nil, []Finding{{"Schedule", LevelProblem, "The schedule file is invalid: " + shortErr(err),
+			"Fix that line. A running agent keeps its last valid schedule until the file is fixed."}}
+	}
+	msg := "Schedule: " + s.Status(d.Now()) + "."
+	if s != nil && s.Level(d.Now()) == 0 {
+		msg += " Paused now: the proxy sends nothing here and the model is unloaded."
+	}
+	return s, []Finding{{"Schedule", LevelOK, msg, ""}}
 }
 
 // ---- engine ---------------------------------------------------------------
@@ -165,7 +188,7 @@ func (d *Doctor) checkEngine(ctx context.Context) (models []*pb.NodeModelSpec, f
 	return models, []Finding{{"Engine", LevelOK, fmt.Sprintf("The engine answers at %s.", d.Cfg.EngineURL), ""}}, true
 }
 
-func (d *Doctor) checkModel(models []*pb.NodeModelSpec) []Finding {
+func (d *Doctor) checkModel(models []*pb.NodeModelSpec, paused bool) []Finding {
 	if len(models) == 0 {
 		fix := "Download one, for example: ollama pull <model>."
 		if d.Model != "" {
@@ -182,6 +205,9 @@ func (d *Doctor) checkModel(models []*pb.NodeModelSpec) []Finding {
 	}
 	for _, m := range models {
 		if sameModel(m.GetModelId(), d.Model) || sameModel(m.GetRemoteModelName(), d.Model) {
+			if !m.GetIsWarm() && paused {
+				return []Finding{{"Model", LevelOK, fmt.Sprintf("%s is installed; not loaded while the schedule pauses the node.", d.Model), ""}}
+			}
 			if !m.GetIsWarm() {
 				return []Finding{{"Model", LevelWarn, fmt.Sprintf("%s is installed but not loaded in memory. The first request will be slow and the proxy may prefer other nodes.", d.Model),
 					`Load it and keep it loaded: curl ` + d.Cfg.EngineURL + `/api/generate -d '{"model":"` + d.Model + `","keep_alive":-1}'`}}

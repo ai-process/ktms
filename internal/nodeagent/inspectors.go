@@ -1,9 +1,11 @@
 package nodeagent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -302,4 +304,48 @@ type DecisionsInspector struct{}
 
 func (di *DecisionsInspector) Inspect(ctx context.Context, endpoint, authToken string) ([]*pb.NodeModelSpec, error) {
 	return inspectOpenAIModels(ctx, endpoint, authToken, registry.CapabilityJudge)
+}
+
+// EngineController is implemented by inspectors whose engine can load and
+// free a model on demand; a paused node frees the machine's memory with it.
+type EngineController interface {
+	Warm(ctx context.Context, endpoint, authToken, model string) error
+	Unload(ctx context.Context, endpoint, authToken, model string) error
+}
+
+// Warm loads the model and keeps it resident.
+func (oi *OllamaInspector) Warm(ctx context.Context, endpoint, authToken, model string) error {
+	return ollamaKeepAlive(ctx, endpoint, authToken, model, -1)
+}
+
+// Unload frees the model once its running requests end.
+func (oi *OllamaInspector) Unload(ctx context.Context, endpoint, authToken, model string) error {
+	return ollamaKeepAlive(ctx, endpoint, authToken, model, 0)
+}
+
+// ollamaKeepAlive sends an empty generate, which only (un)loads the model.
+func ollamaKeepAlive(ctx context.Context, endpoint, authToken, model string, keepAlive int) error {
+	body, err := json.Marshal(map[string]any{"model": model, "keep_alive": keepAlive})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, engineBaseURL(endpoint)+"/api/generate", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+authToken)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("ollama /api/generate %s: %w", model, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("ollama /api/generate %s: status %d: %s", model, resp.StatusCode, strings.TrimSpace(string(detail)))
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return nil
 }
