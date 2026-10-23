@@ -13,6 +13,11 @@ All notable changes to KTMS are listed here. The format follows
   overshoots the level a slot stays held for a cooldown after each request. At 0% the node is
   `NODE_STATE_PAUSED` and gets no requests. `ListNodes` reports `capacity_percent` and
   `effective_slots`; `active_requests` counts running requests only.
+- Node agent load schedule: `--schedule-file` sets levels by local time (`[days] HH:MM-HH:MM level`),
+  re-read on change; the level goes out in every heartbeat, and a change at once. At 0% the gateway
+  refuses requests and, once the proxy has none left on the node, the agent unloads the served
+  Ollama models, loading them again `--warmup` (default 5m) before the next window.
+  `ktms-node schedule --file F` checks a file; `doctor` reports the current level.
 
 ### Fixed
 - The release signs the Helm chart again: the 1.0.0 job pushed the chart, then stopped before

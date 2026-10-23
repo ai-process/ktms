@@ -323,6 +323,30 @@ needing/not needing `--tls`, a node key that is wrong or bound to another node i
 that cannot come up. It also asks the proxy to vet the exact models the agent would report
 against the key's `allowed_models` (nothing is stored). It exits 1 if it finds a problem.
 
+A node on someone's own machine can follow a load schedule in local time with
+`--schedule-file FILE`, one rule per line:
+
+```
+# [days] HH:MM-HH:MM level
+23:00-07:00 100
+07:00-10:00 50
+mon-fri 10:00-23:00 0
+```
+
+Days are `mon`..`sun`, ranges (`mon-fri`) and lists (`sat,sun`); without them a rule applies daily.
+A window past midnight belongs to the day it starts on, `24:00` ends a day, uncovered time is 100%,
+and overlapping rules are an error. The level is the share of time the node spends on proxy
+requests: the proxy gives it `ceil(max_concurrent × level)` slots and, where that is more than the
+level, holds the slot idle after each request (one slot at 50%: a 20 s request, then 20 s idle).
+At 0% the proxy sends nothing, the gateway answers 503 after a 5 s grace, and once the proxy has no
+requests left on the node the agent unloads the served models from Ollama; it loads them again
+`--warmup` (default 5m) before the next window. The tunnel and heartbeats keep running, so a pause
+ends at once. The agent reads the file every 30 s and on a change, keeps the last valid schedule if
+an edit breaks it, and runs at 100% without the file. A proxy that predates capacity levels
+routes at 100% (the agent logs a warning). `ktms-node schedule --file FILE` checks a
+file and prints the level now and the next switch; `doctor` reports it too. Engines other than
+Ollama only stop being routed to.
+
 While the proxy refuses the node (wrong key, other node id, no allowed model) the agent does not
 exit and does not open a tunnel: it checks with the proxy first, then retries with a pause that
 grows to five minutes and says why in the log, so a supervisor never restarts it into a fresh
