@@ -43,6 +43,7 @@ var methodScopes = map[string]string{
 	method(pb.AdminService_MintAPIKey_FullMethodName):          apikeys.ScopeAdmin,
 	method(pb.AdminService_RevokeAPIKey_FullMethodName):        apikeys.ScopeAdmin,
 	method(pb.AdminService_ListAPIKeys_FullMethodName):         apikeys.ScopeAdmin,
+	method(pb.AdminService_SetAPIKeyPolicy_FullMethodName):     apikeys.ScopeAdmin,
 	method(pb.AdminService_RotateEncryption_FullMethodName):    apikeys.ScopeAdmin,
 	method(pb.AdminService_MintNodeKey_FullMethodName):         apikeys.ScopeAdmin,
 	method(pb.AdminService_RevokeNodeKey_FullMethodName):       apikeys.ScopeAdmin,

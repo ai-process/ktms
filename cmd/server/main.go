@@ -209,7 +209,7 @@ func main() {
 
 		nodeReg = grpcapi.NewNodeRegistryServer(nodeMgr, keyring)
 	} else {
-		log.Warn().Msg("REDIS_ADDR unset: rpm, token budgets and spend limits are NOT enforced, local node pool is disabled")
+		log.Warn().Msg("REDIS_ADDR unset: rpm, token budgets, key rates and spend limits are NOT enforced, local node pool is disabled")
 	}
 
 	rootCtx, rootCancel := context.WithCancel(context.Background())
@@ -239,6 +239,9 @@ func main() {
 		WithCooldown(cooldown.New(cfg.VendorCooldownMax)).
 		WithUpstreamTimeout(cfg.UpstreamRequestTimeout).
 		WithBatch(db, cfg.BatchMaxItems)
+	if rl, ok := limiter.(*throttle.Redis); ok {
+		proxySrv.WithKeyLimiter(rl)
+	}
 	if cfg.CacheEnabled && redisClient != nil {
 		c := cache.New(redisClient, keyring, cfg.CacheTTL, cfg.CacheMaxBytes, cfg.RedisKeyPrefix)
 		proxySrv.WithCache(c)

@@ -110,7 +110,28 @@ message MintAPIKeyRequest {
   repeated string scopes = 2; // "generate" | "admin"
   string org_id = 3;
   string team_id = 4;
+  APIKeyPolicy policy = 5;
 }
+
+// APIKeyPolicy limits one client key, on top of its team's limits and each
+// model's rpm. Refusals: PERMISSION_DENIED for a model outside allowed_models,
+// RESOURCE_EXHAUSTED throttled:key_rpm / throttled:key_tpm for the rates, and
+// FAILED_PRECONDITION request_too_large for a call above a minute of tokens.
+message APIKeyPolicy {
+  repeated string allowed_models = 1; // model ids the key may call; empty = any
+  int32 rpm_limit = 2; // calls per minute over all models, 0 = unlimited
+  // Tokens per minute over all models, 0 = unlimited. A call books its input
+  // estimate when admitted and its real input + output when it ends.
+  int64 tpm_limit = 3;
+}
+
+// SetAPIKeyPolicy replaces a key's policy; it applies from the key's next call.
+message SetAPIKeyPolicyRequest {
+  string name = 1;
+  APIKeyPolicy policy = 2;
+}
+
+message SetAPIKeyPolicyResponse {}
 
 message MintAPIKeyResponse {
   string plain_key = 1; // returned exactly once, never stored or logged
@@ -131,6 +152,7 @@ message APIKeyInfo {
   bool disabled = 4;
   string org_id = 5;
   string team_id = 6;
+  APIKeyPolicy policy = 7;
 }
 
 message ListAPIKeysResponse {
@@ -395,6 +417,7 @@ service AdminService {
   rpc MintAPIKey(MintAPIKeyRequest) returns (MintAPIKeyResponse);
   rpc RevokeAPIKey(RevokeAPIKeyRequest) returns (RevokeAPIKeyResponse);
   rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse);
+  rpc SetAPIKeyPolicy(SetAPIKeyPolicyRequest) returns (SetAPIKeyPolicyResponse);
   rpc RotateEncryption(RotateEncryptionRequest) returns (RotateEncryptionResponse);
   rpc MintNodeKey(MintNodeKeyRequest) returns (MintNodeKeyResponse);
   rpc RevokeNodeKey(RevokeNodeKeyRequest) returns (RevokeNodeKeyResponse);

@@ -49,7 +49,7 @@ func (s *ProxyServer) lookupCache(ctx context.Context, snap *registry.Snapshot, 
 		if err != nil {
 			observability.DependencyErrorsTotal.WithLabelValues("redis", "cache_get").Inc()
 			redisguard.Log(err).Err(err).Str("api_key_id", id.KeyID).Msg("cache lookup failed")
-		} else if hit && cached != nil {
+		} else if hit && cached != nil && id.CanAccessModel(cached.GetResolvedModel()) {
 			return &cacheHit{resp: cached}
 		}
 	}
@@ -58,7 +58,7 @@ func (s *ProxyServer) lookupCache(ctx context.Context, snap *registry.Snapshot, 
 		if err != nil {
 			observability.DependencyErrorsTotal.WithLabelValues("redis", "semantic_cache_get").Inc()
 			redisguard.Log(err).Err(err).Str("api_key_id", id.KeyID).Msg("semantic cache lookup failed")
-		} else if hit && cached != nil {
+		} else if hit && cached != nil && id.CanAccessModel(cached.GetResolvedModel()) {
 			return &cacheHit{resp: cached, semantic: true, similarity: score}
 		}
 	}
@@ -96,6 +96,12 @@ func (s *ProxyServer) admitCacheHit(ctx context.Context, snap *registry.Snapshot
 			return status.Error(codes.ResourceExhausted, "throttled:rpm")
 		}
 	}
+	// A hit is a call for the key's rpm_limit, and costs it no tokens.
+	settleKey, err := s.admitKey(ctx, id, 0)
+	if err != nil {
+		return err
+	}
+	settleKey(&llm.TokensUsage{})
 	tracker := snap.Tracker()
 	if tracker == nil {
 		return nil

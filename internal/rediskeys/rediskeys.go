@@ -30,6 +30,16 @@ func (k Keys) GCRAUser(userID, modelID string) string {
 	return fmt.Sprintf("%sllmproxy:gcra:u:%s:%s", k.prefix, userID, modelID)
 }
 
+// KeyRPM and KeyTPM are the GCRA arrival times of a client key's own request
+// and token rates, over all models.
+func (k Keys) KeyRPM(keyName string) string {
+	return fmt.Sprintf("%sllmproxy:gcra:krpm:%s", k.prefix, keyName)
+}
+
+func (k Keys) KeyTPM(keyName string) string {
+	return fmt.Sprintf("%sllmproxy:gcra:ktpm:%s", k.prefix, keyName)
+}
+
 // BudgetKey is the daily token budget per client key and model (UTC day).
 func (k Keys) BudgetKey(keyName, modelID, day string) string {
 	return fmt.Sprintf("%sllmproxy:bud:k:%s:%s:%s", k.prefix, keyName, modelID, day)

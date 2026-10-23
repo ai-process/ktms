@@ -39,6 +39,10 @@ type APIKey struct {
 	OrgID             *string
 	TeamID            *string
 	TeamAllowedModels []string
+	// Policy of the key itself; empty and 0 mean no limit.
+	AllowedModels []string
+	RPMLimit      int32
+	TPMLimit      int64
 }
 
 func (k *APIKey) Active() bool { return k.DisabledAt == nil }

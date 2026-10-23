@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -343,10 +344,15 @@ func (s *AdminServer) MintAPIKey(ctx context.Context, req *pb.MintAPIKeyRequest)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	allowed, rpm, tpm, err := keyPolicy(req.GetPolicy())
+	if err != nil {
+		return nil, err
+	}
 	plain, row, err := apikeys.Generate(req.GetName(), scopes)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "key generation failed")
 	}
+	row.AllowedModels, row.RPMLimit, row.TPMLimit = allowed, rpm, tpm
 
 	var orgID, teamID *string
 	if req.GetOrgId() != "" {
@@ -426,9 +432,45 @@ func (s *AdminServer) ListAPIKeys(ctx context.Context, _ *pb.ListAPIKeysRequest)
 		if k.TeamID != nil {
 			info.TeamId = *k.TeamID
 		}
+		if len(k.AllowedModels) > 0 || k.RPMLimit > 0 || k.TPMLimit > 0 {
+			info.Policy = &pb.APIKeyPolicy{AllowedModels: k.AllowedModels, RpmLimit: k.RPMLimit, TpmLimit: k.TPMLimit}
+		}
 		out = append(out, info)
 	}
 	return &pb.ListAPIKeysResponse{Keys: out}, nil
+}
+
+func (s *AdminServer) SetAPIKeyPolicy(ctx context.Context, req *pb.SetAPIKeyPolicyRequest) (*pb.SetAPIKeyPolicyResponse, error) {
+	if req.GetName() == "" {
+		return nil, status.Error(codes.InvalidArgument, "name is required")
+	}
+	allowed, rpm, tpm, err := keyPolicy(req.GetPolicy())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.db.SetAPIKeyPolicy(ctx, req.GetName(), allowed, rpm, tpm); err != nil {
+		return nil, dbStatus(err)
+	}
+	return &pb.SetAPIKeyPolicyResponse{}, nil
+}
+
+// keyPolicy validates a key policy; nil is no limit. Model ids are not checked
+// against the registry, like a team's: a model may be added after the key.
+func keyPolicy(p *pb.APIKeyPolicy) (allowed []string, rpm int32, tpm int64, err error) {
+	if p.GetRpmLimit() < 0 || p.GetTpmLimit() < 0 {
+		return nil, 0, 0, status.Error(codes.InvalidArgument, "rpm_limit and tpm_limit must be >= 0")
+	}
+	allowed = []string{}
+	for _, m := range p.GetAllowedModels() {
+		m = strings.TrimSpace(m)
+		if m == "" {
+			return nil, 0, 0, status.Error(codes.InvalidArgument, "allowed_models must not contain empty ids")
+		}
+		if !slices.Contains(allowed, m) {
+			allowed = append(allowed, m)
+		}
+	}
+	return allowed, p.GetRpmLimit(), p.GetTpmLimit(), nil
 }
 
 // --- vendor keys ---
