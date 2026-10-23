@@ -1501,6 +1501,10 @@ backport does not.
   first release the `charts/ktms` package has to be made public once in the organization's
   package settings. CI installs the chart from an OCI registry on kind
   (`scripts/helm-kind.sh`).
+- **Buf Schema Registry** (`.github/workflows/buf.yml`): every push to `main` publishes `ktms.v1`
+  to `buf.build/ai-process/ktms`, which generates the SDKs. It needs the secret `BUF_TOKEN` (a
+  buf.build token of the `ai-process` organization); without it the `bsr-push` job fails, so an
+  unpublished SDK does not go unnoticed.
 - **Optional, off until their secrets exist:** macOS signing and notarization
   (`MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_ISSUER_ID`, `MACOS_NOTARY_KEY_ID`,
   `MACOS_NOTARY_KEY`) and a Homebrew formula pushed to `ai-process/homebrew-tap`
