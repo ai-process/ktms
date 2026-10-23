@@ -140,7 +140,11 @@ class Engine(http.server.BaseHTTPRequestHandler):
     def send(self, body):
         b = json.dumps(body, separators=(",", ":")).encode()
         self.send_response(200); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+    def up(self):
+        return any(os.path.exists(f"{STATE}/{m}") for m in ("running.ktms-ollama.service", "loaded.com.ktms.ollama")) or os.path.exists(f"{STATE}/foreign-ollama")
     def do_GET(self):
+        if not self.up():
+            self.send_response(503); self.send_header("Content-Length", "0"); self.end_headers(); return
         if self.path == "/api/version": return self.send({"version": "0.0.0"})
         if self.path == "/api/tags":
             names = [l.strip() for l in open(f"{STATE}/models")] if os.path.exists(f"{STATE}/models") else []
@@ -270,9 +274,10 @@ S
 	# else this node's Ollama once its service runs (the fake engine plays it).
 	cat >"$b/lsof" <<'S'
 #!/bin/sh
-[ -n "${FAKE_FOREIGN_PID:-}" ] && { echo "$FAKE_FOREIGN_PID"; exit 0; }
+port=$(printf '%s\n' "$@" | sed -n 's/^-iTCP://p')
+if [ -n "${FAKE_FOREIGN_PID:-}" ]; then printf 'p%s\nn%s:%s\n' "$FAKE_FOREIGN_PID" "${FAKE_FOREIGN_HOST:-127.0.0.1}" "$port"; exit 0; fi
 [ -f "$FAKE_STATE/running.ktms-ollama.service" ] || [ -f "$FAKE_STATE/loaded.com.ktms.ollama" ] || exit 1
-echo 4242
+printf 'p4242\nn*:%s\n' "$port"
 S
 	for n in loginctl systemd-inhibit xattr; do printf '#!/bin/sh\nexit 0\n' >"$b/$n"; done
 	chmod +x "$b"/*
@@ -282,7 +287,7 @@ run_install() {
 	HOME="$W/home" LLMPROXY_HOME="${TEST_BASE:-$W/home/.ktms-node}" LLMPROXY_SERVICE_DIR="$W/svc" \
 		LLMPROXY_GITHUB="http://127.0.0.1:$P1" LLMPROXY_GITHUB_API="http://127.0.0.1:$P1" \
 		LLMPROXY_OLLAMA_ADDR="127.0.0.1:$P2" LLMPROXY_REGISTER_WAIT=12 LLMPROXY_MEMINFO="$W/meminfo" \
-		FAKE_OS="$FAKE_OS" FAKE_ARCH="$FAKE_ARCH" FAKE_STATE="$STATE" FAKE_FOREIGN_PID="${FAKE_FOREIGN_PID:-}" PATH="$W/bin:$PATH" \
+		FAKE_OS="$FAKE_OS" FAKE_ARCH="$FAKE_ARCH" FAKE_STATE="$STATE" FAKE_FOREIGN_PID="${FAKE_FOREIGN_PID:-}" FAKE_FOREIGN_HOST="${FAKE_FOREIGN_HOST:-}" PATH="$W/bin:$PATH" \
 		sh "$SCRIPT" "$@" 2>&1
 }
 
@@ -476,13 +481,16 @@ legacy_world() {
 	reset_world
 	make_deps amd64
 	make_agent 0.10.0 good linux amd64
-	mkdir -p "$BASE/ollama/bin" "$W/svc" "$OLD/models"
-	fake_ollama_bin "$BASE/ollama/bin/ollama"
+	mkdir -p "$OLD/ollama/bin" "$W/svc" "$OLD/models"
+	fake_ollama_bin "$OLD/ollama/bin/ollama" # adopted: Linux tests have no Ollama download
 	printf 'llm_node_old_key\n' >"$OLD/key"
 	( INSTALL_NODE_SOURCED=1; . "$SCRIPT"; render_unit d "$OLD/logs/node.log" "" "$OLD/bin/llm-proxy-node" --proxy-addr p:443 --node-id "$1" --tls ) >"$W/svc/llm-proxy-node.service"
 	( INSTALL_NODE_SOURCED=1; . "$SCRIPT"; render_unit d "$OLD/logs/ollama.log" "OLLAMA_MODELS=$OLD/models" "$OLD/ollama/bin/ollama" serve ) >"$W/svc/llm-proxy-ollama.service"
-	sleep 300 &
+	sh -c 'sleep 300 & echo $! >"$1"; wait' sh "$STATE/legacy-child" 2>/dev/null &
 	LEGACY_PID=$!
+	i=0
+	while [ ! -s "$STATE/legacy-child" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+	LEGACY_CHILD=$(cat "$STATE/legacy-child")
 	echo "$LEGACY_PID" >"$STATE/pid.llm-proxy-node.service"
 	touch "$STATE/running.llm-proxy-node.service"
 }
@@ -507,7 +515,7 @@ legacy_world node-9
 OUT=$(run_install $NOKEY_ARGS --dry-run)
 has "legacy: dry run lists the old node service" "stop llm-proxy-node" "$OUT"
 has "legacy: dry run lists the old directory" "move $OLD to" "$OUT"
-has "legacy: dry run says the key is imported" "imported: it was minted for node node-9" "$OUT"
+has "legacy: dry run says the key is reused" "reused: it was minted for node node-9" "$OUT"
 if [ -f "$W/svc/llm-proxy-node.service" ] && [ -d "$OLD" ] && kill -0 "$LEGACY_PID" 2>/dev/null; then ok "legacy: dry run changes nothing"; else bad "legacy: dry run changes nothing"; fi
 
 OUT=$(run_install $NOKEY_ARGS)
@@ -515,12 +523,15 @@ RC=$?
 eq "legacy: install over an old one exits 0" 0 "$RC"
 [ "$RC" = 0 ] || printf '%s\n' "$OUT" | tail -15
 if kill -0 "$LEGACY_PID" 2>/dev/null; then bad "legacy: the old node's process is gone"; kill "$LEGACY_PID"; else ok "legacy: the old node's process is gone"; fi
+if kill -0 "$LEGACY_CHILD" 2>/dev/null; then bad "legacy: the wrapped agent is gone too"; kill "$LEGACY_CHILD"; else ok "legacy: the wrapped agent is gone too"; fi
 has "legacy: old units disabled" "disable llm-proxy-node.service" "$(cat "$STATE/calls")"
 if [ ! -e "$W/svc/llm-proxy-node.service" ] && [ ! -e "$W/svc/llm-proxy-ollama.service" ] && [ ! -e "$OLD" ]; then ok "legacy: old units and directory moved away"; else bad "legacy: old units and directory moved away"; fi
 BK=$(find "$W/home/.ktms-node.backup" -mindepth 1 -maxdepth 1 -type d | head -n 1)
 if [ -f "$BK/llm-proxy-node.service" ] && [ -f "$BK/.llm-proxy-node/key" ]; then ok "legacy: backup outside the install holds units and directory"; else bad "legacy: backup holds units and directory ($BK)"; fi
-eq "legacy: key imported for the same node id" "llm_node_old_key" "$(cat "$BASE/key")"
-eq "legacy: imported key is 0600" 600 "$(mode_of "$BASE/key")"
+eq "legacy: key reused for the same node id" "llm_node_old_key" "$(cat "$BASE/key")"
+eq "legacy: reused key is 0600" 600 "$(mode_of "$BASE/key")"
+has "legacy: the old Ollama build is reused" "Reusing the old install's Ollama build" "$OUT"
+if [ ! -e "$BK/.llm-proxy-node/ollama" ]; then ok "legacy: the backup drops the copied Ollama build"; else bad "legacy: the backup drops the copied Ollama build"; fi
 hasnt "legacy: the key is never printed" "llm_node_old_key" "$OUT"
 has "legacy: the old model store is pointed to" "now in $BK/.llm-proxy-node/models" "$OUT"
 has "legacy: the node runs" "Node node-9 is running and registered" "$OUT"
@@ -540,30 +551,48 @@ if [ ! -e "$W/home/.ktms-node.backup" ]; then ok "legacy: --purge-backups remove
 legacy_world old-node
 OUT=$(run_install $NOKEY_ARGS)
 RC=$?
-kill "$LEGACY_PID" 2>/dev/null
-has "legacy: other node id is not imported without a terminal" "was not imported: no terminal to ask" "$OUT"
+has "legacy: other node id is not reused without a terminal" "was not reused: no terminal to ask" "$OUT"
 if [ ! -s "$BASE/key" ]; then ok "legacy: no key taken from another node"; else bad "legacy: no key taken from another node"; fi
+if [ "$RC" != 0 ] && [ -f "$W/svc/llm-proxy-node.service" ] && [ -d "$OLD" ] && kill -0 "$LEGACY_PID" 2>/dev/null; then ok "legacy: a failed install leaves the old node running"; else bad "legacy: a failed install leaves the old node running"; fi
 OUT=$(run_install $ARGS)
 eq "legacy: with its own key the install completes" 0 "$?"
+kill "$LEGACY_PID" "$LEGACY_CHILD" 2>/dev/null
 
 # --keep-legacy keeps the directory but never the services
 legacy_world node-9
 OUT=$(run_install $ARGS --keep-legacy)
 RC=$?
-kill "$LEGACY_PID" 2>/dev/null
+kill "$LEGACY_PID" "$LEGACY_CHILD" 2>/dev/null
 eq "legacy: --keep-legacy install exits 0" 0 "$RC"
 if [ -d "$OLD" ] && [ ! -e "$W/svc/llm-proxy-node.service" ]; then ok "legacy: --keep-legacy keeps the directory, retires the units"; else bad "legacy: --keep-legacy keeps the directory, retires the units"; fi
+OUT=$(run_install $ARGS --keep-legacy)
+hasnt "legacy: --keep-legacy re-run has nothing to retire" "Retiring" "$OUT"
+eq "legacy: --keep-legacy re-run makes no new backup" 1 "$(backups)"
+
+# --uninstall on a machine with only the old node retires its services
+legacy_world node-9
+OUT=$(run_install --uninstall)
+kill "$LEGACY_PID" "$LEGACY_CHILD" 2>/dev/null
+if [ ! -e "$W/svc/llm-proxy-node.service" ] && [ ! -e "$W/svc/llm-proxy-ollama.service" ] && [ -d "$OLD" ]; then ok "legacy: uninstall retires old services, leaves the old directory"; else bad "legacy: uninstall retires old services, leaves the old directory"; fi
+
+# a stale LLMPROXY_HOME of $HOME is never taken for an old install
+reset_world
+DIR=$(HOME="$W/home" LLMPROXY_HOME="$W/home" KTMS_HOME="$BASE" FAKE_STATE="$STATE" PATH="$W/bin:$PATH" sh -c 'INSTALL_NODE_SOURCED=1; . "$1"; OS=linux; detect_legacy; echo "dir=$LEGACY_DIR"' sh "$SCRIPT")
+eq "legacy: \$HOME is not an old install" "dir=" "$DIR"
+mkdir -p "$W/home/parent/.ktms-node"
+DIR=$(HOME="$W/home" LLMPROXY_HOME="$W/home/parent" KTMS_HOME="$W/home/parent/.ktms-node" FAKE_STATE="$STATE" PATH="$W/bin:$PATH" sh -c 'INSTALL_NODE_SOURCED=1; . "$1"; OS=linux; detect_legacy; echo "dir=$LEGACY_DIR"' sh "$SCRIPT")
+eq "legacy: a parent of the install is not an old install" "dir=" "$DIR"
 
 # an install kept under the old name is the current one, not a legacy one
 legacy_world node-9
-kill "$LEGACY_PID" 2>/dev/null
+kill "$LEGACY_PID" "$LEGACY_CHILD" 2>/dev/null
 rm -f "$W/svc"/llm-proxy-* "$STATE/running.llm-proxy-node.service"
 OUT=$(TEST_BASE="$OLD" run_install $ARGS --dry-run)
 hasnt "legacy: LLMPROXY_HOME as the install directory is not moved" "move $OLD" "$OUT"
 
 # a port held by another process is refused before anything is pulled into it
 legacy_world node-9
-kill "$LEGACY_PID" 2>/dev/null
+kill "$LEGACY_PID" "$LEGACY_CHILD" 2>/dev/null
 sleep 300 &
 FOREIGN=$!
 OUT=$(FAKE_FOREIGN_PID=$FOREIGN run_install $ARGS)
@@ -572,6 +601,21 @@ kill "$FOREIGN" 2>/dev/null
 if [ "$RC" != 0 ]; then ok "port: a foreign listener fails the install"; else bad "port: a foreign listener fails the install"; fi
 has "port: the holder is named" "is taken by sleep (pid $FOREIGN)" "$OUT"
 if [ ! -s "$STATE/models" ]; then ok "port: nothing pulled into the foreign Ollama"; else bad "port: nothing pulled into the foreign Ollama"; fi
+OUT=$(FAKE_FOREIGN_PID=$$ FAKE_FOREIGN_HOST=192.168.1.5 run_install $ARGS)
+eq "port: a listener on another address is no conflict" 0 "$?"
+# another user's Ollama: no PID to see, but the address answers before ours runs
+run_install --uninstall >/dev/null
+reset_world
+make_deps amd64
+make_agent 0.10.0 good linux amd64
+mkdir -p "$BASE/ollama/bin"
+fake_ollama_bin "$BASE/ollama/bin/ollama"
+touch "$STATE/foreign-ollama"
+OUT=$(run_install $ARGS)
+RC=$?
+rm -f "$STATE/foreign-ollama"
+if [ "$RC" != 0 ]; then ok "port: an unseen listener that answers fails the install"; else bad "port: an unseen listener that answers fails the install"; fi
+has "port: the unseen holder is described" "taken by another user's process" "$OUT"
 
 # ------------------------------------------------- hidden key prompt via pty
 FAKE_OS=Linux

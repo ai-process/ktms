@@ -39,10 +39,11 @@ version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.
 - `GetSpend`: a key's, user's or team's current spend, cap and remaining amount per UTC day and
   month, from the counters that enforce the caps.
 
-- `install-node.sh` takes over a node installed before the rename: it stops the `llm-proxy-*`
-  services for good, moves their files and `~/.llm-proxy-node` to `~/.ktms-node.backup/<time>/`
-  and reuses the old node key when it was minted for the same node id. `--dry-run` shows the plan,
-  `--keep-legacy` keeps the old directory, `--uninstall --purge-backups` deletes the backups.
+- `install-node.sh` takes over a node installed before the rename: it reuses the old node key
+  (for the same node id) and Ollama build, then, right before its own Ollama starts, stops the
+  `llm-proxy-*` services for good and moves their files and `~/.llm-proxy-node` to
+  `~/.ktms-node.backup/<time>/`. `--dry-run` shows the plan, `--keep-legacy` keeps the old
+  directory, `--uninstall` retires old services too, `--purge-backups` deletes the backups.
 
 ### Changed
 - Allowlist refusals name the list that refused: `not allowed for <key|team>`, `no models in chain

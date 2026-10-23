@@ -254,7 +254,7 @@ store_key() {
 	fi
 	[ -n "$key" ] || die "empty node key"
 	case $key in ktms_node_* | llm_node_*) ;; *) warn "That does not look like a node key (they start with ktms_node_); continuing." ;; esac
-	(umask 077 && printf '%s\n' "$key" >"$KEY_FILE.tmp") && chmod 600 "$KEY_FILE.tmp" && mv "$KEY_FILE.tmp" "$KEY_FILE"
+	write_key "$key"
 	key=""
 }
 
@@ -317,17 +317,7 @@ svc_running() {
 	fi
 }
 
-svc_stop() {
-	if [ "$OS" = darwin ]; then
-		dom=$(mac_domain) lbl=$(svc_label "$1")
-		launchctl bootout "$dom/$lbl" 2>/dev/null || true
-		# bootstrap right after bootout fails with EIO while the old process is still unloading.
-		i=0
-		while launchctl print "$dom/$lbl" >/dev/null 2>&1 && [ $i -lt 40 ]; do sleep 0.5; i=$((i + 1)); done
-	else
-		systemctl --user stop "$(svc_label "$1").service" 2>/dev/null || true
-	fi
-}
+svc_stop() { stop_label "$(svc_label "$1")"; }
 
 svc_start() {
 	if [ "$OS" = darwin ]; then
@@ -362,8 +352,7 @@ ollama_env() {
 
 # ---- ports and installs from before the rename -------------------------------
 
-# label_pid label: the PID the service manager runs for label, or nothing.
-label_pid() {
+label_pid() { # label: its PID under the service manager, or nothing
 	if [ "$OS" = darwin ]; then
 		launchctl print "$(mac_domain)/$1" 2>/dev/null | awk '$1 == "pid" && $2 == "=" { print $3; exit }'
 	else
@@ -372,55 +361,55 @@ label_pid() {
 	fi
 }
 
-# port_holder addr: "pid name" of the process listening on the port, or nothing
-# when the port is free or this machine cannot tell (no lsof or ss).
+# port_holder addr: "pid name" of what listens where addr would bind: the same
+# address or a wildcard. Another user's process shows no PID, so an address that
+# answers HTTP while nothing of ours should be there counts as "unknown".
 port_holder() {
-	port=${1##*:} pid=""
+	host=${1%:*} port=${1##*:} pid=""
 	if command -v lsof >/dev/null 2>&1; then
-		pid=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -n 1)
+		pid=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -Fpn 2>/dev/null | awk -v h="$host:$port" -v p=":$port" '
+			/^p/ { pid = substr($0, 2) } /^n/ { a = substr($0, 2); if (a == h || a == "*" p || a == "0.0.0.0" p || a == "[::]" p) { print pid; exit } }')
 	elif command -v ss >/dev/null 2>&1; then
-		pid=$(ss -ltnpH "sport = :$port" 2>/dev/null | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -n 1)
+		pid=$(ss -ltnpH 2>/dev/null | awk -v h="$host:$port" -v p=":$port" '
+			($4 == h || $4 == "*" p || $4 == "0.0.0.0" p || $4 == "[::]" p) { if (match($0, /pid=[0-9]+/)) print substr($0, RSTART + 4, RLENGTH - 4); else print "?"; exit }')
 	fi
+	if [ -z "$pid" ] && [ "${2:-}" = idle ] && curl -fsS -m 2 "http://$1/api/version" >/dev/null 2>&1; then pid="?"; fi
 	[ -n "$pid" ] || return 0
-	printf '%s %s\n' "$pid" "$(ps -o comm= -p "$pid" 2>/dev/null | head -n 1)"
+	if [ "$pid" = "?" ]; then echo "? another user's process"; else printf '%s %s\n' "$pid" "$(ps -o comm= -p "$pid" 2>/dev/null | head -n 1)"; fi
 }
 
-# check_ollama_port refuses an address another process listens on: the model
-# would be pulled into, and served by, someone else's Ollama.
+# check_ollama_port: the model would otherwise be pulled into, and served by,
+# someone else's Ollama that happens to hold the node's address.
 check_ollama_port() {
-	held=$(port_holder "$OLLAMA_ADDR")
+	ours=$(label_pid "$(svc_label ollama)")
+	if [ -n "$ours" ]; then held=$(port_holder "$OLLAMA_ADDR"); else held=$(port_holder "$OLLAMA_ADDR" idle); fi
 	[ -n "$held" ] || return 0
-	[ "${held%% *}" = "$(label_pid "$(svc_label ollama)")" ] && return 0
-	die "$OLLAMA_ADDR is taken by ${held#* } (pid ${held%% *}), not by this node's Ollama. Stop that process, or run this node's Ollama elsewhere with KTMS_OLLAMA_ADDR=127.0.0.1:PORT."
+	[ "${held%% *}" = "$ours" ] && return 0
+	[ "${held%% *}" = "?" ] && [ -n "$ours" ] && return 0 # unreadable PID with ours running: it is ours
+	if [ "${held%% *}" = "?" ]; then what=${held#* }; else what="${held#* } (pid ${held%% *})"; fi
+	die "$OLLAMA_ADDR is taken by $what, not by this node's Ollama. Stop it, or run this node's Ollama elsewhere with KTMS_OLLAMA_ADDR=127.0.0.1:PORT."
 }
 
 legacy_label() { if [ "$OS" = darwin ]; then echo "$LEGACY_LABEL_PREFIX.$1"; else echo "$LEGACY_UNIT_PREFIX-$1"; fi; }
 legacy_file() { if [ "$OS" = darwin ]; then echo "$(svc_dir)/$(legacy_label "$1").plist"; else echo "$(svc_dir)/$(legacy_label "$1").service"; fi; }
 
-# service_arg file flag: the value after flag in a plist or unit this script rendered.
-service_arg() {
+# service_arg and service_env read back what render_plist / render_unit wrote,
+# the only producers of legacy services, so their layout is known exactly.
+service_arg() { # file flag
 	case $1 in
 	*.plist) awk -v f="<string>$2</string>" 'want { sub(/^[ \t]*<string>/, ""); sub(/<\/string>.*/, ""); print; exit } index($0, f) { want = 1 }' "$1" ;;
 	*) sed -n 's/^ExecStart=//p' "$1" | awk -v f="$2" '{ n = split($0, a, /" "/); for (i = 1; i <= n; i++) gsub(/^ *"|" *$/, "", a[i]); for (i = 1; i < n; i++) if (a[i] == f) { print a[i + 1]; exit } }' ;;
 	esac
 }
-
-# service_env file name: an environment value in a plist or unit this script rendered.
-service_env() {
+service_env() { # file name
 	case $1 in
 	*.plist) awk -v k="<key>$2</key><string>" 'index($0, k) { s = substr($0, index($0, k) + length(k)); sub(/<\/string>.*/, "", s); print s; exit }' "$1" ;;
 	*) sed -n "s/^Environment=\"$2=\(.*\)\"\$/\1/p" "$1" | head -n 1 ;;
 	esac
 }
 
-same_path() { # a b: true when both name the same directory
-	a=$(cd "$1" 2>/dev/null && pwd -P || printf '%s' "${1%/}")
-	b=$(cd "$2" 2>/dev/null && pwd -P || printf '%s' "${2%/}")
-	[ "$a" = "$b" ]
-}
+real_path() { (cd "$1" 2>/dev/null && pwd -P) || printf '%s' "${1%/}"; }
 
-# detect_legacy finds an llm-proxy-node install, changing nothing: its services
-# (by file or by a running process), its directory, node id and model store.
 detect_legacy() {
 	LEGACY_IDS="" LEGACY_DIR="" LEGACY_NODE_ID="" LEGACY_MODELS=""
 	for id in node ollama; do
@@ -430,28 +419,33 @@ detect_legacy() {
 	[ ! -f "$f" ] || LEGACY_NODE_ID=$(service_arg "$f" --node-id)
 	f=$(legacy_file ollama)
 	[ ! -f "$f" ] || LEGACY_MODELS=$(service_env "$f" OLLAMA_MODELS)
+	base=$(real_path "$BASE")
 	for d in "${LLMPROXY_HOME:-}" "$HOME/.llm-proxy-node"; do
 		if [ -z "$d" ] || [ ! -d "$d" ]; then continue; fi
-		same_path "$d" "$BASE" && continue # the current install, kept under its old name
-		LEGACY_DIR=$d
+		r=$(real_path "$d")
+		# Never the current install (kept under its old name), $HOME, / or a parent of the install.
+		case $r in / | "$(real_path "$HOME")") continue ;; esac
+		case "$base/" in "$r"/*) continue ;; esac
+		LEGACY_DIR=${d%/}
 		break
 	done
 }
 
-# legacy_key_plan says what becomes of the old install's node key.
+legacy_work() { [ -n "$LEGACY_IDS" ] || { [ -n "$LEGACY_DIR" ] && [ "$KEEP_LEGACY" = 0 ]; }; }
+
 legacy_key_plan() {
 	[ -n "$LEGACY_DIR" ] && [ -s "$LEGACY_DIR/key" ] || return 0
 	if [ -s "$BASE/key" ] || [ -n "$KEY_SRC" ] || [ "$NEW_KEY" = 1 ]; then
 		echo "not needed: this node has its own key"
 	elif [ "$LEGACY_NODE_ID" = "$NODE_ID" ]; then
-		echo "imported: it was minted for node $NODE_ID too"
+		echo "reused: it was minted for node $NODE_ID too"
 	else
 		echo "offered: it was minted for node ${LEGACY_NODE_ID:-unknown}, not $NODE_ID, so you are asked first"
 	fi
 }
 
 legacy_plan() {
-	[ -n "$LEGACY_IDS$LEGACY_DIR" ] || return 0
+	legacy_work || return 0
 	say "Found an install from before the rename to KTMS. Installing will:"
 	for id in $LEGACY_IDS; do say "  - stop $(legacy_label "$id") and move its service file to $BACKUP_ROOT/"; done
 	if [ -n "$LEGACY_DIR" ]; then
@@ -461,54 +455,82 @@ legacy_plan() {
 	fi
 }
 
-# stop_legacy id: stops an old service and makes sure its process is gone. Only
-# the PID its manager ran is killed: a llama-server by that name may be another's.
+# stop_label stops a service; bootstrap right after bootout fails with EIO
+# while the old process is still unloading, so it waits for that.
+stop_label() {
+	if [ "$OS" = darwin ]; then
+		dom=$(mac_domain)
+		launchctl bootout "$dom/$1" 2>/dev/null || true
+		i=0
+		while launchctl print "$dom/$1" >/dev/null 2>&1 && [ $i -lt 40 ]; do sleep 0.5; i=$((i + 1)); done
+	else
+		systemctl --user stop "$1.service" 2>/dev/null || true
+	fi
+}
+
+# stop_legacy makes sure an old service is gone even when its manager failed to
+# stop it. Only what the manager ran is killed, the wrapper (caffeinate,
+# systemd-inhibit) and its children: a llama-server by name may be another's.
 stop_legacy() {
 	lbl=$(legacy_label "$1")
 	pid=$(label_pid "$lbl")
-	if [ "$OS" = darwin ]; then
-		dom=$(mac_domain)
-		launchctl bootout "$dom/$lbl" 2>/dev/null || true
+	kids=""
+	[ -z "$pid" ] || kids=$(pgrep -P "$pid" 2>/dev/null | tr '\n' ' ')
+	stop_label "$lbl"
+	[ "$OS" = darwin ] || systemctl --user disable "$lbl.service" >/dev/null 2>&1 || true
+	for p in $kids $pid; do
 		i=0
-		while launchctl print "$dom/$lbl" >/dev/null 2>&1 && [ $i -lt 40 ]; do sleep 0.5; i=$((i + 1)); done
-	else
-		systemctl --user stop "$lbl.service" 2>/dev/null || true
-		systemctl --user disable "$lbl.service" >/dev/null 2>&1 || true
-	fi
-	if [ -n "$pid" ]; then
-		i=0
-		while kill -0 "$pid" 2>/dev/null && [ $i -lt 20 ]; do sleep 0.5; i=$((i + 1)); done
-		if kill -0 "$pid" 2>/dev/null; then
-			kill "$pid" 2>/dev/null || true
+		while kill -0 "$p" 2>/dev/null && [ $i -lt 20 ]; do sleep 0.5; i=$((i + 1)); done
+		if kill -0 "$p" 2>/dev/null; then
+			kill "$p" 2>/dev/null || true
 			sleep 2
-			! kill -0 "$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
+			! kill -0 "$p" 2>/dev/null || kill -9 "$p" 2>/dev/null || true
 		fi
-	fi
+	done
 	say "Stopped $lbl."
 }
 
 has_tty() { (: </dev/tty) 2>/dev/null; }
 
-import_legacy_key() { # key-file
-	[ -n "$1" ] && [ -s "$1" ] || return 0
+write_key() { # key: stored 0600, written whole or not at all
+	(umask 077 && printf '%s\n' "$1" >"$BASE/key.tmp") && chmod 600 "$BASE/key.tmp" && mv "$BASE/key.tmp" "$BASE/key"
+}
+
+# import_legacy_key runs before store_key and only reads: if the install stops
+# later, the old node still has its key and keeps working.
+import_legacy_key() {
+	[ -n "$LEGACY_DIR" ] && [ -s "$LEGACY_DIR/key" ] || return 0
 	[ ! -s "$BASE/key" ] && [ -z "$KEY_SRC" ] && [ "$NEW_KEY" = 0 ] || return 0
 	if [ "$LEGACY_NODE_ID" != "$NODE_ID" ]; then
 		if ! has_tty; then
-			say "The old install's node key (node ${LEGACY_NODE_ID:-unknown}) was not imported: no terminal to ask. It is in $1."
+			say "The old install's node key (node ${LEGACY_NODE_ID:-unknown}) was not reused: no terminal to ask."
 			return 0
 		fi
 		printf 'The old install has a node key for node %s, not %s. Use it for this node? [y/N] ' "${LEGACY_NODE_ID:-unknown}" "$NODE_ID" >/dev/tty
 		IFS= read -r answer </dev/tty || answer=""
 		case $answer in y | Y | yes | YES) ;; *) return 0 ;; esac
 	fi
-	(umask 077 && { tr -d ' \t\r\n' <"$1"; echo; } >"$BASE/key.tmp") && chmod 600 "$BASE/key.tmp" && mv "$BASE/key.tmp" "$BASE/key"
-	say "Imported the old install's node key."
+	write_key "$(tr -d ' \t\r\n' <"$LEGACY_DIR/key")"
+	say "Reused the old install's node key."
 }
 
-# cleanup_legacy retires the old install: services stopped for good, their
+# adopt_legacy_ollama copies the old install's Ollama build instead of
+# downloading one; cleanup_legacy then drops the original from the backup.
+adopt_legacy_ollama() {
+	[ -n "$LEGACY_DIR" ] && [ "$UPGRADE" = 0 ] && [ -z "$(find_ollama_bin || true)" ] || return 0
+	for p in "$LEGACY_DIR/ollama/ollama" "$LEGACY_DIR/ollama/bin/ollama"; do
+		[ -x "$p" ] || continue
+		rm -rf "${BASE:?}/ollama.new" && cp -Rp "$LEGACY_DIR/ollama" "$BASE/ollama.new" && mv "$BASE/ollama.new" "$BASE/ollama"
+		say "Reusing the old install's Ollama build (--upgrade-deps updates it)."
+		return 0
+	done
+}
+
+# cleanup_legacy retires the old install right before this node's Ollama takes
+# its port, once everything else is in place: services stopped for good, their
 # files and its directory moved to a dated backup outside $BASE.
 cleanup_legacy() {
-	[ -n "$LEGACY_IDS$LEGACY_DIR" ] || return 0
+	legacy_work || return 0
 	step "Retiring the install from before the rename"
 	bk="$BACKUP_ROOT/$(date +%Y%m%d-%H%M%S)"
 	mkdir -p "$bk"
@@ -519,18 +541,12 @@ cleanup_legacy() {
 		if [ -f "$f" ]; then mv "$f" "$bk/" && say "Moved $f to $bk/."; fi
 	done
 	if [ "$OS" = linux ] && [ -n "$LEGACY_IDS" ]; then systemctl --user daemon-reload 2>/dev/null || true; fi
-	old_key=""
-	if [ -n "$LEGACY_DIR" ]; then
-		old_key="$LEGACY_DIR/key"
-		if [ "$KEEP_LEGACY" = 0 ]; then
-			moved="$bk/$(basename "$LEGACY_DIR")"
-			mv "$LEGACY_DIR" "$moved"
-			say "Moved $LEGACY_DIR to $moved."
-			old_key="$moved/key"
-			case $LEGACY_MODELS in "$LEGACY_DIR"/*) say "The old Ollama kept its models in $LEGACY_MODELS; they are now in $moved${LEGACY_MODELS#"$LEGACY_DIR"}." ;; esac
-		fi
-	fi
-	import_legacy_key "$old_key"
+	if [ -z "$LEGACY_DIR" ] || [ "$KEEP_LEGACY" = 1 ]; then return 0; fi
+	[ ! -d "$BASE/ollama" ] || rm -rf "${LEGACY_DIR:?}/ollama" # this node has its own copy
+	moved="$bk/$(basename "$LEGACY_DIR")"
+	mv "$LEGACY_DIR" "$moved"
+	say "Moved $LEGACY_DIR to $moved."
+	case $LEGACY_MODELS in "$LEGACY_DIR"/*) say "The old Ollama kept its models in $LEGACY_MODELS; they are now in $moved${LEGACY_MODELS#"$LEGACY_DIR"}." ;; esac
 }
 
 # ---- Ollama, cloudflared, node agent ----------------------------------------
@@ -707,6 +723,11 @@ start_node_and_wait() {
 
 do_uninstall() {
 	detect_platform
+	# Old services would keep serving under this node's id; the old directory is
+	# the user's to remove, so it stays.
+	KEEP_LEGACY=1
+	detect_legacy
+	cleanup_legacy
 	step "Removing the node"
 	for id in node ollama; do
 		svc_stop "$id"
@@ -774,14 +795,16 @@ main() {
 		loginctl enable-linger "$(id -un)" 2>/dev/null || warn "could not enable lingering: the node will stop when you log out (run: sudo loginctl enable-linger $(id -un))"
 	fi
 	OLLAMA_CHANGED=0 AGENT_STAGED=0
-	cleanup_legacy
+	import_legacy_key
 	store_key
+	adopt_legacy_ollama
 	ensure_ollama
 	ensure_cloudflared
 	stage_agent
 
 	step "Starting the inference engine"
 	if [ -n "$RUNNER" ]; then write_service ollama /usr/bin/arch -arm64 "$OLLAMA_BIN" serve; else write_service ollama "$OLLAMA_BIN" serve; fi
+	cleanup_legacy
 	check_ollama_port
 	if install_service ollama "$SVC_TMP" || [ "$OLLAMA_CHANGED" = 1 ] || ! svc_running ollama; then svc_start ollama; fi
 	wait_http "http://$OLLAMA_ADDR/api/version" 60 || die "Ollama did not start; see $BASE/logs/ollama.log"
