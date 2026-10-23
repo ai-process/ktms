@@ -242,7 +242,9 @@ Postgres and Redis and pick up configuration changes within `ROUTING_RELOAD_SECO
 
 ### Helm chart (Kubernetes)
 
-An official Helm v3 chart is provided under [`deploy/helm/ktms`](deploy/helm/ktms):
+An official Helm v3 chart is published with every release at `oci://ghcr.io/ai-process/charts/ktms`
+(source in [`deploy/helm/ktms`](deploy/helm/ktms)). The chart version is the release version, and
+it runs the image of the same version:
 
 ```bash
 # 1. Create a secret with your database URL and encryption keys
@@ -252,7 +254,7 @@ kubectl create secret generic ktms-secrets \
   --from-literal=BOOTSTRAP_ADMIN_KEY="$(head -c 24 /dev/urandom | base64 | tr -d '/+=')"
 
 # 2. Install the release
-helm install ktms ./deploy/helm/ktms \
+helm install ktms oci://ghcr.io/ai-process/charts/ktms --version 1.0.0 \
   --set secrets.existingSecret=ktms-secrets \
   --set ingress.enabled=true \
   --set "ingress.hosts[0].host=proxy.example.com" \
@@ -1331,6 +1333,11 @@ backport does not.
   `:<tag>`, `:<tag>-slim`, `:latest`, `:slim` (default lightweight Alpine without ffmpeg),
   and `:<tag>-audio`, `:audio` (with ffmpeg), plus `coyl/ktms-node:<tag>` (node agent).
   The repository needs the secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD` (an access token).
+- **Helm chart** (`.github/workflows/release.yml`): `oci://ghcr.io/ai-process/charts/ktms`,
+  version and `appVersion` taken from the tag, signed with cosign. It needs no secret; after the
+  first release the `charts/ktms` package has to be made public once in the organization's
+  package settings. CI installs the chart from an OCI registry on kind
+  (`scripts/helm-kind.sh`).
 - **Optional, off until their secrets exist:** macOS signing and notarization
   (`MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_ISSUER_ID`, `MACOS_NOTARY_KEY_ID`,
   `MACOS_NOTARY_KEY`) and a Homebrew formula pushed to `ai-process/homebrew-tap`

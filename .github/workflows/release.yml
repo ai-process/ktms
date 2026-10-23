@@ -1,7 +1,7 @@
 name: Release
 
-# Tag vX.Y.Z -> binaries and checksums.txt on GitHub Releases. The Docker images
-# are built by docker-publish.yml from the same tag.
+# Tag vX.Y.Z -> binaries and checksums.txt on GitHub Releases, then the Helm chart
+# at oci://ghcr.io/ai-process/charts/ktms, then the Docker images (docker-publish.yml).
 # Optional secrets: MACOS_SIGN_P12 (base64 .p12), MACOS_SIGN_PASSWORD,
 # MACOS_NOTARY_ISSUER_ID, MACOS_NOTARY_KEY_ID, MACOS_NOTARY_KEY (base64 .p8),
 # and HOMEBREW_TAP_TOKEN for ai-process/homebrew-tap. Without them the release is unsigned.
@@ -20,7 +20,7 @@ jobs:
   # Images go last: an image on Docker Hub then means the whole release went
   # out, which is how the next release finds its predecessor.
   images:
-    needs: release
+    needs: [release, chart]
     permissions:
       contents: read
       id-token: write
@@ -65,3 +65,36 @@ jobs:
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+  # The chart's version and appVersion are the tag, so `--version 1.2.3` installs
+  # image 1.2.3. It goes before the images, which mark a complete release.
+  chart:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # keyless cosign signature of the chart
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.18.4
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      - name: Package, push and sign
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version=${TAG#v}
+          helm package deploy/helm/ktms --version "$version" --app-version "$version" -d dist
+          echo "$GH_TOKEN" | helm registry login ghcr.io -u "$GH_ACTOR" --password-stdin
+          echo "$GH_TOKEN" | cosign login ghcr.io -u "$GH_ACTOR" --password-stdin
+          helm push "dist/ktms-$version.tgz" oci://ghcr.io/ai-process/charts 2>&1 | tee push.log
+          digest=$(sed -n 's/^Digest: //p' push.log)
+          test -n "$digest"
+          cosign sign --yes "ghcr.io/ai-process/charts/ktms@$digest"

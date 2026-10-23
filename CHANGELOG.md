@@ -19,6 +19,9 @@ version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.
   logged as an error; events are held and retried.
 - CI fails when `usage-proto/` or the stubs generated from it drift from light-tokenmeter, which
   owns `usage.v1`.
+- The Helm chart is published with every release at `oci://ghcr.io/ai-process/charts/ktms`,
+  signed with cosign; its version and `appVersion` are the release version. CI installs it from
+  an OCI registry on a kind cluster.
 
 ### Changed
 - Relicensed under Apache 2.0.

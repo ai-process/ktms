@@ -98,6 +98,20 @@ jobs:
           cache-from: type=gha,scope=node-agent
           cache-to: type=gha,mode=max,scope=node-agent
 
+  # The chart installed from an OCI registry on a fresh cluster, as users do.
+  helm-kind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.18.4
+      - uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
+        with:
+          install_only: true
+      - run: ./scripts/helm-kind.sh
+
   helm:
     runs-on: ubuntu-latest
     steps:
