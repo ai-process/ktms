@@ -855,28 +855,41 @@ func TestAnthropicGenerateTextStream_ErrorAfterMessageStartDoesNotEmitChunk(t *t
 	}
 }
 
-func TestAnthropicPromptCacheBreakpoint(t *testing.T) {
+func TestAnthropicPromptCacheBreakpoints(t *testing.T) {
 	tools := []*llm.Tool{
 		{Type: "function", Function: llm.FunctionDefinition{Name: "a", Parameters: &llm.ResponseSchema{Type: llm.SchemaPropertyTypeObject}}},
 		{Type: "function", Function: llm.FunctionDefinition{Name: "b", Parameters: &llm.ResponseSchema{Type: llm.SchemaPropertyTypeObject}}},
 	}
 	type block struct {
-		Name         string          `json:"name"`
 		CacheControl json.RawMessage `json:"cache_control"`
 	}
 	type body struct {
-		System []block `json:"system"`
-		Tools  []block `json:"tools"`
+		System   []block `json:"system"`
+		Tools    []block `json:"tools"`
+		Messages []struct {
+			Content []block `json:"content"`
+		} `json:"messages"`
 	}
-	build := func(cache bool, system string) body {
+	build := func(cache, soft bool, system string, turns ...string) body {
 		adapter := NewAnthropicAdapter(nil, "claude-test", nil)
 		adapter.SetPromptCache(cache)
+		adapter.SetSoftSchema(soft)
 		chat := llm.NewChatContext()
 		if system != "" {
 			chat.AddSystemMessage(system)
 		}
-		chat.AddUserMessage("hi")
+		for i, turn := range turns {
+			if i%2 == 0 {
+				chat.AddUserMessage(turn)
+			} else {
+				chat.AddAssistantMessage(turn)
+			}
+		}
 		chat.SetTools(tools)
+		if soft {
+			chat.SetResponseSchema(&llm.ResponseSchema{Type: llm.SchemaPropertyTypeObject,
+				Properties: map[string]*llm.SchemaProperty{"answer": {Type: llm.SchemaPropertyTypeString}}})
+		}
 		raw, err := json.Marshal(adapter.buildParams(chat, 0))
 		if err != nil {
 			t.Fatal(err)
@@ -887,29 +900,40 @@ func TestAnthropicPromptCacheBreakpoint(t *testing.T) {
 		}
 		return b
 	}
-	marked := func(bs []block) (n int, last bool) {
+	// marks lists which blocks carry a breakpoint: "L" on the last block, "x" elsewhere.
+	marks := func(bs []block) string {
+		out := ""
 		for i, b := range bs {
 			if string(b.CacheControl) == `{"type":"ephemeral"}` {
-				n++
-				last = i == len(bs)-1
+				if i == len(bs)-1 {
+					out += "L"
+				} else {
+					out += "x"
+				}
 			}
 		}
-		return n, last
+		return out
 	}
+	lastTurn := func(b body) string { return marks(b.Messages[len(b.Messages)-1].Content) }
 
-	b := build(false, "long instructions")
-	if n, _ := marked(append(b.System, b.Tools...)); n != 0 {
-		t.Fatalf("%d breakpoints without the capability", n)
+	b := build(false, false, "instructions", "hi")
+	if marks(b.Tools)+marks(b.System)+lastTurn(b) != "" {
+		t.Fatalf("breakpoints without the capability")
 	}
-	b = build(true, "long instructions")
-	if n, _ := marked(b.Tools); n != 0 {
-		t.Fatalf("tools marked although the system prompt covers them")
+	b = build(true, false, "instructions", "hi")
+	if marks(b.Tools) != "L" || marks(b.System) != "L" || lastTurn(b) != "" {
+		t.Fatalf("single turn: tools %q system %q turn %q, want tools and system only", marks(b.Tools), marks(b.System), lastTurn(b))
 	}
-	if n, last := marked(b.System); n != 1 || !last {
-		t.Fatalf("system breakpoints = %d (last %v), want one on the system prompt", n, last)
+	b = build(true, true, "instructions", "hi")
+	if marks(b.System) != "L" {
+		t.Fatalf("soft schema: system %q, want the breakpoint after the appended shape", marks(b.System))
 	}
-	b = build(true, "")
-	if n, last := marked(b.Tools); n != 1 || !last {
-		t.Fatalf("tool breakpoints = %d (last %v), want one on the last tool", n, last)
+	b = build(true, false, "instructions")
+	if len(b.System) != 0 || marks(b.Tools) != "L" {
+		t.Fatalf("system sent as the only message: system %v tools %q", b.System, marks(b.Tools))
+	}
+	b = build(true, false, "instructions", "hi", "hello", "and now?")
+	if lastTurn(b) != "L" || marks(b.System) != "L" {
+		t.Fatalf("conversation: turn %q system %q, want the latest turn marked too", lastTurn(b), marks(b.System))
 	}
 }

@@ -56,3 +56,18 @@ func TestGetSpendReportsEachCappedWindow(t *testing.T) {
 		t.Fatalf("unreadable counters: %v, want Unavailable", err)
 	}
 }
+
+// Without Redis the caps still show; only the counting stops.
+func TestGetSpendWithoutRedisShowsTheCap(t *testing.T) {
+	s := NewAdminServer(nil, nil, nil)
+	s.SetSpendLimitResolver(func(string, string, string) int64 { return 1_000 })
+	resp, err := s.GetSpend(context.Background(), &pb.GetSpendRequest{SubjectType: "user", SubjectId: "u1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range resp.Windows {
+		if w.LimitNanousd != 1_000 || w.Metered || w.SpentNanousd != 0 {
+			t.Fatalf("window = %v, want the cap, unmetered", w)
+		}
+	}
+}

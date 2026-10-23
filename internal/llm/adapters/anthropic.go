@@ -44,9 +44,9 @@ func NewAnthropicAdapter(client *anthropic.Client, model string, throttle *llm.T
 	}
 }
 
-// SetPromptCache marks the tools and system prompt as a cache breakpoint, so
-// repeat calls read that prefix at 0.1x input. Each new prefix is written at
-// 1.25x, which pays off only when instructions repeat; hence opt-in per model.
+// SetPromptCache marks cacheable prefixes, which repeat calls read at 0.1x
+// input. Each new prefix is written at 1.25x, which pays off only when
+// instructions repeat; hence opt-in per model.
 func (a *AnthropicAdapter) SetPromptCache(on bool) { a.promptCache = on }
 
 // SetSoftSchema switches this adapter to prompt-described schemas.
@@ -498,13 +498,7 @@ func (a *AnthropicAdapter) buildParams(chat *llm.ChatContext, ceiling int) anthr
 		params.Tools = tools
 	}
 	if a.promptCache {
-		// Anthropic caches the prefix in the order tools, system, messages: one
-		// breakpoint on the system prompt covers both, else one on the last tool.
-		if len(params.System) > 0 {
-			params.System[len(params.System)-1].CacheControl = anthropic.NewCacheControlEphemeralParam()
-		} else if n := len(params.Tools); n > 0 && params.Tools[n-1].OfTool != nil {
-			params.Tools[n-1].OfTool.CacheControl = anthropic.NewCacheControlEphemeralParam()
-		}
+		markCacheBreakpoints(&params)
 	}
 
 	if tc := chat.GetToolChoice(); tc != nil {
@@ -527,4 +521,26 @@ func (a *AnthropicAdapter) buildParams(chat *llm.ChatContext, ceiling int) anthr
 	}
 
 	return params
+}
+
+// markCacheBreakpoints puts breakpoints (Anthropic allows 4) where a prefix
+// ends that a later call may repeat: the tools, the system prompt, and, in a
+// conversation, its latest turn, which the next turn starts with.
+func markCacheBreakpoints(params *anthropic.MessageNewParams) {
+	if n := len(params.Tools); n > 0 && params.Tools[n-1].OfTool != nil {
+		params.Tools[n-1].OfTool.CacheControl = anthropic.NewCacheControlEphemeralParam()
+	}
+	if n := len(params.System); n > 0 {
+		params.System[n-1].CacheControl = anthropic.NewCacheControlEphemeralParam()
+	}
+	if len(params.Messages) < 2 {
+		return // a single turn is unlikely to come again
+	}
+	blocks := params.Messages[len(params.Messages)-1].Content
+	for i := len(blocks) - 1; i >= 0; i-- {
+		if cc := blocks[i].GetCacheControl(); cc != nil {
+			*cc = anthropic.NewCacheControlEphemeralParam()
+			return
+		}
+	}
 }

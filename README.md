@@ -555,7 +555,7 @@ Capabilities a model may declare:
 | `batch` | Can serve asynchronous batch text generation requests (`SubmitBatch`). |
 | `google_search` | Can serve requests with `enable_google_search`. |
 | `no_thinking` | The model reasons by default and bills the reasoning as output (DeepSeek V4, Gemma 4 on Ollama). The proxy turns it off: `thinking: {"type": "disabled"}` for DeepSeek, `reasoning_effort: "none"` for Ollama, and for `local` models when the serving node runs Ollama (other engines get no switch). OpenAI-compatible vendors only. |
-| `prompt_cache` | Anthropic only: marks each call's tools and system prompt as a cache breakpoint, so repeat calls read them at 0.1x input. A new prefix is written at 1.25x, so set it on models whose instructions repeat across calls. |
+| `prompt_cache` | Anthropic only: puts `cache_control` breakpoints after the tools, the system prompt and, in a multi-turn conversation, the latest turn, so repeated prefixes are read at 0.1x input. A new prefix is written at 1.25x, so set it on models whose instructions or conversations repeat. |
 | `vision` | Can process image parts in multimodal messages (`ImagePart`). |
 | `audio_input` | Can process audio parts in multimodal messages (`AudioPart`). |
 | `pdf_input` | Can process PDF document parts in multimodal messages (`DocumentPart`). |
@@ -625,8 +625,9 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"spend_limit":
 - `GetSpend` shows where a subject stands now, from the counters that refuse calls: for a key
   (`{"subject_type":"key","subject_id":"billing-service"}`), user or team, one window per period
   with `spent_nanousd`, `limit_nanousd`, `remaining_nanousd` and `resets_at`. Spend is counted
-  only under a cap (a `*` limit counts for every subject), so an uncapped window says
-  `metered: false`.
+  only under a cap (a `*` limit counts for every subject): an uncapped window says
+  `metered: false`, and a cap set mid-period counts from then on. A new cap shows once the config
+  reloads: right away on the replica that set it, within `ROUTING_RELOAD_SECONDS` on the others.
 
 ### 6. Organizations and teams (optional)
 

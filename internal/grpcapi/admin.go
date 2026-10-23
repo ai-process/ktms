@@ -842,6 +842,10 @@ func (s *AdminServer) GetTeamSpend(ctx context.Context, req *pb.GetTeamSpendRequ
 		return nil, dbStatus(err)
 	}
 	limit, _ := teamBudgetNano(team.MonthlyBudgetUSD)
+	if s.spendLimits != nil {
+		// What the throttle enforces, a team/* wildcard included.
+		limit = s.spendLimits(spendlimit.SubjectTeam, team.ID, spendlimit.PeriodMonth)
+	}
 	_, resets := spendlimit.Window(spendlimit.PeriodMonth, time.Now())
 	out := &pb.GetTeamSpendResponse{LimitNanousd: limit, ResetsAt: timestamppb.New(resets)}
 	// The throttle keeps counters only for capped subjects, so an uncapped
@@ -876,12 +880,12 @@ func (s *AdminServer) GetSpend(ctx context.Context, req *pb.GetSpendRequest) (*p
 		}
 		// Counters exist only under a cap, as in GetTeamSpend.
 		if s.spendReader != nil && w.LimitNanousd > 0 {
-			spent, resets, err := s.spendReader(ctx, subject, id, e.Period)
+			spent, _, err := s.spendReader(ctx, subject, id, e.Period)
 			if err != nil {
 				log.Warn().Err(err).Str("subject", subject).Str("id", id).Msg("spend counter unreadable")
 				return nil, status.Error(codes.Unavailable, "spend counters unavailable")
 			}
-			w.SpentNanousd, w.ResetsAt, w.Metered = spent, timestamppb.New(resets), true
+			w.SpentNanousd, w.Metered = spent, true
 			w.RemainingNanousd = max(w.LimitNanousd-spent, 0)
 		}
 		out.Windows = append(out.Windows, w)
