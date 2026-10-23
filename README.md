@@ -621,6 +621,11 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"spend_limit":
   period resets (HTTP: 429 `insufficient_quota` plus `Retry-After`).
 - `ListSpendLimits`, `DeleteSpendLimit` and `GetConfig` show and lift caps. Every usage event
   carries its `cost_nanousd`, which light-tokenmeter sums per day, model, user or job.
+- `GetSpend` shows where a subject stands now, from the counters that refuse calls: for a key
+  (`{"subject_type":"key","subject_id":"billing-service"}`), user or team, one window per period
+  with `spent_nanousd`, `limit_nanousd`, `remaining_nanousd` and `resets_at`. Spend is counted
+  only under a cap (a `*` limit counts for every subject), so an uncapped window says
+  `metered: false`.
 
 ### 6. Organizations and teams (optional)
 

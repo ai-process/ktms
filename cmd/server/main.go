@@ -225,6 +225,9 @@ func main() {
 	adminSrv := grpcapi.NewAdminServer(db, keyring, loader.Refresh)
 	if rl, ok := limiter.(*throttle.Redis); ok {
 		adminSrv.SetSpendReader(rl.SpendSoFar)
+		adminSrv.SetSpendLimitResolver(func(subjectType, subjectID, period string) int64 {
+			return loader.Snapshot().SpendLimit(subjectType, subjectID, period)
+		})
 	}
 	if nodeMgr != nil {
 		adminSrv.SetNodeManager(nodeMgr)

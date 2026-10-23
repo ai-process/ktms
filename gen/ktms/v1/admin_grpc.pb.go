@@ -50,6 +50,7 @@ const (
 	AdminService_UpdateTeam_FullMethodName          = "/ktms.v1.AdminService/UpdateTeam"
 	AdminService_DeleteTeam_FullMethodName          = "/ktms.v1.AdminService/DeleteTeam"
 	AdminService_GetTeamSpend_FullMethodName        = "/ktms.v1.AdminService/GetTeamSpend"
+	AdminService_GetSpend_FullMethodName            = "/ktms.v1.AdminService/GetSpend"
 )
 
 // AdminServiceClient is the client API for AdminService service.
@@ -90,6 +91,7 @@ type AdminServiceClient interface {
 	UpdateTeam(ctx context.Context, in *UpdateTeamRequest, opts ...grpc.CallOption) (*UpdateTeamResponse, error)
 	DeleteTeam(ctx context.Context, in *DeleteTeamRequest, opts ...grpc.CallOption) (*DeleteTeamResponse, error)
 	GetTeamSpend(ctx context.Context, in *GetTeamSpendRequest, opts ...grpc.CallOption) (*GetTeamSpendResponse, error)
+	GetSpend(ctx context.Context, in *GetSpendRequest, opts ...grpc.CallOption) (*GetSpendResponse, error)
 }
 
 type adminServiceClient struct {
@@ -410,6 +412,16 @@ func (c *adminServiceClient) GetTeamSpend(ctx context.Context, in *GetTeamSpendR
 	return out, nil
 }
 
+func (c *adminServiceClient) GetSpend(ctx context.Context, in *GetSpendRequest, opts ...grpc.CallOption) (*GetSpendResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSpendResponse)
+	err := c.cc.Invoke(ctx, AdminService_GetSpend_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AdminServiceServer is the server API for AdminService service.
 // All implementations must embed UnimplementedAdminServiceServer
 // for forward compatibility.
@@ -448,6 +460,7 @@ type AdminServiceServer interface {
 	UpdateTeam(context.Context, *UpdateTeamRequest) (*UpdateTeamResponse, error)
 	DeleteTeam(context.Context, *DeleteTeamRequest) (*DeleteTeamResponse, error)
 	GetTeamSpend(context.Context, *GetTeamSpendRequest) (*GetTeamSpendResponse, error)
+	GetSpend(context.Context, *GetSpendRequest) (*GetSpendResponse, error)
 	mustEmbedUnimplementedAdminServiceServer()
 }
 
@@ -550,6 +563,9 @@ func (UnimplementedAdminServiceServer) DeleteTeam(context.Context, *DeleteTeamRe
 }
 func (UnimplementedAdminServiceServer) GetTeamSpend(context.Context, *GetTeamSpendRequest) (*GetTeamSpendResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetTeamSpend not implemented")
+}
+func (UnimplementedAdminServiceServer) GetSpend(context.Context, *GetSpendRequest) (*GetSpendResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSpend not implemented")
 }
 func (UnimplementedAdminServiceServer) mustEmbedUnimplementedAdminServiceServer() {}
 func (UnimplementedAdminServiceServer) testEmbeddedByValue()                      {}
@@ -1130,6 +1146,24 @@ func _AdminService_GetTeamSpend_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AdminService_GetSpend_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSpendRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).GetSpend(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_GetSpend_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).GetSpend(ctx, req.(*GetSpendRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AdminService_ServiceDesc is the grpc.ServiceDesc for AdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1260,6 +1294,10 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetTeamSpend",
 			Handler:    _AdminService_GetTeamSpend_Handler,
+		},
+		{
+			MethodName: "GetSpend",
+			Handler:    _AdminService_GetSpend_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

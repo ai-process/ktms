@@ -33,6 +33,7 @@ import (
 // AdminServer implements AdminService.
 type AdminServer struct {
 	spendReader SpendReader
+	spendLimits func(subjectType, subjectID, period string) int64
 	pb.UnimplementedAdminServiceServer
 	db      *proxydb.DB
 	keyring *crypto.Keyring
@@ -60,6 +61,12 @@ type SpendReader func(ctx context.Context, subject, subjectID, period string) (i
 // it (no Redis) spend is unmetered and reported as such.
 func (s *AdminServer) SetSpendReader(fn SpendReader) {
 	s.spendReader = fn
+}
+
+// SetSpendLimitResolver gives GetSpend the caps the throttle enforces,
+// wildcard limits included.
+func (s *AdminServer) SetSpendLimitResolver(fn func(subjectType, subjectID, period string) int64) {
+	s.spendLimits = fn
 }
 
 // --- config: models and rules ---
@@ -848,6 +855,37 @@ func (s *AdminServer) GetTeamSpend(ctx context.Context, req *pb.GetTeamSpendRequ
 		return nil, status.Error(codes.Unavailable, "spend counters unavailable")
 	}
 	out.SpentNanousd, out.ResetsAt, out.Metered = spent, timestamppb.New(resets), true
+	return out, nil
+}
+
+func (s *AdminServer) GetSpend(ctx context.Context, req *pb.GetSpendRequest) (*pb.GetSpendResponse, error) {
+	subject, id := req.GetSubjectType(), req.GetSubjectId()
+	if !spendlimit.ValidSubject(subject) || id == "" || id == spendlimit.Wildcard {
+		return nil, status.Error(codes.InvalidArgument, "subject_type must be key, user or team, with a subject_id")
+	}
+	out := &pb.GetSpendResponse{}
+	now := time.Now()
+	for _, e := range spendlimit.Enforced {
+		if e.Subject != subject {
+			continue
+		}
+		_, resets := spendlimit.Window(e.Period, now)
+		w := &pb.SpendWindow{Period: e.Period, ResetsAt: timestamppb.New(resets)}
+		if s.spendLimits != nil {
+			w.LimitNanousd = s.spendLimits(subject, id, e.Period)
+		}
+		// Counters exist only under a cap, as in GetTeamSpend.
+		if s.spendReader != nil && w.LimitNanousd > 0 {
+			spent, resets, err := s.spendReader(ctx, subject, id, e.Period)
+			if err != nil {
+				log.Warn().Err(err).Str("subject", subject).Str("id", id).Msg("spend counter unreadable")
+				return nil, status.Error(codes.Unavailable, "spend counters unavailable")
+			}
+			w.SpentNanousd, w.ResetsAt, w.Metered = spent, timestamppb.New(resets), true
+			w.RemainingNanousd = max(w.LimitNanousd-spent, 0)
+		}
+		out.Windows = append(out.Windows, w)
+	}
 	return out, nil
 }
 
