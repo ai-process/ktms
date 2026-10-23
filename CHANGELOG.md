@@ -27,6 +27,12 @@ version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.
   yet; generate a client from `proto/ktms/v1` instead.
 - Usage events keep their metadata within light-tokenmeter's 16 KiB limit: entries that do not
   fit are left out, largest first, with a warning, instead of the event being refused.
+- `ktms_requests_total` labels a call whose caller went away `status="canceled"` instead of
+  `error`, so client aborts stay out of vendor error rates.
+- `ktms_throttled_total` and `ktms_usage_events_dropped_total` export every reason at 0 from
+  startup, so `increase()` alerts also catch the first event after a restart.
+- The README's Operations section lists every metric with suggested alerts and sizing, and the
+  production checklist covers ports, network policies, key scopes and secrets.
 
 ### Fixed
 - `install-node.sh` no longer warns that a `ktms_node_` key does not look like a node key.

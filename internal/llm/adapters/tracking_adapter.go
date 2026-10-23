@@ -101,7 +101,7 @@ func (t *TrackingAdapter) GenerateText(ctx context.Context, chat *llm.ChatContex
 
 	statusLabel := "success"
 	if err != nil {
-		statusLabel = "error"
+		statusLabel = requestStatus(err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
@@ -267,7 +267,7 @@ func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.Chat
 
 	statusLabel := "success"
 	if err != nil {
-		statusLabel = "error"
+		statusLabel = requestStatus(err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
@@ -355,7 +355,7 @@ func (t *TrackingAdapter) SynthesizeSpeech(ctx context.Context, text, language, 
 
 	statusLabel := "success"
 	if err != nil {
-		statusLabel = "error"
+		statusLabel = requestStatus(err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
@@ -469,7 +469,7 @@ func (t *TrackingAdapter) GenerateImage(ctx context.Context, prompt, userID stri
 
 	statusLabel := "success"
 	if err != nil {
-		statusLabel = "error"
+		statusLabel = requestStatus(err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
@@ -578,7 +578,7 @@ func (t *TrackingAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, user
 
 	statusLabel := "success"
 	if err != nil {
-		statusLabel = "error"
+		statusLabel = requestStatus(err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
@@ -693,7 +693,7 @@ func (t *TrackingAdapter) EvaluateRollouts(ctx context.Context, req *llm.Evaluat
 
 	statusLabel := "success"
 	if err != nil {
-		statusLabel = "error"
+		statusLabel = requestStatus(err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
@@ -848,7 +848,7 @@ func (t *TrackingAdapter) CreateEmbeddings(ctx context.Context, req *llm.Embeddi
 
 	statusLabel := "success"
 	if err != nil {
-		statusLabel = "error"
+		statusLabel = requestStatus(err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
@@ -921,4 +921,13 @@ func (t *TrackingAdapter) CreateEmbeddings(ctx context.Context, req *llm.Embeddi
 	}
 
 	return result, err
+}
+
+// requestStatus labels a failed call; a caller that went away is not a vendor
+// error, so it gets its own label and stays out of error-rate alerts.
+func requestStatus(err error) string {
+	if errors.Is(err, context.Canceled) {
+		return "canceled"
+	}
+	return "error"
 }
