@@ -605,8 +605,7 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 					bufferedChunks = append(bufferedChunks, chunk)
 					fullText.WriteString(chunk.Delta)
 					if chunk.Usage != nil {
-						spent.Input = chunk.Usage.Input
-						spent.Output = chunk.Usage.Output
+						spent = *chunk.Usage
 					}
 					if resumeWatchdog != nil {
 						resumeWatchdog()
@@ -618,8 +617,7 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 					outChars += len([]rune(tc.ArgumentsDelta)) + len([]rune(tc.Name))
 				}
 				if chunk.Usage != nil {
-					spent.Input = chunk.Usage.Input
-					spent.Output = chunk.Usage.Output
+					spent = *chunk.Usage
 				}
 				if pauseWatchdog != nil {
 					pauseWatchdog()
@@ -677,8 +675,7 @@ func ExecuteStream(ctx context.Context, th Throttle, r Request, onChunk func(*pr
 					outChars += len([]rune(tc.ArgumentsDelta)) + len([]rune(tc.Name))
 				}
 				if c.Usage != nil {
-					spent.Input = c.Usage.Input
-					spent.Output = c.Usage.Output
+					spent = *c.Usage
 				}
 				if emitErr := onChunk(m, c); emitErr != nil {
 					th.Settle(res, spent)
@@ -777,8 +774,7 @@ func (r Request) callAndCheck(ctx context.Context, adapter llm.ClientAdapter, m 
 		}
 		// Tokens are billed per attempt, so they accumulate even when the
 		// shape is wrong and the answer is thrown away.
-		spent.Input += resp.Usage.Input
-		spent.Output += resp.Usage.Output
+		spent = spent.Add(resp.Usage)
 
 		if err := checkReply(resp, r.Chat, soft); err == nil {
 			th.Settle(res, spent)
@@ -988,8 +984,7 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 		for attempt := 1; ; attempt++ {
 			sp, callErr := attemptCall()
 			// Failed attempts can still be billed (partial media), so usage adds up.
-			spent.Input += sp.Input
-			spent.Output += sp.Output
+			spent = spent.Add(sp)
 			err = callErr
 			if err == nil || !retrySameModel(ctx, err, attempt, m.ID, r.Cooldown != nil) {
 				break

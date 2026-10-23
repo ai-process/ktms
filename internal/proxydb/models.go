@@ -75,12 +75,15 @@ type Model struct {
 	// Batch rates, 0 means half the standard (off-peak) rate.
 	PriceInBatchPerMtok  float64
 	PriceOutBatchPerMtok float64
-	DailyTokensPerKey    int64
-	DailyTokensPerUser   int64
-	Burst                int32
-	QueueTimeoutMs       int32
-	BudgetGraceMargin    float64
-	Enabled              bool
+	// Prompt-cache rates at the standard rate, 0 = the vendor default.
+	PriceCacheReadPerMtok  float64
+	PriceCacheWritePerMtok float64
+	DailyTokensPerKey      int64
+	DailyTokensPerUser     int64
+	Burst                  int32
+	QueueTimeoutMs         int32
+	BudgetGraceMargin      float64
+	Enabled                bool
 }
 
 func (m *Model) EffectiveBurst() int32 {
@@ -131,6 +134,31 @@ func (m *Model) BatchPriceInPerMtok() float64 {
 		return m.PriceInBatchPerMtok
 	}
 	return m.PriceInPerMtok / 2.0
+}
+
+// CacheReadPerMtok is the standard rate for input read from the prompt cache.
+// Unset, only Anthropic's published ratio is assumed (it holds for every Claude
+// model); elsewhere input price, which may overcharge but never undercharges.
+func (m *Model) CacheReadPerMtok() float64 {
+	if m.PriceCacheReadPerMtok > 0 {
+		return m.PriceCacheReadPerMtok
+	}
+	if m.Vendor == "anthropic" {
+		return m.PriceInPerMtok * 0.1
+	}
+	return m.PriceInPerMtok
+}
+
+// CacheWritePerMtok is the standard rate for input written to the prompt cache:
+// Anthropic and Bedrock charge 1.25x input for the default 5-minute cache.
+func (m *Model) CacheWritePerMtok() float64 {
+	if m.PriceCacheWritePerMtok > 0 {
+		return m.PriceCacheWritePerMtok
+	}
+	if m.Vendor == "anthropic" || m.Vendor == "bedrock" {
+		return m.PriceInPerMtok * 1.25
+	}
+	return m.PriceInPerMtok
 }
 
 func (m *Model) BatchPriceOutPerMtok() float64 {

@@ -946,11 +946,15 @@ func (s *httpStreamAdapter) Send(chunk *pb.GenerateTextChunk) error {
 }
 
 func usageJSON(u *pb.TokensUsage) map[string]any {
-	return map[string]any{
+	out := map[string]any{
 		"prompt_tokens":     u.GetInput(),
 		"completion_tokens": u.GetOutput(),
 		"total_tokens":      u.GetInput() + u.GetOutput(),
 	}
+	if u.GetCacheRead() > 0 {
+		out["prompt_tokens_details"] = map[string]any{"cached_tokens": u.GetCacheRead()}
+	}
+	return out
 }
 
 const (

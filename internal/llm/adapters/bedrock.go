@@ -74,12 +74,10 @@ func (a *BedrockAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatC
 	defer stream.Close()
 
 	var (
-		accumulatedInputTokens  int64
-		accumulatedOutputTokens int64
-		stopReason              types.StopReason
-		toolIndexByBlock        = make(map[int32]int32)
-		toolArgsReceived        = make(map[int32]bool)
-		nextToolIndex           int32
+		stopReason       types.StopReason
+		toolIndexByBlock = make(map[int32]int32)
+		toolArgsReceived = make(map[int32]bool)
+		nextToolIndex    int32
 	)
 
 	for event := range stream.Events() {
@@ -150,17 +148,8 @@ func (a *BedrockAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatC
 			}
 		case *types.ConverseStreamOutputMemberMetadata:
 			if ev.Value.Usage != nil {
-				if ev.Value.Usage.InputTokens != nil {
-					accumulatedInputTokens = int64(*ev.Value.Usage.InputTokens)
-				}
-				if ev.Value.Usage.OutputTokens != nil {
-					accumulatedOutputTokens = int64(*ev.Value.Usage.OutputTokens)
-				}
-				if accumulatedInputTokens > 0 || accumulatedOutputTokens > 0 {
-					streamChunk.Usage = &llm.TokensUsage{
-						Input:  int(accumulatedInputTokens),
-						Output: int(accumulatedOutputTokens),
-					}
+				if u := bedrockUsage(ev.Value.Usage); u.Input > 0 || u.Output > 0 {
+					streamChunk.Usage = &u
 				}
 			}
 		}
@@ -197,16 +186,19 @@ func bedrockUsage(u *types.TokenUsage) llm.TokensUsage {
 	if u == nil {
 		return llm.TokensUsage{}
 	}
-	var in, out int
-	if u.InputTokens != nil {
-		in = int(*u.InputTokens)
+	n := func(p *int32) int {
+		if p == nil {
+			return 0
+		}
+		return int(*p)
 	}
-	if u.OutputTokens != nil {
-		out = int(*u.OutputTokens)
-	}
+	// Like Anthropic's, inputTokens leaves out cached input; Input includes it.
+	read, write := n(u.CacheReadInputTokens), n(u.CacheWriteInputTokens)
 	return llm.TokensUsage{
-		Input:  in,
-		Output: out,
+		Input:      n(u.InputTokens) + read + write,
+		Output:     n(u.OutputTokens),
+		CacheRead:  read,
+		CacheWrite: write,
 	}
 }
 

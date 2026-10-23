@@ -501,6 +501,8 @@ self-hosted OpenAI-compatible server such as Ollama or llama.cpp; the model's `e
     "price_out_peak_per_mtok": 0,
     "price_in_batch_per_mtok": 0,           // batch pricing; 0 defaults to half normal price
     "price_out_batch_per_mtok": 0,
+    "price_cache_read_per_mtok": 0.075,     // cached input; 0 = vendor default (see below)
+    "price_cache_write_per_mtok": 0,
     "daily_tokens_per_key": 50000000,       // per API key per UTC day, 0 = unlimited
     "daily_tokens_per_user": 500000,        // per attributes["user_id"] (or svc:<key_name> fallback) per UTC day
     "enabled": true } }
@@ -509,6 +511,18 @@ self-hosted OpenAI-compatible server such as Ollama or llama.cpp; the model's `e
 (The `//` comments are for illustration; strip them from real JSON.) Send it to `UpsertModel`.
 
 When `price_in_batch_per_mtok` and `price_out_batch_per_mtok` are `0`, the proxy automatically defaults them to half the regular price (`price_in_per_mtok / 2`, `price_out_per_mtok / 2`).
+
+**Prompt caching.** Input served from or written to the vendor's prompt cache is priced at
+`price_cache_read_per_mtok` and `price_cache_write_per_mtok` (standard rates; peak and batch calls
+scale them like input). At `0` the vendor default applies: for `anthropic`, 0.1x input to read and
+1.25x to write (the 5-minute cache); for `bedrock`, 1.25x to write; for every other vendor, the
+input price, which never undercharges. Set the read rate for OpenAI, Gemini and DeepSeek models
+to get their discount. KTMS reads the cached part from each vendor (`cache_read_input_tokens` and
+`cache_creation_input_tokens`, `prompt_tokens_details.cached_tokens`, DeepSeek's
+`prompt_cache_hit_tokens`, Gemini's `cachedContentTokenCount`, Bedrock's `cacheRead/WriteInputTokens`),
+bills spend limits by it, sends it to light-tokenmeter as `cache_read_tokens` and
+`cache_write_tokens`, and returns it in `TokensUsage.cache_read` / `cache_write` and, over HTTP,
+`usage.prompt_tokens_details.cached_tokens`.
 
 Capabilities a model may declare:
 
@@ -1309,6 +1323,7 @@ metrics are served next to them.
 | `ktms_request_duration_seconds` | `vendor`, `model`, `effort` | Upstream call duration, histogram; for a stream, the whole stream. |
 | `ktms_time_to_first_token_seconds` | `vendor`, `model` | Time to the first streamed chunk, histogram. |
 | `ktms_tokens_total` | `vendor`, `model`, `type` (`input`, `output`) | Tokens consumed. |
+| `ktms_cache_tokens_total` | `vendor`, `model`, `type` (`read`, `write`) | The part of input read from or written to the prompt cache. |
 | `ktms_active_requests` | `vendor`, `model` | Upstream calls in flight. |
 | `ktms_throttled_total` | `reason` (`rpm`, `budget_key`, `budget_user`, `spend_key_daily`, `spend_key_monthly`, `spend_user_daily`, `spend_user_monthly`, `spend_team_monthly`, `spend_unavailable`) | Calls refused by a limit; `spend_unavailable` is Redis down with `SPEND_LIMITS_FAIL_MODE=closed`. |
 | `ktms_fallbacks_total` | `from_model`, `to_model`, `reason` | Moves down a fallback chain. |

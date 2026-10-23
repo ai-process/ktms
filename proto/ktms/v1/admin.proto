@@ -30,6 +30,11 @@ message ModelSpec {
   int32 rpm_burst = 16; // extra burst allowed above steady-state rpm (0 = default burst of rpm - 1, <0 = burst disabled)
   int32 queue_timeout_ms = 17; // max wait for pool inference slot in ms (0 = fallback immediately; capped to 250ms for interactive non-svc users)
   double budget_grace_margin = 18; // allowed daily budget overdraft (0.0 = system default 0.05, <0.0 = disabled)
+  // Prompt-cache rates, standard (off-peak) like price_in_per_mtok; peak and batch
+  // calls scale them by the same ratio as input. 0 = the vendor default: for
+  // anthropic 0.1x input to read and 1.25x to write, for every other vendor 1x.
+  double price_cache_read_per_mtok = 19;
+  double price_cache_write_per_mtok = 20;
 }
 
 message RuleSpec {

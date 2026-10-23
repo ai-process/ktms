@@ -17,6 +17,7 @@ func (s *stubAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (
 }
 
 type capturingTracker struct {
+	usage                           llm.TokensUsage
 	userID, actionID, vendor, model string
 	in, out                         int
 	cost                            int64
@@ -24,9 +25,10 @@ type capturingTracker struct {
 	calls                           int
 }
 
-func (c *capturingTracker) RecordUsage(userID, actionID, vendor, model string, inputTokens, outputTokens int, durationMs, costNanoUSD int64, status usagev1.Status, meta map[string]string) error {
+func (c *capturingTracker) RecordUsage(userID, actionID, vendor, model string, usage llm.TokensUsage, durationMs, costNanoUSD int64, status usagev1.Status, meta map[string]string) error {
 	c.userID, c.actionID, c.vendor, c.model = userID, actionID, vendor, model
-	c.in, c.out = inputTokens, outputTokens
+	c.in, c.out = usage.Input, usage.Output
+	c.usage = usage
 	c.cost = costNanoUSD
 	c.meta = meta
 	c.calls++

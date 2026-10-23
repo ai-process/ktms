@@ -3,6 +3,7 @@ package usagereport
 import (
 	"context"
 	"errors"
+	"github.com/ai-process/ktms/internal/llm"
 	"net"
 	"strings"
 	"sync"
@@ -76,7 +77,7 @@ func (f *fakeCollector) delivered() (unique, total int) {
 func record(t *testing.T, c *UsageCollectorClient, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
-		if err := c.RecordUsage("u", "a", "openai", "m", 1, 1, 1, 0, usagev1.Status_STATUS_SUCCESS, nil); err != nil {
+		if err := c.RecordUsage("u", "a", "openai", "m", llm.TokensUsage{Input: 1, Output: 1}, 1, 0, usagev1.Status_STATUS_SUCCESS, nil); err != nil {
 			t.Fatalf("RecordUsage: %v", err)
 		}
 	}
@@ -169,7 +170,7 @@ func TestRejectedEventDoesNotBlockTheRest(t *testing.T) {
 	defer c.Close()
 	before := testutil.ToFloat64(observability.UsageEventsDroppedTotal.WithLabelValues("rejected"))
 	record(t, c, 3)
-	if err := c.RecordUsage("u", "a", "openai", "refused", 1, 1, 1, 0, usagev1.Status_STATUS_SUCCESS, nil); err != nil {
+	if err := c.RecordUsage("u", "a", "openai", "refused", llm.TokensUsage{Input: 1, Output: 1}, 1, 0, usagev1.Status_STATUS_SUCCESS, nil); err != nil {
 		t.Fatal(err)
 	}
 	record(t, c, 3)
@@ -202,10 +203,10 @@ func TestValidationMirrorsCollector(t *testing.T) {
 	c := newClient(newFake(), "p", 10)
 	defer c.Close()
 	long := strings.Repeat("m", maxModelLength+1)
-	if err := c.RecordUsage("u", "a", "openai", long, 1, 1, 1, 0, usagev1.Status_STATUS_SUCCESS, nil); err == nil {
+	if err := c.RecordUsage("u", "a", "openai", long, llm.TokensUsage{Input: 1, Output: 1}, 1, 0, usagev1.Status_STATUS_SUCCESS, nil); err == nil {
 		t.Fatal("a model name the collector would refuse must fail at RecordUsage")
 	}
-	if err := c.RecordUsage("u", "a", "openai", "m", 1, 1, 1, -5, usagev1.Status_STATUS_SUCCESS, nil); err == nil {
+	if err := c.RecordUsage("u", "a", "openai", "m", llm.TokensUsage{Input: 1, Output: 1}, 1, -5, usagev1.Status_STATUS_SUCCESS, nil); err == nil {
 		t.Fatal("a negative cost must fail at RecordUsage")
 	}
 }
@@ -319,5 +320,25 @@ func TestFitMetaKeepsEventsWithinTheCollectorLimit(t *testing.T) {
 	}
 	if big["prompt"] == "" {
 		t.Error("the caller's map was modified")
+	}
+}
+
+// Cache counts reach the event within tokens_input, so light-tokenmeter never
+// refuses the event (and its batch) over an adapter's inconsistent report.
+func TestCacheTokensStayWithinInput(t *testing.T) {
+	for _, tc := range []struct {
+		usage       llm.TokensUsage
+		read, write int64
+	}{
+		{llm.TokensUsage{Input: 13000, CacheRead: 10000, CacheWrite: 2000}, 10000, 2000},
+		{llm.TokensUsage{Input: 100, CacheRead: 80, CacheWrite: 80}, 80, 20},
+		{llm.TokensUsage{Input: 10, CacheRead: 50}, 10, 0},
+		{llm.TokensUsage{Input: 10, CacheRead: -1, CacheWrite: -1}, 0, 0},
+		{llm.TokensUsage{CacheRead: 5}, 0, 0},
+	} {
+		read, write := cacheTokens(tc.usage)
+		if read != tc.read || write != tc.write {
+			t.Errorf("cacheTokens(%+v) = %d, %d; want %d, %d", tc.usage, read, write, tc.read, tc.write)
+		}
 	}
 }

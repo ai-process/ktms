@@ -140,6 +140,7 @@ func (a *GoogleAdapter) parseGenerateContentResponse(result *genai.GenerateConte
 	})
 	if result.UsageMetadata != nil {
 		response.Usage.Input = int(result.UsageMetadata.PromptTokenCount)
+		response.Usage.CacheRead = geminiCacheRead(result.UsageMetadata.CachedContentTokenCount, result.UsageMetadata.PromptTokenCount)
 		if result.UsageMetadata.CandidatesTokenCount > 0 {
 			response.Usage.Output = int(result.UsageMetadata.CandidatesTokenCount)
 		} else if result.UsageMetadata.TotalTokenCount >= result.UsageMetadata.PromptTokenCount {
@@ -293,7 +294,8 @@ func (a *GoogleAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCo
 		var streamChunk llm.StreamChunk
 		if resp.UsageMetadata != nil {
 			streamChunk.Usage = &llm.TokensUsage{
-				Input: int(resp.UsageMetadata.PromptTokenCount),
+				Input:     int(resp.UsageMetadata.PromptTokenCount),
+				CacheRead: geminiCacheRead(resp.UsageMetadata.CachedContentTokenCount, resp.UsageMetadata.PromptTokenCount),
 			}
 			if resp.UsageMetadata.CandidatesTokenCount > 0 {
 				streamChunk.Usage.Output = int(resp.UsageMetadata.CandidatesTokenCount)
@@ -1121,4 +1123,10 @@ func (a *GoogleAdapter) CreateEmbeddings(ctx context.Context, req *llm.Embedding
 	}
 
 	return result, nil
+}
+
+// geminiCacheRead is the cached part of promptTokenCount, which includes it.
+// Context caches bill storage by time, not per token written, so there is no write.
+func geminiCacheRead(cached, prompt int32) int {
+	return int(min(max(cached, 0), prompt))
 }

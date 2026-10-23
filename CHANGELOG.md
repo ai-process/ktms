@@ -22,6 +22,12 @@ version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.
 - The Helm chart is published with every release at `oci://ghcr.io/ai-process/charts/ktms`,
   signed with cosign; its version and `appVersion` are the release version. CI installs it from
   an OCI registry on a kind cluster.
+- Prompt-cache pricing: `ModelSpec.price_cache_read_per_mtok` and `price_cache_write_per_mtok`
+  (0 = the vendor default, Anthropic's 0.1x read and 1.25x write). Cached input from Anthropic,
+  OpenAI, DeepSeek, Gemini and Bedrock is priced at these rates in spend limits and usage costs,
+  sent to light-tokenmeter as `cache_read_tokens` / `cache_write_tokens`, returned in
+  `TokensUsage.cache_read` / `cache_write` (HTTP: `prompt_tokens_details.cached_tokens`), and
+  counted in `ktms_cache_tokens_total`.
 
 ### Changed
 - Relicensed under Apache 2.0.
@@ -38,6 +44,8 @@ version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.
   production checklist covers ports, network policies, key scopes and secrets.
 
 ### Fixed
+- Anthropic and Bedrock calls that hit the prompt cache were priced as plain input: cache reads
+  10x too high and cache writes 20% too low, in spend limits and usage costs alike.
 - `install-node.sh` no longer warns that a `ktms_node_` key does not look like a node key.
 - CONTRIBUTING and `compose.yaml` use the KTMS database and `KTMS_ENCRYPTION_KEYS` names.
 

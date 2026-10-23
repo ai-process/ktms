@@ -175,8 +175,10 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 
 	out := &pb.GenerateTextResponse{
 		Usage: &pb.TokensUsage{
-			Input:  int64(resp.Usage.Input),
-			Output: int64(resp.Usage.Output),
+			Input:      int64(resp.Usage.Input),
+			Output:     int64(resp.Usage.Output),
+			CacheRead:  int64(resp.Usage.CacheRead),
+			CacheWrite: int64(resp.Usage.CacheWrite),
 		},
 		ResolvedModel:  model.ID,
 		ResolvedVendor: model.Vendor,
@@ -331,8 +333,10 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		}
 		if chunk.Usage != nil {
 			outChunk.Usage = &pb.TokensUsage{
-				Input:  int64(chunk.Usage.Input),
-				Output: int64(chunk.Usage.Output),
+				Input:      int64(chunk.Usage.Input),
+				Output:     int64(chunk.Usage.Output),
+				CacheRead:  int64(chunk.Usage.CacheRead),
+				CacheWrite: int64(chunk.Usage.CacheWrite),
 			}
 			streamUsage = outChunk.Usage
 		}
@@ -714,14 +718,16 @@ func (s *ProxyServer) ListModels(ctx context.Context, _ *pb.ListModelsRequest) (
 
 func modelInfo(m *proxydb.Model) *pb.ModelInfo {
 	return &pb.ModelInfo{
-		Id:                   m.ID,
-		Vendor:               m.Vendor,
-		Efforts:              effortsToProto(m.Efforts),
-		Capabilities:         m.Capabilities,
-		Rpm:                  m.RPM,
-		PriceInPerMtok:       m.PriceInPerMtok,
-		PriceOutPerMtok:      m.PriceOutPerMtok,
-		PriceInBatchPerMtok:  m.BatchPriceInPerMtok(),
-		PriceOutBatchPerMtok: m.BatchPriceOutPerMtok(),
+		Id:                     m.ID,
+		Vendor:                 m.Vendor,
+		Efforts:                effortsToProto(m.Efforts),
+		Capabilities:           m.Capabilities,
+		Rpm:                    m.RPM,
+		PriceInPerMtok:         m.PriceInPerMtok,
+		PriceOutPerMtok:        m.PriceOutPerMtok,
+		PriceInBatchPerMtok:    m.BatchPriceInPerMtok(),
+		PriceOutBatchPerMtok:   m.BatchPriceOutPerMtok(),
+		PriceCacheReadPerMtok:  m.CacheReadPerMtok(),
+		PriceCacheWritePerMtok: m.CacheWritePerMtok(),
 	}
 }

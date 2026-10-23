@@ -17,6 +17,20 @@ type Response struct {
 type TokensUsage struct {
 	Input  int
 	Output int
+	// Prompt-cache tokens, both part of Input: read from the vendor's cache and
+	// written to it. Vendors bill each at its own rate.
+	CacheRead  int
+	CacheWrite int
+}
+
+// Add sums two usages field by field, as attempts billed one after another.
+func (u TokensUsage) Add(o TokensUsage) TokensUsage {
+	return TokensUsage{
+		Input:      u.Input + o.Input,
+		Output:     u.Output + o.Output,
+		CacheRead:  u.CacheRead + o.CacheRead,
+		CacheWrite: u.CacheWrite + o.CacheWrite,
+	}
 }
 
 func (r *Response) AddMessage(message *Message) {

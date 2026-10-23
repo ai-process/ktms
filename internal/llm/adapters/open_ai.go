@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -278,10 +279,8 @@ func (a *OpenAIAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCo
 		var streamChunk llm.StreamChunk
 
 		if chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
-			streamChunk.Usage = &llm.TokensUsage{
-				Input:  int(chunk.Usage.PromptTokens),
-				Output: int(chunk.Usage.CompletionTokens),
-			}
+			u := completionUsage(chunk.Usage)
+			streamChunk.Usage = &u
 		}
 
 		if len(chunk.Choices) > 0 {
@@ -315,9 +314,23 @@ func usageOf(resp *openai.ChatCompletion) llm.TokensUsage {
 	if resp == nil {
 		return llm.TokensUsage{}
 	}
+	return completionUsage(resp.Usage)
+}
+
+// completionUsage reads cached input from prompt_tokens_details.cached_tokens
+// (OpenAI, Groq, Mistral) or prompt_cache_hit_tokens (DeepSeek). Both are part
+// of prompt_tokens; OpenAI-style caches bill no separate write.
+func completionUsage(u openai.CompletionUsage) llm.TokensUsage {
+	cached := u.PromptTokensDetails.CachedTokens
+	if cached == 0 {
+		if f, ok := u.JSON.ExtraFields["prompt_cache_hit_tokens"]; ok {
+			cached, _ = strconv.ParseInt(f.Raw(), 10, 64)
+		}
+	}
 	return llm.TokensUsage{
-		Input:  int(resp.Usage.PromptTokens),
-		Output: int(resp.Usage.CompletionTokens),
+		Input:     int(u.PromptTokens),
+		Output:    int(u.CompletionTokens),
+		CacheRead: int(min(max(cached, 0), u.PromptTokens)),
 	}
 }
 
@@ -358,8 +371,7 @@ func (a *OpenAIAdapter) toResponse(resp *openai.ChatCompletion, carried llm.Toke
 		return nil, fmt.Errorf("empty response from OpenAI (no choices)")
 	}
 	spent := usageOf(resp)
-	response.Usage.Input = spent.Input + carried.Input
-	response.Usage.Output = spent.Output + carried.Output
+	response.Usage = spent.Add(carried)
 	return response, nil
 }
 

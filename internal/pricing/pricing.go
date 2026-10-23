@@ -38,14 +38,25 @@ func ModeAt(m *proxydb.Model, t time.Time) Mode {
 	return ModeStandard
 }
 
-// Cost prices usage on m in the given mode, rounding each side up so a
-// budget is never under-charged by a fraction of a nano-USD.
+// Cost prices usage on m in the given mode, rounding each part up so a
+// budget is never under-charged by a fraction of a nano-USD. The cached part
+// of the input is priced at the cache rates, scaled like input for the mode.
 func Cost(m *proxydb.Model, usage llm.TokensUsage, mode Mode) int64 {
 	if m == nil {
 		return 0
 	}
 	in, out := rates(m, mode)
-	return addSat(tokensCost(int64(usage.Input), in), tokensCost(int64(usage.Output), out))
+	input := int64(max(usage.Input, 0))
+	read := min(int64(max(usage.CacheRead, 0)), input)
+	write := min(int64(max(usage.CacheWrite, 0)), input-read)
+	scale := 1.0
+	if m.PriceInPerMtok > 0 {
+		scale = in / m.PriceInPerMtok
+	}
+	cost := tokensCost(input-read-write, in)
+	cost = addSat(cost, tokensCost(read, m.CacheReadPerMtok()*scale))
+	cost = addSat(cost, tokensCost(write, m.CacheWritePerMtok()*scale))
+	return addSat(cost, tokensCost(int64(usage.Output), out))
 }
 
 func rates(m *proxydb.Model, mode Mode) (in, out float64) {
