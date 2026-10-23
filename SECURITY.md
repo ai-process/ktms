@@ -29,7 +29,7 @@ docker buildx imagetools inspect coyl/ktms:${V#v} --format '{{ json .SBOM }}'
 docker buildx imagetools inspect coyl/ktms:${V#v} --format '{{ json .Provenance }}'
 ```
 
-The Helm chart:
+The Helm chart (from 1.0.1; chart 1.0.0 was published unsigned):
 
 ```bash
 cosign verify ghcr.io/ai-process/charts/ktms:${V#v} \

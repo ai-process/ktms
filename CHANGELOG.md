@@ -7,6 +7,13 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- The release signs the Helm chart again: the 1.0.0 job pushed the chart, then stopped before
+  signing it, because `helm pull` needs its destination directory to exist. Chart 1.0.0 stays
+  unsigned; the images and binaries of 1.0.0 are signed.
+- The release's `usage.v1` compatibility check no longer counts the Go package of the copy, which
+  `buf.gen.usage.yaml` sets, as a break (the pull-request check already did not).
+
 ## [1.0.0] - 2026-10-23
 
 The first stable release of Keystone. The Model Switchboard. (KTMS). From here on, the public API

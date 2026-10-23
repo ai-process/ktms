@@ -46,7 +46,7 @@ jobs:
         working-directory: usage-proto
         run: |
           buf breaking . --against "../.git#tag=${{ steps.prev.outputs.tag }},subdir=usage-proto" \
-            --config '{"version":"v2","breaking":{"use":["FILE"]}}'
+            --config '{"version":"v2","breaking":{"use":["FILE"],"except":["FILE_SAME_GO_PACKAGE"]}}'
       - name: Upgrade from the previous releases
         env:
           PREV: ${{ steps.prev.outputs.list }}
