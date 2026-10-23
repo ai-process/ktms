@@ -8,6 +8,13 @@ All notable changes to KTMS are listed here. The format follows
 ## [Unreleased]
 
 ### Added
+- The `ktms` CLI beyond `config`: contexts in `~/.config/ktms/config.yaml` with keys from an
+  environment variable, a 0600 file or the system keychain; `models`, `rules`, `keys`,
+  `vendor-keys`, `orgs`, `teams`, `spend`, `limits`, `nodes`, `node-keys`, `rotate-encryption`;
+  `chat` for a test call showing the rule, model and vendor; `health`; `-o json|yaml`; exit codes
+  by error class; completion for bash, zsh and fish. Released as archives, the `coyl/ktms-cli`
+  image and a Homebrew formula (published once the tap token is set).
+- `/healthz` reports the server's `version`.
 - Configuration as a file: `ktms config validate|plan|apply|export|schema` keeps models, rules,
   organizations and teams, client keys and their policies, vendor keys (from environment
   variables), spend limits and user rate limits in YAML, plans the changes against the live

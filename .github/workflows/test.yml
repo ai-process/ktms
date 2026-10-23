@@ -70,6 +70,18 @@ jobs:
       - name: Upgrade from the previous release
         run: ./scripts/upgrade-test.sh
 
+  # The ktms CLI against a built Keystone: config apply, keys mint, chat, spend get.
+  cli-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache: true
+      - name: CLI end to end
+        run: ./scripts/cli-e2e.sh
+
   docker:
     runs-on: ubuntu-latest
     steps:
@@ -99,6 +111,14 @@ jobs:
           push: false
           cache-from: type=gha,scope=node-agent
           cache-to: type=gha,mode=max,scope=node-agent
+      - name: Build CLI image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.cli
+          push: false
+          cache-from: type=gha,scope=cli
+          cache-to: type=gha,mode=max,scope=cli
 
   # The chart installed from an OCI registry on a fresh cluster, as users do.
   helm-kind:

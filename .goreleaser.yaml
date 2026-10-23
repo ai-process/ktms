@@ -19,7 +19,15 @@ builds:
     goos: [darwin, linux]
     goarch: [amd64, arm64]
     flags: [-trimpath]
-    ldflags: ["-s -w"]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
+  - id: cli
+    main: ./cmd/ktms
+    binary: ktms
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
 
 archives:
   - id: node
@@ -31,6 +39,11 @@ archives:
     ids: [server]
     formats: [tar.gz]
     name_template: "ktms-server_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [LICENSE, NOTICE]
+  - id: cli
+    ids: [cli]
+    formats: [tar.gz]
+    name_template: "ktms_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files: [LICENSE, NOTICE]
 
 checksum:
@@ -51,7 +64,7 @@ signs:
 notarize:
   macos:
     - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
-      ids: [node, server]
+      ids: [node, server, cli]
       sign:
         certificate: "{{ .Env.MACOS_SIGN_P12 }}"
         password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
@@ -76,6 +89,21 @@ brews:
     skip_upload: '{{ if isEnvSet "HOMEBREW_TAP_TOKEN" }}false{{ else }}true{{ end }}'
     test: |
       system "#{bin}/ktms-node", "--version"
+  - name: ktms
+    ids: [cli]
+    homepage: https://github.com/ai-process/ktms
+    description: Command-line administration of a Keystone (KTMS) gateway
+    license: Apache-2.0
+    repository:
+      owner: ai-process
+      name: homebrew-tap
+      token: '{{ if isEnvSet "HOMEBREW_TAP_TOKEN" }}{{ .Env.HOMEBREW_TAP_TOKEN }}{{ end }}'
+    skip_upload: '{{ if isEnvSet "HOMEBREW_TAP_TOKEN" }}false{{ else }}true{{ end }}'
+    install: |
+      bin.install "ktms"
+      generate_completions_from_executable(bin/"ktms", "completion")
+    test: |
+      system "#{bin}/ktms", "version"
 
 changelog:
   sort: asc
