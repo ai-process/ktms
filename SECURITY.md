@@ -29,6 +29,14 @@ docker buildx imagetools inspect coyl/ktms:${V#v} --format '{{ json .SBOM }}'
 docker buildx imagetools inspect coyl/ktms:${V#v} --format '{{ json .Provenance }}'
 ```
 
+The Helm chart:
+
+```bash
+cosign verify ghcr.io/ai-process/charts/ktms:${V#v} \
+  --certificate-identity "https://github.com/ai-process/ktms/.github/workflows/release.yml@refs/tags/$V" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 Binaries on the GitHub release (`checksums.txt` is signed; each archive has an `.sbom.json`):
 
 ```bash

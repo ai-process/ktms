@@ -1319,10 +1319,12 @@ git tag v1.0.0 && git push origin v1.0.0
 
 The release workflow first runs `.github/workflows/compat.yml`: `buf breaking` against the
 previous published release in the tag's history, and the upgrade test from it (and from the
-oldest release of the same major). If it fails, nothing is published. Then GoReleaser publishes
-the binaries and, after it, the Docker images: an image on Docker Hub marks a complete release,
-which is how the next release finds its predecessor (re-run a failed image job before tagging
-again). A release that breaks the proto on purpose (an Experimental change, or a new major) sets
+oldest release of the same major). If it fails, nothing is published; nor if
+`deploy/helm/ktms/Chart.yaml` does not carry the tag's version as `version` and `appVersion`
+(bump both in the release commit). Then GoReleaser publishes the binaries, after it the Docker
+images, and last the Helm chart. An image on Docker Hub marks a complete release, which is how
+the next release finds its predecessor (re-run a failed image job before tagging again); a
+failed chart job can be re-run at any time and keeps a version already pushed. A release that breaks the proto on purpose (an Experimental change, or a new major) sets
 the repository variable `ALLOW_BREAKING_TAG` to its tag, which skips the proto checks; the
 upgrade test still runs. Only the newest stable tag moves `latest`, `slim` and `audio`, so a
 backport does not.
@@ -1334,7 +1336,7 @@ backport does not.
   and `:<tag>-audio`, `:audio` (with ffmpeg), plus `coyl/ktms-node:<tag>` (node agent).
   The repository needs the secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD` (an access token).
 - **Helm chart** (`.github/workflows/release.yml`): `oci://ghcr.io/ai-process/charts/ktms`,
-  version and `appVersion` taken from the tag, signed with cosign. It needs no secret; after the
+  version and `appVersion` from the tag, signed with cosign. It needs no secret; after the
   first release the `charts/ktms` package has to be made public once in the organization's
   package settings. CI installs the chart from an OCI registry on kind
   (`scripts/helm-kind.sh`).
