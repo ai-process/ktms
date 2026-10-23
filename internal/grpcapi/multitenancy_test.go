@@ -127,6 +127,15 @@ func TestAdminService_OrganizationAndTeamValidation(t *testing.T) {
 	if _, err := server.MintAPIKey(ctx, &pb.MintAPIKeyRequest{Name: "k", TeamId: "not-a-uuid"}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("expected InvalidArgument on invalid team_id in MintAPIKey, got %v", err)
 	}
+	// The admin reads are not filtered by tenant, so a read key cannot have one.
+	for _, req := range []*pb.MintAPIKeyRequest{
+		{Name: "k", Scopes: []string{"admin:read"}, OrgId: validOrgID},
+		{Name: "k", Scopes: []string{"generate", "admin:read"}, TeamId: validTeamID},
+	} {
+		if _, err := server.MintAPIKey(ctx, req); status.Code(err) != codes.InvalidArgument {
+			t.Fatalf("expected InvalidArgument for a tenant-bound admin:read key, got %v", err)
+		}
+	}
 
 	// Organization validation
 	if _, err := server.CreateOrganization(ctx, &pb.CreateOrganizationRequest{Name: ""}); status.Code(err) != codes.InvalidArgument {

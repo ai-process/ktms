@@ -247,6 +247,20 @@ func TestVerifyScope(t *testing.T) {
 	if _, err := v.VerifyScope(context.Background(), adminKey, ScopeGenerate); err != nil {
 		t.Fatalf("admin key denied generate: %v", err)
 	}
+	if _, err := v.VerifyScope(context.Background(), adminKey, ScopeAdminRead); err != nil {
+		t.Fatalf("admin key denied admin:read: %v", err)
+	}
+
+	// A read key is not an admin key.
+	reader := mint(t, store, "viewer", ScopeAdminRead)
+	if _, err := v.VerifyScope(context.Background(), reader, ScopeAdminRead); err != nil {
+		t.Fatalf("read key denied admin:read: %v", err)
+	}
+	for _, s := range []string{ScopeAdmin, ScopeGenerate, ScopeNode} {
+		if _, err := v.VerifyScope(context.Background(), reader, s); !errors.Is(err, ErrForbidden) {
+			t.Fatalf("read key on %s: err = %v, want ErrForbidden", s, err)
+		}
+	}
 }
 
 func TestParseBearer(t *testing.T) {

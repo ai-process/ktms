@@ -359,6 +359,10 @@ func (s *AdminServer) MintAPIKey(ctx context.Context, req *pb.MintAPIKeyRequest)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	// The admin reads are not filtered by tenant, so a tenant on a read key would mislead.
+	if slices.Contains(scopes, apikeys.ScopeAdminRead) && (req.GetOrgId() != "" || req.GetTeamId() != "") {
+		return nil, status.Error(codes.InvalidArgument, "an admin:read key reads every tenant and cannot belong to an organization or team")
+	}
 	allowed, rpm, tpm, err := keyPolicy(req.GetPolicy())
 	if err != nil {
 		return nil, err

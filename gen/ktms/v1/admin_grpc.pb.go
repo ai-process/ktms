@@ -57,8 +57,9 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// All admin RPCs require the "admin" scope. Every config mutation validates
-// the resulting full config in one transaction and bumps the config version.
+// Admin RPCs require the "admin" scope; the Get* and List* reads also accept
+// "admin:read". Every config mutation validates the resulting full config in
+// one transaction and bumps the config version.
 type AdminServiceClient interface {
 	UpsertModel(ctx context.Context, in *UpsertModelRequest, opts ...grpc.CallOption) (*UpsertModelResponse, error)
 	DeleteModel(ctx context.Context, in *DeleteModelRequest, opts ...grpc.CallOption) (*DeleteModelResponse, error)
@@ -426,8 +427,9 @@ func (c *adminServiceClient) GetSpend(ctx context.Context, in *GetSpendRequest, 
 // All implementations must embed UnimplementedAdminServiceServer
 // for forward compatibility.
 //
-// All admin RPCs require the "admin" scope. Every config mutation validates
-// the resulting full config in one transaction and bumps the config version.
+// Admin RPCs require the "admin" scope; the Get* and List* reads also accept
+// "admin:read". Every config mutation validates the resulting full config in
+// one transaction and bumps the config version.
 type AdminServiceServer interface {
 	UpsertModel(context.Context, *UpsertModelRequest) (*UpsertModelResponse, error)
 	DeleteModel(context.Context, *DeleteModelRequest) (*DeleteModelResponse, error)

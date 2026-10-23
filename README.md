@@ -64,7 +64,7 @@ Two gRPC services share port `9090`:
 | Service | Purpose | Needed scope |
 | --- | --- | --- |
 | `ktms.v1.GatewayService` | `GenerateText`, `GenerateTextStream`, `SubmitBatch`, `GetBatch`, `ListBatchResults`, `CancelBatch`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `JudgeStream`, `EvaluateRollouts`, `GetEmbeddings`, `ListModels` | `generate` |
-| `ktms.v1.AdminService` | models, rules, vendor keys, API keys, key rotation | `admin` |
+| `ktms.v1.AdminService` | models, rules, vendor keys, API keys, key rotation | `admin`; `admin:read` for the `Get*` and `List*` reads |
 
 Port `8080` serves the health probes (`/healthz`, `/readyz`) and the
 [OpenAI-compatible HTTP API](#openai-compatible-http-api) under `/v1`. gRPC server
@@ -376,7 +376,8 @@ Cloudflare tunnel per attempt.
   configured (`OTEL_EXPORTER_OTLP_ENDPOINT`, `SENTRY_DSN`, `LATENT_ENCODER_URL`).
 - **TLS to dependencies.** Use `sslmode=require` for Postgres and `USAGE_COLLECTOR_TLS` for the
   collector. The Redis client has no TLS: keep Redis on a private network with `REDIS_PASSWORD`.
-- **Least-privilege keys.** `generate` for clients; `admin` only for the console and operators.
+- **Least-privilege keys.** `generate` for clients; `admin:read` for dashboards, assistants and
+  anything that only looks; `admin` only for the console and operators.
 - **Spend limits on every client key** ([Spend limits](#5-spend-limits-optional)).
 - **Secrets.** Keep `KTMS_ENCRYPTION_KEYS`, `DATABASE_URL` and `USAGE_COLLECTOR_TOKEN` in a secret
   manager; the collector token needs only light-tokenmeter's `write` scope. Rotate the keyring
@@ -479,7 +480,7 @@ command, which plans the changes first, like `terraform plan`:
 
 ```bash
 go install github.com/ai-process/ktms/cmd/ktms@latest
-export KTMS_ADDR=localhost:9090 KTMS_ADMIN_KEY=ktms_...   # an admin key; --tls behind TLS
+export KTMS_ADDR=localhost:9090 KTMS_ADMIN_KEY=ktms_...   # admin; admin:read is enough for plan and export
 ktms config export -o ktms.yaml      # start from what is running
 ktms config plan -f ktms.yaml        # what would change; --detailed-exitcode exits 3 on drift
 ktms config apply -f ktms.yaml       # asks before applying; --yes for scripts
@@ -512,7 +513,8 @@ user_rate_limits:
   is enabled. The JSON Schema is [`schema/ktms-config.schema.json`](schema/ktms-config.schema.json)
   (also `ktms config schema`), a full example [`schema/example.yaml`](schema/example.yaml).
 - Only the sections in the file are managed; a missing section is left alone. `--prune` deletes
-  what a managed section does not list, except admin keys, which it only reports.
+  what a managed section does not list, except `admin` and `admin:read` keys, which it only
+  reports.
 - Secrets never go in the file. A vendor key is read from the variable named in
   `plain_key_env` and compared with the stored one by fingerprint (`VendorKeyInfo.fingerprint`);
   a new client key is printed once, after apply. Exported vendor keys point at
@@ -532,7 +534,10 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
 ```
 
 Keys look like `ktms_<hex>` (keys minted before the rename start with `llm_` and keep working). Only a hash is stored, and the plaintext is returned once.
-Scopes: `generate` (data plane) and `admin` (implies everything).
+Scopes: `generate` (data plane), `admin` (implies everything) and `admin:read` (the Admin API
+reads: `GetConfig`, `GetSpend`, `GetTeam`, `GetTeamSpend` and every `List*`; nothing that changes
+state). A read key sees every tenant, so it cannot be bound to an organization or team. `GetConfig`
+never returns a vendor key itself, only its fingerprint.
 `ListAPIKeys` and `RevokeAPIKey` do what they say.
 
 A key can carry its own policy, on top of its team's and each model's `rpm`, at minting

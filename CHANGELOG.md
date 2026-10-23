@@ -15,6 +15,9 @@ All notable changes to KTMS are listed here. The format follows
   in `schema/ktms-config.schema.json`. Experimental (`v1alpha1`).
 - `VendorKeyInfo.fingerprint` in `GetConfig`: the first 16 hex characters of the vendor key's
   SHA-256, so a client can tell whether the stored key equals one it holds.
+- `admin:read` scope: a key with it may call the Admin API reads (`GetConfig`, `GetSpend`,
+  `GetTeam`, `GetTeamSpend`, every `List*`) and is refused on everything that changes state, for
+  dashboards, CLI and MCP clients that only look.
 
 ## [1.1.0] - 2026-10-23
 
