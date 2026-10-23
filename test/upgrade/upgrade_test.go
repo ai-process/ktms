@@ -106,13 +106,14 @@ func TestSeed(t *testing.T) {
 	ok(t, "MintNodeKey", err)
 
 	// The old release must serve this before the upgrade, or the verify phase
-	// would blame the new build for a setup mistake.
+	// would blame the new build for a setup mistake. ListModels answers before
+	// the routing reload picks the model up, so wait for the model itself.
 	deadline := time.Now().Add(90 * time.Second)
 	for {
 		ctx, cancel := as(minted.GetPlainKey())
-		_, err := pb.NewGatewayServiceClient(conn).ListModels(ctx, &pb.ListModelsRequest{})
+		resp, err := pb.NewGatewayServiceClient(conn).ListModels(ctx, &pb.ListModelsRequest{})
 		cancel()
-		if err == nil || time.Now().After(deadline) {
+		if (err == nil && len(resp.GetModels()) > 0) || time.Now().After(deadline) {
 			break
 		}
 		time.Sleep(time.Second)
