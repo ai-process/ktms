@@ -17,16 +17,16 @@ func (s *stubAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (
 }
 
 type capturingTracker struct {
+	usage                           llm.TokensUsage
 	userID, actionID, vendor, model string
-	in, out                         int
 	cost                            int64
 	meta                            map[string]string
 	calls                           int
 }
 
-func (c *capturingTracker) RecordUsage(userID, actionID, vendor, model string, inputTokens, outputTokens int, durationMs, costNanoUSD int64, status usagev1.Status, meta map[string]string) error {
+func (c *capturingTracker) RecordUsage(userID, actionID, vendor, model string, usage llm.TokensUsage, durationMs, costNanoUSD int64, status usagev1.Status, meta map[string]string) error {
 	c.userID, c.actionID, c.vendor, c.model = userID, actionID, vendor, model
-	c.in, c.out = inputTokens, outputTokens
+	c.usage = usage
 	c.cost = costNanoUSD
 	c.meta = meta
 	c.calls++
@@ -56,8 +56,8 @@ func TestTrackingAdapterPassesCallerMeta(t *testing.T) {
 	if tracker.userID != "batch-worker" || tracker.actionID != "app.test" {
 		t.Fatalf("attribution lost: %q %q", tracker.userID, tracker.actionID)
 	}
-	if tracker.in != 123 || tracker.out != 45 {
-		t.Fatalf("tokens lost: %d/%d", tracker.in, tracker.out)
+	if tracker.usage.Input != 123 || tracker.usage.Output != 45 {
+		t.Fatalf("tokens lost: %d/%d", tracker.usage.Input, tracker.usage.Output)
 	}
 	if tracker.meta["job_id"] != "job-1" || tracker.meta["gentask_id"] != "task-2" {
 		t.Fatalf("meta lost: %v", tracker.meta)
@@ -156,8 +156,8 @@ func TestTrackingAdapterStreamAbortedWithoutUsage(t *testing.T) {
 	if tracker.calls != 1 {
 		t.Fatalf("expected 1 tracker call, got %d", tracker.calls)
 	}
-	if tracker.in <= 0 || tracker.out <= 0 {
-		t.Errorf("expected estimated usage recorded on aborted stream, got in=%d out=%d", tracker.in, tracker.out)
+	if tracker.usage.Input <= 0 || tracker.usage.Output <= 0 {
+		t.Errorf("expected estimated usage recorded on aborted stream, got in=%d out=%d", tracker.usage.Input, tracker.usage.Output)
 	}
 }
 
@@ -180,8 +180,8 @@ func TestTrackingAdapterStreamDisconnectBeforeFirstChunk(t *testing.T) {
 	if tracker.calls != 1 {
 		t.Fatalf("expected 1 tracker call, got %d", tracker.calls)
 	}
-	if tracker.in <= 0 {
-		t.Errorf("expected estimated input tokens recorded on pre-chunk disconnect, got in=%d", tracker.in)
+	if tracker.usage.Input <= 0 {
+		t.Errorf("expected estimated input tokens recorded on pre-chunk disconnect, got in=%d", tracker.usage.Input)
 	}
 }
 
@@ -216,5 +216,18 @@ func TestTrackingAdapterShadowZeroCost(t *testing.T) {
 	}
 	if tracker.cost != 0 {
 		t.Fatalf("shadow request cost via context = %d, want 0", tracker.cost)
+	}
+}
+
+func TestRequestStatusSeparatesCanceledCalls(t *testing.T) {
+	for err, want := range map[error]string{
+		context.Canceled: "canceled",
+		errors.Join(errors.New("x"), context.Canceled): "canceled",
+		context.DeadlineExceeded:                       "error",
+		errors.New("vendor 500"):                       "error",
+	} {
+		if got := requestStatus(err); got != want {
+			t.Errorf("requestStatus(%v) = %q, want %q", err, got, want)
+		}
 	}
 }

@@ -46,14 +46,14 @@ func (t *TrackingAdapter) WithPricer(p Pricer) *TrackingAdapter {
 	return t
 }
 
-func (t *TrackingAdapter) cost(ctx context.Context, in, out int, startedAt time.Time) int64 {
+func (t *TrackingAdapter) cost(ctx context.Context, usage llm.TokensUsage, startedAt time.Time) int64 {
 	if llm.IsShadowTraffic(ctx) {
 		return 0
 	}
 	if t.pricer == nil {
 		return 0
 	}
-	return t.pricer(llm.TokensUsage{Input: in, Output: out}, startedAt)
+	return t.pricer(usage, startedAt)
 }
 
 // GenerateText generates text and tracks usage
@@ -101,7 +101,7 @@ func (t *TrackingAdapter) GenerateText(ctx context.Context, chat *llm.ChatContex
 
 	statusLabel := "success"
 	if err != nil {
-		statusLabel = "error"
+		statusLabel = requestStatus(err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
@@ -111,6 +111,7 @@ func (t *TrackingAdapter) GenerateText(ctx context.Context, chat *llm.ChatContex
 	if resp != nil {
 		observability.TokensTotal.WithLabelValues(t.vendor, t.model, "input").Add(float64(resp.Usage.Input))
 		observability.TokensTotal.WithLabelValues(t.vendor, t.model, "output").Add(float64(resp.Usage.Output))
+		recordCacheTokens(t.vendor, t.model, resp.Usage)
 		span.SetAttributes(
 			observability.AttrGenAIResponseModel.String(t.model),
 			observability.AttrGenAIUsageInput.Int(resp.Usage.Input),
@@ -133,10 +134,9 @@ func (t *TrackingAdapter) GenerateText(ctx context.Context, chat *llm.ChatContex
 				actionID,
 				t.vendor,
 				t.model,
-				resp.Usage.Input,
-				resp.Usage.Output,
+				resp.Usage,
 				durationMs,
-				t.cost(ctx, resp.Usage.Input, resp.Usage.Output, startTime),
+				t.cost(ctx, resp.Usage, startTime),
 				status,
 				meta,
 			); trackErr != nil {
@@ -155,8 +155,7 @@ func (t *TrackingAdapter) GenerateText(ctx context.Context, chat *llm.ChatContex
 				actionID,
 				t.vendor,
 				t.model,
-				0,
-				0,
+				llm.TokensUsage{},
 				durationMs,
 				0,
 				status,
@@ -267,7 +266,7 @@ func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.Chat
 
 	statusLabel := "success"
 	if err != nil {
-		statusLabel = "error"
+		statusLabel = requestStatus(err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
@@ -277,6 +276,7 @@ func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.Chat
 	if lastUsage.Input > 0 || lastUsage.Output > 0 {
 		observability.TokensTotal.WithLabelValues(t.vendor, t.model, "input").Add(float64(lastUsage.Input))
 		observability.TokensTotal.WithLabelValues(t.vendor, t.model, "output").Add(float64(lastUsage.Output))
+		recordCacheTokens(t.vendor, t.model, lastUsage)
 		span.SetAttributes(
 			observability.AttrGenAIResponseModel.String(t.model),
 			observability.AttrGenAIUsageInput.Int(lastUsage.Input),
@@ -296,10 +296,9 @@ func (t *TrackingAdapter) GenerateTextStream(ctx context.Context, chat *llm.Chat
 			actionID,
 			t.vendor,
 			t.model,
-			lastUsage.Input,
-			lastUsage.Output,
+			lastUsage,
 			durationMs,
-			t.cost(ctx, lastUsage.Input, lastUsage.Output, startTime),
+			t.cost(ctx, lastUsage, startTime),
 			status,
 			meta,
 		); trackErr != nil {
@@ -355,7 +354,7 @@ func (t *TrackingAdapter) SynthesizeSpeech(ctx context.Context, text, language, 
 
 	statusLabel := "success"
 	if err != nil {
-		statusLabel = "error"
+		statusLabel = requestStatus(err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
@@ -409,10 +408,9 @@ func (t *TrackingAdapter) SynthesizeSpeech(ctx context.Context, text, language, 
 			"llm.synthesize_speech",
 			t.vendor,
 			model,
-			inTokens,
-			outTokens,
+			llm.TokensUsage{Input: inTokens, Output: outTokens},
 			durationMs,
-			t.cost(ctx, inTokens, outTokens, startTime),
+			t.cost(ctx, llm.TokensUsage{Input: inTokens, Output: outTokens}, startTime),
 			status,
 			trackMeta,
 		); trackErr != nil {
@@ -469,7 +467,7 @@ func (t *TrackingAdapter) GenerateImage(ctx context.Context, prompt, userID stri
 
 	statusLabel := "success"
 	if err != nil {
-		statusLabel = "error"
+		statusLabel = requestStatus(err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
@@ -518,10 +516,9 @@ func (t *TrackingAdapter) GenerateImage(ctx context.Context, prompt, userID stri
 			"llm.generate_image",
 			t.vendor,
 			model,
-			inTokens,
-			outTokens,
+			llm.TokensUsage{Input: inTokens, Output: outTokens},
 			durationMs,
-			t.cost(ctx, inTokens, outTokens, startTime),
+			t.cost(ctx, llm.TokensUsage{Input: inTokens, Output: outTokens}, startTime),
 			status,
 			trackMeta,
 		); trackErr != nil {
@@ -578,7 +575,7 @@ func (t *TrackingAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, user
 
 	statusLabel := "success"
 	if err != nil {
-		statusLabel = "error"
+		statusLabel = requestStatus(err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
@@ -633,10 +630,9 @@ func (t *TrackingAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, user
 			actionID,
 			t.vendor,
 			model,
-			inTokens,
-			outTokens,
+			llm.TokensUsage{Input: inTokens, Output: outTokens},
 			durationMs,
-			t.cost(ctx, inTokens, outTokens, startTime),
+			t.cost(ctx, llm.TokensUsage{Input: inTokens, Output: outTokens}, startTime),
 			status,
 			trackMeta,
 		); trackErr != nil {
@@ -693,7 +689,7 @@ func (t *TrackingAdapter) EvaluateRollouts(ctx context.Context, req *llm.Evaluat
 
 	statusLabel := "success"
 	if err != nil {
-		statusLabel = "error"
+		statusLabel = requestStatus(err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
@@ -747,10 +743,9 @@ func (t *TrackingAdapter) EvaluateRollouts(ctx context.Context, req *llm.Evaluat
 			actionID,
 			t.vendor,
 			model,
-			inTokens,
-			outTokens,
+			llm.TokensUsage{Input: inTokens, Output: outTokens},
 			durationMs,
-			t.cost(ctx, inTokens, outTokens, startTime),
+			t.cost(ctx, llm.TokensUsage{Input: inTokens, Output: outTokens}, startTime),
 			status,
 			trackMeta,
 		); trackErr != nil {
@@ -848,7 +843,7 @@ func (t *TrackingAdapter) CreateEmbeddings(ctx context.Context, req *llm.Embeddi
 
 	statusLabel := "success"
 	if err != nil {
-		statusLabel = "error"
+		statusLabel = requestStatus(err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
@@ -902,10 +897,9 @@ func (t *TrackingAdapter) CreateEmbeddings(ctx context.Context, req *llm.Embeddi
 			actionID,
 			t.vendor,
 			model,
-			inTokens,
-			0,
+			llm.TokensUsage{Input: inTokens},
 			durationMs,
-			t.cost(ctx, inTokens, 0, startTime),
+			t.cost(ctx, llm.TokensUsage{Input: inTokens}, startTime),
 			status,
 			trackMeta,
 		); trackErr != nil {
@@ -921,4 +915,22 @@ func (t *TrackingAdapter) CreateEmbeddings(ctx context.Context, req *llm.Embeddi
 	}
 
 	return result, err
+}
+
+// requestStatus labels a failed call; a caller that went away is not a vendor
+// error, so it gets its own label and stays out of error-rate alerts.
+func requestStatus(err error) string {
+	if errors.Is(err, context.Canceled) {
+		return "canceled"
+	}
+	return "error"
+}
+
+func recordCacheTokens(vendor, model string, u llm.TokensUsage) {
+	if u.CacheRead > 0 {
+		observability.CacheTokensTotal.WithLabelValues(vendor, model, "read").Add(float64(u.CacheRead))
+	}
+	if u.CacheWrite > 0 {
+		observability.CacheTokensTotal.WithLabelValues(vendor, model, "write").Add(float64(u.CacheWrite))
+	}
 }

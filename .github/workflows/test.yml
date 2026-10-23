@@ -37,7 +37,9 @@ jobs:
         run: go test -race ./...
 
       - name: Installer script tests
-        run: sh scripts/install-node_test.sh
+        run: |
+          shellcheck -s sh scripts/install-node.sh scripts/install-node_test.sh
+          sh scripts/install-node_test.sh
 
   # A known vulnerability that our code reaches fails the build; one in a
   # dependency we never call is only reported.
@@ -97,6 +99,31 @@ jobs:
           push: false
           cache-from: type=gha,scope=node-agent
           cache-to: type=gha,mode=max,scope=node-agent
+
+  # The chart installed from an OCI registry on a fresh cluster, as users do.
+  helm-kind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.18.4
+      - uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
+        with:
+          install_only: true
+      - uses: docker/setup-buildx-action@v3
+      - name: Build server slim image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: slim
+          load: true
+          tags: coyl/ktms:ci
+          cache-from: type=gha,scope=server-slim
+      - run: ./scripts/helm-kind.sh
+        env:
+          IMAGE: coyl/ktms:ci
 
   helm:
     runs-on: ubuntu-latest

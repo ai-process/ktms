@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/ai-process/ktms/internal/llm"
 	"sort"
 	"strconv"
 	"strings"
@@ -335,8 +336,7 @@ func (c *UsageCollectorClient) RecordUsage(
 	actionID string,
 	vendor string,
 	model string,
-	inputTokens int,
-	outputTokens int,
+	usage llm.TokensUsage,
 	durationMs int64,
 	costNanoUSD int64,
 	status usagev1.Status,
@@ -378,12 +378,15 @@ func (c *UsageCollectorClient) RecordUsage(
 		Model:        model,
 		Status:       status,
 		DurationMs:   durationMs,
-		TokensInput:  int64(inputTokens),
-		TokensOutput: int64(outputTokens),
-		TokensTotal:  int64(inputTokens + outputTokens),
+		TokensInput:  int64(usage.Input),
+		TokensOutput: int64(usage.Output),
+		TokensTotal:  int64(usage.Input + usage.Output),
 		Meta:         fitMeta(meta, actionID),
 		CostNanousd:  costNanoUSD,
 	}
+	// light-tokenmeter refuses cache counts beyond tokens_input, and the batch with them.
+	clamped := usage.Clamped()
+	event.CacheReadTokens, event.CacheWriteTokens = int64(clamped.CacheRead), int64(clamped.CacheWrite)
 	// Never block a request on accounting: a full queue means the collector has
 	// been down long enough to fill it, and the loss is counted, not hidden.
 	c.closeMu.RLock()
@@ -460,4 +463,12 @@ func validateLimits(userID, projectID, actionID, vendor, model string, cost int6
 		return fmt.Errorf("usage event status must be set (action %q)", actionID)
 	}
 	return nil
+}
+
+// Every drop reason is exported at 0 from the start, so an alert on increase()
+// also catches the first drop after a restart.
+func init() {
+	for _, r := range []string{"queue_full", "rejected", "shutdown", "closed"} {
+		observability.UsageEventsDroppedTotal.WithLabelValues(r)
+	}
 }

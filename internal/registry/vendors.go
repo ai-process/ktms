@@ -69,6 +69,10 @@ const CapabilityNoStructuredOutput = "no_structured_output"
 // the way the vendor understands.
 const CapabilityNoThinking = "no_thinking"
 
+// CapabilityPromptCache asks Anthropic to cache each call's tools and system
+// prompt: worth it for long instructions that repeat across calls.
+const CapabilityPromptCache = "prompt_cache"
+
 // ThinkingOff returns the request fields that turn a vendor's default
 // reasoning off: Ollama takes reasoning_effort, DeepSeek a thinking switch.
 // A local node is judged by its engine; engines without a known switch get none.

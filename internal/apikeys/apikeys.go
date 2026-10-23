@@ -68,6 +68,10 @@ type Identity struct {
 	OrgID             string
 	TeamID            string
 	TeamAllowedModels []string
+	// The client key's own policy; empty and 0 mean no limit.
+	KeyAllowedModels []string
+	RPMLimit         int32
+	TPMLimit         int64
 }
 
 // HasScope reports whether the caller may perform an action needing want.
@@ -80,15 +84,28 @@ func (i *Identity) HasScope(want string) bool {
 	return false
 }
 
-// CanAccessModel reports whether the identity is permitted to invoke modelID.
+// CanAccessModel reports whether both the key's and its team's allowlists
+// (empty = any model) permit modelID.
 func (i *Identity) CanAccessModel(modelID string) bool {
 	if i == nil {
 		return false
 	}
-	if len(i.TeamAllowedModels) == 0 {
-		return true
+	return (len(i.TeamAllowedModels) == 0 || slices.Contains(i.TeamAllowedModels, modelID)) &&
+		(len(i.KeyAllowedModels) == 0 || slices.Contains(i.KeyAllowedModels, modelID))
+}
+
+// DeniedBy names the allowlist that refuses modelID: "team" when the team's
+// does, else "key". Refusal messages name it so the operator knows which to edit.
+func (i *Identity) DeniedBy(modelID string) string {
+	if i != nil && len(i.TeamAllowedModels) > 0 && !slices.Contains(i.TeamAllowedModels, modelID) {
+		return "team"
 	}
-	return slices.Contains(i.TeamAllowedModels, modelID)
+	return "key"
+}
+
+// RestrictsModels reports whether an allowlist narrows the models it may call.
+func (i *Identity) RestrictsModels() bool {
+	return i != nil && (len(i.TeamAllowedModels) > 0 || len(i.KeyAllowedModels) > 0)
 }
 
 // LookupHash is the indexed sha256 hex of a plain key.
@@ -315,6 +332,9 @@ func (v *Verifier) lookup(ctx context.Context, plain, lookup string) (*Identity,
 		OrgID:             orgID,
 		TeamID:            teamID,
 		TeamAllowedModels: row.TeamAllowedModels,
+		KeyAllowedModels:  row.AllowedModels,
+		RPMLimit:          row.RPMLimit,
+		TPMLimit:          row.TPMLimit,
 	}, nil
 }
 

@@ -43,6 +43,7 @@ var methodScopes = map[string]string{
 	method(pb.AdminService_MintAPIKey_FullMethodName):          apikeys.ScopeAdmin,
 	method(pb.AdminService_RevokeAPIKey_FullMethodName):        apikeys.ScopeAdmin,
 	method(pb.AdminService_ListAPIKeys_FullMethodName):         apikeys.ScopeAdmin,
+	method(pb.AdminService_SetAPIKeyPolicy_FullMethodName):     apikeys.ScopeAdmin,
 	method(pb.AdminService_RotateEncryption_FullMethodName):    apikeys.ScopeAdmin,
 	method(pb.AdminService_MintNodeKey_FullMethodName):         apikeys.ScopeAdmin,
 	method(pb.AdminService_RevokeNodeKey_FullMethodName):       apikeys.ScopeAdmin,
@@ -65,6 +66,7 @@ var methodScopes = map[string]string{
 	method(pb.AdminService_UpdateTeam_FullMethodName):         apikeys.ScopeAdmin,
 	method(pb.AdminService_DeleteTeam_FullMethodName):         apikeys.ScopeAdmin,
 	method(pb.AdminService_GetTeamSpend_FullMethodName):       apikeys.ScopeAdmin,
+	method(pb.AdminService_GetSpend_FullMethodName):           apikeys.ScopeAdmin,
 
 	method(pb.NodeRegistryService_RegisterNode_FullMethodName):   apikeys.ScopeNode,
 	method(pb.NodeRegistryService_ValidateNode_FullMethodName):   apikeys.ScopeNode,

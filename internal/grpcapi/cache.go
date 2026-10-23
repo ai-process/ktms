@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"errors"
+	"github.com/ai-process/ktms/internal/llm"
 	"strconv"
 
 	"github.com/rs/zerolog/log"
@@ -48,7 +49,7 @@ func (s *ProxyServer) lookupCache(ctx context.Context, snap *registry.Snapshot, 
 		if err != nil {
 			observability.DependencyErrorsTotal.WithLabelValues("redis", "cache_get").Inc()
 			redisguard.Log(err).Err(err).Str("api_key_id", id.KeyID).Msg("cache lookup failed")
-		} else if hit && cached != nil {
+		} else if hit && cached != nil && id.CanAccessModel(cached.GetResolvedModel()) {
 			return &cacheHit{resp: cached}
 		}
 	}
@@ -57,7 +58,7 @@ func (s *ProxyServer) lookupCache(ctx context.Context, snap *registry.Snapshot, 
 		if err != nil {
 			observability.DependencyErrorsTotal.WithLabelValues("redis", "semantic_cache_get").Inc()
 			redisguard.Log(err).Err(err).Str("api_key_id", id.KeyID).Msg("semantic cache lookup failed")
-		} else if hit && cached != nil {
+		} else if hit && cached != nil && id.CanAccessModel(cached.GetResolvedModel()) {
 			return &cacheHit{resp: cached, semantic: true, similarity: score}
 		}
 	}
@@ -95,6 +96,12 @@ func (s *ProxyServer) admitCacheHit(ctx context.Context, snap *registry.Snapshot
 			return status.Error(codes.ResourceExhausted, "throttled:rpm")
 		}
 	}
+	// A hit is a call for the key's rpm_limit, and costs it no tokens.
+	settleKey, err := s.admitKey(ctx, id, 0)
+	if err != nil {
+		return err
+	}
+	settleKey(&llm.TokensUsage{})
 	tracker := snap.Tracker()
 	if tracker == nil {
 		return nil
@@ -108,7 +115,7 @@ func (s *ProxyServer) admitCacheHit(ctx context.Context, snap *registry.Snapshot
 		meta["cache_match"] = "semantic"
 		meta["cache_similarity"] = strconv.FormatFloat(float64(hit.similarity), 'f', 4, 32)
 	}
-	if err := tracker.RecordUsage(userID, defaultActionID, cached.ResolvedVendor, cached.ResolvedModel, 0, 0, 0, 0, usagev1.Status_STATUS_SUCCESS, meta); err != nil {
+	if err := tracker.RecordUsage(userID, defaultActionID, cached.ResolvedVendor, cached.ResolvedModel, llm.TokensUsage{}, 0, 0, usagev1.Status_STATUS_SUCCESS, meta); err != nil {
 		log.Warn().Err(err).Str("user_id", userID).Str("model", cached.ResolvedModel).Bool("semantic", hit.semantic).Msg("failed to record cache hit usage")
 	}
 	return nil

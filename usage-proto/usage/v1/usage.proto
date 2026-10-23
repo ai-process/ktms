@@ -65,6 +65,14 @@ message UsageEvent {
   // Cost of the call in nano-USD (1e-9 USD), computed by the caller from its
   // price catalog at settle time; stored as an immutable fact (optional, >= 0)
   int64 cost_nanousd = 16;
+
+  // Input tokens served from the vendor's prompt cache (optional, >= 0). Part of
+  // tokens_input, not added to it; usually billed at a fraction of the input rate.
+  int64 cache_read_tokens = 17;
+
+  // Input tokens written to the vendor's prompt cache (optional, >= 0). Part of
+  // tokens_input; cache_read_tokens + cache_write_tokens must not exceed it.
+  int64 cache_write_tokens = 18;
 }
 
 // RecordUsageEventRequest is the request for recording a single usage event
@@ -139,6 +147,9 @@ message UsageSummaryRow {
   int64 sum_duration_ms = 14;
   // Summed cost in nano-USD (1e-9 USD)
   int64 cost_nanousd = 15;
+  // Summed parts of tokens_input read from and written to the prompt cache
+  int64 cache_read_tokens = 16;
+  int64 cache_write_tokens = 17;
 }
 
 // GetUsageSummaryResponse is the response for getting usage summary
@@ -178,6 +189,9 @@ message UsageByMetaRow {
   int64 request_count = 7;
   // Summed cost in nano-USD (1e-9 USD)
   int64 cost_nanousd = 8;
+  // Summed parts of tokens_input read from and written to the prompt cache
+  int64 cache_read_tokens = 9;
+  int64 cache_write_tokens = 10;
 }
 
 // GetUsageByMetaResponse is the response for meta-scoped aggregation

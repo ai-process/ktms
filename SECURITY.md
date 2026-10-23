@@ -9,8 +9,7 @@ We provide security updates and patches for the following versions:
 | Version | Supported          |
 | ------- | ------------------ |
 | `1.x`, latest minor release | :white_check_mark: |
-| `0.14.x` | :white_check_mark: until 1.0.0 is released |
-| `< 0.14` | :x:                |
+| `0.x`   | :x: (upgrade through 0.14.x to 1.0) |
 
 ## Verifying a Release
 
@@ -28,6 +27,14 @@ cosign verify coyl/ktms:${V#v} \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 docker buildx imagetools inspect coyl/ktms:${V#v} --format '{{ json .SBOM }}'
 docker buildx imagetools inspect coyl/ktms:${V#v} --format '{{ json .Provenance }}'
+```
+
+The Helm chart:
+
+```bash
+cosign verify ghcr.io/ai-process/charts/ktms:${V#v} \
+  --certificate-identity "https://github.com/ai-process/ktms/.github/workflows/release.yml@refs/tags/$V" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
 Binaries on the GitHub release (`checksums.txt` is signed; each archive has an `.sbom.json`):
@@ -77,7 +84,7 @@ To help us triage and resolve the issue quickly, please provide:
 `KTMS` is designed with defense-in-depth principles:
 
 1. **Envelope Encryption for Vendor Credentials:**  
-   All upstream provider API keys (OpenAI, Anthropic, Gemini, DeepSeek, Bedrock, etc.) are encrypted at rest in PostgreSQL using AES-256-GCM with versioned keyrings (`KTMS_ENCRYPTION_KEYS` / `LLMPROXY_ENCRYPTION_KEYS`). Plaintext keys are decrypted only into volatile in-memory snapshot caches.
+   All upstream provider API keys (OpenAI, Anthropic, Gemini, DeepSeek, Bedrock, etc.) are encrypted at rest in PostgreSQL using AES-256-GCM with versioned keyrings (`KTMS_ENCRYPTION_KEYS`). Plaintext keys are decrypted only into volatile in-memory snapshot caches.
 
 2. **Zero-Log Secret Guarantee:**  
    The codebase strictly enforces that vendor API keys, client API keys, and encryption master keys are never logged to stdout, file logs, OpenTelemetry traces, Prometheus metrics, Sentry, or gRPC error details.

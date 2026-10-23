@@ -67,13 +67,18 @@ func (s *ProxyServer) GetEmbeddings(ctx context.Context, req *pb.GetEmbeddingsRe
 		ActionID:   req.GetActionId(),
 	}
 
+	estimate := int64(totalRunes/4 + 1)
+	settleKey, err := s.admitKey(ctx, plan.identity, estimate)
+	if err != nil {
+		return nil, err
+	}
 	var out *llm.EmbeddingResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
 		Chain:           plan.chain,
 		KeyName:         plan.identity.Name,
 		UserID:          router.UserID(plan.attrs, plan.identity.Name),
 		TeamID:          plan.identity.TeamID,
-		Estimate:        int64(totalRunes/4 + 1),
+		Estimate:        estimate,
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,
 		Cooldown:        plan.cooldown,
@@ -91,6 +96,11 @@ func (s *ProxyServer) GetEmbeddings(ctx context.Context, req *pb.GetEmbeddingsRe
 			return res.Usage, nil
 		},
 	})
+	var used *llm.TokensUsage
+	if out != nil {
+		used = &out.Usage
+	}
+	settleKey(used)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}

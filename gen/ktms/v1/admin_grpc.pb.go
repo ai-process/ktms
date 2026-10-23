@@ -28,6 +28,7 @@ const (
 	AdminService_MintAPIKey_FullMethodName          = "/ktms.v1.AdminService/MintAPIKey"
 	AdminService_RevokeAPIKey_FullMethodName        = "/ktms.v1.AdminService/RevokeAPIKey"
 	AdminService_ListAPIKeys_FullMethodName         = "/ktms.v1.AdminService/ListAPIKeys"
+	AdminService_SetAPIKeyPolicy_FullMethodName     = "/ktms.v1.AdminService/SetAPIKeyPolicy"
 	AdminService_RotateEncryption_FullMethodName    = "/ktms.v1.AdminService/RotateEncryption"
 	AdminService_MintNodeKey_FullMethodName         = "/ktms.v1.AdminService/MintNodeKey"
 	AdminService_RevokeNodeKey_FullMethodName       = "/ktms.v1.AdminService/RevokeNodeKey"
@@ -49,6 +50,7 @@ const (
 	AdminService_UpdateTeam_FullMethodName          = "/ktms.v1.AdminService/UpdateTeam"
 	AdminService_DeleteTeam_FullMethodName          = "/ktms.v1.AdminService/DeleteTeam"
 	AdminService_GetTeamSpend_FullMethodName        = "/ktms.v1.AdminService/GetTeamSpend"
+	AdminService_GetSpend_FullMethodName            = "/ktms.v1.AdminService/GetSpend"
 )
 
 // AdminServiceClient is the client API for AdminService service.
@@ -67,6 +69,7 @@ type AdminServiceClient interface {
 	MintAPIKey(ctx context.Context, in *MintAPIKeyRequest, opts ...grpc.CallOption) (*MintAPIKeyResponse, error)
 	RevokeAPIKey(ctx context.Context, in *RevokeAPIKeyRequest, opts ...grpc.CallOption) (*RevokeAPIKeyResponse, error)
 	ListAPIKeys(ctx context.Context, in *ListAPIKeysRequest, opts ...grpc.CallOption) (*ListAPIKeysResponse, error)
+	SetAPIKeyPolicy(ctx context.Context, in *SetAPIKeyPolicyRequest, opts ...grpc.CallOption) (*SetAPIKeyPolicyResponse, error)
 	RotateEncryption(ctx context.Context, in *RotateEncryptionRequest, opts ...grpc.CallOption) (*RotateEncryptionResponse, error)
 	MintNodeKey(ctx context.Context, in *MintNodeKeyRequest, opts ...grpc.CallOption) (*MintNodeKeyResponse, error)
 	RevokeNodeKey(ctx context.Context, in *RevokeNodeKeyRequest, opts ...grpc.CallOption) (*RevokeNodeKeyResponse, error)
@@ -88,6 +91,7 @@ type AdminServiceClient interface {
 	UpdateTeam(ctx context.Context, in *UpdateTeamRequest, opts ...grpc.CallOption) (*UpdateTeamResponse, error)
 	DeleteTeam(ctx context.Context, in *DeleteTeamRequest, opts ...grpc.CallOption) (*DeleteTeamResponse, error)
 	GetTeamSpend(ctx context.Context, in *GetTeamSpendRequest, opts ...grpc.CallOption) (*GetTeamSpendResponse, error)
+	GetSpend(ctx context.Context, in *GetSpendRequest, opts ...grpc.CallOption) (*GetSpendResponse, error)
 }
 
 type adminServiceClient struct {
@@ -182,6 +186,16 @@ func (c *adminServiceClient) ListAPIKeys(ctx context.Context, in *ListAPIKeysReq
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListAPIKeysResponse)
 	err := c.cc.Invoke(ctx, AdminService_ListAPIKeys_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) SetAPIKeyPolicy(ctx context.Context, in *SetAPIKeyPolicyRequest, opts ...grpc.CallOption) (*SetAPIKeyPolicyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetAPIKeyPolicyResponse)
+	err := c.cc.Invoke(ctx, AdminService_SetAPIKeyPolicy_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -398,6 +412,16 @@ func (c *adminServiceClient) GetTeamSpend(ctx context.Context, in *GetTeamSpendR
 	return out, nil
 }
 
+func (c *adminServiceClient) GetSpend(ctx context.Context, in *GetSpendRequest, opts ...grpc.CallOption) (*GetSpendResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSpendResponse)
+	err := c.cc.Invoke(ctx, AdminService_GetSpend_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AdminServiceServer is the server API for AdminService service.
 // All implementations must embed UnimplementedAdminServiceServer
 // for forward compatibility.
@@ -414,6 +438,7 @@ type AdminServiceServer interface {
 	MintAPIKey(context.Context, *MintAPIKeyRequest) (*MintAPIKeyResponse, error)
 	RevokeAPIKey(context.Context, *RevokeAPIKeyRequest) (*RevokeAPIKeyResponse, error)
 	ListAPIKeys(context.Context, *ListAPIKeysRequest) (*ListAPIKeysResponse, error)
+	SetAPIKeyPolicy(context.Context, *SetAPIKeyPolicyRequest) (*SetAPIKeyPolicyResponse, error)
 	RotateEncryption(context.Context, *RotateEncryptionRequest) (*RotateEncryptionResponse, error)
 	MintNodeKey(context.Context, *MintNodeKeyRequest) (*MintNodeKeyResponse, error)
 	RevokeNodeKey(context.Context, *RevokeNodeKeyRequest) (*RevokeNodeKeyResponse, error)
@@ -435,6 +460,7 @@ type AdminServiceServer interface {
 	UpdateTeam(context.Context, *UpdateTeamRequest) (*UpdateTeamResponse, error)
 	DeleteTeam(context.Context, *DeleteTeamRequest) (*DeleteTeamResponse, error)
 	GetTeamSpend(context.Context, *GetTeamSpendRequest) (*GetTeamSpendResponse, error)
+	GetSpend(context.Context, *GetSpendRequest) (*GetSpendResponse, error)
 	mustEmbedUnimplementedAdminServiceServer()
 }
 
@@ -471,6 +497,9 @@ func (UnimplementedAdminServiceServer) RevokeAPIKey(context.Context, *RevokeAPIK
 }
 func (UnimplementedAdminServiceServer) ListAPIKeys(context.Context, *ListAPIKeysRequest) (*ListAPIKeysResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListAPIKeys not implemented")
+}
+func (UnimplementedAdminServiceServer) SetAPIKeyPolicy(context.Context, *SetAPIKeyPolicyRequest) (*SetAPIKeyPolicyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetAPIKeyPolicy not implemented")
 }
 func (UnimplementedAdminServiceServer) RotateEncryption(context.Context, *RotateEncryptionRequest) (*RotateEncryptionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RotateEncryption not implemented")
@@ -534,6 +563,9 @@ func (UnimplementedAdminServiceServer) DeleteTeam(context.Context, *DeleteTeamRe
 }
 func (UnimplementedAdminServiceServer) GetTeamSpend(context.Context, *GetTeamSpendRequest) (*GetTeamSpendResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetTeamSpend not implemented")
+}
+func (UnimplementedAdminServiceServer) GetSpend(context.Context, *GetSpendRequest) (*GetSpendResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSpend not implemented")
 }
 func (UnimplementedAdminServiceServer) mustEmbedUnimplementedAdminServiceServer() {}
 func (UnimplementedAdminServiceServer) testEmbeddedByValue()                      {}
@@ -714,6 +746,24 @@ func _AdminService_ListAPIKeys_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AdminServiceServer).ListAPIKeys(ctx, req.(*ListAPIKeysRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_SetAPIKeyPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetAPIKeyPolicyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).SetAPIKeyPolicy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_SetAPIKeyPolicy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).SetAPIKeyPolicy(ctx, req.(*SetAPIKeyPolicyRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1096,6 +1146,24 @@ func _AdminService_GetTeamSpend_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AdminService_GetSpend_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSpendRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).GetSpend(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_GetSpend_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).GetSpend(ctx, req.(*GetSpendRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AdminService_ServiceDesc is the grpc.ServiceDesc for AdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1138,6 +1206,10 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListAPIKeys",
 			Handler:    _AdminService_ListAPIKeys_Handler,
+		},
+		{
+			MethodName: "SetAPIKeyPolicy",
+			Handler:    _AdminService_SetAPIKeyPolicy_Handler,
 		},
 		{
 			MethodName: "RotateEncryption",
@@ -1222,6 +1294,10 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetTeamSpend",
 			Handler:    _AdminService_GetTeamSpend_Handler,
+		},
+		{
+			MethodName: "GetSpend",
+			Handler:    _AdminService_GetSpend_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

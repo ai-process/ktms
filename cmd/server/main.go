@@ -159,6 +159,10 @@ func main() {
 	}
 
 	loader := registry.NewLoader(db, keyring, tracker)
+	// One resolver for the throttle and GetSpend, so the two never disagree.
+	spendLimit := func(subjectType, subjectID, period string) int64 {
+		return loader.Snapshot().SpendLimit(subjectType, subjectID, period)
+	}
 
 	var (
 		nodeMgr *nodes.Manager
@@ -178,9 +182,7 @@ func main() {
 		rLimiter.SetUserRateLimitResolver(func(userID, modelID string) *proxydb.UserRateLimit {
 			return loader.Snapshot().UserRateLimit(userID, modelID)
 		})
-		rLimiter.SetSpendLimitResolver(func(subjectType, subjectID, period string) int64 {
-			return loader.Snapshot().SpendLimit(subjectType, subjectID, period)
-		})
+		rLimiter.SetSpendLimitResolver(spendLimit)
 		rLimiter.SetSpendFailClosed(cfg.SpendFailClosed())
 		rLimiter.SetDefaultOutputReserve(int64(cfg.SpendDefaultOutputReserve))
 		limiter = rLimiter
@@ -209,7 +211,7 @@ func main() {
 
 		nodeReg = grpcapi.NewNodeRegistryServer(nodeMgr, keyring)
 	} else {
-		log.Warn().Msg("REDIS_ADDR unset: rpm, token budgets and spend limits are NOT enforced, local node pool is disabled")
+		log.Warn().Msg("REDIS_ADDR unset: rpm, token budgets, key rates and spend limits are NOT enforced, local node pool is disabled")
 	}
 
 	rootCtx, rootCancel := context.WithCancel(context.Background())
@@ -226,6 +228,8 @@ func main() {
 	if rl, ok := limiter.(*throttle.Redis); ok {
 		adminSrv.SetSpendReader(rl.SpendSoFar)
 	}
+	// Caps are reported even without Redis, which only stops them being counted.
+	adminSrv.SetSpendLimitResolver(spendLimit)
 	if nodeMgr != nil {
 		adminSrv.SetNodeManager(nodeMgr)
 	}
@@ -239,6 +243,9 @@ func main() {
 		WithCooldown(cooldown.New(cfg.VendorCooldownMax)).
 		WithUpstreamTimeout(cfg.UpstreamRequestTimeout).
 		WithBatch(db, cfg.BatchMaxItems)
+	if rl, ok := limiter.(*throttle.Redis); ok {
+		proxySrv.WithKeyLimiter(rl)
+	}
 	if cfg.CacheEnabled && redisClient != nil {
 		c := cache.New(redisClient, keyring, cfg.CacheTTL, cfg.CacheMaxBytes, cfg.RedisKeyPrefix)
 		proxySrv.WithCache(c)

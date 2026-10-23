@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -32,6 +33,7 @@ import (
 // AdminServer implements AdminService.
 type AdminServer struct {
 	spendReader SpendReader
+	spendLimits func(subjectType, subjectID, period string) int64
 	pb.UnimplementedAdminServiceServer
 	db      *proxydb.DB
 	keyring *crypto.Keyring
@@ -59,6 +61,12 @@ type SpendReader func(ctx context.Context, subject, subjectID, period string) (i
 // it (no Redis) spend is unmetered and reported as such.
 func (s *AdminServer) SetSpendReader(fn SpendReader) {
 	s.spendReader = fn
+}
+
+// SetSpendLimitResolver gives GetSpend the caps the throttle enforces,
+// wildcard limits included.
+func (s *AdminServer) SetSpendLimitResolver(fn func(subjectType, subjectID, period string) int64) {
+	s.spendLimits = fn
 }
 
 // --- config: models and rules ---
@@ -343,10 +351,15 @@ func (s *AdminServer) MintAPIKey(ctx context.Context, req *pb.MintAPIKeyRequest)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	allowed, rpm, tpm, err := keyPolicy(req.GetPolicy())
+	if err != nil {
+		return nil, err
+	}
 	plain, row, err := apikeys.Generate(req.GetName(), scopes)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "key generation failed")
 	}
+	row.AllowedModels, row.RPMLimit, row.TPMLimit = allowed, rpm, tpm
 
 	var orgID, teamID *string
 	if req.GetOrgId() != "" {
@@ -426,9 +439,45 @@ func (s *AdminServer) ListAPIKeys(ctx context.Context, _ *pb.ListAPIKeysRequest)
 		if k.TeamID != nil {
 			info.TeamId = *k.TeamID
 		}
+		if len(k.AllowedModels) > 0 || k.RPMLimit > 0 || k.TPMLimit > 0 {
+			info.Policy = &pb.APIKeyPolicy{AllowedModels: k.AllowedModels, RpmLimit: k.RPMLimit, TpmLimit: k.TPMLimit}
+		}
 		out = append(out, info)
 	}
 	return &pb.ListAPIKeysResponse{Keys: out}, nil
+}
+
+func (s *AdminServer) SetAPIKeyPolicy(ctx context.Context, req *pb.SetAPIKeyPolicyRequest) (*pb.SetAPIKeyPolicyResponse, error) {
+	if req.GetName() == "" {
+		return nil, status.Error(codes.InvalidArgument, "name is required")
+	}
+	allowed, rpm, tpm, err := keyPolicy(req.GetPolicy())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.db.SetAPIKeyPolicy(ctx, req.GetName(), allowed, rpm, tpm); err != nil {
+		return nil, dbStatus(err)
+	}
+	return &pb.SetAPIKeyPolicyResponse{}, nil
+}
+
+// keyPolicy validates a key policy; nil is no limit. Model ids are not checked
+// against the registry, like a team's: a model may be added after the key.
+func keyPolicy(p *pb.APIKeyPolicy) (allowed []string, rpm int32, tpm int64, err error) {
+	if p.GetRpmLimit() < 0 || p.GetTpmLimit() < 0 {
+		return nil, 0, 0, status.Error(codes.InvalidArgument, "rpm_limit and tpm_limit must be >= 0")
+	}
+	allowed = []string{}
+	for _, m := range p.GetAllowedModels() {
+		m = strings.TrimSpace(m)
+		if m == "" {
+			return nil, 0, 0, status.Error(codes.InvalidArgument, "allowed_models must not contain empty ids")
+		}
+		if !slices.Contains(allowed, m) {
+			allowed = append(allowed, m)
+		}
+	}
+	return allowed, p.GetRpmLimit(), p.GetTpmLimit(), nil
 }
 
 // --- vendor keys ---
@@ -793,6 +842,10 @@ func (s *AdminServer) GetTeamSpend(ctx context.Context, req *pb.GetTeamSpendRequ
 		return nil, dbStatus(err)
 	}
 	limit, _ := teamBudgetNano(team.MonthlyBudgetUSD)
+	if s.spendLimits != nil {
+		// What the throttle enforces, a team/* wildcard included.
+		limit = s.spendLimits(spendlimit.SubjectTeam, team.ID, spendlimit.PeriodMonth)
+	}
 	_, resets := spendlimit.Window(spendlimit.PeriodMonth, time.Now())
 	out := &pb.GetTeamSpendResponse{LimitNanousd: limit, ResetsAt: timestamppb.New(resets)}
 	// The throttle keeps counters only for capped subjects, so an uncapped
@@ -806,6 +859,37 @@ func (s *AdminServer) GetTeamSpend(ctx context.Context, req *pb.GetTeamSpendRequ
 		return nil, status.Error(codes.Unavailable, "spend counters unavailable")
 	}
 	out.SpentNanousd, out.ResetsAt, out.Metered = spent, timestamppb.New(resets), true
+	return out, nil
+}
+
+func (s *AdminServer) GetSpend(ctx context.Context, req *pb.GetSpendRequest) (*pb.GetSpendResponse, error) {
+	subject, id := req.GetSubjectType(), req.GetSubjectId()
+	if !spendlimit.ValidSubject(subject) || id == "" || id == spendlimit.Wildcard {
+		return nil, status.Error(codes.InvalidArgument, "subject_type must be key, user or team, with a subject_id")
+	}
+	out := &pb.GetSpendResponse{}
+	now := time.Now()
+	for _, e := range spendlimit.Enforced {
+		if e.Subject != subject {
+			continue
+		}
+		_, resets := spendlimit.Window(e.Period, now)
+		w := &pb.SpendWindow{Period: e.Period, ResetsAt: timestamppb.New(resets)}
+		if s.spendLimits != nil {
+			w.LimitNanousd = s.spendLimits(subject, id, e.Period)
+		}
+		// Counters exist only under a cap, as in GetTeamSpend.
+		if s.spendReader != nil && w.LimitNanousd > 0 {
+			spent, _, err := s.spendReader(ctx, subject, id, e.Period)
+			if err != nil {
+				log.Warn().Err(err).Str("subject", subject).Str("id", id).Msg("spend counter unreadable")
+				return nil, status.Error(codes.Unavailable, "spend counters unavailable")
+			}
+			w.SpentNanousd, w.Metered = spent, true
+			w.RemainingNanousd = max(w.LimitNanousd-spent, 0)
+		}
+		out.Windows = append(out.Windows, w)
+	}
 	return out, nil
 }
 

@@ -1,7 +1,7 @@
 name: Release
 
-# Tag vX.Y.Z -> binaries and checksums.txt on GitHub Releases. The Docker images
-# are built by docker-publish.yml from the same tag.
+# Tag vX.Y.Z -> binaries and checksums.txt on GitHub Releases, then the Docker
+# images (docker-publish.yml), then the Helm chart at oci://ghcr.io/ai-process/charts/ktms.
 # Optional secrets: MACOS_SIGN_P12 (base64 .p12), MACOS_SIGN_PASSWORD,
 # MACOS_NOTARY_ISSUER_ID, MACOS_NOTARY_KEY_ID, MACOS_NOTARY_KEY (base64 .p8),
 # and HOMEBREW_TAP_TOKEN for ai-process/homebrew-tap. Without them the release is unsigned.
@@ -42,6 +42,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      # A checkout's chart then runs the image of its own release.
+      - name: Chart.yaml matches the tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          grep -qx "version: ${TAG#v}" deploy/helm/ktms/Chart.yaml && grep -qx "appVersion: \"${TAG#v}\"" deploy/helm/ktms/Chart.yaml ||
+            { echo "::error::set version and appVersion in deploy/helm/ktms/Chart.yaml to ${TAG#v}"; exit 1; }
+
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: '1.27.3'
@@ -65,3 +73,47 @@ jobs:
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+  # The chart's version and appVersion are the tag, so `--version 1.2.3` installs
+  # image 1.2.3; it goes after the images, so it never names a missing one.
+  chart:
+    needs: images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # keyless cosign signature of the chart
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.18.4
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      # A re-run keeps a version already pushed: its digest may be signed or pinned.
+      # Signing is retried, like the images', and re-signing a digest is harmless.
+      - name: Package, push and sign
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version=${TAG#v}
+          chart=oci://ghcr.io/ai-process/charts/ktms
+          echo "$GH_TOKEN" | helm registry login ghcr.io -u "$GH_ACTOR" --password-stdin
+          echo "$GH_TOKEN" | cosign login ghcr.io -u "$GH_ACTOR" --password-stdin
+          if helm show chart "$chart" --version "$version" >/dev/null 2>&1; then
+            echo "chart $version is already published; signing it again"
+          else
+            helm package deploy/helm/ktms --version "$version" --app-version "$version" -d dist
+            helm push "dist/ktms-$version.tgz" "${chart%/ktms}"
+          fi
+          digest=$(helm pull "$chart" --version "$version" -d pulled 2>&1 | sed -n 's/^Digest: //p')
+          test -n "$digest"
+          for i in 1 2 3; do
+            cosign sign --yes "ghcr.io/ai-process/charts/ktms@$digest" && exit 0
+            sleep $((i * 15))
+          done
+          exit 1

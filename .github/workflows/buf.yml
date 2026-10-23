@@ -18,8 +18,6 @@ permissions:
 jobs:
   buf:
     runs-on: ubuntu-latest
-    env:
-      BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,8 +44,27 @@ jobs:
           buf breaking . --against "../.git#ref=origin/${{ github.base_ref }},subdir=usage-proto" \
             --config '{"version":"v2","breaking":{"use":["FILE"],"except":["FILE_SAME_GO_PACKAGE"]}}'
 
+  # Its own job, so a missing token shows as a red push, not as a lint failure.
+  # It fails rather than skips: SDKs that silently stop publishing go unnoticed.
+  bsr-push:
+    needs: buf
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: bsr-push # pushes land in commit order
+      cancel-in-progress: false
+    env:
+      BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
+    steps:
+      - name: BUF_TOKEN is set
+        run: |
+          [ -n "$BUF_TOKEN" ] || { echo "::error::BUF_TOKEN is not set: the ktms.v1 SDKs are not published to buf.build/ai-process/ktms. Add a buf.build token for the ai-process organization as the BUF_TOKEN repository secret."; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # buf push --git-metadata reads tags
       - name: Push to Buf Schema Registry
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.BUF_TOKEN != ''
         uses: bufbuild/buf-action@v1
         with:
           token: ${{ env.BUF_TOKEN }}

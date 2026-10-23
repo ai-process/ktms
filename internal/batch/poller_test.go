@@ -101,14 +101,14 @@ type recordedUsage struct {
 	meta         map[string]string
 }
 
-func (t *fakeUsageTracker) RecordUsage(userID, actionID, vendor, model string, inputTokens, outputTokens int, durationMs, costNanoUSD int64, status usagev1.Status, meta map[string]string) error {
+func (t *fakeUsageTracker) RecordUsage(userID, actionID, vendor, model string, usage llm.TokensUsage, durationMs, costNanoUSD int64, status usagev1.Status, meta map[string]string) error {
 	t.recordedEvents = append(t.recordedEvents, recordedUsage{
 		userID:       userID,
 		actionID:     actionID,
 		vendor:       vendor,
 		model:        model,
-		inputTokens:  inputTokens,
-		outputTokens: outputTokens,
+		inputTokens:  usage.Input,
+		outputTokens: usage.Output,
 		costNanoUSD:  costNanoUSD,
 		status:       status,
 		meta:         meta,

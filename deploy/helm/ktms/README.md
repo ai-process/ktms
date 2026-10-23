@@ -1,4 +1,4 @@
-# KTMS Helm Chart
+# Keystone. The Model Switchboard. (KTMS): Helm chart
 
 Official Helm chart for deploying [KTMS (Keystone: The Model Switchboard)](https://github.com/ai-process/ktms) on Kubernetes.
 
@@ -25,9 +25,12 @@ kubectl create secret generic ktms-secrets \
 ### 2. Install
 
 ```bash
-helm install ktms ./deploy/helm/ktms \
+helm install ktms oci://ghcr.io/ai-process/charts/ktms --version 1.0.0 \
   --set secrets.existingSecret=ktms-secrets
 ```
+
+The chart version is the KTMS release, and it runs the image of that version. From a checkout,
+`helm install ktms ./deploy/helm/ktms` installs the chart of that tree.
 
 Or install with inline secrets:
 

@@ -48,6 +48,17 @@ var (
 		[]string{"vendor", "model", "type"},
 	)
 
+	// CacheTokensTotal counts the part of input tokens that hit the prompt
+	// cache; apart from TokensTotal so summing that one never counts them twice.
+	CacheTokensTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "ktms",
+			Name:      "cache_tokens_total",
+			Help:      "Input tokens read from (read) or written to (write) the vendor's prompt cache, by vendor and model.",
+		},
+		[]string{"vendor", "model", "type"},
+	)
+
 	// ActiveRequests gauges current in-flight calls to upstream vendors.
 	ActiveRequests = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{

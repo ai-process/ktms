@@ -20,8 +20,7 @@ type UsageTracker interface {
 	// actionID identifies the LLM action (e.g., "generate_question", "evaluate_solution")
 	// vendor is the LLM vendor (e.g., "openai", "google")
 	// model is the model name (e.g., "gpt-5", "gemini-2.5-pro")
-	// inputTokens is the number of input tokens
-	// outputTokens is the number of output tokens
+	// usage is the tokens billed, input including its prompt-cache part
 	// durationMs is the request duration in milliseconds
 	// costNanoUSD is the call's price in nano-USD (1e-9 USD), 0 when unpriced
 	// status is the request status (success, error, etc.)
@@ -31,8 +30,7 @@ type UsageTracker interface {
 		actionID string,
 		vendor string,
 		model string,
-		inputTokens int,
-		outputTokens int,
+		usage TokensUsage,
 		durationMs int64,
 		costNanoUSD int64,
 		status usagev1.Status,
@@ -43,7 +41,7 @@ type UsageTracker interface {
 // NoOpUsageTracker is a usage tracker that does nothing (for when usage collection is disabled)
 type NoOpUsageTracker struct{}
 
-func (n *NoOpUsageTracker) RecordUsage(userID, actionID, vendor, model string, inputTokens, outputTokens int, durationMs, costNanoUSD int64, status usagev1.Status, meta map[string]string) error {
+func (n *NoOpUsageTracker) RecordUsage(userID, actionID, vendor, model string, usage TokensUsage, durationMs, costNanoUSD int64, status usagev1.Status, meta map[string]string) error {
 	// No-op
 	return nil
 }

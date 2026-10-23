@@ -38,14 +38,71 @@ func ModeAt(m *proxydb.Model, t time.Time) Mode {
 	return ModeStandard
 }
 
-// Cost prices usage on m in the given mode, rounding each side up so a
-// budget is never under-charged by a fraction of a nano-USD.
+// Cost prices usage on m in the given mode, rounding each part up so a
+// budget is never under-charged by a fraction of a nano-USD. The cached part
+// of the input is priced at the cache rates, scaled like input for the mode.
 func Cost(m *proxydb.Model, usage llm.TokensUsage, mode Mode) int64 {
 	if m == nil {
 		return 0
 	}
 	in, out := rates(m, mode)
-	return addSat(tokensCost(int64(usage.Input), in), tokensCost(int64(usage.Output), out))
+	usage = usage.Clamped()
+	input, read, write := int64(usage.Input), int64(usage.CacheRead), int64(usage.CacheWrite)
+	readRate, writeRate := cacheRates(m, in)
+	cost := tokensCost(input-read-write, in)
+	cost = addSat(cost, tokensCost(read, readRate))
+	cost = addSat(cost, tokensCost(write, writeRate))
+	return addSat(cost, tokensCost(int64(usage.Output), out))
+}
+
+// MaxInputCost is the most n input tokens can cost in mode: plain input or, if
+// dearer, all of it written to the cache. Spend reservations book it.
+func MaxInputCost(m *proxydb.Model, n int64, mode Mode) int64 {
+	if m == nil {
+		return 0
+	}
+	in, _ := rates(m, mode)
+	_, writeRate := cacheRates(m, in)
+	return tokensCost(n, max(in, writeRate))
+}
+
+// Part names a priced part of the input for Rate.
+type Part int
+
+const (
+	CacheRead Part = iota
+	CacheWrite
+)
+
+// Rate is the per-Mtok rate Cost applies to a cache part in mode.
+func Rate(m *proxydb.Model, mode Mode, p Part) float64 {
+	if m == nil {
+		return 0
+	}
+	in, _ := rates(m, mode)
+	read, write := cacheRates(m, in)
+	if p == CacheWrite {
+		return write
+	}
+	return read
+}
+
+// cacheRates scales the standard cache rates by the mode's input ratio. A model
+// with no standard input price has no ratio: unset cache rates are the mode's
+// input rate then, so cached input is never free.
+func cacheRates(m *proxydb.Model, in float64) (read, write float64) {
+	if m.PriceInPerMtok > 0 {
+		scale := in / m.PriceInPerMtok
+		return m.CacheReadPerMtok() * scale, m.CacheWritePerMtok() * scale
+	}
+	read, write = in, in
+	if m.PriceCacheReadPerMtok > 0 {
+		read = m.PriceCacheReadPerMtok
+	}
+	if m.PriceCacheWritePerMtok > 0 {
+		write = m.PriceCacheWritePerMtok
+	}
+	return read, write
 }
 
 func rates(m *proxydb.Model, mode Mode) (in, out float64) {

@@ -29,7 +29,8 @@ type querier interface {
 func (d *DB) GetAPIKeyByLookup(ctx context.Context, lookup string) (*APIKey, error) {
 	return scanAPIKey(d.pool.QueryRow(ctx,
 		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
-		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}')
+		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}'),
+		        k.allowed_models, k.rpm_limit, k.tpm_limit
 		 FROM api_key k
 		 LEFT JOIN team t ON t.id = k.team_id
 		 WHERE k.key_lookup = $1`, lookup))
@@ -38,7 +39,8 @@ func (d *DB) GetAPIKeyByLookup(ctx context.Context, lookup string) (*APIKey, err
 func (d *DB) GetAPIKeyByName(ctx context.Context, name string) (*APIKey, error) {
 	return scanAPIKey(d.pool.QueryRow(ctx,
 		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
-		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}')
+		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}'),
+		        k.allowed_models, k.rpm_limit, k.tpm_limit
 		 FROM api_key k
 		 LEFT JOIN team t ON t.id = k.team_id
 		 WHERE k.name = $1`, name))
@@ -47,7 +49,7 @@ func (d *DB) GetAPIKeyByName(ctx context.Context, name string) (*APIKey, error) 
 func scanAPIKey(row pgx.Row) (*APIKey, error) {
 	var k APIKey
 	err := row.Scan(&k.ID, &k.Name, &k.KeyLookup, &k.KeyHash, &k.Scopes, &k.DisabledAt, &k.CreatedAt,
-		&k.OrgID, &k.TeamID, &k.TeamAllowedModels)
+		&k.OrgID, &k.TeamID, &k.TeamAllowedModels, &k.AllowedModels, &k.RPMLimit, &k.TPMLimit)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -59,9 +61,32 @@ func scanAPIKey(row pgx.Row) (*APIKey, error) {
 
 func (d *DB) InsertAPIKey(ctx context.Context, k *APIKey) error {
 	_, err := d.pool.Exec(ctx,
-		`INSERT INTO api_key (id, name, key_lookup, key_hash, scopes, org_id, team_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		k.ID, k.Name, k.KeyLookup, k.KeyHash, k.Scopes, k.OrgID, k.TeamID)
+		`INSERT INTO api_key (id, name, key_lookup, key_hash, scopes, org_id, team_id, allowed_models, rpm_limit, tpm_limit)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		k.ID, k.Name, k.KeyLookup, k.KeyHash, k.Scopes, k.OrgID, k.TeamID, nonNil(k.AllowedModels), k.RPMLimit, k.TPMLimit)
 	return err
+}
+
+// SetAPIKeyPolicy replaces the policy of the key with this name.
+func (d *DB) SetAPIKeyPolicy(ctx context.Context, name string, allowedModels []string, rpm int32, tpm int64) error {
+	tag, err := d.pool.Exec(ctx,
+		`UPDATE api_key SET allowed_models = $2, rpm_limit = $3, tpm_limit = $4 WHERE name = $1`,
+		name, nonNil(allowedModels), rpm, tpm)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// nonNil keeps a NOT NULL text[] column from receiving NULL.
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 func (d *DB) DisableAPIKey(ctx context.Context, name string) error {
@@ -79,7 +104,8 @@ func (d *DB) DisableAPIKey(ctx context.Context, name string) error {
 func (d *DB) ListAPIKeys(ctx context.Context) ([]*APIKey, error) {
 	rows, err := d.pool.Query(ctx,
 		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
-		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}')
+		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}'),
+		        k.allowed_models, k.rpm_limit, k.tpm_limit
 		 FROM api_key k
 		 LEFT JOIN team t ON t.id = k.team_id
 		 ORDER BY k.created_at`)
@@ -108,7 +134,8 @@ func loadModels(ctx context.Context, q querier) ([]*Model, error) {
 		        price_out_per_mtok, price_in_peak_per_mtok, price_out_peak_per_mtok,
 		        price_in_batch_per_mtok, price_out_batch_per_mtok,
 		        daily_tokens_per_key, daily_tokens_per_user, enabled,
-		        burst, queue_timeout_ms, budget_grace_margin
+		        burst, queue_timeout_ms, budget_grace_margin,
+		        price_cache_read_per_mtok, price_cache_write_per_mtok
 		 FROM model ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -121,7 +148,8 @@ func loadModels(ctx context.Context, q querier) ([]*Model, error) {
 			&m.PriceInPerMtok, &m.PriceOutPerMtok, &m.PriceInPeakPerMtok, &m.PriceOutPeakPerMtok,
 			&m.PriceInBatchPerMtok, &m.PriceOutBatchPerMtok,
 			&m.DailyTokensPerKey, &m.DailyTokensPerUser, &m.Enabled,
-			&m.Burst, &m.QueueTimeoutMs, &m.BudgetGraceMargin); err != nil {
+			&m.Burst, &m.QueueTimeoutMs, &m.BudgetGraceMargin,
+			&m.PriceCacheReadPerMtok, &m.PriceCacheWritePerMtok); err != nil {
 			return nil, err
 		}
 		out = append(out, &m)
@@ -250,18 +278,21 @@ func UpsertModel(ctx context.Context, tx pgx.Tx, m *Model) error {
 		                    price_out_per_mtok, price_in_peak_per_mtok, price_out_peak_per_mtok,
 		                    price_in_batch_per_mtok, price_out_batch_per_mtok,
 		                    daily_tokens_per_key, daily_tokens_per_user, enabled,
-		                    burst, queue_timeout_ms, budget_grace_margin)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		                    burst, queue_timeout_ms, budget_grace_margin,
+		                    price_cache_read_per_mtok, price_cache_write_per_mtok)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		 ON CONFLICT (id) DO UPDATE SET vendor = $2, endpoint = $3, efforts = $4, capabilities = $5,
 		   rpm = $6, price_in_per_mtok = $7, price_out_per_mtok = $8, price_in_peak_per_mtok = $9,
 		   price_out_peak_per_mtok = $10, price_in_batch_per_mtok = $11, price_out_batch_per_mtok = $12,
 		   daily_tokens_per_key = $13, daily_tokens_per_user = $14, enabled = $15,
-		   burst = $16, queue_timeout_ms = $17, budget_grace_margin = $18, updated_at = NOW()`,
+		   burst = $16, queue_timeout_ms = $17, budget_grace_margin = $18,
+		   price_cache_read_per_mtok = $19, price_cache_write_per_mtok = $20, updated_at = NOW()`,
 		m.ID, m.Vendor, m.Endpoint, m.Efforts, m.Capabilities, m.RPM,
 		m.PriceInPerMtok, m.PriceOutPerMtok, m.PriceInPeakPerMtok, m.PriceOutPeakPerMtok,
 		m.PriceInBatchPerMtok, m.PriceOutBatchPerMtok,
 		m.DailyTokensPerKey, m.DailyTokensPerUser, m.Enabled,
-		m.Burst, m.QueueTimeoutMs, m.BudgetGraceMargin)
+		m.Burst, m.QueueTimeoutMs, m.BudgetGraceMargin,
+		m.PriceCacheReadPerMtok, m.PriceCacheWritePerMtok)
 	return err
 }
 

@@ -51,6 +51,11 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 		return nil, err
 	}
 
+	estimate := int64(len([]rune(speechText))/4 + 1)
+	settleKey, err := s.admitKey(ctx, plan.identity, estimate)
+	if err != nil {
+		return nil, err
+	}
 	var out *llm.SpeechResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
 		Chain:   plan.chain,
@@ -59,7 +64,7 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 		TeamID:  plan.identity.TeamID,
 		// Input-side estimate only; Settle replaces it with what the vendor
 		// billed, which for speech is audio tokens and far larger.
-		Estimate:        int64(len([]rune(speechText))/4 + 1),
+		Estimate:        estimate,
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,
 		Cooldown:        plan.cooldown,
@@ -80,6 +85,11 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 			return res.Usage, nil
 		},
 	})
+	var used *llm.TokensUsage
+	if out != nil {
+		used = &out.Usage
+	}
+	settleKey(used)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
@@ -116,6 +126,11 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 		return nil, err
 	}
 
+	estimate := int64(len([]rune(prompt))/4 + 1)
+	settleKey, err := s.admitKey(ctx, plan.identity, estimate)
+	if err != nil {
+		return nil, err
+	}
 	var out *llm.ImageResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
 		Chain:   plan.chain,
@@ -124,7 +139,7 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 		TeamID:  plan.identity.TeamID,
 		// Input-side estimate only; image output tokens dwarf it, so Settle is
 		// what makes the budget accounting true.
-		Estimate:        int64(len([]rune(prompt))/4 + 1),
+		Estimate:        estimate,
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,
 		Cooldown:        plan.cooldown,
@@ -143,6 +158,11 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 			return res.Usage, nil
 		},
 	})
+	var used *llm.TokensUsage
+	if out != nil {
+		used = &out.Usage
+	}
+	settleKey(used)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
@@ -188,7 +208,7 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 	var ruleName string
 	if override != "" {
 		if !id.CanAccessModel(override) {
-			return nil, status.Errorf(codes.PermissionDenied, "model %q not allowed for team", override)
+			return nil, status.Errorf(codes.PermissionDenied, "model %q not allowed for %s", override, id.DeniedBy(override))
 		}
 		if _, ok := snap.Models[override]; !ok {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: unknown model %q", override)

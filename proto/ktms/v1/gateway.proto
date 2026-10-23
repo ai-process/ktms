@@ -169,6 +169,9 @@ message GenerateTextRequest {
 message TokensUsage {
   int64 input = 1;
   int64 output = 2;
+  // Parts of input read from and written to the vendor's prompt cache.
+  int64 cache_read = 3;
+  int64 cache_write = 4;
 }
 
 message Choice {
@@ -219,6 +222,9 @@ message ModelInfo {
   double price_out_per_mtok = 7;
   double price_in_batch_per_mtok = 8;
   double price_out_batch_per_mtok = 9;
+  // Effective prompt-cache rates, vendor defaults applied.
+  double price_cache_read_per_mtok = 10;
+  double price_cache_write_per_mtok = 11;
 }
 
 message ListModelsResponse {
@@ -237,14 +243,15 @@ message GenerateTextStreamRequest {
 // paused every model in the chain with Retry-After, "vendors_unavailable"
 // carries RetryInfo with the soonest one frees up: wait that long first.
 // RESOURCE_EXHAUSTED = throttled ("throttled:rpm" | "throttled:budget_key" |
-// "throttled:budget_user") — back off, do not hot-retry; or a spend limit
+// "throttled:budget_user"), or the key's own rate ("throttled:key_rpm" |
+// "throttled:key_tpm", with RetryInfo) — back off, do not hot-retry; or a spend limit
 // ("throttled:spend_<key|user>_<daily|monthly>", "throttled:spend_team_monthly")
 // with ErrorInfo "insufficient_quota" and RetryInfo until the UTC period resets.
-// PERMISSION_DENIED: the key's team may not use the model ("model \"<id>\" not
-// allowed for team", "no models in chain allowed for team", "model access
-// denied by team policy"); do not retry.
+// PERMISSION_DENIED: the key or its team may not use the model ("model \"<id>\"
+// not allowed for <key|team>", "no models in chain allowed for <key|team>",
+// "model access denied by key or team policy" for batches); do not retry.
 // FAILED_PRECONDITION: "output_truncated" (raise max_output_tokens, do not
-// retry as-is), "no_capable_model", "no_vendor_key", "not_configured",
+// retry as-is), "request_too_large" (above a minute of the key's tpm_limit), "no_capable_model", "no_vendor_key", "not_configured",
 // "batch not configured".
 // INVALID_ARGUMENT: "guardrail_violation" (PII or prompt injection detected),
 // "bad_request: <message>" (validation errors, empty batch, duplicate custom_id).

@@ -238,8 +238,7 @@ func (p *Poller) completeBatch(
 
 	type pendingUsage struct {
 		customID  string
-		inTokens  int
-		outTokens int
+		usage     llm.TokensUsage
 		status    usagev1.Status
 		errReason string
 	}
@@ -273,8 +272,10 @@ func (p *Poller) completeBatch(
 			respProto := &pb.GenerateTextResponse{
 				Choices: choices,
 				Usage: &pb.TokensUsage{
-					Input:  int64(res.Response.Usage.Input),
-					Output: int64(res.Response.Usage.Output),
+					Input:      int64(res.Response.Usage.Input),
+					Output:     int64(res.Response.Usage.Output),
+					CacheRead:  int64(res.Response.Usage.CacheRead),
+					CacheWrite: int64(res.Response.Usage.CacheWrite),
 				},
 				ResolvedModel:  m.ID,
 				ResolvedVendor: m.Vendor,
@@ -283,13 +284,11 @@ func (p *Poller) completeBatch(
 			resBytes, _ := protojson.Marshal(respProto)
 			itemUpdate.Result = resBytes
 
-			total.Input += res.Response.Usage.Input
-			total.Output += res.Response.Usage.Output
+			total = total.Add(res.Response.Usage)
 			usageQueue = append(usageQueue, pendingUsage{
-				customID:  res.CustomID,
-				inTokens:  res.Response.Usage.Input,
-				outTokens: res.Response.Usage.Output,
-				status:    usagev1.Status_STATUS_SUCCESS,
+				customID: res.CustomID,
+				usage:    res.Response.Usage,
+				status:   usagev1.Status_STATUS_SUCCESS,
 			})
 		} else {
 			failedCount++
@@ -336,7 +335,7 @@ func (p *Poller) completeBatch(
 	}
 
 	for _, u := range usageQueue {
-		p.emitUsage(b, m, u.customID, u.inTokens, u.outTokens, u.status, u.errReason)
+		p.emitUsage(b, m, u.customID, u.usage, u.status, u.errReason)
 	}
 
 	if p.throttle != nil && total.Input+total.Output > 0 {
@@ -351,7 +350,7 @@ func (p *Poller) emitUsage(
 	b *proxydb.Batch,
 	m *proxydb.Model,
 	customID string,
-	inTokens, outTokens int,
+	usage llm.TokensUsage,
 	status usagev1.Status,
 	errReason string,
 ) {
@@ -380,8 +379,13 @@ func (p *Poller) emitUsage(
 	meta["price_out_batch_per_mtok"] = strconv.FormatFloat(priceOut, 'f', -1, 64)
 	meta["price_in_per_mtok"] = strconv.FormatFloat(priceIn, 'f', -1, 64)
 	meta["price_out_per_mtok"] = strconv.FormatFloat(priceOut, 'f', -1, 64)
-	cost := pricing.Cost(m, llm.TokensUsage{Input: inTokens, Output: outTokens}, pricing.ModeBatch)
-	if inTokens > 0 || outTokens > 0 {
+	// With cache tokens, cost_usd also used the cache rates, scaled for batch.
+	if usage.CacheRead > 0 || usage.CacheWrite > 0 {
+		meta["price_cache_read_batch_per_mtok"] = strconv.FormatFloat(pricing.Rate(m, pricing.ModeBatch, pricing.CacheRead), 'f', -1, 64)
+		meta["price_cache_write_batch_per_mtok"] = strconv.FormatFloat(pricing.Rate(m, pricing.ModeBatch, pricing.CacheWrite), 'f', -1, 64)
+	}
+	cost := pricing.Cost(m, usage, pricing.ModeBatch)
+	if usage.Input > 0 || usage.Output > 0 {
 		meta["cost_usd"] = strconv.FormatFloat(float64(cost)/pricing.NanoPerUSD, 'f', -1, 64)
 	}
 
@@ -396,8 +400,7 @@ func (p *Poller) emitUsage(
 		actionID,
 		m.Vendor,
 		m.ID,
-		inTokens,
-		outTokens,
+		usage,
 		0,
 		cost,
 		status,

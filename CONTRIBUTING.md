@@ -1,4 +1,4 @@
-# Contributing to KTMS
+# Contributing to Keystone. The Model Switchboard. (KTMS)
 
 Thank you for your interest in contributing to `KTMS`! `KTMS (Keystone: The Model Switchboard)` is a high-performance, self-hosted LLM gateway providing unified routing, fail-fast fallbacks, rate and spend limits, and centralized credential encryption for production AI workflows.
 
@@ -30,8 +30,8 @@ We welcome bug reports, documentation enhancements, feature proposals, and code 
 
 3. **Run database migrations and verify connectivity:**
    ```bash
-   export DATABASE_URL="postgres://llmproxy:llmproxy@localhost:5435/llmproxy?sslmode=disable"
-   export LLMPROXY_ENCRYPTION_KEYS="1:LS1kZXYtb25seS1rZXktLWRldi1vbmx5LWtleS0tISE="
+   export DATABASE_URL="postgres://ktms:ktms@localhost:5435/ktms?sslmode=disable"
+   export KTMS_ENCRYPTION_KEYS="1:LS1kZXYtb25seS1rZXktLWRldi1vbmx5LWtleS0tISE="
    export REDIS_ADDR="localhost:6380"
    AUTO_SEED=true go run cmd/server/main.go
    ```
@@ -39,7 +39,7 @@ We welcome bug reports, documentation enhancements, feature proposals, and code 
 4. **Run tests with the race detector:**
    ```bash
    # Provide DATABASE_URL so postgres-backed integration tests execute rather than skip
-   DATABASE_URL="postgres://llmproxy:llmproxy@localhost:5435/llmproxy?sslmode=disable" go test ./... -race
+   DATABASE_URL="postgres://ktms:ktms@localhost:5435/ktms?sslmode=disable" go test ./... -race
    ```
 
 5. **Run static analysis:**

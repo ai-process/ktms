@@ -6,6 +6,7 @@ package throttle
 import (
 	"context"
 	"errors"
+	"math"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -406,7 +407,14 @@ func (t *Redis) reserveSpend(ctx context.Context, m *proxydb.Model, keyName, use
 		maxOutput = t.outputReserve
 	}
 	mode := pricing.ModeAt(m, now)
-	amount := pricing.Cost(m, llm.TokensUsage{Input: int(estimate), Output: int(maxOutput)}, mode)
+	// The cache split is known only after the call, so input is booked at its
+	// dearest rate: a prompt written to the cache costs more than plain input.
+	amount := pricing.Cost(m, llm.TokensUsage{Output: int(maxOutput)}, mode)
+	if in := pricing.MaxInputCost(m, estimate, mode); in > math.MaxInt64-amount {
+		amount = math.MaxInt64
+	} else {
+		amount += in
+	}
 
 	hold := &router.SpendHold{Reserved: amount, Model: m, Mode: mode}
 	args := make([]any, 0, 1+2*len(targets))
@@ -573,4 +581,16 @@ func (t *Redis) ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName
 			t.adjustSpend(c, spendKeys, spendTTLs, cost)
 		}
 	}()
+}
+
+// Every refusal reason is exported at 0 from the start, so an alert on
+// increase() also catches the first refusal after a restart.
+func init() {
+	reasons := []string{"rpm", "budget_key", "budget_user", KindKeyRPM, KindKeyTPM, spendlimit.ReasonUnavailable}
+	for _, e := range spendlimit.Enforced {
+		reasons = append(reasons, spendlimit.Reason(e.Subject, e.Period))
+	}
+	for _, r := range reasons {
+		observability.ThrottledTotal.WithLabelValues(r)
+	}
 }

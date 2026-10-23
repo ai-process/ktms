@@ -7,10 +7,70 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-23
+
+The first stable release of Keystone. The Model Switchboard. (KTMS). From here on, the public API
+listed in [API stability](README.md#api-stability) changes incompatibly only in a new major
+version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.14.x first.
+
 ### Added
 - `USAGE_COLLECTOR_TOKEN` (Helm: `secrets.usageCollectorToken`): a bearer token sent to the
-  usage sink on every call, for light-tokenmeter with authentication on. A refused token is
+  usage sink on every call, for light-tokenmeter 1.0 with authentication on. A refused token is
   logged as an error; events are held and retried.
+- CI fails when `usage-proto/` or the stubs generated from it drift from light-tokenmeter, which
+  owns `usage.v1`.
+- The Helm chart is published with every release at `oci://ghcr.io/ai-process/charts/ktms`,
+  signed with cosign; its version and `appVersion` are the release version. CI installs it from
+  an OCI registry on a kind cluster.
+- Prompt-cache pricing: `ModelSpec.price_cache_read_per_mtok` and `price_cache_write_per_mtok`
+  (0 = a vendor default that never undercharges, e.g. Anthropic's 0.1x read and 1.25x write).
+  Spend reservations book input at the dearer of the input and cache-write rate. Cached input from Anthropic,
+  OpenAI, DeepSeek, Gemini and Bedrock is priced at these rates in spend limits and usage costs,
+  sent to light-tokenmeter as `cache_read_tokens` / `cache_write_tokens`, returned in
+  `TokensUsage.cache_read` / `cache_write` (HTTP: `prompt_tokens_details.cached_tokens`), and
+  counted in `ktms_cache_tokens_total`.
+- Key policies: `APIKeyPolicy` (`allowed_models`, `rpm_limit`, `tpm_limit`) on `MintAPIKey`,
+  `SetAPIKeyPolicy` and `ListAPIKeys`. The allowlist narrows chains on top of the team's; the rates
+  cover all models (tokens by GCRA, booked by estimate and then by fact) and refuse with
+  `throttled:key_rpm` / `throttled:key_tpm` and `RetryInfo`.
+- `prompt_cache` model capability: Anthropic calls put `cache_control` breakpoints after the
+  tools, the system prompt and a conversation's latest turn, so repeated prefixes are read from
+  the cache at 0.1x input.
+- `GetSpend`: a key's, user's or team's current spend, cap and remaining amount per UTC day and
+  month, from the counters that enforce the caps.
+
+- `install-node.sh` takes over a node installed before the rename: it reuses the old node key
+  (for the same node id) and Ollama build, then, right before its own Ollama starts, stops the
+  `llm-proxy-*` services for good and moves their files and `~/.llm-proxy-node` to
+  `~/.ktms-node.backup/<time>/`. `--dry-run` shows the plan, `--keep-legacy` keeps the old
+  directory, `--uninstall` retires old services too, `--purge-backups` deletes the backups.
+
+### Changed
+- Publishing `ktms.v1` to the Buf Schema Registry fails the `bsr-push` job when `BUF_TOKEN` is
+  missing, instead of being skipped without a word.
+- Allowlist refusals name the list that refused: `not allowed for <key|team>`, `no models in chain
+  allowed for <key|team>`, and for batches `model access denied by key or team policy`.
+- Relicensed under Apache 2.0.
+- The README names the product Keystone. The Model Switchboard. (KTMS).
+- The README no longer offers SDK installs from the Buf Schema Registry, which is not published
+  yet; generate a client from `proto/ktms/v1` instead.
+- Usage events keep their metadata within light-tokenmeter's 16 KiB limit: entries that do not
+  fit are left out, largest first, with a warning, instead of the event being refused.
+- `ktms_requests_total` labels a call whose caller went away `status="canceled"` instead of
+  `error`, so client aborts stay out of vendor error rates.
+- `ktms_throttled_total` and `ktms_usage_events_dropped_total` export every reason at 0 from
+  startup, so `increase()` alerts also catch the first event after a restart.
+- The README's Operations section lists every metric with suggested alerts and sizing, and the
+  production checklist covers ports, network policies, key scopes and secrets.
+
+### Fixed
+- `install-node.sh` no longer pulls the model into another process's Ollama that happens to listen
+  on the node's address; it stops and names that process.
+- Prompt-cache tokens were mispriced, in spend limits and usage costs alike: Anthropic cache
+  reads were billed 10x too high and cache writes 20% too low, and Bedrock left cached input out
+  of the bill altogether.
+- `install-node.sh` no longer warns that a `ktms_node_` key does not look like a node key.
+- CONTRIBUTING and `compose.yaml` use the KTMS database and `KTMS_ENCRYPTION_KEYS` names.
 
 ## [0.14.0] - 2026-10-22
 
@@ -125,7 +185,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/ai-process/ktms/compare/v0.14.0...v1.0.0
 [0.14.0]: https://github.com/ai-process/ktms/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/ai-process/ktms/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/ai-process/ktms/compare/v0.12.0...v0.13.0

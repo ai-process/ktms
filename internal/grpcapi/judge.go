@@ -84,13 +84,18 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 		return nil, err
 	}
 
+	estimate := judgeEstimate(judgeReq)
+	settleKey, err := s.admitKey(ctx, plan.identity, estimate)
+	if err != nil {
+		return nil, err
+	}
 	var out *llm.JudgeResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
 		Chain:           plan.chain,
 		KeyName:         plan.identity.Name,
 		UserID:          router.UserID(plan.attrs, plan.identity.Name),
 		TeamID:          plan.identity.TeamID,
-		Estimate:        judgeEstimate(judgeReq),
+		Estimate:        estimate,
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,
 		Cooldown:        plan.cooldown,
@@ -110,6 +115,11 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 			return res.Usage, nil
 		},
 	})
+	var used *llm.TokensUsage
+	if out != nil {
+		used = &out.Usage
+	}
+	settleKey(used)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
@@ -490,13 +500,18 @@ func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRoll
 	}
 
 	userID := router.UserID(plan.attrs, plan.identity.Name)
+	estimate := rolloutEstimate(rolloutReq)
+	settleKey, err := s.admitKey(ctx, plan.identity, estimate)
+	if err != nil {
+		return nil, err
+	}
 	var out *llm.EvaluateRolloutsResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
 		Chain:           plan.chain,
 		KeyName:         plan.identity.Name,
 		UserID:          userID,
 		TeamID:          plan.identity.TeamID,
-		Estimate:        rolloutEstimate(rolloutReq),
+		Estimate:        estimate,
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,
 		Cooldown:        plan.cooldown,
@@ -530,6 +545,11 @@ func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRoll
 			return res.Usage, nil
 		},
 	})
+	var used *llm.TokensUsage
+	if out != nil {
+		used = &out.Usage
+	}
+	settleKey(used)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
@@ -627,8 +647,7 @@ func executeParallelCandidateRollouts(ctx context.Context, judge llm.Judge, roll
 				return err
 			}
 			mu.Lock()
-			totalUsage.Input += res.Usage.Input
-			totalUsage.Output += res.Usage.Output
+			totalUsage = totalUsage.Add(res.Usage)
 			mu.Unlock()
 
 			score := calculateCompositeScore(res.Answers, rolloutReq.Criteria)

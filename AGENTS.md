@@ -1,4 +1,4 @@
-# Agent Guidelines & Rules for KTMS (llm-proxy)
+# Agent Guidelines & Rules for Keystone. The Model Switchboard. (KTMS)
 
 Guidelines and invariants for AI agents working in this codebase, synthesized from architecture decisions and code review findings.
 
