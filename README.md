@@ -242,7 +242,9 @@ Postgres and Redis and pick up configuration changes within `ROUTING_RELOAD_SECO
 
 ### Helm chart (Kubernetes)
 
-An official Helm v3 chart is provided under [`deploy/helm/ktms`](deploy/helm/ktms):
+An official Helm v3 chart is published with every release at `oci://ghcr.io/ai-process/charts/ktms`
+(source in [`deploy/helm/ktms`](deploy/helm/ktms)). The chart version is the release version, and
+it runs the image of the same version:
 
 ```bash
 # 1. Create a secret with your database URL and encryption keys
@@ -252,7 +254,7 @@ kubectl create secret generic ktms-secrets \
   --from-literal=BOOTSTRAP_ADMIN_KEY="$(head -c 24 /dev/urandom | base64 | tr -d '/+=')"
 
 # 2. Install the release
-helm install ktms ./deploy/helm/ktms \
+helm install ktms oci://ghcr.io/ai-process/charts/ktms --version 1.0.0 \
   --set secrets.existingSecret=ktms-secrets \
   --set ingress.enabled=true \
   --set "ingress.hosts[0].host=proxy.example.com" \
@@ -1180,6 +1182,7 @@ fix bugs.
 | Prometheus metrics | Names and labels of `ktms_*` metrics, except the experimental ones listed below. |
 | Usage events (`usage.v1`) | Field numbers and meaning, checked by `buf breaking` like `ktms.v1`. |
 | Node agent | A 1.x agent works with any 1.x gateway, in both directions. |
+| Helm chart (`oci://ghcr.io/ai-process/charts/ktms`) | Value names and meaning; new values may appear. The chart version is the release version. |
 
 Not public, and free to change in any release: Redis key layout, log message text, the
 `internal/` Go packages, CLI output of the tools in `cmd/` other than their flags, and benchmark
@@ -1203,8 +1206,6 @@ These work and are supported, but may change in a minor release. The change is t
   (`GUARDRAILS_LATENT_*`), the encoder settings (`LATENT_*`), and embeddings in judge state
   (`EmbeddingPart`, `input_embedding` over HTTP).
 - **`JudgeStream` and `EvaluateRollouts`**, and `POST /v1/decisions/rollouts` over HTTP.
-- **The Helm chart** in `deploy/helm/ktms`, until it is published as a versioned OCI chart. Until
-  then its values may change.
 
 ### Compatibility with ktms-admin and light-tokenmeter
 
@@ -1415,10 +1416,12 @@ git tag v1.0.0 && git push origin v1.0.0
 
 The release workflow first runs `.github/workflows/compat.yml`: `buf breaking` against the
 previous published release in the tag's history, and the upgrade test from it (and from the
-oldest release of the same major). If it fails, nothing is published. Then GoReleaser publishes
-the binaries and, after it, the Docker images: an image on Docker Hub marks a complete release,
-which is how the next release finds its predecessor (re-run a failed image job before tagging
-again). A release that breaks the proto on purpose (an Experimental change, or a new major) sets
+oldest release of the same major). If it fails, nothing is published; nor if
+`deploy/helm/ktms/Chart.yaml` does not carry the tag's version as `version` and `appVersion`
+(bump both in the release commit). Then GoReleaser publishes the binaries, after it the Docker
+images, and last the Helm chart. An image on Docker Hub marks a complete release, which is how
+the next release finds its predecessor (re-run a failed image job before tagging again); a
+failed chart job can be re-run at any time and keeps a version already pushed. A release that breaks the proto on purpose (an Experimental change, or a new major) sets
 the repository variable `ALLOW_BREAKING_TAG` to its tag, which skips the proto checks; the
 upgrade test still runs. Only the newest stable tag moves `latest`, `slim` and `audio`, so a
 backport does not.
@@ -1429,6 +1432,11 @@ backport does not.
   `:<tag>`, `:<tag>-slim`, `:latest`, `:slim` (default lightweight Alpine without ffmpeg),
   and `:<tag>-audio`, `:audio` (with ffmpeg), plus `coyl/ktms-node:<tag>` (node agent).
   The repository needs the secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD` (an access token).
+- **Helm chart** (`.github/workflows/release.yml`): `oci://ghcr.io/ai-process/charts/ktms`,
+  version and `appVersion` from the tag, signed with cosign. It needs no secret; after the
+  first release the `charts/ktms` package has to be made public once in the organization's
+  package settings. CI installs the chart from an OCI registry on kind
+  (`scripts/helm-kind.sh`).
 - **Optional, off until their secrets exist:** macOS signing and notarization
   (`MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_ISSUER_ID`, `MACOS_NOTARY_KEY_ID`,
   `MACOS_NOTARY_KEY`) and a Homebrew formula pushed to `ai-process/homebrew-tap`
