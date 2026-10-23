@@ -51,6 +51,11 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 		return nil, err
 	}
 
+	// Media calls book no estimate: their tokens are known only afterwards.
+	settleKey, err := s.admitKey(ctx, plan.identity, 0)
+	if err != nil {
+		return nil, err
+	}
 	var out *llm.SpeechResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
 		Chain:   plan.chain,
@@ -80,6 +85,11 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 			return res.Usage, nil
 		},
 	})
+	if out != nil {
+		settleKey(out.Usage)
+	} else {
+		settleKey(llm.TokensUsage{})
+	}
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
@@ -116,6 +126,11 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 		return nil, err
 	}
 
+	// Media calls book no estimate: their tokens are known only afterwards.
+	settleKey, err := s.admitKey(ctx, plan.identity, 0)
+	if err != nil {
+		return nil, err
+	}
 	var out *llm.ImageResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
 		Chain:   plan.chain,
@@ -143,6 +158,11 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 			return res.Usage, nil
 		},
 	})
+	if out != nil {
+		settleKey(out.Usage)
+	} else {
+		settleKey(llm.TokensUsage{})
+	}
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
@@ -188,7 +208,7 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 	var ruleName string
 	if override != "" {
 		if !id.CanAccessModel(override) {
-			return nil, status.Errorf(codes.PermissionDenied, "model %q not allowed for team", override)
+			return nil, status.Errorf(codes.PermissionDenied, "model %q not allowed for %s", override, id.DeniedBy(override))
 		}
 		if _, ok := snap.Models[override]; !ok {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: unknown model %q", override)

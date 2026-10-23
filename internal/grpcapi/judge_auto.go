@@ -212,7 +212,7 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 	case req.GetModelOverride() != "":
 		routeMode = router.RouteModeOverride
 		if !id.CanAccessModel(req.GetModelOverride()) {
-			return nil, status.Errorf(codes.PermissionDenied, "model %q not allowed for team", req.GetModelOverride())
+			return nil, status.Errorf(codes.PermissionDenied, "model %q not allowed for %s", req.GetModelOverride(), id.DeniedBy(req.GetModelOverride()))
 		}
 		m, ok := snap.Models[req.GetModelOverride()]
 		if !ok {

@@ -50,19 +50,22 @@ func isInternalCall(ctx context.Context) bool {
 	return v
 }
 
-// teamModels keeps the chain models the caller's team may use.
+// teamModels keeps the chain models the caller's key and team may use.
 func teamModels(ctx context.Context, id *apikeys.Identity, models []*proxydb.Model) ([]*proxydb.Model, error) {
-	if id == nil || len(id.TeamAllowedModels) == 0 || isInternalCall(ctx) {
+	if !id.RestrictsModels() || isInternalCall(ctx) {
 		return models, nil
 	}
 	var allowed []*proxydb.Model
+	scope := "key"
 	for _, m := range models {
 		if id.CanAccessModel(m.ID) {
 			allowed = append(allowed, m)
+		} else if id.DeniedBy(m.ID) == "team" {
+			scope = "team"
 		}
 	}
 	if len(allowed) == 0 {
-		return nil, status.Error(codes.PermissionDenied, "no models in chain allowed for team")
+		return nil, status.Error(codes.PermissionDenied, "no models in chain allowed for "+scope)
 	}
 	return allowed, nil
 }

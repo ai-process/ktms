@@ -67,6 +67,11 @@ func (s *ProxyServer) GetEmbeddings(ctx context.Context, req *pb.GetEmbeddingsRe
 		ActionID:   req.GetActionId(),
 	}
 
+	// Media calls book no estimate: their tokens are known only afterwards.
+	settleKey, err := s.admitKey(ctx, plan.identity, 0)
+	if err != nil {
+		return nil, err
+	}
 	var out *llm.EmbeddingResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
 		Chain:           plan.chain,
@@ -91,6 +96,11 @@ func (s *ProxyServer) GetEmbeddings(ctx context.Context, req *pb.GetEmbeddingsRe
 			return res.Usage, nil
 		},
 	})
+	if out != nil {
+		settleKey(out.Usage)
+	} else {
+		settleKey(llm.TokensUsage{})
+	}
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}

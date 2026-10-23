@@ -460,6 +460,28 @@ Keys look like `ktms_<hex>` (keys minted before the rename start with `llm_` and
 Scopes: `generate` (data plane) and `admin` (implies everything).
 `ListAPIKeys` and `RevokeAPIKey` do what they say.
 
+A key can carry its own policy, on top of its team's and each model's `rpm`, at minting
+(`"policy": {...}`) or later with `SetAPIKeyPolicy` (it replaces the policy; the key's next call
+uses it):
+
+```bash
+grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
+  -d '{"name":"billing-service","policy":{"allowed_models":["gpt-4o-mini"],"rpm_limit":120,"tpm_limit":200000}}' \
+  localhost:9090 ktms.v1.AdminService/SetAPIKeyPolicy
+```
+
+- `allowed_models`: the models the key may call; empty allows any. A chain keeps only the models
+  both the key's and its team's lists allow; an override outside them, or a chain with none left,
+  is `PERMISSION_DENIED` (the message names `key` or `team`).
+- `rpm_limit`: calls per minute over all models, a minute of them as burst.
+- `tpm_limit`: tokens per minute over all models (GCRA weighted by tokens). A call books its input
+  estimate when admitted and its real input + output when it ends, so an underestimate is paid
+  for by the next calls; a call larger than a minute of tokens never fits.
+- Both rates count text generation, embeddings, judgments, speech and images (media calls by
+  their real tokens only), not batches. Refusals are `RESOURCE_EXHAUSTED` `throttled:key_rpm` /
+  `throttled:key_tpm` with `RetryInfo` (HTTP 429 with `Retry-After`). Like every limit they need
+  Redis and fail open without it.
+
 ### 2. Vendor keys (per client)
 
 A vendor credential is assigned to **one** API key and encrypted at rest. A client can
@@ -1073,7 +1095,7 @@ Errors use OpenAI's shape, `{"error": {"message", "type", "param", "code"}}`, an
 | --- | --- | --- |
 | 400 | `invalid_request_error` | `output_truncated`, `no_capable_model`, `no_vendor_key`, `not_configured`; validation messages |
 | 401 / 403 | `authentication_error` / `permission_error` | missing or invalid key, missing scope |
-| 429 | `rate_limit_error` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` (with `Retry-After`) |
+| 429 | `rate_limit_error` | `throttled:rpm`, `throttled:key_rpm`, `throttled:key_tpm`, `throttled:budget_key`, `throttled:budget_user` (with `Retry-After`) |
 | 429 | `insufficient_quota` | `insufficient_quota`; the message names the cap, e.g. `throttled:spend_key_daily`. `Retry-After` is the seconds until the period resets (UTC midnight or month start). |
 | 501 | `server_error` | `ffmpeg_missing` (Gemini speech synthesis invoked without ffmpeg on PATH or in container) |
 | 502 | `server_error` | `vendor_error` |
@@ -1150,9 +1172,10 @@ lexical hash encoder that folds case, homoglyphs, zero-width and spaced-out lett
 | `UNAVAILABLE` | `vendors_unavailable` | The whole chain failed: retry with backoff. When vendors paused every model in the chain with `Retry-After`, details carry `RetryInfo` (HTTP: `Retry-After` header): wait that long first. |
 | `UNAVAILABLE` | `auth_unavailable`, `storage_unavailable` | Postgres is unreachable for a key check (past `AUTH_STALE_IF_ERROR`) or a batch or admin write. Retry with backoff. |
 | `RESOURCE_EXHAUSTED` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` | Back off; don't hot-retry. Daily budget exhausted before batch submission. |
+| `RESOURCE_EXHAUSTED` | `throttled:key_rpm`, `throttled:key_tpm` | The key's own `rpm_limit` or `tpm_limit`. Details carry `RetryInfo`; without it, the call is larger than a minute of the key's tokens and never fits. |
 | `RESOURCE_EXHAUSTED` | `throttled:spend_key_daily`, `throttled:spend_key_monthly`, `throttled:spend_user_daily`, `throttled:spend_user_monthly`, `throttled:spend_team_monthly` | Spend limit reached. Details carry `ErrorInfo{reason: "insufficient_quota"}` and `RetryInfo` until the period resets. |
 | `UNAVAILABLE` | `throttled:spend_unavailable` | Spend counters unreachable with `SPEND_LIMITS_FAIL_MODE=closed`. Retry with backoff. |
-| `PERMISSION_DENIED` | `model "<id>" not allowed for team`, `no models in chain allowed for team`, `model access denied by team policy` (batch) | The key's team may not use that model. |
+| `PERMISSION_DENIED` | `model "<id>" not allowed for <key\|team>`, `no models in chain allowed for <key\|team>`, `model access denied by key or team policy` (batch) | The key's or its team's `allowed_models` excludes that model. |
 | `FAILED_PRECONDITION` | `output_truncated` | Raise `max_output_tokens`; don't retry as-is. |
 | `FAILED_PRECONDITION` | `no_capable_model` | No model in the matched chain can serve this request, modality, or batch capability. |
 | `FAILED_PRECONDITION` | `no_vendor_key` | The client key holds no credential for the chain's vendors. `local` models never cause this. |
@@ -1326,7 +1349,7 @@ metrics are served next to them.
 | `ktms_tokens_total` | `vendor`, `model`, `type` (`input`, `output`) | Tokens consumed. |
 | `ktms_cache_tokens_total` | `vendor`, `model`, `type` (`read`, `write`) | The part of input read from or written to the prompt cache. |
 | `ktms_active_requests` | `vendor`, `model` | Upstream calls in flight. |
-| `ktms_throttled_total` | `reason` (`rpm`, `budget_key`, `budget_user`, `spend_key_daily`, `spend_key_monthly`, `spend_user_daily`, `spend_user_monthly`, `spend_team_monthly`, `spend_unavailable`) | Calls refused by a limit; `spend_unavailable` is Redis down with `SPEND_LIMITS_FAIL_MODE=closed`. |
+| `ktms_throttled_total` | `reason` (`rpm`, `key_rpm`, `key_tpm`, `budget_key`, `budget_user`, `spend_key_daily`, `spend_key_monthly`, `spend_user_daily`, `spend_user_monthly`, `spend_team_monthly`, `spend_unavailable`) | Calls refused by a limit; `spend_unavailable` is Redis down with `SPEND_LIMITS_FAIL_MODE=closed`. |
 | `ktms_fallbacks_total` | `from_model`, `to_model`, `reason` | Moves down a fallback chain. |
 | `ktms_circuit_breaker_state` | `vendor`, `model` | `0` closed, `1` open, `2` half-open. |
 | `ktms_circuit_breaker_transitions_total`, `ktms_circuit_breaker_rejections_total` | `vendor`, `model` (+ `from`, `to`) | Breaker flaps and the calls it refused. |

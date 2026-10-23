@@ -28,6 +28,7 @@ const (
 	AdminService_MintAPIKey_FullMethodName          = "/ktms.v1.AdminService/MintAPIKey"
 	AdminService_RevokeAPIKey_FullMethodName        = "/ktms.v1.AdminService/RevokeAPIKey"
 	AdminService_ListAPIKeys_FullMethodName         = "/ktms.v1.AdminService/ListAPIKeys"
+	AdminService_SetAPIKeyPolicy_FullMethodName     = "/ktms.v1.AdminService/SetAPIKeyPolicy"
 	AdminService_RotateEncryption_FullMethodName    = "/ktms.v1.AdminService/RotateEncryption"
 	AdminService_MintNodeKey_FullMethodName         = "/ktms.v1.AdminService/MintNodeKey"
 	AdminService_RevokeNodeKey_FullMethodName       = "/ktms.v1.AdminService/RevokeNodeKey"
@@ -67,6 +68,7 @@ type AdminServiceClient interface {
 	MintAPIKey(ctx context.Context, in *MintAPIKeyRequest, opts ...grpc.CallOption) (*MintAPIKeyResponse, error)
 	RevokeAPIKey(ctx context.Context, in *RevokeAPIKeyRequest, opts ...grpc.CallOption) (*RevokeAPIKeyResponse, error)
 	ListAPIKeys(ctx context.Context, in *ListAPIKeysRequest, opts ...grpc.CallOption) (*ListAPIKeysResponse, error)
+	SetAPIKeyPolicy(ctx context.Context, in *SetAPIKeyPolicyRequest, opts ...grpc.CallOption) (*SetAPIKeyPolicyResponse, error)
 	RotateEncryption(ctx context.Context, in *RotateEncryptionRequest, opts ...grpc.CallOption) (*RotateEncryptionResponse, error)
 	MintNodeKey(ctx context.Context, in *MintNodeKeyRequest, opts ...grpc.CallOption) (*MintNodeKeyResponse, error)
 	RevokeNodeKey(ctx context.Context, in *RevokeNodeKeyRequest, opts ...grpc.CallOption) (*RevokeNodeKeyResponse, error)
@@ -182,6 +184,16 @@ func (c *adminServiceClient) ListAPIKeys(ctx context.Context, in *ListAPIKeysReq
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListAPIKeysResponse)
 	err := c.cc.Invoke(ctx, AdminService_ListAPIKeys_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) SetAPIKeyPolicy(ctx context.Context, in *SetAPIKeyPolicyRequest, opts ...grpc.CallOption) (*SetAPIKeyPolicyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetAPIKeyPolicyResponse)
+	err := c.cc.Invoke(ctx, AdminService_SetAPIKeyPolicy_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -414,6 +426,7 @@ type AdminServiceServer interface {
 	MintAPIKey(context.Context, *MintAPIKeyRequest) (*MintAPIKeyResponse, error)
 	RevokeAPIKey(context.Context, *RevokeAPIKeyRequest) (*RevokeAPIKeyResponse, error)
 	ListAPIKeys(context.Context, *ListAPIKeysRequest) (*ListAPIKeysResponse, error)
+	SetAPIKeyPolicy(context.Context, *SetAPIKeyPolicyRequest) (*SetAPIKeyPolicyResponse, error)
 	RotateEncryption(context.Context, *RotateEncryptionRequest) (*RotateEncryptionResponse, error)
 	MintNodeKey(context.Context, *MintNodeKeyRequest) (*MintNodeKeyResponse, error)
 	RevokeNodeKey(context.Context, *RevokeNodeKeyRequest) (*RevokeNodeKeyResponse, error)
@@ -471,6 +484,9 @@ func (UnimplementedAdminServiceServer) RevokeAPIKey(context.Context, *RevokeAPIK
 }
 func (UnimplementedAdminServiceServer) ListAPIKeys(context.Context, *ListAPIKeysRequest) (*ListAPIKeysResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListAPIKeys not implemented")
+}
+func (UnimplementedAdminServiceServer) SetAPIKeyPolicy(context.Context, *SetAPIKeyPolicyRequest) (*SetAPIKeyPolicyResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetAPIKeyPolicy not implemented")
 }
 func (UnimplementedAdminServiceServer) RotateEncryption(context.Context, *RotateEncryptionRequest) (*RotateEncryptionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RotateEncryption not implemented")
@@ -714,6 +730,24 @@ func _AdminService_ListAPIKeys_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AdminServiceServer).ListAPIKeys(ctx, req.(*ListAPIKeysRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_SetAPIKeyPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetAPIKeyPolicyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).SetAPIKeyPolicy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_SetAPIKeyPolicy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).SetAPIKeyPolicy(ctx, req.(*SetAPIKeyPolicyRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1138,6 +1172,10 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListAPIKeys",
 			Handler:    _AdminService_ListAPIKeys_Handler,
+		},
+		{
+			MethodName: "SetAPIKeyPolicy",
+			Handler:    _AdminService_SetAPIKeyPolicy_Handler,
 		},
 		{
 			MethodName: "RotateEncryption",

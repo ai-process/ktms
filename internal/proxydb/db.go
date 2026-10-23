@@ -29,7 +29,8 @@ type querier interface {
 func (d *DB) GetAPIKeyByLookup(ctx context.Context, lookup string) (*APIKey, error) {
 	return scanAPIKey(d.pool.QueryRow(ctx,
 		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
-		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}')
+		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}'),
+		        k.allowed_models, k.rpm_limit, k.tpm_limit
 		 FROM api_key k
 		 LEFT JOIN team t ON t.id = k.team_id
 		 WHERE k.key_lookup = $1`, lookup))
@@ -38,7 +39,8 @@ func (d *DB) GetAPIKeyByLookup(ctx context.Context, lookup string) (*APIKey, err
 func (d *DB) GetAPIKeyByName(ctx context.Context, name string) (*APIKey, error) {
 	return scanAPIKey(d.pool.QueryRow(ctx,
 		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
-		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}')
+		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}'),
+		        k.allowed_models, k.rpm_limit, k.tpm_limit
 		 FROM api_key k
 		 LEFT JOIN team t ON t.id = k.team_id
 		 WHERE k.name = $1`, name))
@@ -47,7 +49,7 @@ func (d *DB) GetAPIKeyByName(ctx context.Context, name string) (*APIKey, error) 
 func scanAPIKey(row pgx.Row) (*APIKey, error) {
 	var k APIKey
 	err := row.Scan(&k.ID, &k.Name, &k.KeyLookup, &k.KeyHash, &k.Scopes, &k.DisabledAt, &k.CreatedAt,
-		&k.OrgID, &k.TeamID, &k.TeamAllowedModels)
+		&k.OrgID, &k.TeamID, &k.TeamAllowedModels, &k.AllowedModels, &k.RPMLimit, &k.TPMLimit)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -59,9 +61,32 @@ func scanAPIKey(row pgx.Row) (*APIKey, error) {
 
 func (d *DB) InsertAPIKey(ctx context.Context, k *APIKey) error {
 	_, err := d.pool.Exec(ctx,
-		`INSERT INTO api_key (id, name, key_lookup, key_hash, scopes, org_id, team_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		k.ID, k.Name, k.KeyLookup, k.KeyHash, k.Scopes, k.OrgID, k.TeamID)
+		`INSERT INTO api_key (id, name, key_lookup, key_hash, scopes, org_id, team_id, allowed_models, rpm_limit, tpm_limit)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		k.ID, k.Name, k.KeyLookup, k.KeyHash, k.Scopes, k.OrgID, k.TeamID, nonNil(k.AllowedModels), k.RPMLimit, k.TPMLimit)
 	return err
+}
+
+// SetAPIKeyPolicy replaces the policy of the key with this name.
+func (d *DB) SetAPIKeyPolicy(ctx context.Context, name string, allowedModels []string, rpm int32, tpm int64) error {
+	tag, err := d.pool.Exec(ctx,
+		`UPDATE api_key SET allowed_models = $2, rpm_limit = $3, tpm_limit = $4 WHERE name = $1`,
+		name, nonNil(allowedModels), rpm, tpm)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// nonNil keeps a NOT NULL text[] column from receiving NULL.
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 func (d *DB) DisableAPIKey(ctx context.Context, name string) error {
@@ -79,7 +104,8 @@ func (d *DB) DisableAPIKey(ctx context.Context, name string) error {
 func (d *DB) ListAPIKeys(ctx context.Context) ([]*APIKey, error) {
 	rows, err := d.pool.Query(ctx,
 		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
-		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}')
+		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}'),
+		        k.allowed_models, k.rpm_limit, k.tpm_limit
 		 FROM api_key k
 		 LEFT JOIN team t ON t.id = k.team_id
 		 ORDER BY k.created_at`)

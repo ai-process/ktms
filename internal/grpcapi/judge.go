@@ -84,6 +84,11 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 		return nil, err
 	}
 
+	// Media calls book no estimate: their tokens are known only afterwards.
+	settleKey, err := s.admitKey(ctx, plan.identity, 0)
+	if err != nil {
+		return nil, err
+	}
 	var out *llm.JudgeResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
 		Chain:           plan.chain,
@@ -110,6 +115,11 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 			return res.Usage, nil
 		},
 	})
+	if out != nil {
+		settleKey(out.Usage)
+	} else {
+		settleKey(llm.TokensUsage{})
+	}
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
@@ -490,6 +500,11 @@ func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRoll
 	}
 
 	userID := router.UserID(plan.attrs, plan.identity.Name)
+	// Media calls book no estimate: their tokens are known only afterwards.
+	settleKey, err := s.admitKey(ctx, plan.identity, 0)
+	if err != nil {
+		return nil, err
+	}
 	var out *llm.EvaluateRolloutsResult
 	model, err := router.ExecuteMedia(ctx, s.throttle, router.MediaRequest{
 		Chain:           plan.chain,
@@ -530,6 +545,11 @@ func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRoll
 			return res.Usage, nil
 		},
 	})
+	if out != nil {
+		settleKey(out.Usage)
+	} else {
+		settleKey(llm.TokensUsage{})
+	}
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}

@@ -29,8 +29,14 @@ version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.
   sent to light-tokenmeter as `cache_read_tokens` / `cache_write_tokens`, returned in
   `TokensUsage.cache_read` / `cache_write` (HTTP: `prompt_tokens_details.cached_tokens`), and
   counted in `ktms_cache_tokens_total`.
+- Key policies: `APIKeyPolicy` (`allowed_models`, `rpm_limit`, `tpm_limit`) on `MintAPIKey`,
+  `SetAPIKeyPolicy` and `ListAPIKeys`. The allowlist narrows chains on top of the team's; the rates
+  cover all models (tokens by GCRA, booked by estimate and then by fact) and refuse with
+  `throttled:key_rpm` / `throttled:key_tpm` and `RetryInfo`.
 
 ### Changed
+- Allowlist refusals name the list that refused: `not allowed for <key|team>`, `no models in chain
+  allowed for <key|team>`, and for batches `model access denied by key or team policy`.
 - Relicensed under Apache 2.0.
 - The README names the product Keystone. The Model Switchboard. (KTMS).
 - The README no longer offers SDK installs from the Buf Schema Registry, which is not published
