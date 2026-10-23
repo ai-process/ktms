@@ -147,7 +147,7 @@ func main() {
 	// Typed-nil guard: a nil *UsageCollectorClient must not become a non-nil
 	// llm.UsageTracker interface, or every adapter would wrap a dead tracker.
 	var tracker llm.UsageTracker
-	usageClient, err := usagereport.NewUsageCollectorClient(cfg.UsageCollectorHost, cfg.UsageProjectID, cfg.UsageCollectorTLS)
+	usageClient, err := usagereport.NewUsageCollectorClient(cfg.UsageCollectorHost, cfg.UsageProjectID, cfg.UsageCollectorTLS, cfg.UsageCollectorToken)
 	if err != nil {
 		log.Warn().Err(err).Msg("usage collector unavailable; usage will not be reported")
 	}

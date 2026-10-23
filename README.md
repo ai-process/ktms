@@ -5,7 +5,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/ai-process/ktms)](https://goreportcard.com/report/github.com/ai-process/ktms)
 [![Release](https://img.shields.io/github/v/release/ai-process/ktms?sort=semver)](https://github.com/ai-process/ktms/releases)
 [![Docker Image](https://img.shields.io/docker/v/coyl/ktms?label=docker%20hub&sort=semver)](https://hub.docker.com/r/coyl/ktms)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
 
 A self-hosted LLM gateway and model switchboard. Your services talk to one endpoint; Keystone holds
 the vendor API keys, decides which model answers each request, falls back when a
@@ -393,6 +393,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `BOOTSTRAP_ADMIN_KEY` | empty | Implicit admin key for creating the first real key. Unset afterwards. |
 | `USAGE_COLLECTOR_HOST` | empty | `host:port` of a gRPC usage sink. Empty disables reporting. |
 | `USAGE_COLLECTOR_TLS` | `false` | Reach the sink over TLS, e.g. light-tokenmeter on Cloud Run (`host:443`). |
+| `USAGE_COLLECTOR_TOKEN` | empty | Bearer token sent to the sink on every call; for light-tokenmeter, a token with the `write` scope. Empty sends none. |
 | `USAGE_PROJECT_ID` | `ktms` | Default project name on usage events. |
 | `SENTRY_DSN` | empty | Error reporting; empty disables it. |
 | `SENTRY_ENVIRONMENT` / `SENTRY_RELEASE` | `development` / empty | Sentry metadata. |
@@ -1076,7 +1077,9 @@ purpose travels in free-form attributes, so the proxy knows nothing about your p
 model, tokens, duration, status, `action_id`, rule name and your attributes as metadata) to a
 gRPC service implementing [`usage-proto/usage/v1/usage.proto`](usage-proto/usage/v1/usage.proto).
 Events are attributed to the project named by the `usage_project` attribute, falling back to the
-API key's name. Any service implementing `RecordUsageEvent(s)` works as a sink.
+API key's name. Any service implementing `RecordUsageEvent(s)` works as a sink. When
+light-tokenmeter has authentication on, give KTMS a token with the `write` scope in
+`USAGE_COLLECTOR_TOKEN`; a refused token is logged as an error and events are held and retried.
 
 ### Semantic cache and latent guardrails
 
@@ -1183,6 +1186,16 @@ These work and are supported, but may change in a minor release. The change is t
 - **The Helm chart** in `deploy/helm/ktms`, until it is published as a versioned OCI chart. Until
   then its values may change.
 
+### Compatibility with ktms-admin and light-tokenmeter
+
+| KTMS | ktms-admin | light-tokenmeter | Notes |
+| --- | --- | --- | --- |
+| 1.x | 1.x | 1.x | With light-tokenmeter's authentication on, set `USAGE_COLLECTOR_TOKEN` to a `write` token. |
+| 1.x | 0.4.x | 0.1.x | Works without authentication; no compatibility promise before 1.0. |
+
+`ktms.v1` and `usage.v1` stay compatible within 1.x, so any 1.x release of each works with any
+1.x release of the others.
+
 ### Upgrading
 
 - **Within 1.x, upgrade in one step** from any earlier 1.x release: migrations run forward at
@@ -1275,6 +1288,10 @@ make clients    # regenerate the usage-sink stubs from usage-proto/
 docker compose up --build   # local stack with Postgres + Redis
 ```
 
+`usage-proto/usage/v1/usage.proto` is a byte-for-byte copy of light-tokenmeter's, which owns it.
+CI fails when the copy or the stubs generated from it drift; copy the file over and run
+`make clients`.
+
 Layout: `cmd/server` (entrypoint), `internal/router` (rule matching, fallback, admission),
 `internal/registry` (validated config snapshots), `internal/llm` (vendor-neutral chat model and
 adapters), `internal/throttle` (Redis limits), `internal/grpcapi` (RPC handlers),
@@ -1321,4 +1338,4 @@ Dry run: `go run github.com/goreleaser/goreleaser/v2@latest release --snapshot -
 
 ## License
 
-[MIT](LICENSE)
+[Apache 2.0](LICENSE)

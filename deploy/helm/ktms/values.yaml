@@ -139,7 +139,7 @@ probes:
 secrets:
   # If set, secrets.databaseUrl and secrets.encryptionKeys are read from this secret instead.
   # Expected keys: DATABASE_URL, KTMS_ENCRYPTION_KEYS (LLMPROXY_ENCRYPTION_KEYS is still read, deprecated),
-  # and optionally BOOTSTRAP_ADMIN_KEY, REDIS_PASSWORD.
+  # and optionally BOOTSTRAP_ADMIN_KEY, REDIS_PASSWORD, USAGE_COLLECTOR_TOKEN.
   existingSecret: ""
   # PostgreSQL connection URL (e.g., postgres://user:pass@postgres-host:5432/ktms?sslmode=require)
   databaseUrl: ""
@@ -149,6 +149,8 @@ secrets:
   bootstrapAdminKey: ""
   # Optional password for Redis authentication
   redisPassword: ""
+  # Optional bearer token for the usage collector (light-tokenmeter `write` scope)
+  usageCollectorToken: ""
 
 config:
   httpApiEnabled: true

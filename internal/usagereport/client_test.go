@@ -3,6 +3,7 @@ package usagereport
 import (
 	"context"
 	"errors"
+	"net"
 	"strings"
 	"sync"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/ai-process/ktms/internal/observability"
@@ -22,6 +24,7 @@ type fakeCollector struct {
 	usagev1.UsageServiceClient
 	mu     sync.Mutex
 	down   bool
+	refuse error // returned instead of delivering, like an auth refusal
 	hang   bool
 	events map[string]int // event id -> times delivered
 	calls  int
@@ -32,8 +35,11 @@ func newFake() *fakeCollector { return &fakeCollector{events: map[string]int{}} 
 func (f *fakeCollector) RecordUsageEvents(ctx context.Context, in *usagev1.RecordUsageEventsRequest, _ ...grpc.CallOption) (*usagev1.RecordUsageEventsResponse, error) {
 	f.mu.Lock()
 	f.calls++
-	down, hang := f.down, f.hang
+	down, refuse, hang := f.down, f.refuse, f.hang
 	f.mu.Unlock()
+	if refuse != nil {
+		return nil, refuse
+	}
 	if hang {
 		<-ctx.Done()
 		return nil, ctx.Err()
@@ -224,5 +230,94 @@ func TestCloseDoesNotWaitOutAHungSend(t *testing.T) {
 	_ = c.Close()
 	if elapsed := time.Since(start); elapsed > closeDeadline+time.Second {
 		t.Fatalf("Close took %v, want at most about closeDeadline", elapsed)
+	}
+}
+
+// tokenCollector is a real gRPC sink that remembers the authorization header.
+type tokenCollector struct {
+	usagev1.UnimplementedUsageServiceServer
+	got chan string
+}
+
+func (s *tokenCollector) RecordUsageEvents(ctx context.Context, in *usagev1.RecordUsageEventsRequest) (*usagev1.RecordUsageEventsResponse, error) {
+	md, _ := metadata.FromIncomingContext(ctx)
+	s.got <- strings.Join(md.Get("authorization"), ",")
+	return &usagev1.RecordUsageEventsResponse{CreatedCount: int32(len(in.GetEvents()))}, nil
+}
+
+func TestTokenIsSentAsBearer(t *testing.T) {
+	for _, tc := range []struct{ token, want string }{{"s3cret", "Bearer s3cret"}, {"", ""}} {
+		t.Run("token="+tc.token, func(t *testing.T) {
+			lis, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			sink := &tokenCollector{got: make(chan string, 8)}
+			srv := grpc.NewServer()
+			usagev1.RegisterUsageServiceServer(srv, sink)
+			go func() { _ = srv.Serve(lis) }()
+			t.Cleanup(srv.Stop)
+
+			c, err := NewUsageCollectorClient(lis.Addr().String(), "p", false, tc.token)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = c.Close() })
+			record(t, c, 1)
+			select {
+			case got := <-sink.got:
+				if got != tc.want {
+					t.Errorf("authorization %q, want %q", got, tc.want)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("no batch reached the sink")
+			}
+		})
+	}
+}
+
+// An auth refusal is not the events' fault: they are held, not dropped, and
+// delivered once the token is fixed.
+func TestAuthRefusalHoldsEvents(t *testing.T) {
+	for _, code := range []codes.Code{codes.Unauthenticated, codes.PermissionDenied} {
+		t.Run(code.String(), func(t *testing.T) {
+			f := newFake()
+			f.refuse = status.Error(code, "refused")
+			c := newClient(f, "p", 100)
+			defer c.Close()
+			if c.refusal(f.refuse) == "" {
+				t.Fatalf("%v is not reported as an auth refusal", code)
+			}
+			record(t, c, 5)
+			time.Sleep(1500 * time.Millisecond) // at least one refused flush
+			if u, _ := f.delivered(); u != 0 {
+				t.Fatalf("delivered %d events while refused", u)
+			}
+			f.mu.Lock()
+			f.refuse = nil
+			f.mu.Unlock()
+			waitDelivered(t, f, 5, 5*time.Second)
+		})
+	}
+}
+
+func TestFitMetaKeepsEventsWithinTheCollectorLimit(t *testing.T) {
+	small := map[string]string{"rule": "r1", "team": "t"}
+	if got := fitMeta(small, "a"); len(got) != 2 {
+		t.Fatalf("small meta changed: %v", got)
+	}
+	big := map[string]string{"rule": "r1", "prompt": strings.Repeat("x", maxMetaBytes), "": "empty key"}
+	got := fitMeta(big, "a")
+	if _, ok := got["prompt"]; ok {
+		t.Error("an entry over the limit was kept")
+	}
+	if _, ok := got[""]; ok {
+		t.Error("an empty key was kept")
+	}
+	if got["rule"] != "r1" {
+		t.Errorf("small entries must survive: %v", got)
+	}
+	if big["prompt"] == "" {
+		t.Error("the caller's map was modified")
 	}
 }

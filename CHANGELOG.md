@@ -7,16 +7,26 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-10-22
+## [1.0.0] - 2026-10-23
 
 The first stable release of Keystone. The Model Switchboard. (KTMS). From here on, the public API
 listed in [API stability](README.md#api-stability) changes incompatibly only in a new major
 version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.14.x first.
 
+### Added
+- `USAGE_COLLECTOR_TOKEN` (Helm: `secrets.usageCollectorToken`): a bearer token sent to the
+  usage sink on every call, for light-tokenmeter 1.0 with authentication on. A refused token is
+  logged as an error; events are held and retried.
+- CI fails when `usage-proto/` or the stubs generated from it drift from light-tokenmeter, which
+  owns `usage.v1`.
+
 ### Changed
+- Relicensed under Apache 2.0.
 - The README names the product Keystone. The Model Switchboard. (KTMS).
 - The README no longer offers SDK installs from the Buf Schema Registry, which is not published
   yet; generate a client from `proto/ktms/v1` instead.
+- Usage events keep their metadata within light-tokenmeter's 16 KiB limit: entries that do not
+  fit are left out, largest first, with a warning, instead of the event being refused.
 
 ### Fixed
 - `install-node.sh` no longer warns that a `ktms_node_` key does not look like a node key.
