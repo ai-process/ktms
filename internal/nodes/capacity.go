@@ -1,9 +1,6 @@
 package nodes
 
-import (
-	"math"
-	"time"
-)
+import "time"
 
 // maxCooldown bounds the slot hold after one long request, so a node at a
 // partial level never sits out for longer than this.
@@ -32,6 +29,14 @@ func (n *NodeSnapshot) Slots() int32 {
 	return int32((int64(n.Meta.MaxConcurrent)*p + 99) / 100)
 }
 
+// share is the slots' worth of time the level allows, before rounding up.
+func (n *NodeSnapshot) share() float64 {
+	if n.Meta.MaxConcurrent <= 0 {
+		return 0
+	}
+	return float64(n.Meta.MaxConcurrent) * float64(n.Capacity()) / 100
+}
+
 // Cooldown is how long a slot stays taken after a request that ran for d.
 // Rounding slots up overshoots the level (one slot of one is 100%, not 50%),
 // so the slot idles for the difference: a 20 s request at 1 slot, 50% -> 20 s.
@@ -41,9 +46,8 @@ func (n *NodeSnapshot) Cooldown(d time.Duration) time.Duration {
 	if p >= 100 || slots == 0 || d <= 0 {
 		return 0
 	}
-	exact := float64(n.Meta.MaxConcurrent) * float64(p) / 100
-	cd := float64(d) * (float64(slots)/exact - 1)
-	if cd >= float64(maxCooldown) || math.IsInf(cd, 0) {
+	cd := float64(d) * (float64(slots)/n.share() - 1)
+	if cd >= float64(maxCooldown) {
 		return maxCooldown
 	}
 	return time.Duration(cd)

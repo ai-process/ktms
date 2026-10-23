@@ -121,7 +121,7 @@ func (m *Manager) Heartbeat(ctx context.Context, hb *NodeHeartbeatData) (drainRe
 	}
 
 	// Cooldown holds are left out: a pause or drain waits for requests, not for them.
-	active, err := m.store.GetActiveCount(ctx, hb.NodeID, hb.LastHeartbeat)
+	_, active, err := m.store.GetInflight(ctx, hb.NodeID, hb.LastHeartbeat)
 	if err != nil {
 		return false, 0, err
 	}
@@ -213,7 +213,7 @@ func (m *Manager) ListNodes(ctx context.Context) ([]*NodeSnapshot, error) {
 		if err != nil {
 			return nil, err
 		}
-		inflight, err := m.store.GetInflightCount(ctx, id, now)
+		inflight, active, err := m.store.GetInflight(ctx, id, now)
 		if err != nil {
 			return nil, err
 		}
@@ -231,6 +231,7 @@ func (m *Manager) ListNodes(ctx context.Context) ([]*NodeSnapshot, error) {
 			Heartbeat: hb,
 			Perf:      perfMap,
 			Inflight:  inflight,
+			Active:    active,
 			State:     st,
 		})
 	}
@@ -294,7 +295,7 @@ func (m *Manager) sweep(ctx context.Context) {
 		}
 
 		// Purge expired leases from inflight ZSET
-		if _, cntErr := m.store.GetInflightCount(ctx, id, now); cntErr != nil {
+		if _, _, cntErr := m.store.GetInflight(ctx, id, now); cntErr != nil {
 			log.Warn().Err(cntErr).Str("node_id", id).Msg("sweep: failed to purge expired leases")
 		}
 	}

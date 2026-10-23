@@ -47,6 +47,7 @@ type NodeSnapshot struct {
 	Meta      *NodeMeta
 	Heartbeat *NodeHeartbeatData
 	Perf      map[string]*NodePerfData // modelID -> perf
-	Inflight  int32
+	Inflight  int32                    // slots taken, cooldown holds included
+	Active    int32                    // requests running
 	State     pb.NodeState
 }

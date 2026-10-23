@@ -83,9 +83,9 @@ func TestUnaryGenerationKeepsItsLease(t *testing.T) {
 // Other clients' running requests share the batch and add no wait.
 func TestExternalLoadCountsOnlyForeignWaiting(t *testing.T) {
 	cases := []struct {
-		name                     string
-		active, queued, inflight int32
-		want                     int64
+		name                 string
+		active, queued, ours int32
+		want                 int64
 	}{
 		{"all ours, oversubscribed engine", 4, 4, 8, 0},
 		{"other clients waiting", 4, 10, 8, 2},
@@ -93,12 +93,12 @@ func TestExternalLoadCountsOnlyForeignWaiting(t *testing.T) {
 		{"huge gauges do not wrap", math.MaxInt32, math.MaxInt32, 0, math.MaxInt32},
 	}
 	for _, tc := range cases {
-		n := &NodeSnapshot{Inflight: tc.inflight, Heartbeat: &NodeHeartbeatData{ActiveRequests: tc.active, QueueDepth: tc.queued}}
+		n := &NodeSnapshot{Active: tc.ours, Heartbeat: &NodeHeartbeatData{ActiveRequests: tc.active, QueueDepth: tc.queued}}
 		if got := externalLoad(n); got != tc.want {
 			t.Errorf("%s: externalLoad = %d, want %d", tc.name, got, tc.want)
 		}
 	}
-	if got := externalLoad(&NodeSnapshot{Inflight: 3}); got != 0 {
+	if got := externalLoad(&NodeSnapshot{Active: 3}); got != 0 {
 		t.Errorf("no heartbeat: externalLoad = %d", got)
 	}
 }

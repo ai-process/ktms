@@ -192,40 +192,28 @@ func (s *Store) RemoveNode(ctx context.Context, nodeID string) error {
 	return err
 }
 
-// GetInflightCount returns the number of active leases in the ZSET.
-func (s *Store) GetInflightCount(ctx context.Context, nodeID string, now time.Time) (int32, error) {
-	// First clean up expired leases
-	pipe := s.rdb.Pipeline()
-	pipe.ZRemRangeByScore(ctx, s.keys.NodeInflight(nodeID), "-inf", fmt.Sprintf("%d", now.UnixMilli()))
-	card := pipe.ZCard(ctx, s.keys.NodeInflight(nodeID))
-	_, err := pipe.Exec(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return int32(card.Val()), nil
-}
-
 // cooldownPrefix marks an inflight member that holds a slot after its request
 // ended. It shares the lease ZSET so capacity counts it with no second key.
 const cooldownPrefix = "cd:"
 
-// GetActiveCount returns the requests still running on the node, leaving out
-// cooldown holds. The set holds at most a slot count of members.
-func (s *Store) GetActiveCount(ctx context.Context, nodeID string, now time.Time) (int32, error) {
-	members, err := s.rdb.ZRangeByScore(ctx, s.keys.NodeInflight(nodeID), &redis.ZRangeBy{
-		Min: fmt.Sprintf("(%d", now.UnixMilli()),
-		Max: "+inf",
-	}).Result()
-	if err != nil {
-		return 0, err
+// GetInflight purges expired leases and returns the slots taken and, of
+// those, the requests still running (cooldown holds left out). The set holds
+// at most a slot count of members.
+func (s *Store) GetInflight(ctx context.Context, nodeID string, now time.Time) (taken, active int32, err error) {
+	key := s.keys.NodeInflight(nodeID)
+	pipe := s.rdb.Pipeline()
+	pipe.ZRemRangeByScore(ctx, key, "-inf", fmt.Sprintf("%d", now.UnixMilli()))
+	members := pipe.ZRange(ctx, key, 0, -1)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return 0, 0, err
 	}
-	var n int32
-	for _, m := range members {
+	for _, m := range members.Val() {
+		taken++
 		if !strings.HasPrefix(m, cooldownPrefix) {
-			n++
+			active++
 		}
 	}
-	return n, nil
+	return taken, active, nil
 }
 
 // Keys returns the configured rediskeys.Keys.

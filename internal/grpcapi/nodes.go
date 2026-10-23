@@ -6,7 +6,6 @@ import (
 	"math"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rs/zerolog/log"
@@ -337,13 +336,7 @@ func (s *AdminServer) ListNodes(ctx context.Context, _ *pb.ListNodesRequest) (*p
 		return nil, status.Errorf(codes.Unavailable, "list nodes: %v", err)
 	}
 	var out []*pb.NodeInfo
-	now := time.Now()
 	for _, sn := range snapshots {
-		// Running requests, not slots: cooldown holds would show an idle node busy.
-		active, err := s.nodeMgr.Store().GetActiveCount(ctx, sn.Meta.NodeID, now)
-		if err != nil {
-			return nil, status.Errorf(codes.Unavailable, "list nodes: %v", err)
-		}
 		var models []string
 		for _, m := range sn.Meta.Models {
 			models = append(models, m.ModelId)
@@ -379,7 +372,7 @@ func (s *AdminServer) ListNodes(ctx context.Context, _ *pb.ListNodesRequest) (*p
 			State:           sn.State.String(),
 			Models:          models,
 			EffectiveWeight: sn.Meta.BaseWeight,
-			ActiveRequests:  active,
+			ActiveRequests:  sn.Active, // cooldown holds would show an idle node busy
 			MaxConcurrent:   sn.Meta.MaxConcurrent,
 			VramFreeMb:      vramFree,
 			VramTotalMb:     vramTotal,

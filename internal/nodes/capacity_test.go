@@ -8,6 +8,7 @@ import (
 	"time"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/proxydb"
 )
 
 func pct(p uint32) *uint32 { return &p }
@@ -127,8 +128,8 @@ func TestReleaseWithCooldownKeepsSlot(t *testing.T) {
 	if err := mgr.Slots().ReleaseLease(ctx, "n", "r1", 20*time.Second); err != nil {
 		t.Fatal(err)
 	}
-	if n, err := mgr.store.GetActiveCount(ctx, "n", now); err != nil || n != 0 {
-		t.Fatalf("active during cooldown = %d (%v), want 0", n, err)
+	if taken, active, err := mgr.store.GetInflight(ctx, "n", now); err != nil || taken != 1 || active != 0 {
+		t.Fatalf("during cooldown: taken=%d active=%d (%v), want 1, 0", taken, active, err)
 	}
 	if ok, _ := mgr.Slots().AcquireLease(ctx, "n", "r2", 1, time.Minute); ok {
 		t.Fatal("slot free during cooldown")
@@ -137,8 +138,8 @@ func TestReleaseWithCooldownKeepsSlot(t *testing.T) {
 	if ok, err := mgr.Slots().AcquireLease(ctx, "n", "r2", 1, time.Minute); err != nil || !ok {
 		t.Fatalf("slot still taken after cooldown: ok=%v err=%v", ok, err)
 	}
-	if n, err := mgr.store.GetActiveCount(ctx, "n", now); err != nil || n != 1 {
-		t.Fatalf("active = %d (%v), want 1", n, err)
+	if taken, active, err := mgr.store.GetInflight(ctx, "n", now); err != nil || taken != 1 || active != 1 {
+		t.Fatalf("taken=%d active=%d (%v), want 1, 1", taken, active, err)
 	}
 }
 
@@ -174,5 +175,31 @@ func TestHalfLevelHalvesBusyTime(t *testing.T) {
 	}
 	if share := float64(busy) / float64(horizon); share < 0.45 || share > 0.55 {
 		t.Errorf("busy share = %.2f, want about 0.50", share)
+	}
+}
+
+func TestReleaseOfLostLeaseLeavesNoHold(t *testing.T) {
+	ctx := context.Background()
+	mgr, mr := setupTestManager(t)
+	if err := mgr.Slots().ReleaseLease(ctx, "gone", "r1", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if mr.Exists(mgr.store.keys.NodeInflight("gone")) {
+		t.Fatal("release of a lease that no longer exists recreated the inflight key")
+	}
+}
+
+func TestCooldownUsesLevelAtRelease(t *testing.T) {
+	mgr, _ := setupTestManager(t)
+	registerWithLevel(t, mgr, "n", 1, pct(100))
+	pa := NewPoolAdapter(NewSelector(mgr), nil, &proxydb.Model{ID: "m"}, time.Minute, nil)
+
+	selected := snapshotAt(1, pct(50))
+	if got := pa.cooldown(selected, 20*time.Second); got != 0 {
+		t.Errorf("level back at 100%%: cooldown = %v, want 0", got)
+	}
+	offline := &NodeSnapshot{Meta: &NodeMeta{NodeID: "missing", MaxConcurrent: 1}, Heartbeat: &NodeHeartbeatData{CapacityPercent: pct(50)}}
+	if got := pa.cooldown(offline, 20*time.Second); got != 20*time.Second {
+		t.Errorf("no current heartbeat: cooldown = %v, want the selection-time 20s", got)
 	}
 }

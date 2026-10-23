@@ -59,10 +59,14 @@ return 1
 // ARGV[1]: request ID
 // ARGV[2]: cooldown member (cd:{request ID})
 // ARGV[3]: cooldown deadline (millis)
-// The swap is atomic so no acquire sees the slot free in between.
+// The swap is atomic so no acquire sees the slot free in between. A lease
+// already gone (lapsed, node removed) gets no hold: it would outgrow the slots
+// or recreate a deleted key.
 const releaseCooldownScript = `
 local zkey = KEYS[1]
-redis.call('ZREM', zkey, ARGV[1])
+if redis.call('ZREM', zkey, ARGV[1]) == 0 then
+    return 0
+end
 redis.call('ZADD', zkey, tonumber(ARGV[3]), ARGV[2])
 return 1
 `
