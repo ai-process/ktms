@@ -174,17 +174,23 @@ while ! grep -q ready "$W/server.log" 2>/dev/null && [ $i -lt 50 ]; do
 	i=$((i + 1))
 done
 
-# agent release fixtures. modes: good | broken_start (--version fails) | never_registers
+# agent release fixtures. modes: good | broken_start (--version fails) | never_registers |
+# no_schedule (predates schedules). A schedule containing BAD is invalid, PAUSED is at 0% now.
 make_agent() { # version mode os arch
 	d="$FX/ai-process/ktms/v$1"
 	mkdir -p "$d" "$W/pack"
 	case $2 in
+	no_schedule) body="[ \"\$1\" = schedule ] && { [ -n \"\${NODE_KEY:-}\" ] && sleep 300; exit 1; } # runs for real with a key
+
+[ \"\$1\" = --version ] && { echo $1; exit 0; }; exit 0" ;;
 	broken_start) body='[ "$1" = --version ] && exit 1; exit 0' ;;
 	never_registers) body="[ \"\$1\" = doctor ] && echo DOCTOR-RAN:\$*
 [ \"\$1\" = --version ] && { echo $1; exit 0; } # BROKEN
 exit 0" ;;
 	*) body="[ \"\$1\" = --version ] && { echo $1; exit 0; }; exit 0" ;;
 	esac
+	case $2 in no_schedule | broken_start) ;; *) body="$SCHEDULE_CMD
+$body" ;; esac
 	printf '#!/bin/sh\n%s\n' "$body" >"$W/pack/ktms-node"
 	chmod +x "$W/pack/ktms-node"
 	asset="ktms-node_$1_$3_$4.tar.gz"
@@ -192,6 +198,13 @@ exit 0" ;;
 	printf '%s  %s\n' "$(sha "$d/$asset")" "$asset" >>"$d/checksums.txt"
 	printf 'v%s\n' "$1" >"$FX/ai-process/ktms/LATEST"
 }
+
+SCHEDULE_CMD='if [ "$1" = schedule ]; then
+	grep -q BAD "$3" && { echo "schedule: $3: line 1: bad time" >&2; exit 1; }
+	[ "$4" = --quiet ] && exit 0
+	if grep -q PAUSED "$3"; then echo "now 0%, next 23:00 100%"; else echo "now 100%, no switches"; fi
+	exit 0
+fi'
 
 fake_ollama_bin() {
 	printf '#!/bin/sh\ncase "$1" in\nserve) exec sleep 300;;\npull) echo "$2" >> "$FAKE_STATE/models";;\n--version) echo 0.0.0;;\nesac\n' >"$1"
@@ -408,6 +421,78 @@ RC=$?
 eq "dry run exits 0" 0 "$RC"
 has "dry run says nothing changed" "Nothing was changed" "$OUT"
 if [ ! -e "$BASE" ]; then ok "dry run creates nothing"; else bad "dry run creates nothing"; fi
+
+# ------------------------------------------------------------- schedule
+reset_world
+make_deps amd64
+make_agent 0.10.0 good linux amd64
+mkdir -p "$BASE/ollama/bin"
+fake_ollama_bin "$BASE/ollama/bin/ollama"
+printf '10:00-23:00 0 BAD\n' >"$W/bad.sched"
+OUT=$(run_install $ARGS --schedule "$W/bad.sched")
+RC=$?
+if [ "$RC" != 0 ]; then ok "schedule: an invalid file fails the install"; else bad "schedule: an invalid file fails the install"; fi
+has "schedule: the parser's error is shown once" "invalid --schedule $W/bad.sched: line 1: bad time" "$OUT"
+if [ ! -e "$W/svc/ktms-node.service" ] && [ ! -e "$W/svc/ktms-ollama.service" ] && [ ! -e "$BASE/schedule" ]; then
+	ok "schedule: an invalid file changes no service and copies nothing"
+else
+	bad "schedule: an invalid file changes no service and copies nothing"
+fi
+has "schedule: a missing file is refused" "cannot read --schedule" "$(run_install $ARGS --schedule "$W/none.sched")"
+
+printf '10:00-23:00 0 # PAUSED\n' >"$W/day.sched"
+OUT=$(run_install $ARGS --schedule "$W/day.sched")
+RC=$?
+eq "schedule: install exits 0" 0 "$RC"
+[ "$RC" = 0 ] || printf '%s\n' "$OUT" | tail -15
+eq "schedule: file copied" "$(cat "$W/day.sched")" "$(cat "$BASE/schedule" 2>/dev/null)"
+has "schedule: agent reads it" "\"--schedule-file\" \"$BASE/schedule\"" "$(cat "$W/svc/ktms-node.service")"
+has "schedule: status shows the level and the next switch" "Schedule: now 0%, next 23:00 100%" "$OUT"
+has "schedule: no preload during a pause" "pauses the node now" "$OUT"
+hasnt "schedule: model not loaded at 0%" "Loading tiny:1b into memory" "$OUT"
+OUT=$(run_install $ARGS)
+eq "schedule: a re-run without --schedule keeps the file" "$(cat "$W/day.sched")" "$(cat "$BASE/schedule" 2>/dev/null)"
+has "schedule: re-run status" "Schedule: now 0%" "$OUT"
+rm -f "$BASE/schedule"
+OUT=$(run_install $ARGS)
+has "schedule: none installed" "Schedule: none, 100% all the time" "$OUT"
+has "schedule: flag kept without a file" "\"--schedule-file\"" "$(cat "$W/svc/ktms-node.service")"
+has "schedule: model loaded at 100%" "Loading tiny:1b into memory" "$OUT"
+has "schedule: dry run checks the file with the installed agent" "line 1: bad time" "$(run_install $ARGS --schedule "$W/bad.sched" --dry-run)"
+
+cp "$W/day.sched" "$BASE/schedule"
+OUT=$(run_install $ARGS --schedule "$W/day.sched")
+printf '10:00-11:00 0 BAD\n' >"$BASE/schedule"
+BEFORE=$(count_calls 'restart|stop')
+OUT=$(run_install $ARGS)
+RC=$?
+if [ "$RC" != 0 ]; then ok "schedule: a broken installed file fails a re-run"; else bad "schedule: a broken installed file fails a re-run"; fi
+has "schedule: broken installed file named" "invalid $BASE/schedule (fix it" "$OUT"
+eq "schedule: broken installed file stops before any service" "$BEFORE" "$(count_calls 'restart|stop')"
+cp "$W/day.sched" "$BASE/schedule"
+
+printf '07:00-10:00 50\n' >"$W/new.sched"
+make_agent 0.11.0 never_registers linux amd64
+OUT=$(run_install $ARGS --version v0.11.0 --schedule "$W/new.sched")
+has "schedule: rollback restores the previous schedule" "Restored the previous schedule" "$OUT"
+eq "schedule: previous schedule back in place" "$(cat "$W/day.sched")" "$(cat "$BASE/schedule" 2>/dev/null)"
+
+reset_world
+make_deps amd64
+make_agent 0.10.0 no_schedule linux amd64
+mkdir -p "$BASE/ollama/bin"
+fake_ollama_bin "$BASE/ollama/bin/ollama"
+OUT=$(run_install $ARGS --schedule "$W/day.sched")
+RC=$?
+if [ "$RC" != 0 ]; then ok "schedule: an old agent refuses --schedule"; else bad "schedule: an old agent refuses --schedule"; fi
+has "schedule: old agent explained" "does not support --schedule" "$OUT"
+OUT=$(NODE_KEY=ktms_node_env run_install $ARGS)
+eq "schedule: old agent installs without one, NODE_KEY set or not" 0 "$?"
+hasnt "schedule: old agent gets no --schedule-file" "--schedule-file" "$(cat "$W/svc/ktms-node.service")"
+make_agent 0.11.0 never_registers linux amd64
+OUT=$(run_install $ARGS --version v0.11.0)
+has "schedule: rollback announced" "restoring the previous one" "$OUT"
+hasnt "schedule: rollback drops the flag the old agent lacks" "--schedule-file" "$(cat "$W/svc/ktms-node.service")"
 
 # memory warning on a small Mac, none on a 32 GB one
 FAKE_OS=Darwin FAKE_ARCH=arm64
