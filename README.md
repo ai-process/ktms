@@ -702,18 +702,22 @@ Installs on Linux need `zstd` (Ubuntu: `sudo apt install zstd`) and a normal log
 [**ktms-admin**](https://github.com/ai-process/ktms-admin) is a small web UI for everything in
 the previous section: models, routing rules, client API keys, vendor credentials and a playground for
 trying a prompt through your rules. It can also show usage and spend per project, user and model when
-paired with [light-tokenmeter](https://github.com/ai-process/light-tokenmeter). Sign-in is Google, limited to
-an e-mail allowlist with wildcards (`*@example.com`).
+paired with [light-tokenmeter](https://github.com/ai-process/light-tokenmeter). Sign-in is a password,
+Google or any OpenID Connect provider, GitHub, or an access proxy (oauth2-proxy, Authelia, Cloudflare
+Access, …), limited to an e-mail allowlist with wildcards (`*@example.com`).
 
 ```bash
 # 1. a key for the console
 grpcurl -plaintext -H "authorization: Bearer $BOOTSTRAP_ADMIN_KEY" \
   -d '{"name":"console","scopes":["admin"]}' localhost:9090 ktms.v1.AdminService/MintAPIKey
 
-# 2. run it (see its README for the Google OAuth setup)
+# 2. a password hash for you (asks twice)
+docker run --rm -it coyl/ktms-admin:latest hash-password you@example.com
+
+# 3. run it (its README covers the other sign-in methods)
 docker run -d -p 8081:8080 \
   -e PUBLIC_URL=https://admin.example.com \
-  -e GOOGLE_CLIENT_ID=… -e GOOGLE_CLIENT_SECRET=… -e ALLOWED_EMAILS='*@example.com' \
+  -e ADMIN_USERS='you@example.com:$argon2id$…' -e ALLOWED_EMAILS='you@example.com' \
   -e SESSION_SECRET="$(openssl rand -base64 36)" \
   -e KTMS_ADDR=ktms:9090 -e KTMS_ADMIN_KEY=ktms_… \
   coyl/ktms-admin:latest
