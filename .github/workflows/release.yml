@@ -110,6 +110,7 @@ jobs:
             helm package deploy/helm/ktms --version "$version" --app-version "$version" -d dist
             helm push "dist/ktms-$version.tgz" "${chart%/ktms}"
           fi
+          mkdir -p pulled # helm pull fails on a missing destination, after printing the digest
           digest=$(helm pull "$chart" --version "$version" -d pulled 2>&1 | sed -n 's/^Digest: //p')
           test -n "$digest"
           for i in 1 2 3; do
