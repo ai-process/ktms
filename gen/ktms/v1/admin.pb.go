@@ -46,10 +46,9 @@ type ModelSpec struct {
 	RpmBurst             int32   `protobuf:"varint,16,opt,name=rpm_burst,json=rpmBurst,proto3" json:"rpm_burst,omitempty"`                               // extra burst allowed above steady-state rpm (0 = default burst of rpm - 1, <0 = burst disabled)
 	QueueTimeoutMs       int32   `protobuf:"varint,17,opt,name=queue_timeout_ms,json=queueTimeoutMs,proto3" json:"queue_timeout_ms,omitempty"`           // max wait for pool inference slot in ms (0 = fallback immediately; capped to 250ms for interactive non-svc users)
 	BudgetGraceMargin    float64 `protobuf:"fixed64,18,opt,name=budget_grace_margin,json=budgetGraceMargin,proto3" json:"budget_grace_margin,omitempty"` // allowed daily budget overdraft (0.0 = system default 0.05, <0.0 = disabled)
-	// Prompt-cache rates, standard (off-peak) like price_in_per_mtok; peak and batch
-	// calls scale them by the same ratio as input. 0 = the vendor default: for
-	// anthropic 0.1x input to read and 1.25x to write, for bedrock 0.25x and 1.25x,
-	// for every other vendor 1x.
+	// Prompt-cache rates at the standard rate, scaled like input for peak and batch.
+	// 0 = a vendor default that never undercharges: anthropic 0.1x input to read
+	// and 1.25x to write, bedrock 0.25x and 1.25x, any other vendor 1x.
 	PriceCacheReadPerMtok  float64 `protobuf:"fixed64,19,opt,name=price_cache_read_per_mtok,json=priceCacheReadPerMtok,proto3" json:"price_cache_read_per_mtok,omitempty"`
 	PriceCacheWritePerMtok float64 `protobuf:"fixed64,20,opt,name=price_cache_write_per_mtok,json=priceCacheWritePerMtok,proto3" json:"price_cache_write_per_mtok,omitempty"`
 	unknownFields          protoimpl.UnknownFields
@@ -1033,10 +1032,9 @@ func (x *MintAPIKeyRequest) GetPolicy() *APIKeyPolicy {
 	return nil
 }
 
-// APIKeyPolicy limits one client key, on top of its team's limits and each
-// model's rpm. Refusals: PERMISSION_DENIED for a model outside allowed_models,
-// RESOURCE_EXHAUSTED throttled:key_rpm / throttled:key_tpm for the rates, and
-// FAILED_PRECONDITION request_too_large for a call above a minute of tokens.
+// APIKeyPolicy limits one key on top of its team and each model's rpm. Refusals:
+// PERMISSION_DENIED (model not allowed), RESOURCE_EXHAUSTED throttled:key_rpm |
+// key_tpm, FAILED_PRECONDITION request_too_large (above a minute of tokens).
 type APIKeyPolicy struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AllowedModels []string               `protobuf:"bytes,1,rep,name=allowed_models,json=allowedModels,proto3" json:"allowed_models,omitempty"` // model ids the key may call; empty = any
