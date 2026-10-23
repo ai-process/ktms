@@ -306,3 +306,54 @@ func TestPublishedSchemaAndExample(t *testing.T) {
 		t.Fatalf("schema/example.yaml: %v", err)
 	}
 }
+
+func TestReviewFindings(t *testing.T) {
+	head := "api_version: " + APIVersion + "\n"
+	if _, err := Parse([]byte(head + "api_keys: {name: billing}\n")); err == nil || !strings.Contains(err.Error(), "must be a list") {
+		t.Fatalf("a mapping for api_keys = %v, want refused", err)
+	}
+	if _, err := Parse([]byte(head + "spend_limits: {subject_type: key}\n")); err == nil || !strings.Contains(err.Error(), "must be a list") {
+		t.Fatalf("a mapping for spend_limits = %v, want refused", err)
+	}
+	// A key naming an organization that exists nowhere is refused, not minted untenanted.
+	c := mustParse(t, head+"api_keys:\n  - {name: bot, organization: acme, team: search}\n")
+	if _, err := Build(c, emptyState(), Options{}); err == nil || !strings.Contains(err.Error(), `organization "acme" exists neither`) {
+		t.Fatalf("unknown organization = %v", err)
+	}
+	// Revoked keys' vendor keys are not exported, so the export validates.
+	live := emptyState()
+	live.Keys = []*pb.APIKeyInfo{{Name: "old", Scopes: []string{"generate"}, Disabled: true}}
+	live.Config.VendorKeys = []*pb.VendorKeyInfo{{ApiKeyName: "old", Vendor: "openai"}}
+	var buf bytes.Buffer
+	if err := Export(live, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse(buf.Bytes()); err != nil {
+		t.Fatalf("export with a revoked key does not parse: %v\n%s", err, buf.String())
+	}
+	// Prune of a subject id with a slash deletes that limit, and plans are stable.
+	live = emptyState()
+	live.Config.SpendLimits = []*pb.SpendLimitSpec{
+		{SubjectType: "user", SubjectId: "org/alice", Period: "day", LimitNanousd: 1},
+		{SubjectType: "user", SubjectId: "bob", Period: "day", LimitNanousd: 1},
+	}
+	live.Config.UserRateLimits = []*pb.UserRateLimitSpec{{UserId: "a", ModelId: "*"}, {UserId: "b", ModelId: "*"}}
+	c = mustParse(t, head+"spend_limits: []\nuser_rate_limits: []\n")
+	first := ""
+	for i := 0; i < 5; i++ {
+		p, err := Build(c, live, Options{Prune: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		p.Write(&out)
+		if i == 0 {
+			first = out.String()
+		} else if out.String() != first {
+			t.Fatalf("plan order changes between runs:\n%s\n%s", first, out.String())
+		}
+	}
+	if !strings.Contains(first, "- spend limit user/org/alice/day") {
+		t.Fatalf("plan:\n%s", first)
+	}
+}

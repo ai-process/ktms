@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -65,13 +66,17 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	prune := fs.Bool("prune", false, "delete what managed sections do not list")
 	yes := fs.Bool("yes", false, "apply without asking")
 	detailed := fs.Bool("detailed-exitcode", false, "plan: exit 3 when there are changes")
-	timeout := fs.Duration("timeout", time.Minute, "time limit for the whole command")
+	timeout := fs.Duration("timeout", time.Minute, "time limit for reading and planning, and again for applying")
 	if err := fs.Parse(rest); err != nil {
 		return 2
 	}
+	// Time at the confirmation prompt must not eat into the apply's deadline.
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 
+	if !t.tls && !loopback(t.addr) && sub != "schema" && sub != "validate" {
+		fmt.Fprintf(stderr, "ktms: warning: sending the admin key to %s without TLS; pass --tls unless this network is private\n", t.addr)
+	}
 	fail := func(err error) int {
 		fmt.Fprintln(stderr, "ktms:", err)
 		return 1
@@ -157,7 +162,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 				return 1
 			}
 		}
-		res, err := declarative.Apply(ctx, c, live, plan, stdout)
+		actx, acancel := context.WithTimeout(context.Background(), *timeout)
+		defer acancel()
+		res, err := declarative.Apply(actx, c, live, plan, stdout)
 		printMinted(stdout, res)
 		if err != nil {
 			return fail(err)
@@ -190,6 +197,18 @@ func printMinted(w io.Writer, res *declarative.Result) {
 	for name, key := range res.Minted {
 		fmt.Fprintf(w, "  %s: %s\n", name, key)
 	}
+}
+
+func loopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func envOr(k, def string) string {

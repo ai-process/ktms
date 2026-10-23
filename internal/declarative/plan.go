@@ -220,6 +220,14 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 				scopes = []string{"generate"}
 			}
 			if lk == nil {
+				if k.Organization != "" && live.orgByName(k.Organization) == nil && !planned(cfg, k.Organization, "") {
+					conflict("api key %s: organization %q exists neither in Keystone nor in organizations", k.Name, k.Organization)
+					continue
+				}
+				if k.Team != "" && !teamExists(live, k.Organization, k.Team) && !planned(cfg, k.Organization, k.Team) {
+					conflict("api key %s: team %q/%q exists neither in Keystone nor in organizations", k.Name, k.Organization, k.Team)
+					continue
+				}
 				p.add(Change{Op: Create, Kind: "api key", Name: k.Name, Details: keyDetails(k, scopes)},
 					func(ctx context.Context, c pb.AdminServiceClient, a *applied) error {
 						req := &pb.MintAPIKeyRequest{Name: k.Name, Scopes: scopes, Policy: k.Policy}
@@ -338,9 +346,11 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 
 	if cfg.Manages("spend_limits") {
 		liveSL := map[string]int64{}
+		var liveSpecs []*pb.SpendLimitSpec
 		for _, l := range live.Config.GetSpendLimits() {
 			if l.GetSubjectType() != "team" {
 				liveSL[l.GetSubjectType()+"/"+l.GetSubjectId()+"/"+l.GetPeriod()] = l.GetLimitNanousd()
+				liveSpecs = append(liveSpecs, l)
 			}
 		}
 		for _, l := range cfg.SpendLimits {
@@ -359,15 +369,17 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 			}
 		}
 		if opt.Prune {
-			for id := range liveSL {
-				id := id
-				if slices.ContainsFunc(cfg.SpendLimits, func(l SpendLimit) bool { return l.SubjectType+"/"+l.SubjectID+"/"+l.Period == id }) {
+			for _, l := range liveSpecs {
+				l := l
+				if slices.ContainsFunc(cfg.SpendLimits, func(w SpendLimit) bool {
+					return w.SubjectType == l.GetSubjectType() && w.SubjectID == l.GetSubjectId() && w.Period == l.GetPeriod()
+				}) {
 					continue
 				}
-				parts := strings.SplitN(id, "/", 3)
+				id := l.GetSubjectType() + "/" + l.GetSubjectId() + "/" + l.GetPeriod()
 				deletes = append(deletes, func() {
 					p.add(Change{Op: Delete, Kind: "spend limit", Name: id}, func(ctx context.Context, c pb.AdminServiceClient, _ *applied) error {
-						_, err := c.DeleteSpendLimit(ctx, &pb.DeleteSpendLimitRequest{SubjectType: parts[0], SubjectId: parts[1], Period: parts[2]})
+						_, err := c.DeleteSpendLimit(ctx, &pb.DeleteSpendLimitRequest{SubjectType: l.GetSubjectType(), SubjectId: l.GetSubjectId(), Period: l.GetPeriod()})
 						return err
 					})
 				})
@@ -394,9 +406,12 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 			}
 		}
 		if opt.Prune {
-			for id, lu := range liveUR {
+			for _, lu := range live.Config.GetUserRateLimits() {
 				lu := lu
-				if slices.ContainsFunc(cfg.UserRateLimits, func(u *pb.UserRateLimitSpec) bool { return u.GetUserId()+"/"+u.GetModelId() == id }) {
+				id := lu.GetUserId() + "/" + lu.GetModelId()
+				if slices.ContainsFunc(cfg.UserRateLimits, func(u *pb.UserRateLimitSpec) bool {
+					return u.GetUserId() == lu.GetUserId() && u.GetModelId() == lu.GetModelId()
+				}) {
 					continue
 				}
 				deletes = append(deletes, func() {
@@ -504,6 +519,22 @@ func upsertModel(m *pb.ModelSpec) func(context.Context, pb.AdminServiceClient, *
 		_, err := c.UpsertModel(ctx, &pb.UpsertModelRequest{Model: m})
 		return err
 	}
+}
+
+// planned reports whether the file's organizations create the organization
+// (team empty) or the team.
+func planned(cfg *Config, org, team string) bool {
+	for _, o := range cfg.Organizations {
+		if o.Name == org {
+			return team == "" || slices.ContainsFunc(o.Teams, func(t Team) bool { return t.Name == team })
+		}
+	}
+	return false
+}
+
+func teamExists(live *State, org, team string) bool {
+	o := live.orgByName(org)
+	return o != nil && live.team(o.GetId(), team) != nil
 }
 
 func wantTeam(cfg *Config, org, team string) bool {

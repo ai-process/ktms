@@ -99,6 +99,9 @@ func Export(live *State, w io.Writer) error {
 
 	vks := seq()
 	for _, v := range live.Config.GetVendorKeys() {
+		if k := live.key(v.GetApiKeyName()); k == nil || k.GetDisabled() {
+			continue // a revoked key's credential cannot be used, nor its key recreated
+		}
 		vn := mapping()
 		add(vn, "api_key_name", scalarNode(v.GetApiKeyName()))
 		add(vn, "vendor", scalarNode(v.GetVendor()))

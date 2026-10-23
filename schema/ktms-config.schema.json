@@ -250,10 +250,8 @@
         "additionalProperties": false,
         "properties": {
           "limit_nanousd": {
-            "type": [
-              "integer",
-              "string"
-            ]
+            "exclusiveMinimum": 0,
+            "type": "integer"
           },
           "limit_usd": {
             "exclusiveMinimum": 0,

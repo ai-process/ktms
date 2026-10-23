@@ -62,7 +62,7 @@ func Schema() []byte {
 				"subject_id":    map[string]any{"type": "string", "description": "Key name or user id, * for every subject of that type."},
 				"period":        map[string]any{"enum": []string{"day", "month"}},
 				"limit_usd":     map[string]any{"type": "number", "exclusiveMinimum": 0},
-				"limit_nanousd": map[string]any{"type": []string{"integer", "string"}},
+				"limit_nanousd": map[string]any{"type": "integer", "exclusiveMinimum": 0},
 			}, "subject_type", "subject_id", "period")),
 		},
 	}

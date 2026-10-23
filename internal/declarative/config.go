@@ -1,7 +1,6 @@
-// Package declarative keeps a Keystone configuration in a file: it parses the
-// file, reads the live configuration through the Admin API, plans the changes
-// between them and applies the plan. Models, rules and user rate limits are
-// the Admin API's own messages, so the format follows ktms.v1 field for field.
+// Package declarative keeps a Keystone configuration in a file and applies it
+// through the Admin API. Models, rules and user rate limits are the Admin API's
+// own messages, so the format follows ktms.v1 field for field.
 package declarative
 
 import (
@@ -207,6 +206,9 @@ func jsonList(doc map[string]any, section string, into any) error {
 	if raw == nil {
 		raw = []any{}
 	}
+	if _, list := raw.([]any); !list {
+		return fmt.Errorf("%s: must be a list", section)
+	}
 	b, err := json.Marshal(raw)
 	if err != nil {
 		return fmt.Errorf("%s: %w", section, err)
@@ -225,7 +227,11 @@ func parseKeys(doc map[string]any, cfg *Config) error {
 	if !ok {
 		return nil
 	}
-	items, _ := raw.([]any)
+	items, ok := raw.([]any)
+	if !ok && raw != nil {
+		// A managed section parsed as empty would let --prune revoke every key.
+		return errors.New("api_keys: must be a list")
+	}
 	cfg.APIKeys = make([]APIKey, 0, len(items))
 	for i, item := range items {
 		m, ok := item.(map[string]any)

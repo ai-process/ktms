@@ -39,3 +39,13 @@ func TestPlanNeedsAnAdminKey(t *testing.T) {
 		t.Fatalf("plan without a key = %d %q", code, errs)
 	}
 }
+
+func TestPlaintextWarning(t *testing.T) {
+	t.Setenv("KTMS_ADMIN_KEY", "")
+	if _, _, errs := call("config", "plan", "-f", "../../schema/example.yaml", "--addr", "keystone.example.com:9090"); !strings.Contains(errs, "without TLS") {
+		t.Fatalf("no warning for a remote plaintext address: %q", errs)
+	}
+	if _, _, errs := call("config", "plan", "-f", "../../schema/example.yaml", "--addr", "127.0.0.1:9090"); strings.Contains(errs, "without TLS") {
+		t.Fatalf("warning for loopback: %q", errs)
+	}
+}
