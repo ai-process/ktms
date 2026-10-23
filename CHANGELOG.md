@@ -46,6 +46,8 @@ version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.
   directory, `--uninstall` retires old services too, `--purge-backups` deletes the backups.
 
 ### Changed
+- Publishing `ktms.v1` to the Buf Schema Registry fails the `bsr-push` job when `BUF_TOKEN` is
+  missing, instead of being skipped without a word.
 - Allowlist refusals name the list that refused: `not allowed for <key|team>`, `no models in chain
   allowed for <key|team>`, and for batches `model access denied by key or team policy`.
 - Relicensed under Apache 2.0.
