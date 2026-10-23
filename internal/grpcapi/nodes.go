@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rs/zerolog/log"
@@ -178,6 +179,9 @@ func (s *NodeRegistryServer) Heartbeat(ctx context.Context, req *pb.HeartbeatReq
 	if caller.NodeID != "" && caller.NodeID != req.GetNodeId() {
 		return nil, status.Errorf(codes.PermissionDenied, "key is bound to node_id %q", caller.NodeID)
 	}
+	if req.CapacityPercent != nil && req.GetCapacityPercent() > 100 {
+		return nil, status.Errorf(codes.InvalidArgument, "capacity_percent %d is above 100", req.GetCapacityPercent())
+	}
 	models, _, err := s.screenModels(caller, req.GetNodeId(), req.GetModels())
 	if err != nil {
 		return nil, err
@@ -203,17 +207,18 @@ func (s *NodeRegistryServer) Heartbeat(ctx context.Context, req *pb.HeartbeatReq
 	}
 
 	hb := &nodes.NodeHeartbeatData{
-		NodeID:         req.GetNodeId(),
-		Draining:       req.GetDraining(),
-		ActiveRequests: clampInt32(req.GetActiveRequests()),
-		QueueDepth:     clampInt32(req.GetQueueDepth()),
-		VRAMTotalMB:    totalVRAM,
-		VRAMFreeMB:     freeVRAM,
-		GPUUtilPercent: gpuUtil,
-		GPUTempC:       gpuTemp,
-		GPUModel:       gpuModel,
-		WarmModels:     warmModels,
-		ModelSpecs:     models,
+		NodeID:          req.GetNodeId(),
+		Draining:        req.GetDraining(),
+		ActiveRequests:  clampInt32(req.GetActiveRequests()),
+		QueueDepth:      clampInt32(req.GetQueueDepth()),
+		VRAMTotalMB:     totalVRAM,
+		VRAMFreeMB:      freeVRAM,
+		GPUUtilPercent:  gpuUtil,
+		GPUTempC:        gpuTemp,
+		GPUModel:        gpuModel,
+		WarmModels:      warmModels,
+		ModelSpecs:      models,
+		CapacityPercent: req.CapacityPercent,
 	}
 
 	drainReq, activeProxy, err := s.mgr.Heartbeat(ctx, hb)
@@ -231,6 +236,7 @@ func (s *NodeRegistryServer) Heartbeat(ctx context.Context, req *pb.HeartbeatReq
 		Ok:                  true,
 		DrainRequested:      drainReq,
 		ActiveProxyRequests: activeProxy,
+		CapacityApplied:     true,
 	}, nil
 }
 
@@ -331,7 +337,13 @@ func (s *AdminServer) ListNodes(ctx context.Context, _ *pb.ListNodesRequest) (*p
 		return nil, status.Errorf(codes.Unavailable, "list nodes: %v", err)
 	}
 	var out []*pb.NodeInfo
+	now := time.Now()
 	for _, sn := range snapshots {
+		// Running requests, not slots: cooldown holds would show an idle node busy.
+		active, err := s.nodeMgr.Store().GetActiveCount(ctx, sn.Meta.NodeID, now)
+		if err != nil {
+			return nil, status.Errorf(codes.Unavailable, "list nodes: %v", err)
+		}
 		var models []string
 		for _, m := range sn.Meta.Models {
 			models = append(models, m.ModelId)
@@ -367,7 +379,7 @@ func (s *AdminServer) ListNodes(ctx context.Context, _ *pb.ListNodesRequest) (*p
 			State:           sn.State.String(),
 			Models:          models,
 			EffectiveWeight: sn.Meta.BaseWeight,
-			ActiveRequests:  sn.Inflight,
+			ActiveRequests:  active,
 			MaxConcurrent:   sn.Meta.MaxConcurrent,
 			VramFreeMb:      vramFree,
 			VramTotalMb:     vramTotal,
@@ -379,6 +391,8 @@ func (s *AdminServer) ListNodes(ctx context.Context, _ *pb.ListNodesRequest) (*p
 			BaseWeight:      sn.Meta.BaseWeight,
 			Engine:          sn.Meta.Engine,
 			WarmModels:      warmModels,
+			CapacityPercent: sn.Capacity(),
+			EffectiveSlots:  sn.Slots(),
 		})
 	}
 	return &pb.ListNodesResponse{Nodes: out}, nil

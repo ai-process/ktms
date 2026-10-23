@@ -20,18 +20,19 @@ type NodeMeta struct {
 }
 
 type NodeHeartbeatData struct {
-	NodeID         string              `json:"node_id"`
-	LastHeartbeat  time.Time           `json:"last_heartbeat"`
-	Draining       bool                `json:"draining"`
-	ActiveRequests int32               `json:"active_requests"`
-	QueueDepth     int32               `json:"queue_depth"`
-	VRAMTotalMB    uint64              `json:"vram_total_mb"`
-	VRAMFreeMB     uint64              `json:"vram_free_mb"`
-	GPUUtilPercent float64             `json:"gpu_util_percent"`
-	GPUTempC       uint32              `json:"gpu_temp_c"`
-	GPUModel       string              `json:"gpu_model"`
-	WarmModels     []string            `json:"warm_models"`
-	ModelSpecs     []*pb.NodeModelSpec `json:"model_specs,omitempty"`
+	NodeID          string              `json:"node_id"`
+	LastHeartbeat   time.Time           `json:"last_heartbeat"`
+	Draining        bool                `json:"draining"`
+	ActiveRequests  int32               `json:"active_requests"`
+	QueueDepth      int32               `json:"queue_depth"`
+	VRAMTotalMB     uint64              `json:"vram_total_mb"`
+	VRAMFreeMB      uint64              `json:"vram_free_mb"`
+	GPUUtilPercent  float64             `json:"gpu_util_percent"`
+	GPUTempC        uint32              `json:"gpu_temp_c"`
+	GPUModel        string              `json:"gpu_model"`
+	WarmModels      []string            `json:"warm_models"`
+	ModelSpecs      []*pb.NodeModelSpec `json:"model_specs,omitempty"`
+	CapacityPercent *uint32             `json:"capacity_percent,omitempty"` // nil = 100
 }
 
 type NodePerfData struct {

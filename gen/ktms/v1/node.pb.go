@@ -30,6 +30,7 @@ const (
 	NodeState_NODE_STATE_OFFLINE        NodeState = 3
 	NodeState_NODE_STATE_DRAINING       NodeState = 4
 	NodeState_NODE_STATE_CIRCUIT_BROKEN NodeState = 5
+	NodeState_NODE_STATE_PAUSED         NodeState = 6 // the node's schedule is at 0%: up and reachable, not routed to
 )
 
 // Enum value maps for NodeState.
@@ -41,6 +42,7 @@ var (
 		3: "NODE_STATE_OFFLINE",
 		4: "NODE_STATE_DRAINING",
 		5: "NODE_STATE_CIRCUIT_BROKEN",
+		6: "NODE_STATE_PAUSED",
 	}
 	NodeState_value = map[string]int32{
 		"NODE_STATE_UNSPECIFIED":    0,
@@ -49,6 +51,7 @@ var (
 		"NODE_STATE_OFFLINE":        3,
 		"NODE_STATE_DRAINING":       4,
 		"NODE_STATE_CIRCUIT_BROKEN": 5,
+		"NODE_STATE_PAUSED":         6,
 	}
 )
 
@@ -560,8 +563,11 @@ type HeartbeatRequest struct {
 	QueueDepth     uint32                 `protobuf:"varint,4,opt,name=queue_depth,json=queueDepth,proto3" json:"queue_depth,omitempty"`
 	Resources      *NodeResources         `protobuf:"bytes,5,opt,name=resources,proto3" json:"resources,omitempty"`
 	Models         []*NodeModelSpec       `protobuf:"bytes,6,rep,name=models,proto3" json:"models,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Share of time the node may spend on proxy requests, 0-100, from its local
+	// schedule. Unset means 100, so agents that predate it keep full capacity.
+	CapacityPercent *uint32 `protobuf:"varint,7,opt,name=capacity_percent,json=capacityPercent,proto3,oneof" json:"capacity_percent,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *HeartbeatRequest) Reset() {
@@ -636,12 +642,20 @@ func (x *HeartbeatRequest) GetModels() []*NodeModelSpec {
 	return nil
 }
 
+func (x *HeartbeatRequest) GetCapacityPercent() uint32 {
+	if x != nil && x.CapacityPercent != nil {
+		return *x.CapacityPercent
+	}
+	return 0
+}
+
 type HeartbeatResponse struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	Ok                  bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
 	ReRegisterRequired  bool                   `protobuf:"varint,2,opt,name=re_register_required,json=reRegisterRequired,proto3" json:"re_register_required,omitempty"`
 	DrainRequested      bool                   `protobuf:"varint,3,opt,name=drain_requested,json=drainRequested,proto3" json:"drain_requested,omitempty"`
-	ActiveProxyRequests int32                  `protobuf:"varint,4,opt,name=active_proxy_requests,json=activeProxyRequests,proto3" json:"active_proxy_requests,omitempty"`
+	ActiveProxyRequests int32                  `protobuf:"varint,4,opt,name=active_proxy_requests,json=activeProxyRequests,proto3" json:"active_proxy_requests,omitempty"` // requests still running, not counting post-request cooldown
+	CapacityApplied     bool                   `protobuf:"varint,5,opt,name=capacity_applied,json=capacityApplied,proto3" json:"capacity_applied,omitempty"`               // false from proxies that ignore capacity_percent
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -702,6 +716,13 @@ func (x *HeartbeatResponse) GetActiveProxyRequests() int32 {
 		return x.ActiveProxyRequests
 	}
 	return 0
+}
+
+func (x *HeartbeatResponse) GetCapacityApplied() bool {
+	if x != nil {
+		return x.CapacityApplied
+	}
+	return false
 }
 
 type UnregisterNodeRequest struct {
@@ -849,7 +870,7 @@ const file_ktms_v1_node_proto_rawDesc = "" +
 	"\x06models\x18\x02 \x03(\v2\x16.ktms.v1.NodeModelSpecR\x06models\"f\n" +
 	"\x14ValidateNodeResponse\x12'\n" +
 	"\x0faccepted_models\x18\x01 \x03(\tR\x0eacceptedModels\x12%\n" +
-	"\x0edropped_models\x18\x02 \x03(\tR\rdroppedModels\"\xf7\x01\n" +
+	"\x0edropped_models\x18\x02 \x03(\tR\rdroppedModels\"\xbc\x02\n" +
 	"\x10HeartbeatRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x1a\n" +
 	"\bdraining\x18\x02 \x01(\bR\bdraining\x12'\n" +
@@ -857,24 +878,28 @@ const file_ktms_v1_node_proto_rawDesc = "" +
 	"\vqueue_depth\x18\x04 \x01(\rR\n" +
 	"queueDepth\x124\n" +
 	"\tresources\x18\x05 \x01(\v2\x16.ktms.v1.NodeResourcesR\tresources\x12.\n" +
-	"\x06models\x18\x06 \x03(\v2\x16.ktms.v1.NodeModelSpecR\x06models\"\xb2\x01\n" +
+	"\x06models\x18\x06 \x03(\v2\x16.ktms.v1.NodeModelSpecR\x06models\x12.\n" +
+	"\x10capacity_percent\x18\a \x01(\rH\x00R\x0fcapacityPercent\x88\x01\x01B\x13\n" +
+	"\x11_capacity_percent\"\xdd\x01\n" +
 	"\x11HeartbeatResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x120\n" +
 	"\x14re_register_required\x18\x02 \x01(\bR\x12reRegisterRequired\x12'\n" +
 	"\x0fdrain_requested\x18\x03 \x01(\bR\x0edrainRequested\x122\n" +
-	"\x15active_proxy_requests\x18\x04 \x01(\x05R\x13activeProxyRequests\"H\n" +
+	"\x15active_proxy_requests\x18\x04 \x01(\x05R\x13activeProxyRequests\x12)\n" +
+	"\x10capacity_applied\x18\x05 \x01(\bR\x0fcapacityApplied\"H\n" +
 	"\x15UnregisterNodeRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"(\n" +
 	"\x16UnregisterNodeResponse\x12\x0e\n" +
-	"\x02ok\x18\x01 \x01(\bR\x02ok*\xa7\x01\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok*\xbe\x01\n" +
 	"\tNodeState\x12\x1a\n" +
 	"\x16NODE_STATE_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12NODE_STATE_HEALTHY\x10\x01\x12\x16\n" +
 	"\x12NODE_STATE_SUSPECT\x10\x02\x12\x16\n" +
 	"\x12NODE_STATE_OFFLINE\x10\x03\x12\x17\n" +
 	"\x13NODE_STATE_DRAINING\x10\x04\x12\x1d\n" +
-	"\x19NODE_STATE_CIRCUIT_BROKEN\x10\x052\xc6\x02\n" +
+	"\x19NODE_STATE_CIRCUIT_BROKEN\x10\x05\x12\x15\n" +
+	"\x11NODE_STATE_PAUSED\x10\x062\xc6\x02\n" +
 	"\x13NodeRegistryService\x12K\n" +
 	"\fRegisterNode\x12\x1c.ktms.v1.RegisterNodeRequest\x1a\x1d.ktms.v1.RegisterNodeResponse\x12K\n" +
 	"\fValidateNode\x12\x1c.ktms.v1.ValidateNodeRequest\x1a\x1d.ktms.v1.ValidateNodeResponse\x12B\n" +
@@ -937,6 +962,7 @@ func file_ktms_v1_node_proto_init() {
 	if File_ktms_v1_node_proto != nil {
 		return
 	}
+	file_ktms_v1_node_proto_msgTypes[6].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

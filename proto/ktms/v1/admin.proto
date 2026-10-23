@@ -212,7 +212,7 @@ message NodeInfo {
   string node_id = 1;
   string name = 2;
   string endpoint = 3;
-  string state = 4; // HEALTHY | SUSPECT | DRAINING | CIRCUIT_BROKEN | OFFLINE
+  string state = 4; // HEALTHY | SUSPECT | DRAINING | PAUSED | CIRCUIT_BROKEN | OFFLINE
   repeated string models = 5;
   double effective_weight = 6;
   int32 active_requests = 7;
@@ -227,6 +227,8 @@ message NodeInfo {
   double base_weight = 16;
   string engine = 17;
   repeated string warm_models = 18;
+  uint32 capacity_percent = 19; // current level of the node's schedule
+  int32 effective_slots = 20; // concurrent requests allowed at that level
 }
 
 message ListNodesResponse {

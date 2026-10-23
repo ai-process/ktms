@@ -237,9 +237,11 @@ func externalLoad(n *NodeSnapshot) int64 {
 
 // holdLease renews the slot for as long as the call runs: a unary generation
 // outlasts the TTL as easily as a stream, and a lapsed lease lets the pool
-// overbook the node. The returned func stops renewing and releases the slot.
+// overbook the node. The returned func stops renewing and releases the slot,
+// holding it for the cooldown the node's level asks for.
 func (pa *PoolAdapter) holdLease(cand *Candidate, reqID string) func() {
 	nodeID := cand.Snapshot.Meta.NodeID
+	started := time.Now()
 	every := pa.leaseTTL / 2
 	timeout := min(2*time.Second, every) // a renewal must land before the lease runs out
 	stop := make(chan struct{})
@@ -267,7 +269,8 @@ func (pa *PoolAdapter) holdLease(cand *Candidate, reqID string) func() {
 	return func() {
 		close(stop)
 		// No wait for an in-flight renewal: it cannot recreate a released lease.
-		if err := pa.selector.mgr.Slots().ReleaseLease(context.Background(), nodeID, reqID); err != nil {
+		cooldown := cand.Snapshot.Cooldown(time.Since(started))
+		if err := pa.selector.mgr.Slots().ReleaseLease(context.Background(), nodeID, reqID, cooldown); err != nil {
 			log.Warn().Err(err).Str("node_id", nodeID).Str("req_id", reqID).Msg("failed to release node slot lease")
 		}
 	}
@@ -344,7 +347,7 @@ func (pa *PoolAdapter) acquireSlot(ctx context.Context, userID string, estTokens
 	cand, err := pa.selector.SelectNodeForCapability(ctx, pa.model.ID, capability)
 	if err == nil {
 		reqID := uuid.NewString()
-		acquired, leaseErr := pa.selector.mgr.Slots().AcquireLease(ctx, cand.Snapshot.Meta.NodeID, reqID, cand.Snapshot.Meta.MaxConcurrent, pa.leaseTTL)
+		acquired, leaseErr := pa.selector.mgr.Slots().AcquireLease(ctx, cand.Snapshot.Meta.NodeID, reqID, cand.Snapshot.Slots(), pa.leaseTTL)
 		if leaseErr != nil {
 			return nil, "", poolUnavailable("acquire_lease", leaseErr)
 		}
@@ -384,7 +387,8 @@ func (pa *PoolAdapter) acquireSlot(ctx context.Context, userID string, estTokens
 		var perfCount int
 
 		for _, n := range nodes {
-			if n.State == pb.NodeState_NODE_STATE_OFFLINE || n.State == pb.NodeState_NODE_STATE_DRAINING || n.State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
+			if n.State == pb.NodeState_NODE_STATE_OFFLINE || n.State == pb.NodeState_NODE_STATE_DRAINING ||
+				n.State == pb.NodeState_NODE_STATE_PAUSED || n.State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
 				continue
 			}
 			hasModel := false
@@ -405,7 +409,7 @@ func (pa *PoolAdapter) acquireSlot(ctx context.Context, userID string, estTokens
 				continue
 			}
 
-			totalSlots += n.Meta.MaxConcurrent
+			totalSlots += n.Slots()
 			totalInflight += n.Inflight
 			queueDepth += externalLoad(n)
 			if perf, ok := n.Perf[pa.model.ID]; ok && perf.TPSEMA > 0 {
@@ -470,7 +474,7 @@ func (pa *PoolAdapter) acquireSlot(ctx context.Context, userID string, estTokens
 		cand, err := pa.selector.SelectNodeForCapability(ctx, pa.model.ID, capability)
 		if err == nil {
 			reqID := uuid.NewString()
-			acquired, leaseErr := pa.selector.mgr.Slots().AcquireLease(ctx, cand.Snapshot.Meta.NodeID, reqID, cand.Snapshot.Meta.MaxConcurrent, pa.leaseTTL)
+			acquired, leaseErr := pa.selector.mgr.Slots().AcquireLease(ctx, cand.Snapshot.Meta.NodeID, reqID, cand.Snapshot.Slots(), pa.leaseTTL)
 			if leaseErr != nil {
 				return nil, "", poolUnavailable("acquire_lease", leaseErr)
 			}

@@ -90,7 +90,8 @@ func (s *Selector) SelectNodeForCapability(ctx context.Context, modelID string, 
 
 	for _, n := range nodes {
 		if n.State == pb.NodeState_NODE_STATE_OFFLINE ||
-			n.State == pb.NodeState_NODE_STATE_DRAINING {
+			n.State == pb.NodeState_NODE_STATE_DRAINING ||
+			n.State == pb.NodeState_NODE_STATE_PAUSED {
 			continue
 		}
 
@@ -118,8 +119,9 @@ func (s *Selector) SelectNodeForCapability(ctx context.Context, modelID string, 
 			matchingHealthyOrSuspect++
 		}
 
-		// Check capacity
-		if n.Inflight >= n.Meta.MaxConcurrent {
+		// Check capacity; cooldown holds count as taken slots
+		slots := n.Slots()
+		if n.Inflight >= slots {
 			continue
 		}
 
@@ -151,8 +153,8 @@ func (s *Selector) SelectNodeForCapability(ctx context.Context, modelID string, 
 		// F_load: max(0.1, 1 - util^2). Other clients' requests waiting in the
 		// engine count as load, so a node they keep busy draws less traffic.
 		fLoad := 1.0
-		if n.Meta.MaxConcurrent > 0 {
-			util := (float64(n.Inflight) + float64(externalLoad(n))) / float64(n.Meta.MaxConcurrent)
+		if slots > 0 {
+			util := (float64(n.Inflight) + float64(externalLoad(n))) / float64(slots)
 			fLoad = math.Max(0.1, 1.0-util*util)
 		}
 

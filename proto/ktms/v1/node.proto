@@ -11,6 +11,7 @@ enum NodeState {
   NODE_STATE_OFFLINE = 3;
   NODE_STATE_DRAINING = 4;
   NODE_STATE_CIRCUIT_BROKEN = 5;
+  NODE_STATE_PAUSED = 6; // the node's schedule is at 0%: up and reachable, not routed to
 }
 
 message NodeResources {
@@ -71,13 +72,17 @@ message HeartbeatRequest {
   uint32 queue_depth = 4;
   NodeResources resources = 5;
   repeated NodeModelSpec models = 6;
+  // Share of time the node may spend on proxy requests, 0-100, from its local
+  // schedule. Unset means 100, so agents that predate it keep full capacity.
+  optional uint32 capacity_percent = 7;
 }
 
 message HeartbeatResponse {
   bool ok = 1;
   bool re_register_required = 2;
   bool drain_requested = 3;
-  int32 active_proxy_requests = 4;
+  int32 active_proxy_requests = 4; // requests still running, not counting post-request cooldown
+  bool capacity_applied = 5; // false from proxies that ignore capacity_percent
 }
 
 message UnregisterNodeRequest {

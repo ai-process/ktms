@@ -120,8 +120,8 @@ func (m *Manager) Heartbeat(ctx context.Context, hb *NodeHeartbeatData) (drainRe
 		return false, 0, err
 	}
 
-	// Get active proxy requests
-	active, err := m.store.GetInflightCount(ctx, hb.NodeID, hb.LastHeartbeat)
+	// Cooldown holds are left out: a pause or drain waits for requests, not for them.
+	active, err := m.store.GetActiveCount(ctx, hb.NodeID, hb.LastHeartbeat)
 	if err != nil {
 		return false, 0, err
 	}
@@ -142,9 +142,10 @@ func (m *Manager) Drain(ctx context.Context, nodeID string) error {
 // GetNodeState calculates node state based on:
 // 1. OFFLINE (heartbeat missing / expired)
 // 2. DRAINING (operator requested or self reported)
-// 3. CIRCUIT_BROKEN (circuit tripped)
-// 4. SUSPECT (GPU temp >= 88C or high utilization)
-// 5. HEALTHY
+// 3. PAUSED (the node's schedule is at 0%)
+// 4. CIRCUIT_BROKEN (circuit tripped)
+// 5. SUSPECT (GPU temp >= 88C or high utilization)
+// 6. HEALTHY
 func (m *Manager) GetNodeState(ctx context.Context, nodeID string, hb *NodeHeartbeatData) (pb.NodeState, error) {
 	if hb == nil {
 		return pb.NodeState_NODE_STATE_OFFLINE, nil
@@ -159,6 +160,9 @@ func (m *Manager) GetNodeState(ctx context.Context, nodeID string, hb *NodeHeart
 	}
 	if isDraining || hb.Draining {
 		return pb.NodeState_NODE_STATE_DRAINING, nil
+	}
+	if capacityOf(hb) == 0 {
+		return pb.NodeState_NODE_STATE_PAUSED, nil
 	}
 
 	broken, err := m.circuit.IsBroken(ctx, nodeID)
