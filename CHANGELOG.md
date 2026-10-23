@@ -7,6 +7,8 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-23
+
 ### Added
 - Node capacity levels: `HeartbeatRequest.capacity_percent` (0-100, unset = 100) limits a local
   node to a share of its time. Slots shrink to `ceil(max_concurrent × level)`, and where that
@@ -207,7 +209,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/ai-process/ktms/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/ai-process/ktms/compare/v0.14.0...v1.0.0
 [0.14.0]: https://github.com/ai-process/ktms/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/ai-process/ktms/compare/v0.13.0...v0.13.1
