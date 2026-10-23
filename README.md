@@ -759,6 +759,12 @@ automatic login for an unattended Mac. The model is large, so the first run take
 **3. Check.** The last lines say `Node anna-mac is running and registered`. The proxy admin
 confirms with `ListNodes` that the node is `HEALTHY` and has the model.
 
+To keep the machine free while its owner works, add `--schedule FILE` with load levels by local
+time (format above, under the node agent). The installer checks the file and copies it to
+`~/.ktms-node/schedule`; edit that file later and the agent picks it up, no re-run needed. The
+last lines then show the level now and the next switch (`Schedule: now 0%, next 23:00 100%`), and
+during a pause the installer does not load the model into memory.
+
 Run the same command again to update; a re-run only restarts what changed, and a new agent that
 fails to start is rolled back. Remove everything with the same command plus `--uninstall`
 (downloaded models stay in `~/.ollama`).

@@ -42,6 +42,8 @@ Options:
   --new-key              ask for the node key again even if one is stored
   --plaintext            talk to the proxy without TLS
   --endpoint URL         you expose the node yourself: skip the built-in tunnel
+  --schedule FILE        load levels by local time, "[days] HH:MM-HH:MM level" per line;
+                         copied to ~/.ktms-node/schedule, which a re-run without it keeps
   --upgrade-deps         also update Ollama and cloudflared (a re-run keeps them)
   --dry-run              check this machine and print the plan, change nothing
   --doctor               explain in plain words why the installed node is not working
@@ -56,12 +58,12 @@ EOF
 
 parse_args() {
 	PROXY="" NODE_ID="" MODEL="" NAME="" MAXC=1 CTX=8192 VERSION="latest"
-	KEY_SRC="" NEW_KEY=0 PLAINTEXT=0 ENDPOINT="" UPGRADE=0 DRY_RUN=0 UNINSTALL=0 DOCTOR=0 KEEP_LEGACY=0 PURGE_BACKUPS=0
+	KEY_SRC="" NEW_KEY=0 PLAINTEXT=0 ENDPOINT="" UPGRADE=0 DRY_RUN=0 UNINSTALL=0 DOCTOR=0 KEEP_LEGACY=0 PURGE_BACKUPS=0 SCHEDULE_SRC=""
 	while [ $# -gt 0 ]; do
 		opt=$1 val="" shift_n=1
 		case $1 in --*=*) opt=${1%%=*} val=${1#*=} ;; esac
 		case $opt in
-		--proxy | --node-id | --model | --name | --max-concurrency | --context | --version | --key-file | --endpoint)
+		--proxy | --node-id | --model | --name | --max-concurrency | --context | --version | --key-file | --endpoint | --schedule)
 			if [ "$opt" = "$1" ]; then
 				[ $# -ge 2 ] || die "$opt needs a value"
 				val=$2 shift_n=2
@@ -69,7 +71,7 @@ parse_args() {
 			case $opt in
 			--proxy) PROXY=$val ;; --node-id) NODE_ID=$val ;; --model) MODEL=$val ;; --name) NAME=$val ;;
 			--max-concurrency) MAXC=$val ;; --context) CTX=$val ;; --version) VERSION=$val ;;
-			--key-file) KEY_SRC=$val ;; --endpoint) ENDPOINT=$val ;;
+			--key-file) KEY_SRC=$val ;; --endpoint) ENDPOINT=$val ;; --schedule) SCHEDULE_SRC=$val ;;
 			esac
 			;;
 		--new-key) NEW_KEY=1 ;;
@@ -94,6 +96,7 @@ parse_args() {
 	case $MODEL in *[!A-Za-z0-9._:/-]*) die "--model contains characters Ollama does not allow" ;; esac
 	case $MAXC in '' | *[!0-9]* | 0) die "--max-concurrency must be a positive number" ;; esac
 	case $CTX in '' | *[!0-9]* | 0) die "--context must be a positive number" ;; esac
+	[ -z "$SCHEDULE_SRC" ] || [ -r "$SCHEDULE_SRC" ] || die "cannot read --schedule $SCHEDULE_SRC"
 	case $PROXY in *:*) ;; *) PROXY="$PROXY:443" ;; esac
 	[ -n "$NAME" ] || NAME=$NODE_ID
 	return 0
@@ -645,6 +648,34 @@ stage_agent() {
 	AGENT_STAGED=1
 }
 
+# agent_bin is the agent this run will leave installed: the staged one, else the current one.
+agent_bin() {
+	if [ "${AGENT_STAGED:-0}" = 1 ]; then echo "$BASE/bin/ktms-node.new"; else echo "$BASE/bin/ktms-node"; fi
+}
+
+# agent_has_schedule tells whether an agent binary knows schedules; older ones
+# exit on the unknown --schedule-file flag, so it is only passed to newer ones.
+agent_has_schedule() { # binary
+	[ -x "$1" ] && "$1" schedule --file /dev/null --quiet >/dev/null 2>&1
+}
+
+# install_schedule checks --schedule with the agent's own parser and copies it
+# into place. It runs before any service is touched, so a bad file changes nothing.
+install_schedule() {
+	[ -n "$SCHEDULE_SRC" ] || return 0
+	bin=$(agent_bin)
+	agent_has_schedule "$bin" || die "this node agent version does not support --schedule; install a newer one with --version"
+	out=$("$bin" schedule --file "$SCHEDULE_SRC" 2>&1) || die "invalid --schedule $SCHEDULE_SRC: ${out#schedule: }"
+	cp "$SCHEDULE_SRC" "$BASE/schedule.tmp" && chmod 644 "$BASE/schedule.tmp" && mv "$BASE/schedule.tmp" "$BASE/schedule"
+	say "Schedule installed in $BASE/schedule: $out."
+}
+
+# schedule_status prints the level now and the next switch, or nothing when unknown.
+schedule_status() { # binary
+	[ -f "$BASE/schedule" ] && agent_has_schedule "$1" || return 0
+	"$1" schedule --file "$BASE/schedule" 2>/dev/null || true
+}
+
 run_ollama() {
 	if [ -n "$RUNNER" ]; then /usr/bin/arch -arm64 "$OLLAMA_BIN" "$@"; else "$OLLAMA_BIN" "$@"; fi
 }
@@ -670,6 +701,12 @@ ensure_model() {
 		step "Downloading model $MODEL (this can take a while)"
 		OLLAMA_HOST="$OLLAMA_ADDR" run_ollama pull "$MODEL" || die "could not download $MODEL (check the name with: ollama list / the Ollama library)"
 	fi
+	case $(schedule_status "$(agent_bin)") in
+	"now 0%"*)
+		say "The schedule pauses the node now: $MODEL is not loaded; the agent loads it before the next window."
+		return 0
+		;;
+	esac
 	step "Loading $MODEL into memory"
 	curl -fsS -m 900 "http://$OLLAMA_ADDR/api/generate" -d "{\"model\":\"$MODEL\",\"keep_alive\":-1}" >/dev/null || warn "could not preload $MODEL; the first request will be slow"
 }
@@ -683,12 +720,35 @@ write_service() { # id program args... (stdin: nothing)
 	SVC_TMP=$out
 }
 
+# write_node_service renders the agent's service for the flags the given binary knows.
+write_node_service() { # binary
+	bin=$1
+	set -- "$BASE/bin/ktms-node" --proxy-addr "$PROXY" --node-id "$NODE_ID" --node-name "$NAME" \
+		--engine ollama --engine-url "http://$OLLAMA_ADDR" --only-model "$MODEL" --max-concurrent "$MAXC" --node-key-file "$BASE/key"
+	[ "$PLAINTEXT" = 1 ] || set -- "$@" --tls
+	if [ -n "$ENDPOINT" ]; then
+		set -- "$@" --endpoint "$ENDPOINT" --expose none
+	else
+		set -- "$@" --expose cloudflared --cloudflared-path "$BASE/bin/cloudflared"
+	fi
+	# Always passed, file or not: a schedule created later needs no reinstall.
+	agent_has_schedule "$bin" && set -- "$@" --schedule-file "$BASE/schedule"
+	# Keep the machine awake while the node runs.
+	if [ "$OS" = darwin ]; then
+		set -- /usr/bin/caffeinate -is "$@"
+	elif command -v systemd-inhibit >/dev/null 2>&1; then
+		set -- systemd-inhibit --what=idle:sleep --who=ktms-node --why="Serving LLM requests" --mode=block "$@"
+	fi
+	write_service node "$@"
+}
+
 # run_doctor explains why the node is not working, in plain language. Returns the agent's status.
 run_doctor() {
 	step "Diagnosing"
 	set -- doctor --proxy-addr "$PROXY" --node-id "$NODE_ID" --node-key-file "$BASE/key" \
 		--engine ollama --engine-url "http://$OLLAMA_ADDR" --only-model "$MODEL" --model "$MODEL"
 	[ "$PLAINTEXT" = 1 ] || set -- "$@" --tls
+	agent_has_schedule "$BASE/bin/ktms-node" && set -- "$@" --schedule-file "$BASE/schedule"
 	if [ -n "$ENDPOINT" ]; then
 		set -- "$@" --endpoint "$ENDPOINT" --expose none
 	else
@@ -753,12 +813,18 @@ print_status() {
 	ep=$(sed -n -e 's/.*node registered successfully.*endpoint=\([^ ]*\).*/\1/p' -e 's/.*node re-registered.*endpoint=\([^ ]*\).*/\1/p' "$BASE/logs/node.log" 2>/dev/null | tail -1 | sed "s/$(printf '\033')\[[0-9;]*m//g")
 	engine="Ollama"
 	[ "$OS" = darwin ] && [ "$ARCH" = arm64 ] && engine="Ollama (Apple GPU)"
+	sched=$(schedule_status "$BASE/bin/ktms-node")
+	if [ -z "$sched" ]; then
+		sched="none, 100% all the time (add one with --schedule FILE)"
+		[ -f "$BASE/schedule" ] && sched="see $BASE/schedule"
+	fi
 	cat <<EOF
 
 Node $NODE_ID is running and registered.
   Proxy:   $PROXY
   Engine:  $engine on $OLLAMA_ADDR, model $MODEL
   Address: ${ep:-see $BASE/logs/node.log}
+  Schedule: $sched
   Logs:    $BASE/logs/node.log
   Update:  run the same command again
   Remove:  re-run with --uninstall
@@ -797,10 +863,11 @@ main() {
 	OLLAMA_CHANGED=0 AGENT_STAGED=0
 	import_legacy_key
 	store_key
+	stage_agent
+	install_schedule
 	adopt_legacy_ollama
 	ensure_ollama
 	ensure_cloudflared
-	stage_agent
 
 	step "Starting the inference engine"
 	if [ -n "$RUNNER" ]; then write_service ollama /usr/bin/arch -arm64 "$OLLAMA_BIN" serve; else write_service ollama "$OLLAMA_BIN" serve; fi
@@ -812,20 +879,6 @@ main() {
 	ensure_model
 
 	step "Starting the node"
-	set -- "$BASE/bin/ktms-node" --proxy-addr "$PROXY" --node-id "$NODE_ID" --node-name "$NAME" \
-		--engine ollama --engine-url "http://$OLLAMA_ADDR" --only-model "$MODEL" --max-concurrent "$MAXC" --node-key-file "$BASE/key"
-	[ "$PLAINTEXT" = 1 ] || set -- "$@" --tls
-	if [ -n "$ENDPOINT" ]; then
-		set -- "$@" --endpoint "$ENDPOINT" --expose none
-	else
-		set -- "$@" --expose cloudflared --cloudflared-path "$BASE/bin/cloudflared"
-	fi
-	# Keep the machine awake while the node runs.
-	if [ "$OS" = darwin ]; then
-		set -- /usr/bin/caffeinate -is "$@"
-	elif command -v systemd-inhibit >/dev/null 2>&1; then
-		set -- systemd-inhibit --what=idle:sleep --who=ktms-node --why="Serving LLM requests" --mode=block "$@"
-	fi
 	node_changed=0
 	if [ "$AGENT_STAGED" = 1 ]; then
 		svc_stop node
@@ -833,7 +886,7 @@ main() {
 		mv "$BASE/bin/ktms-node.new" "$BASE/bin/ktms-node"
 		node_changed=1
 	fi
-	write_service node "$@"
+	write_node_service "$BASE/bin/ktms-node"
 	install_service node "$SVC_TMP" && node_changed=1
 	if [ "$node_changed" = 1 ] || ! svc_running node; then
 		if ! start_node_and_wait; then
@@ -842,6 +895,8 @@ main() {
 				warn "The new node agent did not come up; restoring the previous one."
 				svc_stop node
 				mv "$BASE/bin/ktms-node.prev" "$BASE/bin/ktms-node"
+				write_node_service "$BASE/bin/ktms-node" # its flags, not the new agent's
+				install_service node "$SVC_TMP" || true
 				svc_start node || true
 			fi
 			tail -n 15 "$BASE/logs/node.log" 2>/dev/null >&2 || true

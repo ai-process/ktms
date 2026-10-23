@@ -18,6 +18,9 @@ All notable changes to KTMS are listed here. The format follows
   refuses requests and, once the proxy has none left on the node, the agent unloads the served
   Ollama models, loading them again `--warmup` (default 5m) before the next window.
   `ktms-node schedule --file F` checks a file; `doctor` reports the current level.
+- `install-node.sh --schedule FILE` validates the schedule with the agent and installs it as
+  `~/.ktms-node/schedule` (a re-run without it keeps the file); the status shows the level now and
+  the next switch, and the model is not preloaded during a pause.
 
 ### Fixed
 - The release signs the Helm chart again: the 1.0.0 job pushed the chart, then stopped before
