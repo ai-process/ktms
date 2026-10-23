@@ -461,3 +461,11 @@ func validateLimits(userID, projectID, actionID, vendor, model string, cost int6
 	}
 	return nil
 }
+
+// Every drop reason is exported at 0 from the start, so an alert on increase()
+// also catches the first drop after a restart.
+func init() {
+	for _, r := range []string{"queue_full", "rejected", "shutdown", "closed"} {
+		observability.UsageEventsDroppedTotal.WithLabelValues(r)
+	}
+}

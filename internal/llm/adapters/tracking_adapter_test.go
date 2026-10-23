@@ -218,3 +218,16 @@ func TestTrackingAdapterShadowZeroCost(t *testing.T) {
 		t.Fatalf("shadow request cost via context = %d, want 0", tracker.cost)
 	}
 }
+
+func TestRequestStatusSeparatesCanceledCalls(t *testing.T) {
+	for err, want := range map[error]string{
+		context.Canceled: "canceled",
+		errors.Join(errors.New("x"), context.Canceled): "canceled",
+		context.DeadlineExceeded:                       "error",
+		errors.New("vendor 500"):                       "error",
+	} {
+		if got := requestStatus(err); got != want {
+			t.Errorf("requestStatus(%v) = %q, want %q", err, got, want)
+		}
+	}
+}

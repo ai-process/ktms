@@ -342,6 +342,22 @@ Cloudflare tunnel per attempt.
 - **Mind your Postgres connection count.** Each replica holds up to `DB_MAX_CONNS`
   (default 25) connections.
 - **Back up Postgres.** All configuration lives there; see [Backups](#backups-and-the-encryption-keyring).
+- **Keep internal ports internal.** Expose gRPC (`:9090`, clients and node agents) and HTTP
+  (`:8080`). Metrics (`:9091`) belong on the cluster network. `/healthz` and `/readyz` share `:8080`
+  with the API, and `/readyz` reports database state, so block both paths at a public ingress.
+- **Network policies.** Ingress: clients, node agents, the console, Prometheus (`:9091`) and the
+  kubelet probes. Egress: the vendors, Postgres, Redis, the collector, the nodes, and what you
+  configured (`OTEL_EXPORTER_OTLP_ENDPOINT`, `SENTRY_DSN`, `LATENT_ENCODER_URL`).
+- **TLS to dependencies.** Use `sslmode=require` for Postgres and `USAGE_COLLECTOR_TLS` for the
+  collector. The Redis client has no TLS: keep Redis on a private network with `REDIS_PASSWORD`.
+- **Least-privilege keys.** `generate` for clients; `admin` only for the console and operators.
+- **Spend limits on every client key** ([Spend limits](#5-spend-limits-optional)).
+- **Secrets.** Keep `KTMS_ENCRYPTION_KEYS`, `DATABASE_URL` and `USAGE_COLLECTOR_TOKEN` in a secret
+  manager; the collector token needs only light-tokenmeter's `write` scope. Rotate the keyring
+  with [Rotating the encryption key](#rotating-the-encryption-key).
+- **Nodes.** Leave `NODE_ALLOW_LOCALHOST_ENDPOINTS=false` outside development.
+- **Alerts.** Wire up the [suggested alerts](#metrics-and-alerts); Redis and the collector fail
+  open, so without them a dead limiter or lost accounting goes unnoticed.
 
 ## Configuration reference
 
@@ -1283,28 +1299,31 @@ Failed calls to Redis, Postgres and the usage collector are counted in `ktms_dep
 ### Metrics and alerts
 
 Prometheus metrics are served on `METRICS_ADDR` (`:9091`) at `/metrics`; the Helm chart can add a
-`ServiceMonitor`. Every name starts with `ktms_`.
+`ServiceMonitor`. KTMS's own metrics start with `ktms_`; the standard Go runtime and process
+metrics are served next to them.
 
 | Metric | Labels | What it tells you |
 | --- | --- | --- |
-| `ktms_requests_total` | `vendor`, `model`, `effort`, `status` (`success`, `error`) | Upstream calls and their outcome. |
-| `ktms_request_duration_seconds` | `vendor`, `model`, `effort` | Upstream latency, histogram. |
+| `ktms_requests_total` | `vendor`, `model`, `effort`, `status` (`success`, `error`, `canceled`) | Upstream calls and their outcome; `canceled` is a caller that went away. |
+| `ktms_request_duration_seconds` | `vendor`, `model`, `effort` | Upstream call duration, histogram; for a stream, the whole stream. |
 | `ktms_time_to_first_token_seconds` | `vendor`, `model` | Time to the first streamed chunk, histogram. |
 | `ktms_tokens_total` | `vendor`, `model`, `type` (`input`, `output`) | Tokens consumed. |
 | `ktms_active_requests` | `vendor`, `model` | Upstream calls in flight. |
-| `ktms_throttled_total` | `reason` (`rpm`, `budget_key`, `budget_user`, `spend_<key\|user\|team>_<daily\|monthly>`, `spend_unavailable`) | Calls refused by a limit. |
+| `ktms_throttled_total` | `reason` (`rpm`, `budget_key`, `budget_user`, `spend_key_daily`, `spend_key_monthly`, `spend_user_daily`, `spend_user_monthly`, `spend_team_monthly`, `spend_unavailable`) | Calls refused by a limit; `spend_unavailable` is Redis down with `SPEND_LIMITS_FAIL_MODE=closed`. |
 | `ktms_fallbacks_total` | `from_model`, `to_model`, `reason` | Moves down a fallback chain. |
 | `ktms_circuit_breaker_state` | `vendor`, `model` | `0` closed, `1` open, `2` half-open. |
 | `ktms_circuit_breaker_transitions_total`, `ktms_circuit_breaker_rejections_total` | `vendor`, `model` (+ `from`, `to`) | Breaker flaps and the calls it refused. |
 | `ktms_vendor_cooldowns_total` | `vendor`, `model` | Pauses started from a vendor `Retry-After`. |
-| `ktms_dependency_errors_total` | `dependency` (`redis`, `postgres`, `usage_collector`), `operation` | Failed calls to a dependency. |
-| `ktms_usage_events_dropped_total` | `reason` | Usage events that never reached light-tokenmeter. |
+| `ktms_dependency_errors_total` | `dependency` (`redis`, `postgres`, `usage_collector`, `keyring`), `operation` | Failed calls to a dependency; `keyring` is a stored vendor key that no keyring version decrypts. |
+| `ktms_usage_events_dropped_total` | `reason` (`queue_full`, `rejected`, `shutdown`, `closed`) | Usage events that never reached light-tokenmeter. |
 | `ktms_batch_jobs_total`, `ktms_batch_items_total` | `vendor`, `state` | Batch progress. |
 | `ktms_batch_poll_duration_seconds` | `vendor` | Vendor batch polling, histogram. |
 | `ktms_shadow_requests_total`, `ktms_shadow_judge_evaluations_total`, `ktms_shadow_judge_scores` | | Shadow traffic and its judged quality. |
 | `ktms_legacy_headers_requests_total` | `header` | Clients still sending `X-LLM-Proxy-*` headers. |
 
-Suggested alerts (tune thresholds to your traffic):
+The `throttled` and `usage_events_dropped` reasons are exported at 0 from startup, so `increase()`
+catches the first event after a restart. Suggested alerts (tune thresholds to your traffic; `job`
+is your scrape job, with the chart's `ServiceMonitor` the Service name, e.g. `prod-ktms`):
 
 ```yaml
 groups:
@@ -1312,10 +1331,10 @@ groups:
     rules:
       - alert: KTMSUpstreamErrorRate
         expr: sum by (vendor, model) (rate(ktms_requests_total{status="error"}[5m]))
-          / sum by (vendor, model) (rate(ktms_requests_total[5m])) > 0.05
+          / sum by (vendor, model) (rate(ktms_requests_total{status!="canceled"}[5m])) > 0.05
         for: 10m
-      - alert: KTMSUpstreamLatencyP99
-        expr: histogram_quantile(0.99, sum by (le, vendor, model) (rate(ktms_request_duration_seconds_bucket[5m]))) > 30
+      - alert: KTMSTimeToFirstTokenP99
+        expr: histogram_quantile(0.99, sum by (le, vendor, model) (rate(ktms_time_to_first_token_seconds_bucket[5m]))) > 10
         for: 15m
       - alert: KTMSCircuitOpen
         expr: max by (vendor, model) (ktms_circuit_breaker_state) == 1
@@ -1324,9 +1343,9 @@ groups:
         expr: sum by (dependency) (rate(ktms_dependency_errors_total[5m])) > 0
         for: 5m
       - alert: KTMSUsageEventsDropped
-        expr: sum (increase(ktms_usage_events_dropped_total[15m])) > 0
+        expr: sum by (reason) (increase(ktms_usage_events_dropped_total[15m])) > 0
       - alert: KTMSSpendLimitReached
-        expr: sum by (reason) (increase(ktms_throttled_total{reason=~"spend_.*|budget_.*"}[15m])) > 0
+        expr: sum by (reason) (increase(ktms_throttled_total{reason=~"spend_(key|user|team)_.+"}[15m])) > 0
       - alert: KTMSDown
         expr: up{job="ktms"} == 0
         for: 2m
@@ -1334,7 +1353,8 @@ groups:
 
 `KTMSDependencyErrors` and `KTMSUsageEventsDropped` matter most: Redis and the collector fail
 open, so the calls keep succeeding and only these metrics show that limits or accounting stopped.
-Also probe `/readyz`: it turns `degraded`, then 503, during a Postgres outage.
+A long stream is not slow, so latency alerts use the time to the first token. Also probe
+`/readyz`: it turns `degraded`, then 503, during a Postgres outage.
 
 ### Sizing
 
@@ -1357,28 +1377,6 @@ by request rate, not by how long vendors take to answer.
 - **Redis:** a few commands per call when limits, caches or the node pool are on, each bounded by
   `REDIS_TIMEOUT`. Keep it in the same zone as the gateway; one small instance serves every
   replica.
-
-### Security checklist
-
-- **TLS in front.** gRPC and HTTP are plaintext; terminate TLS at a load balancer, ingress or mesh,
-  use TLS to Postgres (`sslmode=require`) and to the collector (`USAGE_COLLECTOR_TLS`). The Redis
-  client has no TLS: keep Redis on a private network and set `REDIS_PASSWORD`.
-- **Keep internal ports internal.** Expose only the gRPC (`:9090`) and HTTP (`:8080`) API ports.
-  Metrics (`:9091`) and the health endpoints belong on the cluster network; restrict them with
-  network policies.
-- **Network policies.** The gateway needs egress to the vendors, Postgres, Redis, the collector
-  and the nodes, and nothing else. Only the console and your clients need to reach it.
-- **Least-privilege keys.** Give clients `generate` keys and reserve `admin` keys for the console
-  and operators; one key per client, so revocation and spend are per client. Unset
-  `BOOTSTRAP_ADMIN_KEY` once real keys exist.
-- **Spend limits on every client key**, and `SPEND_LIMITS_FAIL_MODE=closed` where an unmetered
-  Redis outage is worse than refused calls.
-- **Secrets.** Keep `KTMS_ENCRYPTION_KEYS`, `DATABASE_URL` and the collector token in a secret
-  manager; rotate the keyring with [Rotating the encryption key](#rotating-the-encryption-key).
-- **Collector token.** Set `USAGE_COLLECTOR_TOKEN` to a light-tokenmeter token with only the
-  `write` scope.
-- **Nodes.** Leave `NODE_ALLOW_LOCALHOST_ENDPOINTS=false` outside development; node agents
-  authenticate with their own `ktms_node_` keys.
 
 ## Development
 
