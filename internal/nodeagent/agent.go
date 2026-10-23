@@ -234,6 +234,12 @@ func (a *Agent) Run(ctx context.Context) error {
 	}()
 
 	// The first heartbeat must carry the level: until it, the proxy sees the node offline.
+	// A broken file at start is refused, not run at 100% over the owner's pauses.
+	if a.cfg.ScheduleFile != "" {
+		if _, err := LoadSchedule(a.cfg.ScheduleFile); err != nil {
+			return fmt.Errorf("schedule: %w (check it with: ktms-node schedule --file %s)", err, a.cfg.ScheduleFile)
+		}
+	}
 	a.refreshLevel()
 
 	// Learn about a permanent refusal before any tunnel is started.
@@ -417,10 +423,12 @@ func (a *Agent) drainAndExit(ctx context.Context) error {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
+	level := a.pause.level
 	for {
 		hbResp, err := a.client.Heartbeat(ctx, &pb.HeartbeatRequest{
-			NodeId:   a.cfg.NodeID,
-			Draining: true,
+			NodeId:          a.cfg.NodeID,
+			Draining:        true,
+			CapacityPercent: &level,
 		})
 		if err == nil {
 			if hbResp.ActiveProxyRequests <= 0 {

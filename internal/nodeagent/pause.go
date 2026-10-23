@@ -1,6 +1,7 @@
 package nodeagent
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"time"
@@ -13,6 +14,7 @@ import (
 const (
 	defaultLevelEvery = 30 * time.Second // wall-clock poll: Go's timers stop while a Mac sleeps
 	defaultPauseGrace = 5 * time.Second  // requests the proxy picked us for just before the pause
+	engineRetry       = time.Minute      // after a failed warm or unload; a stopped engine is not hammered
 	warmTimeout       = 10 * time.Minute
 	unloadTimeout     = time.Minute
 )
@@ -20,9 +22,11 @@ const (
 // pauseState is the agent's schedule bookkeeping; only Run's goroutine touches it.
 type pauseState struct {
 	sched    *Schedule
-	modTime  time.Time // of the loaded file; zero when there is none
-	size     int64
+	content  []byte // of the file last read, valid or not; nil when there is none
 	level    uint32
+	nextAt   time.Time // next switch, kept until the level or the file changes
+	next     uint32
+	nextOK   bool
 	started  bool
 	pausedAt time.Time // when the level last fell to 0
 
@@ -32,7 +36,8 @@ type pauseState struct {
 	resident   []string // models freed by the pause, to warm again
 	epoch      int      // bumps on each level change; stale engine results are ignored
 	busy       bool     // an engine call is in flight
-	active     int32    // proxy requests still running, from the last heartbeat; -1 unknown
+	retryAt    time.Time
+	active     int32 // proxy requests still running, from the last heartbeat; -1 unknown
 	models     []*pb.NodeModelSpec
 
 	warnedOldProxy, warnedNoControl bool
@@ -45,50 +50,55 @@ type engineResult struct {
 	err    error
 }
 
-// reloadSchedule picks up an edited, created or removed schedule file. A
-// broken edit keeps the schedule already in force.
-func (a *Agent) reloadSchedule() {
+// reloadSchedule picks up an edited, created or removed schedule file and
+// reports whether the schedule changed. Content, not mtime, tells an edit:
+// coarse mtimes miss a quick same-size change. A broken edit keeps the
+// schedule in force.
+func (a *Agent) reloadSchedule() bool {
 	p := &a.pause
 	if a.cfg.ScheduleFile == "" {
-		return
+		return false
 	}
-	fi, err := os.Stat(a.cfg.ScheduleFile)
+	data, err := os.ReadFile(a.cfg.ScheduleFile)
 	if os.IsNotExist(err) {
-		if p.sched != nil {
+		changed := p.sched != nil
+		if changed {
 			log.Info().Str("file", a.cfg.ScheduleFile).Msg("schedule file removed; running at 100%")
 		}
-		p.sched, p.modTime, p.size = nil, time.Time{}, 0
-		return
+		p.sched, p.content = nil, nil
+		return changed
 	}
 	if err != nil {
 		log.Warn().Err(err).Str("file", a.cfg.ScheduleFile).Msg("cannot read schedule file; keeping the current schedule")
-		return
+		return false
 	}
-	if fi.ModTime().Equal(p.modTime) && fi.Size() == p.size {
-		return
+	if p.content != nil && bytes.Equal(data, p.content) {
+		return false
 	}
-	s, err := LoadSchedule(a.cfg.ScheduleFile)
+	p.content = data
+	s, err := ParseSchedule(bytes.NewReader(data))
 	if err != nil {
-		log.Error().Err(err).Msg("schedule file is invalid; keeping the current schedule")
-		p.modTime, p.size = fi.ModTime(), fi.Size() // do not re-log until it changes again
-		return
+		log.Error().Err(err).Str("file", a.cfg.ScheduleFile).Msg("schedule file is invalid; keeping the current schedule")
+		return false
 	}
-	if s == nil { // removed between the stat and the read
-		return
-	}
-	p.sched, p.modTime, p.size = s, fi.ModTime(), fi.Size()
-	log.Info().Str("file", a.cfg.ScheduleFile).Uint32("now", s.Level(a.now())).Str("next", s.describeNext(a.now())).Msg("schedule loaded")
+	p.sched = s
+	log.Info().Str("file", a.cfg.ScheduleFile).Str("schedule", s.Status(a.now())).Msg("schedule loaded")
+	return true
 }
 
 // refreshLevel re-reads the schedule and reports whether the level changed.
 func (a *Agent) refreshLevel() bool {
 	p := &a.pause
-	a.reloadSchedule()
+	reloaded := a.reloadSchedule()
 	now := a.now()
 	lvl := p.sched.Level(now)
 	if p.started && lvl == p.level {
+		if reloaded {
+			p.nextAt, p.next, p.nextOK = p.sched.Next(now)
+		}
 		return false
 	}
+	p.nextAt, p.next, p.nextOK = p.sched.Next(now)
 	from := p.level
 	if !p.started {
 		from = 100
@@ -106,6 +116,8 @@ func (a *Agent) refreshLevel() bool {
 	if lvl == 0 && from != 0 || lvl != 0 && from == 0 {
 		p.epoch++
 		p.gateClosed, p.unloaded, p.warmed = false, false, false
+		p.retryAt = time.Time{}
+		p.active = -1 // a count from before the switch says nothing about the pause
 	}
 	if lvl != 0 && a.gateway != nil {
 		a.gateway.SetAccepting(true)
@@ -143,7 +155,7 @@ func (a *Agent) stepPause() {
 		}
 		p.gateClosed = true
 	}
-	if p.busy {
+	if p.busy || now.Before(p.retryAt) {
 		return
 	}
 	ctl, ok := a.inspector.(EngineController)
@@ -154,8 +166,7 @@ func (a *Agent) stepPause() {
 		}
 		return
 	}
-	at, next, ok := p.sched.Next(now)
-	if ok && next > 0 && at.Sub(now) <= a.cfg.Warmup {
+	if p.nextOK && p.next > 0 && p.nextAt.Sub(now) <= a.cfg.Warmup {
 		if !p.warmed {
 			a.engineCall(ctl, true, a.warmTargets())
 		}
@@ -229,7 +240,8 @@ func (a *Agent) finishEngineCall(r engineResult) {
 		what = "warm-up"
 	}
 	if r.err != nil {
-		log.Warn().Err(r.err).Strs("models", r.models).Msg("schedule " + what + " failed; retrying")
+		p.retryAt = a.now().Add(engineRetry)
+		log.Warn().Err(r.err).Strs("models", r.models).Dur("retry_in", engineRetry).Msg("schedule " + what + " failed")
 		return
 	}
 	if r.warm {

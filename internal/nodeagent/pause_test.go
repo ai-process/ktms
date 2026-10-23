@@ -277,3 +277,81 @@ func TestGatewayRefusesWhilePaused(t *testing.T) {
 		t.Fatalf("resumed: status %d, want 200", code)
 	}
 }
+
+func TestInvalidScheduleRefusedAtStart(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "schedule")
+	if err := os.WriteFile(file, []byte("10:00-12:00 0\n11:00-13:00 50\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := NewAgent(AgentConfig{ProxyAddr: "127.0.0.1:1", ScheduleFile: file})
+	if err := a.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "overlaps") {
+		t.Fatalf("Run = %v, want the overlap error", err)
+	}
+}
+
+func TestSameSizeEditIsPickedUp(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "schedule")
+	write := func(text string) {
+		if err := os.WriteFile(file, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("00:00-24:00 50\n")
+	fi, _ := os.Stat(file)
+	a := NewAgent(AgentConfig{ScheduleFile: file})
+	a.refreshLevel()
+	write("00:00-24:00 30\n")
+	if err := os.Chtimes(file, fi.ModTime(), fi.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if !a.refreshLevel() || a.pause.level != 30 {
+		t.Fatalf("level = %d after a same-size edit with the old mtime, want 30", a.pause.level)
+	}
+}
+
+type failingController struct{ calls int }
+
+func (f *failingController) Inspect(context.Context, string, string) ([]*pb.NodeModelSpec, error) {
+	return nil, nil
+}
+func (f *failingController) Warm(context.Context, string, string, string) error { return nil }
+func (f *failingController) Unload(context.Context, string, string, string) error {
+	f.calls++
+	return fmt.Errorf("engine down")
+}
+
+func TestPauseWaitsForFreshCountAndBacksOffFailures(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "schedule")
+	if err := os.WriteFile(file, []byte("10:00-23:00 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	clock := &fakeClock{t: time.Date(2026, 10, 20, 9, 0, 0, 0, time.Local)}
+	ctl := &failingController{}
+	a := NewAgent(AgentConfig{ScheduleFile: file})
+	a.inspector, a.now, a.pauseGrace = ctl, clock.Now, 0
+	a.refreshLevel()
+	warm := []*pb.NodeModelSpec{{ModelId: "m", RemoteModelName: "m", IsWarm: true}}
+	a.afterHeartbeat(&pb.HeartbeatResponse{Ok: true}, warm) // active 0, before the pause
+
+	clock.Set(time.Date(2026, 10, 20, 10, 0, 0, 0, time.Local))
+	a.refreshLevel()
+	a.stepPause()
+	if a.pause.busy {
+		t.Fatal("unload started on a request count from before the pause")
+	}
+	a.afterHeartbeat(&pb.HeartbeatResponse{Ok: true}, warm)
+	a.finishEngineCall(<-a.engineDone)
+	if ctl.calls != 1 {
+		t.Fatalf("unload calls = %d, want 1", ctl.calls)
+	}
+	a.stepPause()
+	if a.pause.busy {
+		t.Fatal("failed unload retried at once")
+	}
+	clock.Set(clock.Now().Add(engineRetry))
+	a.stepPause()
+	a.finishEngineCall(<-a.engineDone)
+	if ctl.calls != 2 {
+		t.Fatalf("unload calls = %d after the retry delay, want 2", ctl.calls)
+	}
+}
