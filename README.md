@@ -1166,6 +1166,7 @@ fix bugs.
 | Prometheus metrics | Names and labels of `ktms_*` metrics, except the experimental ones listed below. |
 | Usage events (`usage.v1`) | Field numbers and meaning, checked by `buf breaking` like `ktms.v1`. |
 | Node agent | A 1.x agent works with any 1.x gateway, in both directions. |
+| Helm chart (`oci://ghcr.io/ai-process/charts/ktms`) | Value names and meaning; new values may appear. The chart version is the release version. |
 
 Not public, and free to change in any release: Redis key layout, log message text, the
 `internal/` Go packages, CLI output of the tools in `cmd/` other than their flags, and benchmark
@@ -1189,8 +1190,6 @@ These work and are supported, but may change in a minor release. The change is t
   (`GUARDRAILS_LATENT_*`), the encoder settings (`LATENT_*`), and embeddings in judge state
   (`EmbeddingPart`, `input_embedding` over HTTP).
 - **`JudgeStream` and `EvaluateRollouts`**, and `POST /v1/decisions/rollouts` over HTTP.
-- **The Helm chart** in `deploy/helm/ktms`, until it is published as a versioned OCI chart. Until
-  then its values may change.
 
 ### Compatibility with ktms-admin and light-tokenmeter
 
