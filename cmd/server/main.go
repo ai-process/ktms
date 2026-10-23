@@ -159,6 +159,10 @@ func main() {
 	}
 
 	loader := registry.NewLoader(db, keyring, tracker)
+	// One resolver for the throttle and GetSpend, so the two never disagree.
+	spendLimit := func(subjectType, subjectID, period string) int64 {
+		return loader.Snapshot().SpendLimit(subjectType, subjectID, period)
+	}
 
 	var (
 		nodeMgr *nodes.Manager
@@ -178,9 +182,7 @@ func main() {
 		rLimiter.SetUserRateLimitResolver(func(userID, modelID string) *proxydb.UserRateLimit {
 			return loader.Snapshot().UserRateLimit(userID, modelID)
 		})
-		rLimiter.SetSpendLimitResolver(func(subjectType, subjectID, period string) int64 {
-			return loader.Snapshot().SpendLimit(subjectType, subjectID, period)
-		})
+		rLimiter.SetSpendLimitResolver(spendLimit)
 		rLimiter.SetSpendFailClosed(cfg.SpendFailClosed())
 		rLimiter.SetDefaultOutputReserve(int64(cfg.SpendDefaultOutputReserve))
 		limiter = rLimiter
@@ -226,6 +228,8 @@ func main() {
 	if rl, ok := limiter.(*throttle.Redis); ok {
 		adminSrv.SetSpendReader(rl.SpendSoFar)
 	}
+	// Caps are reported even without Redis, which only stops them being counted.
+	adminSrv.SetSpendLimitResolver(spendLimit)
 	if nodeMgr != nil {
 		adminSrv.SetNodeManager(nodeMgr)
 	}

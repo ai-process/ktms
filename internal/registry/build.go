@@ -189,6 +189,7 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		client := anthropic.NewClient(opts...)
 		adapter := adapters.NewAnthropicAdapter(&client, m.ID, noThrottle)
 		adapter.SetSoftSchema(SoftSchema(m))
+		adapter.SetPromptCache(HasCapability(m, CapabilityPromptCache))
 		return adapter, nil
 	case VendorBedrock:
 		parts := strings.Split(key, ":")

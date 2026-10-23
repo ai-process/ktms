@@ -405,6 +405,26 @@ message GetTeamSpendResponse {
   bool metered = 4; // false: no budget set, or no Redis (spend is not counted)
 }
 
+// GetSpend reports a key's, end user's or team's spend as the gateway enforces
+// it: one window per spend limit period that applies to the subject.
+message GetSpendRequest {
+  string subject_type = 1; // "key" (subject_id = key name) | "user" | "team"
+  string subject_id = 2;
+}
+
+message SpendWindow {
+  string period = 1; // "day" | "month" (UTC)
+  int64 spent_nanousd = 2;
+  int64 limit_nanousd = 3; // 0 = no cap
+  int64 remaining_nanousd = 4; // limit - spent, never below 0; 0 without a cap
+  google.protobuf.Timestamp resets_at = 5;
+  bool metered = 6; // false: no cap (spend is counted only under a cap), or no Redis
+}
+
+message GetSpendResponse {
+  repeated SpendWindow windows = 1;
+}
+
 // All admin RPCs require the "admin" scope. Every config mutation validates
 // the resulting full config in one transaction and bumps the config version.
 service AdminService {
@@ -440,4 +460,5 @@ service AdminService {
   rpc UpdateTeam(UpdateTeamRequest) returns (UpdateTeamResponse);
   rpc DeleteTeam(DeleteTeamRequest) returns (DeleteTeamResponse);
   rpc GetTeamSpend(GetTeamSpendRequest) returns (GetTeamSpendResponse);
+  rpc GetSpend(GetSpendRequest) returns (GetSpendResponse);
 }
