@@ -180,7 +180,8 @@ make_agent() { # version mode os arch
 	d="$FX/ai-process/ktms/v$1"
 	mkdir -p "$d" "$W/pack"
 	case $2 in
-	no_schedule) body="[ \"\$1\" = schedule ] && exit 1
+	no_schedule) body="[ \"\$1\" = schedule ] && { [ -n \"\${NODE_KEY:-}\" ] && sleep 300; exit 1; } # runs for real with a key
+
 [ \"\$1\" = --version ] && { echo $1; exit 0; }; exit 0" ;;
 	broken_start) body='[ "$1" = --version ] && exit 1; exit 0' ;;
 	never_registers) body="[ \"\$1\" = doctor ] && echo DOCTOR-RAN:\$*
@@ -431,7 +432,7 @@ printf '10:00-23:00 0 BAD\n' >"$W/bad.sched"
 OUT=$(run_install $ARGS --schedule "$W/bad.sched")
 RC=$?
 if [ "$RC" != 0 ]; then ok "schedule: an invalid file fails the install"; else bad "schedule: an invalid file fails the install"; fi
-has "schedule: the parser's error is shown" "invalid --schedule $W/bad.sched: $W/bad.sched: line 1: bad time" "$OUT"
+has "schedule: the parser's error is shown once" "invalid --schedule $W/bad.sched: line 1: bad time" "$OUT"
 if [ ! -e "$W/svc/ktms-node.service" ] && [ ! -e "$W/svc/ktms-ollama.service" ] && [ ! -e "$BASE/schedule" ]; then
 	ok "schedule: an invalid file changes no service and copies nothing"
 else
@@ -457,6 +458,24 @@ OUT=$(run_install $ARGS)
 has "schedule: none installed" "Schedule: none, 100% all the time" "$OUT"
 has "schedule: flag kept without a file" "\"--schedule-file\"" "$(cat "$W/svc/ktms-node.service")"
 has "schedule: model loaded at 100%" "Loading tiny:1b into memory" "$OUT"
+has "schedule: dry run checks the file with the installed agent" "line 1: bad time" "$(run_install $ARGS --schedule "$W/bad.sched" --dry-run)"
+
+cp "$W/day.sched" "$BASE/schedule"
+OUT=$(run_install $ARGS --schedule "$W/day.sched")
+printf '10:00-11:00 0 BAD\n' >"$BASE/schedule"
+BEFORE=$(count_calls 'restart|stop')
+OUT=$(run_install $ARGS)
+RC=$?
+if [ "$RC" != 0 ]; then ok "schedule: a broken installed file fails a re-run"; else bad "schedule: a broken installed file fails a re-run"; fi
+has "schedule: broken installed file named" "invalid $BASE/schedule (fix it" "$OUT"
+eq "schedule: broken installed file stops before any service" "$BEFORE" "$(count_calls 'restart|stop')"
+cp "$W/day.sched" "$BASE/schedule"
+
+printf '07:00-10:00 50\n' >"$W/new.sched"
+make_agent 0.11.0 never_registers linux amd64
+OUT=$(run_install $ARGS --version v0.11.0 --schedule "$W/new.sched")
+has "schedule: rollback restores the previous schedule" "Restored the previous schedule" "$OUT"
+eq "schedule: previous schedule back in place" "$(cat "$W/day.sched")" "$(cat "$BASE/schedule" 2>/dev/null)"
 
 reset_world
 make_deps amd64
@@ -467,8 +486,8 @@ OUT=$(run_install $ARGS --schedule "$W/day.sched")
 RC=$?
 if [ "$RC" != 0 ]; then ok "schedule: an old agent refuses --schedule"; else bad "schedule: an old agent refuses --schedule"; fi
 has "schedule: old agent explained" "does not support --schedule" "$OUT"
-OUT=$(run_install $ARGS)
-eq "schedule: old agent installs without one" 0 "$?"
+OUT=$(NODE_KEY=ktms_node_env run_install $ARGS)
+eq "schedule: old agent installs without one, NODE_KEY set or not" 0 "$?"
 hasnt "schedule: old agent gets no --schedule-file" "--schedule-file" "$(cat "$W/svc/ktms-node.service")"
 make_agent 0.11.0 never_registers linux amd64
 OUT=$(run_install $ARGS --version v0.11.0)

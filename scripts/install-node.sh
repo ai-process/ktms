@@ -655,19 +655,40 @@ agent_bin() {
 
 # agent_has_schedule tells whether an agent binary knows schedules; older ones
 # exit on the unknown --schedule-file flag, so it is only passed to newer ones.
+# An empty NODE_KEY keeps an older agent from starting for real on the probe.
 agent_has_schedule() { # binary
-	[ -x "$1" ] && "$1" schedule --file /dev/null --quiet >/dev/null 2>&1
+	[ -x "$1" ] && NODE_KEY="" "$1" schedule --file /dev/null --quiet </dev/null >/dev/null 2>&1
 }
 
-# install_schedule checks --schedule with the agent's own parser and copies it
-# into place. It runs before any service is touched, so a bad file changes nothing.
+# check_schedule validates a schedule file with the agent's own parser, or dies.
+check_schedule() { # binary file what
+	out=$("$1" schedule --file "$2" 2>&1) || die "invalid $3: ${out#"schedule: $2: "}"
+}
+
+# install_schedule checks --schedule (or the schedule already installed) and
+# copies it into place, keeping the old one for a rollback. It runs before any
+# service is touched, so a bad file changes nothing.
 install_schedule() {
-	[ -n "$SCHEDULE_SRC" ] || return 0
 	bin=$(agent_bin)
+	if [ -z "$SCHEDULE_SRC" ]; then
+		[ -f "$BASE/schedule" ] && agent_has_schedule "$bin" || return 0
+		check_schedule "$bin" "$BASE/schedule" "$BASE/schedule (fix it, or pass a new one with --schedule FILE)"
+		return 0
+	fi
 	agent_has_schedule "$bin" || die "this node agent version does not support --schedule; install a newer one with --version"
-	out=$("$bin" schedule --file "$SCHEDULE_SRC" 2>&1) || die "invalid --schedule $SCHEDULE_SRC: ${out#schedule: }"
+	check_schedule "$bin" "$SCHEDULE_SRC" "--schedule $SCHEDULE_SRC"
+	rm -f "$BASE/schedule.prev"
+	[ -f "$BASE/schedule" ] && cp -p "$BASE/schedule" "$BASE/schedule.prev"
 	cp "$SCHEDULE_SRC" "$BASE/schedule.tmp" && chmod 644 "$BASE/schedule.tmp" && mv "$BASE/schedule.tmp" "$BASE/schedule"
+	SCHEDULE_REPLACED=1
 	say "Schedule installed in $BASE/schedule: $out."
+}
+
+# restore_schedule puts back the schedule a failed install replaced.
+restore_schedule() {
+	[ "$SCHEDULE_REPLACED" = 1 ] || return 0
+	if [ -f "$BASE/schedule.prev" ]; then mv "$BASE/schedule.prev" "$BASE/schedule"; else rm -f "$BASE/schedule"; fi
+	warn "Restored the previous schedule; the new one was not applied."
 }
 
 # schedule_status prints the level now and the next switch, or nothing when unknown.
@@ -849,6 +870,14 @@ main() {
 	detect_legacy
 	legacy_plan
 	if [ "$DRY_RUN" = 1 ]; then
+		if [ -n "$SCHEDULE_SRC" ]; then
+			if agent_has_schedule "$BASE/bin/ktms-node"; then
+				check_schedule "$BASE/bin/ktms-node" "$SCHEDULE_SRC" "--schedule $SCHEDULE_SRC"
+				say "Schedule $SCHEDULE_SRC is valid: $out."
+			else
+				say "Schedule $SCHEDULE_SRC will be checked by the downloaded agent before anything changes."
+			fi
+		fi
 		say "Dry run: would install into $BASE, run Ollama on $OLLAMA_ADDR and register node $NODE_ID with $PROXY. Nothing was changed."
 		return 0
 	fi
@@ -860,7 +889,7 @@ main() {
 		systemctl --user show-environment >/dev/null 2>&1 || die "systemd user services are not available in this session; log in normally (not via su) and retry"
 		loginctl enable-linger "$(id -un)" 2>/dev/null || warn "could not enable lingering: the node will stop when you log out (run: sudo loginctl enable-linger $(id -un))"
 	fi
-	OLLAMA_CHANGED=0 AGENT_STAGED=0
+	OLLAMA_CHANGED=0 AGENT_STAGED=0 SCHEDULE_REPLACED=0
 	import_legacy_key
 	store_key
 	stage_agent
@@ -895,6 +924,7 @@ main() {
 				warn "The new node agent did not come up; restoring the previous one."
 				svc_stop node
 				mv "$BASE/bin/ktms-node.prev" "$BASE/bin/ktms-node"
+				restore_schedule
 				write_node_service "$BASE/bin/ktms-node" # its flags, not the new agent's
 				install_service node "$SVC_TMP" || true
 				svc_start node || true
@@ -903,6 +933,7 @@ main() {
 			die "the node did not register; the diagnosis above says why. Run it again any time: $BASE/bin/ktms-node doctor --help. Log: $BASE/logs/node.log"
 		fi
 	fi
+	rm -f "$BASE/schedule.prev"
 	print_status
 }
 
