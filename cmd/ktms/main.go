@@ -32,7 +32,8 @@ Commands:
   version                           print the version
 
 Connection: --addr (KTMS_ADDR, default localhost:9090), --tls (KTMS_TLS=true),
-the admin key in KTMS_ADMIN_KEY or --key-file.
+the admin key in KTMS_ADMIN_KEY or --key-file (admin:read is enough for plan
+and export).
 `
 
 func main() {

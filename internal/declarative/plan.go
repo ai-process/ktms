@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/apikeys"
 	"github.com/ai-process/ktms/internal/crypto"
 )
 
@@ -217,7 +218,7 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 			lk := live.key(k.Name)
 			scopes := k.Scopes
 			if len(scopes) == 0 {
-				scopes = []string{"generate"}
+				scopes = []string{apikeys.ScopeGenerate}
 			}
 			if lk == nil {
 				if k.Organization != "" && live.orgByName(k.Organization) == nil && !planned(cfg, k.Organization, "") {
@@ -273,8 +274,8 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 				if lk.GetDisabled() || slices.ContainsFunc(cfg.APIKeys, func(k APIKey) bool { return k.Name == lk.GetName() }) {
 					continue
 				}
-				if slices.Contains(lk.GetScopes(), "admin") {
-					p.Warnings = append(p.Warnings, fmt.Sprintf("admin key %s is not in the file; prune never revokes admin keys, revoke it by hand if it should go", lk.GetName()))
+				if slices.Contains(lk.GetScopes(), apikeys.ScopeAdmin) || slices.Contains(lk.GetScopes(), apikeys.ScopeAdminRead) {
+					p.Warnings = append(p.Warnings, fmt.Sprintf("admin key %s is not in the file; prune never revokes admin or admin:read keys, revoke it by hand if it should go", lk.GetName()))
 					continue
 				}
 				deletes = append(deletes, func() {

@@ -3,10 +3,15 @@ package declarative
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/apikeys"
 )
+
+// KeyScopes are the scopes a client key in the file may carry.
+var KeyScopes = []string{apikeys.ScopeGenerate, apikeys.ScopeAdmin, apikeys.ScopeAdminRead}
 
 var efforts = []pb.Effort{pb.Effort_EFFORT_LOW, pb.Effort_EFFORT_MEDIUM, pb.Effort_EFFORT_HIGH}
 
@@ -115,9 +120,12 @@ func (c *Config) Validate() error {
 		}
 		keys[k.Name] = true
 		for _, s := range k.Scopes {
-			if s != "generate" && s != "admin" && s != "admin:read" {
-				bad("api_keys[%d] %s: scope %q is not generate, admin or admin:read", i, k.Name, s)
+			if !slices.Contains(KeyScopes, s) {
+				bad("api_keys[%d] %s: scope %q is not one of %s", i, k.Name, s, strings.Join(KeyScopes, ", "))
 			}
+		}
+		if slices.Contains(k.Scopes, apikeys.ScopeAdminRead) && (k.Organization != "" || k.Team != "") {
+			bad("api_keys[%d] %s: an admin:read key reads every tenant and cannot belong to an organization or team", i, k.Name)
 		}
 		if k.Team != "" && k.Organization == "" {
 			bad("api_keys[%d] %s: team %q needs its organization", i, k.Name, k.Team)

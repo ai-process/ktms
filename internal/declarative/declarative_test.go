@@ -109,6 +109,7 @@ func TestParseRejects(t *testing.T) {
 		"no limit":        {head + "spend_limits:\n  - {subject_type: key, subject_id: k, period: day}\n", "above 0"},
 		"team needs org":  {head + "api_keys:\n  - {name: k, team: t}\n", "needs its organization"},
 		"bad scope":       {head + "api_keys:\n  - {name: k, scopes: [root]}\n", `scope "root"`},
+		"tenant reader":   {head + "organizations: [{name: o}]\napi_keys:\n  - {name: k, scopes: [\"admin:read\"], organization: o}\n", "cannot belong"},
 		"vk no env":       {head + "vendor_keys:\n  - {api_key_name: k, vendor: openai}\n", "plain_key_env"},
 		"vk unknown key":  {head + "api_keys: []\nvendor_keys:\n  - {api_key_name: k, vendor: openai, plain_key_env: X}\n", `api key "k" is not in api_keys`},
 		"empty":           {"", "empty configuration"},
@@ -169,6 +170,7 @@ func liveOf(t *testing.T, c *Config, vendorKey string) *State {
 		{Name: "billing", Scopes: []string{"generate"}, Policy: &pb.APIKeyPolicy{RpmLimit: 120, TpmLimit: 200000}},
 		{Name: "search-bot", Scopes: []string{"generate"}, OrgId: "o1", TeamId: "t1"},
 		{Name: "console", Scopes: []string{"admin"}},
+		{Name: "dashboard", Scopes: []string{"admin:read"}},
 	}
 	st.Config.VendorKeys = []*pb.VendorKeyInfo{{ApiKeyName: "billing", Vendor: "openai", Fingerprint: crypto.Fingerprint(vendorKey)}}
 	st.Config.SpendLimits = []*pb.SpendLimitSpec{
@@ -189,8 +191,8 @@ func TestPlanMatchingLiveIsEmpty(t *testing.T) {
 		p.Write(&buf)
 		t.Fatalf("plan not empty:\n%s", buf.String())
 	}
-	if len(p.Warnings) != 1 || !strings.Contains(p.Warnings[0], "admin key console") {
-		t.Fatalf("warnings = %v; prune must spare the admin key and say so", p.Warnings)
+	if len(p.Warnings) != 2 || !strings.Contains(p.Warnings[0], "admin key console") || !strings.Contains(p.Warnings[1], "admin key dashboard") {
+		t.Fatalf("warnings = %v; prune must spare the admin and admin:read keys and say so", p.Warnings)
 	}
 }
 

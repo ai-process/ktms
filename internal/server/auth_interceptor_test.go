@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"strings"
+	"slices"
 	"testing"
 
 	grpclib "google.golang.org/grpc"
@@ -185,8 +185,12 @@ func TestStreamAuthInterceptor(t *testing.T) {
 	}
 }
 
-// A read key reaches every Admin API read and none of the methods that change
-// state; reads are told apart by name so a new mutating RPC cannot slip in.
+// adminReads are the AdminService methods a read key may call. Listed by hand
+// so a new RPC is an admin-only mutation until someone decides otherwise.
+var adminReads = []string{"GetConfig", "ListAPIKeys", "ListNodeKeys", "ListNodes", "ListUserRateLimits",
+	"ListSpendLimits", "ListOrganizations", "GetTeam", "ListTeams", "GetTeamSpend", "GetSpend"}
+
+// A read key reaches every Admin API read and none of the methods that change state.
 func TestAdminReadKeyOnlyReads(t *testing.T) {
 	store := &fakeStore{rows: map[string]*proxydb.APIKey{}}
 	reader := mintKey(t, store, "viewer", apikeys.ScopeAdminRead)
@@ -196,7 +200,7 @@ func TestAdminReadKeyOnlyReads(t *testing.T) {
 	desc := pb.AdminService_ServiceDesc
 	for _, m := range desc.Methods {
 		full := "/" + desc.ServiceName + "/" + m.MethodName
-		read := strings.HasPrefix(m.MethodName, "Get") || strings.HasPrefix(m.MethodName, "List")
+		read := slices.Contains(adminReads, m.MethodName)
 		if want := map[bool]string{true: apikeys.ScopeAdminRead, false: apikeys.ScopeAdmin}[read]; methodScopes[full] != want {
 			t.Errorf("%s scope = %q, want %q", full, methodScopes[full], want)
 		}
