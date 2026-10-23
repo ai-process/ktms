@@ -37,7 +37,9 @@ jobs:
         run: go test -race ./...
 
       - name: Installer script tests
-        run: sh scripts/install-node_test.sh
+        run: |
+          shellcheck -s sh scripts/install-node.sh scripts/install-node_test.sh
+          sh scripts/install-node_test.sh
 
   # A known vulnerability that our code reaches fails the build; one in a
   # dependency we never call is only reported.

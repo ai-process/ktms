@@ -739,6 +739,18 @@ Run the same command again to update; a re-run only restarts what changed, and a
 fails to start is rolled back. Remove everything with the same command plus `--uninstall`
 (downloaded models stay in `~/.ollama`).
 
+**A machine that ran the node before the rename** (`llm-proxy-node`, in `~/.llm-proxy-node`) is
+taken over by the same command. Its services (`com.llm-proxy.*` launch agents, `llm-proxy-*` user
+units) are stopped, their files and the old directory moved to `~/.ktms-node.backup/<time>/`, and
+the old node key is reused when it was minted for the same `--node-id` (for another id you are
+asked first). `--dry-run` shows this plan and changes nothing; `--keep-legacy` leaves the old
+directory in place, though its services still go, or two nodes would share one id and port.
+Backups survive `--uninstall`; add `--purge-backups` to delete them too.
+
+The installer also refuses to run Ollama on an address another process already listens on
+(another Ollama, say), since the model would be pulled into that one; it names the process. Stop
+it, or set `KTMS_OLLAMA_ADDR=127.0.0.1:PORT`.
+
 ### If the node does not show up
 
 Run the same command with `--doctor`. It says in plain words what is wrong: Ollama not answering,
@@ -753,6 +765,7 @@ that cannot come up (outbound port 7844 blocked). Logs are in `~/.ktms-node/logs
 | `key belongs to node "x"` | The key is bound to one machine. Use the node id it was minted for, or ask for a new key. |
 | `model "x" not permitted for this node key` | The key's `allowed_models` excludes a model on the machine. The installer reports only `--model`; for a hand-run agent pass `--only-model`. |
 | Needs a new key | Re-run with `--new-key`. |
+| `127.0.0.1:11435 is taken by …` | Another process holds the node's Ollama port. Stop it, or pick another address with `KTMS_OLLAMA_ADDR`. |
 | Address changed after a restart | Expected: quick tunnel addresses change, and the node re-registers by itself. |
 | Node is offline after a Mac reboot | macOS starts the services at login, not at boot. Log in, or enable automatic login (System Settings > Users & Groups). |
 | The machine sleeps | The services keep it awake while they run, on a Mac only while plugged in. Closing a laptop lid still sleeps it. |

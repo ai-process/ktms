@@ -39,6 +39,11 @@ version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.
 - `GetSpend`: a key's, user's or team's current spend, cap and remaining amount per UTC day and
   month, from the counters that enforce the caps.
 
+- `install-node.sh` takes over a node installed before the rename: it stops the `llm-proxy-*`
+  services for good, moves their files and `~/.llm-proxy-node` to `~/.ktms-node.backup/<time>/`
+  and reuses the old node key when it was minted for the same node id. `--dry-run` shows the plan,
+  `--keep-legacy` keeps the old directory, `--uninstall --purge-backups` deletes the backups.
+
 ### Changed
 - Allowlist refusals name the list that refused: `not allowed for <key|team>`, `no models in chain
   allowed for <key|team>`, and for batches `model access denied by key or team policy`.
@@ -56,6 +61,8 @@ version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.
   production checklist covers ports, network policies, key scopes and secrets.
 
 ### Fixed
+- `install-node.sh` no longer pulls the model into another process's Ollama that happens to listen
+  on the node's address; it stops and names that process.
 - Prompt-cache tokens were mispriced, in spend limits and usage costs alike: Anthropic cache
   reads were billed 10x too high and cache writes 20% too low, and Bedrock left cached input out
   of the bill altogether.
