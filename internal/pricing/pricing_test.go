@@ -114,3 +114,88 @@ func TestModeAt(t *testing.T) {
 		t.Fatalf("03:30 CEST is 01:30 UTC, want peak, got %d", got)
 	}
 }
+
+// A cache hit costs what the vendor's price list says. Anthropic's ratios are
+// the default; OpenAI and Gemini rates are set on the model.
+func TestCostWithPromptCache(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		model proxydb.Model
+		usage llm.TokensUsage
+		want  int64
+	}{{
+		// Sonnet: $3 in, $3.75 cache write, $0.30 cache read, $15 out.
+		name:  "anthropic, default ratios",
+		model: proxydb.Model{Vendor: "anthropic", PriceInPerMtok: 3, PriceOutPerMtok: 15},
+		usage: llm.TokensUsage{Input: 13_000, CacheRead: 10_000, CacheWrite: 2_000, Output: 500},
+		want:  3_000_000 + 7_500_000 + 3_000_000 + 7_500_000,
+	}, {
+		// $2 in, $0.50 cached, $8 out; cached tokens are part of prompt_tokens.
+		name:  "openai",
+		model: proxydb.Model{Vendor: "openai", PriceInPerMtok: 2, PriceOutPerMtok: 8, PriceCacheReadPerMtok: 0.5},
+		usage: llm.TokensUsage{Input: 10_000, CacheRead: 8_000, Output: 1_000},
+		want:  4_000_000 + 4_000_000 + 8_000_000,
+	}, {
+		// $0.30 in, $0.075 cached, $2.50 out.
+		name:  "google",
+		model: proxydb.Model{Vendor: "google", PriceInPerMtok: 0.30, PriceOutPerMtok: 2.50, PriceCacheReadPerMtok: 0.075},
+		usage: llm.TokensUsage{Input: 100_000, CacheRead: 80_000, Output: 1_000},
+		want:  6_000_000 + 6_000_000 + 2_500_000,
+	}, {
+		name:  "unset rate elsewhere bills cached input as input",
+		model: proxydb.Model{Vendor: "openai", PriceInPerMtok: 2, PriceOutPerMtok: 8},
+		usage: llm.TokensUsage{Input: 10_000, CacheRead: 8_000},
+		want:  20_000_000,
+	}, {
+		name:  "cache counts above the input are clamped to it",
+		model: proxydb.Model{Vendor: "anthropic", PriceInPerMtok: 3},
+		usage: llm.TokensUsage{Input: 1_000, CacheRead: 5_000, CacheWrite: 5_000},
+		want:  300_000,
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Cost(&tc.model, tc.usage, ModeStandard); got != tc.want {
+				t.Fatalf("cost = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// Batch and peak calls scale the cache rates like the input rate.
+func TestCostScalesCacheRatesWithMode(t *testing.T) {
+	m := &proxydb.Model{Vendor: "anthropic", PriceInPerMtok: 3, PriceInPeakPerMtok: 6}
+	u := llm.TokensUsage{Input: 1_000_000, CacheRead: 1_000_000}
+	if got, want := Cost(m, u, ModeBatch), int64(150_000_000); got != want {
+		t.Fatalf("batch = %d, want %d (half of $0.30)", got, want)
+	}
+	if got, want := Cost(m, u, ModePeak), int64(600_000_000); got != want {
+		t.Fatalf("peak = %d, want %d (double $0.30)", got, want)
+	}
+}
+
+// Priced by batch or peak rates only, cached input is billed at the mode's
+// input rate, never for free.
+func TestCostCacheWithoutStandardInputPrice(t *testing.T) {
+	m := &proxydb.Model{Vendor: "anthropic", PriceInBatchPerMtok: 1.5}
+	u := llm.TokensUsage{Input: 1_000_000, CacheRead: 900_000}
+	if got, want := Cost(m, u, ModeBatch), int64(1_500_000_000); got != want {
+		t.Fatalf("cost = %d, want %d", got, want)
+	}
+}
+
+// A reservation must cover a prompt that turns out to be all cache writes.
+func TestMaxInputCostCoversCacheWrites(t *testing.T) {
+	m := &proxydb.Model{Vendor: "anthropic", PriceInPerMtok: 3}
+	if got, want := MaxInputCost(m, 1_000_000, ModeStandard), int64(3_750_000_000); got != want {
+		t.Fatalf("anthropic = %d, want %d", got, want)
+	}
+	if got := Cost(m, llm.TokensUsage{Input: 1_000_000, CacheWrite: 1_000_000}, ModeStandard); got > MaxInputCost(m, 1_000_000, ModeStandard) {
+		t.Fatalf("all-write cost %d exceeds the reservation", got)
+	}
+	cheapWrite := &proxydb.Model{Vendor: "openai", PriceInPerMtok: 2, PriceCacheWritePerMtok: 1}
+	if got, want := MaxInputCost(cheapWrite, 1_000_000, ModeStandard), int64(2_000_000_000); got != want {
+		t.Fatalf("cheaper write = %d, want %d (plain input)", got, want)
+	}
+	if got := Rate(m, ModeBatch, CacheWrite); math.Abs(got-1.875) > 1e-9 {
+		t.Fatalf("batch write rate = %v, want 1.875", got)
+	}
+}

@@ -6,6 +6,7 @@ package throttle
 import (
 	"context"
 	"errors"
+	"math"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -406,7 +407,14 @@ func (t *Redis) reserveSpend(ctx context.Context, m *proxydb.Model, keyName, use
 		maxOutput = t.outputReserve
 	}
 	mode := pricing.ModeAt(m, now)
-	amount := pricing.Cost(m, llm.TokensUsage{Input: int(estimate), Output: int(maxOutput)}, mode)
+	// The cache split is known only after the call, so input is booked at its
+	// dearest rate: a prompt written to the cache costs more than plain input.
+	amount := pricing.Cost(m, llm.TokensUsage{Output: int(maxOutput)}, mode)
+	if in := pricing.MaxInputCost(m, estimate, mode); in > math.MaxInt64-amount {
+		amount = math.MaxInt64
+	} else {
+		amount += in
+	}
 
 	hold := &router.SpendHold{Reserved: amount, Model: m, Mode: mode}
 	args := make([]any, 0, 1+2*len(targets))

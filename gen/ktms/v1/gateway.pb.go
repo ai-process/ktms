@@ -1451,9 +1451,12 @@ func (x *GenerateTextRequest) GetEffortSpecified() bool {
 }
 
 type TokensUsage struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Input         int64                  `protobuf:"varint,1,opt,name=input,proto3" json:"input,omitempty"`
-	Output        int64                  `protobuf:"varint,2,opt,name=output,proto3" json:"output,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Input  int64                  `protobuf:"varint,1,opt,name=input,proto3" json:"input,omitempty"`
+	Output int64                  `protobuf:"varint,2,opt,name=output,proto3" json:"output,omitempty"`
+	// Parts of input read from and written to the vendor's prompt cache.
+	CacheRead     int64 `protobuf:"varint,3,opt,name=cache_read,json=cacheRead,proto3" json:"cache_read,omitempty"`
+	CacheWrite    int64 `protobuf:"varint,4,opt,name=cache_write,json=cacheWrite,proto3" json:"cache_write,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1498,6 +1501,20 @@ func (x *TokensUsage) GetInput() int64 {
 func (x *TokensUsage) GetOutput() int64 {
 	if x != nil {
 		return x.Output
+	}
+	return 0
+}
+
+func (x *TokensUsage) GetCacheRead() int64 {
+	if x != nil {
+		return x.CacheRead
+	}
+	return 0
+}
+
+func (x *TokensUsage) GetCacheWrite() int64 {
+	if x != nil {
+		return x.CacheWrite
 	}
 	return 0
 }
@@ -1873,8 +1890,11 @@ type ModelInfo struct {
 	PriceOutPerMtok      float64                `protobuf:"fixed64,7,opt,name=price_out_per_mtok,json=priceOutPerMtok,proto3" json:"price_out_per_mtok,omitempty"`
 	PriceInBatchPerMtok  float64                `protobuf:"fixed64,8,opt,name=price_in_batch_per_mtok,json=priceInBatchPerMtok,proto3" json:"price_in_batch_per_mtok,omitempty"`
 	PriceOutBatchPerMtok float64                `protobuf:"fixed64,9,opt,name=price_out_batch_per_mtok,json=priceOutBatchPerMtok,proto3" json:"price_out_batch_per_mtok,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Effective prompt-cache rates, vendor defaults applied.
+	PriceCacheReadPerMtok  float64 `protobuf:"fixed64,10,opt,name=price_cache_read_per_mtok,json=priceCacheReadPerMtok,proto3" json:"price_cache_read_per_mtok,omitempty"`
+	PriceCacheWritePerMtok float64 `protobuf:"fixed64,11,opt,name=price_cache_write_per_mtok,json=priceCacheWritePerMtok,proto3" json:"price_cache_write_per_mtok,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *ModelInfo) Reset() {
@@ -1966,6 +1986,20 @@ func (x *ModelInfo) GetPriceInBatchPerMtok() float64 {
 func (x *ModelInfo) GetPriceOutBatchPerMtok() float64 {
 	if x != nil {
 		return x.PriceOutBatchPerMtok
+	}
+	return 0
+}
+
+func (x *ModelInfo) GetPriceCacheReadPerMtok() float64 {
+	if x != nil {
+		return x.PriceCacheReadPerMtok
+	}
+	return 0
+}
+
+func (x *ModelInfo) GetPriceCacheWritePerMtok() float64 {
+	if x != nil {
+		return x.PriceCacheWritePerMtok
 	}
 	return 0
 }
@@ -4242,10 +4276,14 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\x10effort_specified\x18\x10 \x01(\bR\x0feffortSpecified\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\";\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"{\n" +
 	"\vTokensUsage\x12\x14\n" +
 	"\x05input\x18\x01 \x01(\x03R\x05input\x12\x16\n" +
-	"\x06output\x18\x02 \x01(\x03R\x06output\"\x89\x01\n" +
+	"\x06output\x18\x02 \x01(\x03R\x06output\x12\x1d\n" +
+	"\n" +
+	"cache_read\x18\x03 \x01(\x03R\tcacheRead\x12\x1f\n" +
+	"\vcache_write\x18\x04 \x01(\x03R\n" +
+	"cacheWrite\"\x89\x01\n" +
 	"\x06Choice\x12\x14\n" +
 	"\x05index\x18\x01 \x01(\x05R\x05index\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x120\n" +
@@ -4285,7 +4323,7 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"judgeScore\x12\x1f\n" +
 	"\vjudge_model\x18\f \x01(\tR\n" +
 	"judgeModel\"\x13\n" +
-	"\x11ListModelsRequest\"\xda\x02\n" +
+	"\x11ListModelsRequest\"\xd0\x03\n" +
 	"\tModelInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06vendor\x18\x02 \x01(\tR\x06vendor\x12)\n" +
@@ -4295,7 +4333,10 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\x11price_in_per_mtok\x18\x06 \x01(\x01R\x0epriceInPerMtok\x12+\n" +
 	"\x12price_out_per_mtok\x18\a \x01(\x01R\x0fpriceOutPerMtok\x124\n" +
 	"\x17price_in_batch_per_mtok\x18\b \x01(\x01R\x13priceInBatchPerMtok\x126\n" +
-	"\x18price_out_batch_per_mtok\x18\t \x01(\x01R\x14priceOutBatchPerMtok\"@\n" +
+	"\x18price_out_batch_per_mtok\x18\t \x01(\x01R\x14priceOutBatchPerMtok\x128\n" +
+	"\x19price_cache_read_per_mtok\x18\n" +
+	" \x01(\x01R\x15priceCacheReadPerMtok\x12:\n" +
+	"\x1aprice_cache_write_per_mtok\x18\v \x01(\x01R\x16priceCacheWritePerMtok\"@\n" +
 	"\x12ListModelsResponse\x12*\n" +
 	"\x06models\x18\x01 \x03(\v2\x12.ktms.v1.ModelInfoR\x06models\"S\n" +
 	"\x19GenerateTextStreamRequest\x126\n" +

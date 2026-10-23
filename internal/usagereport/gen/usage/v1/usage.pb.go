@@ -113,9 +113,15 @@ type UsageEvent struct {
 	Meta map[string]string `protobuf:"bytes,15,rep,name=meta,proto3" json:"meta,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Cost of the call in nano-USD (1e-9 USD), computed by the caller from its
 	// price catalog at settle time; stored as an immutable fact (optional, >= 0)
-	CostNanousd   int64 `protobuf:"varint,16,opt,name=cost_nanousd,json=costNanousd,proto3" json:"cost_nanousd,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	CostNanousd int64 `protobuf:"varint,16,opt,name=cost_nanousd,json=costNanousd,proto3" json:"cost_nanousd,omitempty"`
+	// Input tokens served from the vendor's prompt cache (optional, >= 0). Part of
+	// tokens_input, not added to it; usually billed at a fraction of the input rate.
+	CacheReadTokens int64 `protobuf:"varint,17,opt,name=cache_read_tokens,json=cacheReadTokens,proto3" json:"cache_read_tokens,omitempty"`
+	// Input tokens written to the vendor's prompt cache (optional, >= 0). Part of
+	// tokens_input; cache_read_tokens + cache_write_tokens must not exceed it.
+	CacheWriteTokens int64 `protobuf:"varint,18,opt,name=cache_write_tokens,json=cacheWriteTokens,proto3" json:"cache_write_tokens,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *UsageEvent) Reset() {
@@ -256,6 +262,20 @@ func (x *UsageEvent) GetMeta() map[string]string {
 func (x *UsageEvent) GetCostNanousd() int64 {
 	if x != nil {
 		return x.CostNanousd
+	}
+	return 0
+}
+
+func (x *UsageEvent) GetCacheReadTokens() int64 {
+	if x != nil {
+		return x.CacheReadTokens
+	}
+	return 0
+}
+
+func (x *UsageEvent) GetCacheWriteTokens() int64 {
+	if x != nil {
+		return x.CacheWriteTokens
 	}
 	return 0
 }
@@ -624,9 +644,12 @@ type UsageSummaryRow struct {
 	RequestCount  int64 `protobuf:"varint,13,opt,name=request_count,json=requestCount,proto3" json:"request_count,omitempty"`
 	SumDurationMs int64 `protobuf:"varint,14,opt,name=sum_duration_ms,json=sumDurationMs,proto3" json:"sum_duration_ms,omitempty"`
 	// Summed cost in nano-USD (1e-9 USD)
-	CostNanousd   int64 `protobuf:"varint,15,opt,name=cost_nanousd,json=costNanousd,proto3" json:"cost_nanousd,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	CostNanousd int64 `protobuf:"varint,15,opt,name=cost_nanousd,json=costNanousd,proto3" json:"cost_nanousd,omitempty"`
+	// Summed parts of tokens_input read from and written to the prompt cache
+	CacheReadTokens  int64 `protobuf:"varint,16,opt,name=cache_read_tokens,json=cacheReadTokens,proto3" json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int64 `protobuf:"varint,17,opt,name=cache_write_tokens,json=cacheWriteTokens,proto3" json:"cache_write_tokens,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *UsageSummaryRow) Reset() {
@@ -746,6 +769,20 @@ func (x *UsageSummaryRow) GetSumDurationMs() int64 {
 func (x *UsageSummaryRow) GetCostNanousd() int64 {
 	if x != nil {
 		return x.CostNanousd
+	}
+	return 0
+}
+
+func (x *UsageSummaryRow) GetCacheReadTokens() int64 {
+	if x != nil {
+		return x.CacheReadTokens
+	}
+	return 0
+}
+
+func (x *UsageSummaryRow) GetCacheWriteTokens() int64 {
+	if x != nil {
+		return x.CacheWriteTokens
 	}
 	return 0
 }
@@ -890,9 +927,12 @@ type UsageByMetaRow struct {
 	TokensTotal  int64  `protobuf:"varint,6,opt,name=tokens_total,json=tokensTotal,proto3" json:"tokens_total,omitempty"`
 	RequestCount int64  `protobuf:"varint,7,opt,name=request_count,json=requestCount,proto3" json:"request_count,omitempty"`
 	// Summed cost in nano-USD (1e-9 USD)
-	CostNanousd   int64 `protobuf:"varint,8,opt,name=cost_nanousd,json=costNanousd,proto3" json:"cost_nanousd,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	CostNanousd int64 `protobuf:"varint,8,opt,name=cost_nanousd,json=costNanousd,proto3" json:"cost_nanousd,omitempty"`
+	// Summed parts of tokens_input read from and written to the prompt cache
+	CacheReadTokens  int64 `protobuf:"varint,9,opt,name=cache_read_tokens,json=cacheReadTokens,proto3" json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int64 `protobuf:"varint,10,opt,name=cache_write_tokens,json=cacheWriteTokens,proto3" json:"cache_write_tokens,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *UsageByMetaRow) Reset() {
@@ -981,6 +1021,20 @@ func (x *UsageByMetaRow) GetCostNanousd() int64 {
 	return 0
 }
 
+func (x *UsageByMetaRow) GetCacheReadTokens() int64 {
+	if x != nil {
+		return x.CacheReadTokens
+	}
+	return 0
+}
+
+func (x *UsageByMetaRow) GetCacheWriteTokens() int64 {
+	if x != nil {
+		return x.CacheWriteTokens
+	}
+	return 0
+}
+
 // GetUsageByMetaResponse is the response for meta-scoped aggregation
 type GetUsageByMetaResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1038,7 +1092,7 @@ var File_usage_v1_usage_proto protoreflect.FileDescriptor
 
 const file_usage_v1_usage_proto_rawDesc = "" +
 	"\n" +
-	"\x14usage/v1/usage.proto\x12\busage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfc\x04\n" +
+	"\x14usage/v1/usage.proto\x12\busage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd6\x05\n" +
 	"\n" +
 	"UsageEvent\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12;\n" +
@@ -1061,7 +1115,9 @@ const file_usage_v1_usage_proto_rawDesc = "" +
 	"errorClass\x12,\n" +
 	"\x12vendor_http_status\x18\x0e \x01(\x05R\x10vendorHttpStatus\x122\n" +
 	"\x04meta\x18\x0f \x03(\v2\x1e.usage.v1.UsageEvent.MetaEntryR\x04meta\x12!\n" +
-	"\fcost_nanousd\x18\x10 \x01(\x03R\vcostNanousd\x1a7\n" +
+	"\fcost_nanousd\x18\x10 \x01(\x03R\vcostNanousd\x12*\n" +
+	"\x11cache_read_tokens\x18\x11 \x01(\x03R\x0fcacheReadTokens\x12,\n" +
+	"\x12cache_write_tokens\x18\x12 \x01(\x03R\x10cacheWriteTokens\x1a7\n" +
 	"\tMetaEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"E\n" +
@@ -1090,7 +1146,7 @@ const file_usage_v1_usage_proto_rawDesc = "" +
 	"\x0fgroup_by_vendor\x18\f \x01(\bR\rgroupByVendor\x12$\n" +
 	"\x0egroup_by_model\x18\r \x01(\bR\fgroupByModel\x12+\n" +
 	"\x12group_by_action_id\x18\x0e \x01(\bR\x0fgroupByActionId\x12&\n" +
-	"\x0fgroup_by_status\x18\x0f \x01(\bR\rgroupByStatus\"\xcd\x03\n" +
+	"\x0fgroup_by_status\x18\x0f \x01(\bR\rgroupByStatus\"\xa7\x04\n" +
 	"\x0fUsageSummaryRow\x122\n" +
 	"\x06bucket\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x06bucket\x12\x1d\n" +
 	"\n" +
@@ -1106,7 +1162,9 @@ const file_usage_v1_usage_proto_rawDesc = "" +
 	"\ftokens_total\x18\f \x01(\x03R\vtokensTotal\x12#\n" +
 	"\rrequest_count\x18\r \x01(\x03R\frequestCount\x12&\n" +
 	"\x0fsum_duration_ms\x18\x0e \x01(\x03R\rsumDurationMs\x12!\n" +
-	"\fcost_nanousd\x18\x0f \x01(\x03R\vcostNanousd\"f\n" +
+	"\fcost_nanousd\x18\x0f \x01(\x03R\vcostNanousd\x12*\n" +
+	"\x11cache_read_tokens\x18\x10 \x01(\x03R\x0fcacheReadTokens\x12,\n" +
+	"\x12cache_write_tokens\x18\x11 \x01(\x03R\x10cacheWriteTokens\"f\n" +
 	"\x17GetUsageSummaryResponse\x12-\n" +
 	"\x04rows\x18\x01 \x03(\v2\x19.usage.v1.UsageSummaryRowR\x04rows\x12\x1c\n" +
 	"\ttruncated\x18\x02 \x01(\bR\ttruncated\"\x9b\x01\n" +
@@ -1116,7 +1174,7 @@ const file_usage_v1_usage_proto_rawDesc = "" +
 	"meta_value\x18\x02 \x01(\tR\tmetaValue\x12)\n" +
 	"\x11group_by_meta_key\x18\x03 \x01(\tR\x0egroupByMetaKey\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x04 \x01(\tR\tprojectId\"\x92\x02\n" +
+	"project_id\x18\x04 \x01(\tR\tprojectId\"\xec\x02\n" +
 	"\x0eUsageByMetaRow\x12\x1f\n" +
 	"\vgroup_value\x18\x01 \x01(\tR\n" +
 	"groupValue\x12\x16\n" +
@@ -1126,7 +1184,10 @@ const file_usage_v1_usage_proto_rawDesc = "" +
 	"\rtokens_output\x18\x05 \x01(\x03R\ftokensOutput\x12!\n" +
 	"\ftokens_total\x18\x06 \x01(\x03R\vtokensTotal\x12#\n" +
 	"\rrequest_count\x18\a \x01(\x03R\frequestCount\x12!\n" +
-	"\fcost_nanousd\x18\b \x01(\x03R\vcostNanousd\"d\n" +
+	"\fcost_nanousd\x18\b \x01(\x03R\vcostNanousd\x12*\n" +
+	"\x11cache_read_tokens\x18\t \x01(\x03R\x0fcacheReadTokens\x12,\n" +
+	"\x12cache_write_tokens\x18\n" +
+	" \x01(\x03R\x10cacheWriteTokens\"d\n" +
 	"\x16GetUsageByMetaResponse\x12,\n" +
 	"\x04rows\x18\x01 \x03(\v2\x18.usage.v1.UsageByMetaRowR\x04rows\x12\x1c\n" +
 	"\ttruncated\x18\x02 \x01(\bR\ttruncated*p\n" +

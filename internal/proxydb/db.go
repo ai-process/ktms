@@ -108,7 +108,8 @@ func loadModels(ctx context.Context, q querier) ([]*Model, error) {
 		        price_out_per_mtok, price_in_peak_per_mtok, price_out_peak_per_mtok,
 		        price_in_batch_per_mtok, price_out_batch_per_mtok,
 		        daily_tokens_per_key, daily_tokens_per_user, enabled,
-		        burst, queue_timeout_ms, budget_grace_margin
+		        burst, queue_timeout_ms, budget_grace_margin,
+		        price_cache_read_per_mtok, price_cache_write_per_mtok
 		 FROM model ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -121,7 +122,8 @@ func loadModels(ctx context.Context, q querier) ([]*Model, error) {
 			&m.PriceInPerMtok, &m.PriceOutPerMtok, &m.PriceInPeakPerMtok, &m.PriceOutPeakPerMtok,
 			&m.PriceInBatchPerMtok, &m.PriceOutBatchPerMtok,
 			&m.DailyTokensPerKey, &m.DailyTokensPerUser, &m.Enabled,
-			&m.Burst, &m.QueueTimeoutMs, &m.BudgetGraceMargin); err != nil {
+			&m.Burst, &m.QueueTimeoutMs, &m.BudgetGraceMargin,
+			&m.PriceCacheReadPerMtok, &m.PriceCacheWritePerMtok); err != nil {
 			return nil, err
 		}
 		out = append(out, &m)
@@ -250,18 +252,21 @@ func UpsertModel(ctx context.Context, tx pgx.Tx, m *Model) error {
 		                    price_out_per_mtok, price_in_peak_per_mtok, price_out_peak_per_mtok,
 		                    price_in_batch_per_mtok, price_out_batch_per_mtok,
 		                    daily_tokens_per_key, daily_tokens_per_user, enabled,
-		                    burst, queue_timeout_ms, budget_grace_margin)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		                    burst, queue_timeout_ms, budget_grace_margin,
+		                    price_cache_read_per_mtok, price_cache_write_per_mtok)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		 ON CONFLICT (id) DO UPDATE SET vendor = $2, endpoint = $3, efforts = $4, capabilities = $5,
 		   rpm = $6, price_in_per_mtok = $7, price_out_per_mtok = $8, price_in_peak_per_mtok = $9,
 		   price_out_peak_per_mtok = $10, price_in_batch_per_mtok = $11, price_out_batch_per_mtok = $12,
 		   daily_tokens_per_key = $13, daily_tokens_per_user = $14, enabled = $15,
-		   burst = $16, queue_timeout_ms = $17, budget_grace_margin = $18, updated_at = NOW()`,
+		   burst = $16, queue_timeout_ms = $17, budget_grace_margin = $18,
+		   price_cache_read_per_mtok = $19, price_cache_write_per_mtok = $20, updated_at = NOW()`,
 		m.ID, m.Vendor, m.Endpoint, m.Efforts, m.Capabilities, m.RPM,
 		m.PriceInPerMtok, m.PriceOutPerMtok, m.PriceInPeakPerMtok, m.PriceOutPeakPerMtok,
 		m.PriceInBatchPerMtok, m.PriceOutBatchPerMtok,
 		m.DailyTokensPerKey, m.DailyTokensPerUser, m.Enabled,
-		m.Burst, m.QueueTimeoutMs, m.BudgetGraceMargin)
+		m.Burst, m.QueueTimeoutMs, m.BudgetGraceMargin,
+		m.PriceCacheReadPerMtok, m.PriceCacheWritePerMtok)
 	return err
 }
 

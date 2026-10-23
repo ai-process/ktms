@@ -17,6 +17,29 @@ type Response struct {
 type TokensUsage struct {
 	Input  int
 	Output int
+	// Prompt-cache tokens, both part of Input: read from the vendor's cache and
+	// written to it. Vendors bill each at its own rate.
+	CacheRead  int
+	CacheWrite int
+}
+
+// Clamped bounds the counts to their meaning: none negative, and the cache
+// parts within Input. Pricing and usage events both rely on it.
+func (u TokensUsage) Clamped() TokensUsage {
+	u.Input, u.Output = max(u.Input, 0), max(u.Output, 0)
+	u.CacheRead = min(max(u.CacheRead, 0), u.Input)
+	u.CacheWrite = min(max(u.CacheWrite, 0), u.Input-u.CacheRead)
+	return u
+}
+
+// Add sums two usages field by field, as attempts billed one after another.
+func (u TokensUsage) Add(o TokensUsage) TokensUsage {
+	return TokensUsage{
+		Input:      u.Input + o.Input,
+		Output:     u.Output + o.Output,
+		CacheRead:  u.CacheRead + o.CacheRead,
+		CacheWrite: u.CacheWrite + o.CacheWrite,
+	}
 }
 
 func (r *Response) AddMessage(message *Message) {

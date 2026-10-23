@@ -165,6 +165,7 @@ func ValidateModel(m *proxydb.Model) error {
 	}
 	if m.RPM < 0 || m.PriceInPerMtok < 0 || m.PriceOutPerMtok < 0 ||
 		m.PriceInPeakPerMtok < 0 || m.PriceOutPeakPerMtok < 0 ||
+		m.PriceCacheReadPerMtok < 0 || m.PriceCacheWritePerMtok < 0 ||
 		m.DailyTokensPerKey < 0 || m.DailyTokensPerUser < 0 ||
 		m.QueueTimeoutMs < 0 {
 		return fmt.Errorf("model %s: negative limits, prices, or queue timeout", m.ID)

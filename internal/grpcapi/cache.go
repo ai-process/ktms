@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"errors"
+	"github.com/ai-process/ktms/internal/llm"
 	"strconv"
 
 	"github.com/rs/zerolog/log"
@@ -108,7 +109,7 @@ func (s *ProxyServer) admitCacheHit(ctx context.Context, snap *registry.Snapshot
 		meta["cache_match"] = "semantic"
 		meta["cache_similarity"] = strconv.FormatFloat(float64(hit.similarity), 'f', 4, 32)
 	}
-	if err := tracker.RecordUsage(userID, defaultActionID, cached.ResolvedVendor, cached.ResolvedModel, 0, 0, 0, 0, usagev1.Status_STATUS_SUCCESS, meta); err != nil {
+	if err := tracker.RecordUsage(userID, defaultActionID, cached.ResolvedVendor, cached.ResolvedModel, llm.TokensUsage{}, 0, 0, usagev1.Status_STATUS_SUCCESS, meta); err != nil {
 		log.Warn().Err(err).Str("user_id", userID).Str("model", cached.ResolvedModel).Bool("semantic", hit.semantic).Msg("failed to record cache hit usage")
 	}
 	return nil

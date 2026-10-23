@@ -82,6 +82,7 @@ func (a *AnthropicAdapter) GenerateTextStream(ctx context.Context, chat *llm.Cha
 
 	var (
 		accumulatedInputTokens int64
+		cacheRead, cacheWrite  int64
 		stopReason             anthropic.StopReason
 		toolIndexByBlock       = make(map[int64]int32)
 		toolArgsReceived       = make(map[int64]bool)
@@ -99,6 +100,8 @@ func (a *AnthropicAdapter) GenerateTextStream(ctx context.Context, chat *llm.Cha
 			accumulatedInputTokens = event.Message.Usage.InputTokens +
 				event.Message.Usage.CacheCreationInputTokens +
 				event.Message.Usage.CacheReadInputTokens
+			cacheRead = event.Message.Usage.CacheReadInputTokens
+			cacheWrite = event.Message.Usage.CacheCreationInputTokens
 		case "content_block_start":
 			if event.ContentBlock.Type == "tool_use" {
 				toolIdx := nextToolIndex
@@ -143,11 +146,15 @@ func (a *AnthropicAdapter) GenerateTextStream(ctx context.Context, chat *llm.Cha
 				accumulatedInputTokens = event.Usage.InputTokens +
 					event.Usage.CacheCreationInputTokens +
 					event.Usage.CacheReadInputTokens
+				cacheRead = event.Usage.CacheReadInputTokens
+				cacheWrite = event.Usage.CacheCreationInputTokens
 			}
 			if outTokens > 0 || accumulatedInputTokens > 0 {
 				streamChunk.Usage = &llm.TokensUsage{
-					Input:  int(accumulatedInputTokens),
-					Output: int(outTokens),
+					Input:      int(accumulatedInputTokens),
+					Output:     int(outTokens),
+					CacheRead:  int(cacheRead),
+					CacheWrite: int(cacheWrite),
 				}
 			}
 		}
@@ -167,8 +174,10 @@ func anthropicUsage(resp *anthropic.Message) llm.TokensUsage {
 		return llm.TokensUsage{}
 	}
 	return llm.TokensUsage{
-		Input:  int(resp.Usage.InputTokens + resp.Usage.CacheCreationInputTokens + resp.Usage.CacheReadInputTokens),
-		Output: int(resp.Usage.OutputTokens),
+		Input:      int(resp.Usage.InputTokens + resp.Usage.CacheCreationInputTokens + resp.Usage.CacheReadInputTokens),
+		Output:     int(resp.Usage.OutputTokens),
+		CacheRead:  int(resp.Usage.CacheReadInputTokens),
+		CacheWrite: int(resp.Usage.CacheCreationInputTokens),
 	}
 }
 
@@ -242,8 +251,7 @@ func (a *AnthropicAdapter) toResponse(resp *anthropic.Message, carried llm.Token
 	})
 
 	spent := anthropicUsage(resp)
-	response.Usage.Input = spent.Input + carried.Input
-	response.Usage.Output = spent.Output + carried.Output
+	response.Usage = spent.Add(carried)
 	return response, nil
 }
 

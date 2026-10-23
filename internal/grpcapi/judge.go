@@ -627,8 +627,7 @@ func executeParallelCandidateRollouts(ctx context.Context, judge llm.Judge, roll
 				return err
 			}
 			mu.Lock()
-			totalUsage.Input += res.Usage.Input
-			totalUsage.Output += res.Usage.Output
+			totalUsage = totalUsage.Add(res.Usage)
 			mu.Unlock()
 
 			score := calculateCompositeScore(res.Answers, rolloutReq.Criteria)

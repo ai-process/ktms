@@ -46,8 +46,14 @@ type ModelSpec struct {
 	RpmBurst             int32   `protobuf:"varint,16,opt,name=rpm_burst,json=rpmBurst,proto3" json:"rpm_burst,omitempty"`                               // extra burst allowed above steady-state rpm (0 = default burst of rpm - 1, <0 = burst disabled)
 	QueueTimeoutMs       int32   `protobuf:"varint,17,opt,name=queue_timeout_ms,json=queueTimeoutMs,proto3" json:"queue_timeout_ms,omitempty"`           // max wait for pool inference slot in ms (0 = fallback immediately; capped to 250ms for interactive non-svc users)
 	BudgetGraceMargin    float64 `protobuf:"fixed64,18,opt,name=budget_grace_margin,json=budgetGraceMargin,proto3" json:"budget_grace_margin,omitempty"` // allowed daily budget overdraft (0.0 = system default 0.05, <0.0 = disabled)
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Prompt-cache rates, standard (off-peak) like price_in_per_mtok; peak and batch
+	// calls scale them by the same ratio as input. 0 = the vendor default: for
+	// anthropic 0.1x input to read and 1.25x to write, for bedrock 0.25x and 1.25x,
+	// for every other vendor 1x.
+	PriceCacheReadPerMtok  float64 `protobuf:"fixed64,19,opt,name=price_cache_read_per_mtok,json=priceCacheReadPerMtok,proto3" json:"price_cache_read_per_mtok,omitempty"`
+	PriceCacheWritePerMtok float64 `protobuf:"fixed64,20,opt,name=price_cache_write_per_mtok,json=priceCacheWritePerMtok,proto3" json:"price_cache_write_per_mtok,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *ModelSpec) Reset() {
@@ -202,6 +208,20 @@ func (x *ModelSpec) GetQueueTimeoutMs() int32 {
 func (x *ModelSpec) GetBudgetGraceMargin() float64 {
 	if x != nil {
 		return x.BudgetGraceMargin
+	}
+	return 0
+}
+
+func (x *ModelSpec) GetPriceCacheReadPerMtok() float64 {
+	if x != nil {
+		return x.PriceCacheReadPerMtok
+	}
+	return 0
+}
+
+func (x *ModelSpec) GetPriceCacheWritePerMtok() float64 {
+	if x != nil {
+		return x.PriceCacheWritePerMtok
 	}
 	return 0
 }
@@ -3804,7 +3824,7 @@ var File_ktms_v1_admin_proto protoreflect.FileDescriptor
 
 const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\n" +
-	"\x13ktms/v1/admin.proto\x12\aktms.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15ktms/v1/gateway.proto\"\xd5\x05\n" +
+	"\x13ktms/v1/admin.proto\x12\aktms.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15ktms/v1/gateway.proto\"\xcb\x06\n" +
 	"\tModelSpec\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06vendor\x18\x02 \x01(\tR\x06vendor\x12\x1a\n" +
@@ -3824,7 +3844,9 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\aenabled\x18\v \x01(\bR\aenabled\x12\x1b\n" +
 	"\trpm_burst\x18\x10 \x01(\x05R\brpmBurst\x12(\n" +
 	"\x10queue_timeout_ms\x18\x11 \x01(\x05R\x0equeueTimeoutMs\x12.\n" +
-	"\x13budget_grace_margin\x18\x12 \x01(\x01R\x11budgetGraceMargin\"\x9c\x03\n" +
+	"\x13budget_grace_margin\x18\x12 \x01(\x01R\x11budgetGraceMargin\x128\n" +
+	"\x19price_cache_read_per_mtok\x18\x13 \x01(\x01R\x15priceCacheReadPerMtok\x12:\n" +
+	"\x1aprice_cache_write_per_mtok\x18\x14 \x01(\x01R\x16priceCacheWritePerMtok\"\x9c\x03\n" +
 	"\bRuleSpec\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
 	"\bpriority\x18\x02 \x01(\x05R\bpriority\x12'\n" +
