@@ -969,7 +969,7 @@ func (x *GetConfigResponse) GetSpendLimits() []*SpendLimitSpec {
 type MintAPIKeyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Scopes        []string               `protobuf:"bytes,2,rep,name=scopes,proto3" json:"scopes,omitempty"` // "generate" | "admin"
+	Scopes        []string               `protobuf:"bytes,2,rep,name=scopes,proto3" json:"scopes,omitempty"` // "generate" | "admin" | "admin:read"
 	OrgId         string                 `protobuf:"bytes,3,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
 	TeamId        string                 `protobuf:"bytes,4,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
 	Policy        *APIKeyPolicy          `protobuf:"bytes,5,opt,name=policy,proto3" json:"policy,omitempty"`

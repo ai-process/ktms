@@ -30,7 +30,9 @@ const (
 	// ScopeGenerate allows the data-plane RPCs (GenerateText, ListModels).
 	ScopeGenerate = "generate"
 	ScopeAdmin    = "admin"
-	ScopeNode     = "node"
+	// ScopeAdminRead allows the Admin API reads and nothing that changes state.
+	ScopeAdminRead = "admin:read"
+	ScopeNode      = "node"
 )
 
 // KeyPrefix marks our keys so a leaked string is recognisable in a log scan.
@@ -47,7 +49,7 @@ var (
 )
 
 // ValidScopes is the closed set the admin endpoint accepts.
-var ValidScopes = []string{ScopeGenerate, ScopeAdmin, ScopeNode}
+var ValidScopes = []string{ScopeGenerate, ScopeAdmin, ScopeAdminRead, ScopeNode}
 
 // Store is the slice of proxydb the verifier needs, so tests can fake it.
 type Store interface {

@@ -115,8 +115,8 @@ func (c *Config) Validate() error {
 		}
 		keys[k.Name] = true
 		for _, s := range k.Scopes {
-			if s != "generate" && s != "admin" {
-				bad("api_keys[%d] %s: scope %q is not generate or admin", i, k.Name, s)
+			if s != "generate" && s != "admin" && s != "admin:read" {
+				bad("api_keys[%d] %s: scope %q is not generate, admin or admin:read", i, k.Name, s)
 			}
 		}
 		if k.Team != "" && k.Organization == "" {

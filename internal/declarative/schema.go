@@ -47,7 +47,7 @@ func Schema() []byte {
 			}, "name")),
 			"api_keys": list(obj(map[string]any{
 				"name":         str,
-				"scopes":       map[string]any{"type": "array", "items": map[string]any{"enum": []string{"generate", "admin"}}},
+				"scopes":       map[string]any{"type": "array", "items": map[string]any{"enum": []string{"generate", "admin", "admin:read"}}},
 				"organization": str,
 				"team":         str,
 				"policy":       messageSchema((&pb.APIKeyPolicy{}).ProtoReflect().Descriptor()),

@@ -110,6 +110,7 @@ api_keys:
   - name: billing
     policy: {rpm_limit: 60, allowed_models: [gpt-4o-mini]}
   - {name: search-bot, organization: acme, team: search}
+  - {name: dashboard, scopes: ["admin:read"]}
 vendor_keys:
   - {api_key_name: billing, vendor: openai, plain_key_env: T_OPENAI}
 spend_limits:

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	grpclib "google.golang.org/grpc"
@@ -181,5 +182,36 @@ func TestStreamAuthInterceptor(t *testing.T) {
 	err = authStreamInterceptor(v)(nil, ssOther, &grpclib.StreamServerInfo{FullMethod: pb.GatewayService_GenerateTextStream_FullMethodName}, handler)
 	if status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("got code %v, want PermissionDenied", status.Code(err))
+	}
+}
+
+// A read key reaches every Admin API read and none of the methods that change
+// state; reads are told apart by name so a new mutating RPC cannot slip in.
+func TestAdminReadKeyOnlyReads(t *testing.T) {
+	store := &fakeStore{rows: map[string]*proxydb.APIKey{}}
+	reader := mintKey(t, store, "viewer", apikeys.ScopeAdminRead)
+	admin := mintKey(t, store, "root", apikeys.ScopeAdmin)
+	v := apikeys.NewVerifier(store, "")
+
+	desc := pb.AdminService_ServiceDesc
+	for _, m := range desc.Methods {
+		full := "/" + desc.ServiceName + "/" + m.MethodName
+		read := strings.HasPrefix(m.MethodName, "Get") || strings.HasPrefix(m.MethodName, "List")
+		if want := map[bool]string{true: apikeys.ScopeAdminRead, false: apikeys.ScopeAdmin}[read]; methodScopes[full] != want {
+			t.Errorf("%s scope = %q, want %q", full, methodScopes[full], want)
+		}
+		_, err := callWithKey(t, v, full, "Bearer "+reader)
+		if read && err != nil {
+			t.Errorf("%s refused for a read key: %v", full, err)
+		}
+		if !read && status.Code(err) != codes.PermissionDenied {
+			t.Errorf("%s with a read key: code = %v, want PermissionDenied", full, status.Code(err))
+		}
+		if _, err := callWithKey(t, v, full, "Bearer "+admin); err != nil {
+			t.Errorf("%s refused for an admin key: %v", full, err)
+		}
+	}
+	if _, err := callWithKey(t, v, method(pb.GatewayService_GenerateText_FullMethodName), "Bearer "+reader); status.Code(err) != codes.PermissionDenied {
+		t.Errorf("GenerateText with a read key: code = %v, want PermissionDenied", status.Code(err))
 	}
 }

@@ -64,7 +64,7 @@ Two gRPC services share port `9090`:
 | Service | Purpose | Needed scope |
 | --- | --- | --- |
 | `ktms.v1.GatewayService` | `GenerateText`, `GenerateTextStream`, `SubmitBatch`, `GetBatch`, `ListBatchResults`, `CancelBatch`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `JudgeStream`, `EvaluateRollouts`, `GetEmbeddings`, `ListModels` | `generate` |
-| `ktms.v1.AdminService` | models, rules, vendor keys, API keys, key rotation | `admin` |
+| `ktms.v1.AdminService` | models, rules, vendor keys, API keys, key rotation | `admin`; `admin:read` for the `Get*` and `List*` reads |
 
 Port `8080` serves the health probes (`/healthz`, `/readyz`) and the
 [OpenAI-compatible HTTP API](#openai-compatible-http-api) under `/v1`. gRPC server
@@ -376,7 +376,8 @@ Cloudflare tunnel per attempt.
   configured (`OTEL_EXPORTER_OTLP_ENDPOINT`, `SENTRY_DSN`, `LATENT_ENCODER_URL`).
 - **TLS to dependencies.** Use `sslmode=require` for Postgres and `USAGE_COLLECTOR_TLS` for the
   collector. The Redis client has no TLS: keep Redis on a private network with `REDIS_PASSWORD`.
-- **Least-privilege keys.** `generate` for clients; `admin` only for the console and operators.
+- **Least-privilege keys.** `generate` for clients; `admin:read` for dashboards, assistants and
+  anything that only looks; `admin` only for the console and operators.
 - **Spend limits on every client key** ([Spend limits](#5-spend-limits-optional)).
 - **Secrets.** Keep `KTMS_ENCRYPTION_KEYS`, `DATABASE_URL` and `USAGE_COLLECTOR_TOKEN` in a secret
   manager; the collector token needs only light-tokenmeter's `write` scope. Rotate the keyring
@@ -532,7 +533,9 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
 ```
 
 Keys look like `ktms_<hex>` (keys minted before the rename start with `llm_` and keep working). Only a hash is stored, and the plaintext is returned once.
-Scopes: `generate` (data plane) and `admin` (implies everything).
+Scopes: `generate` (data plane), `admin` (implies everything) and `admin:read` (the Admin API
+reads: `GetConfig`, `GetSpend`, `GetTeam`, `GetTeamSpend` and every `List*`; nothing that changes
+state). `GetConfig` never returns a vendor key itself, only its fingerprint.
 `ListAPIKeys` and `RevokeAPIKey` do what they say.
 
 A key can carry its own policy, on top of its team's and each model's `rpm`, at minting
