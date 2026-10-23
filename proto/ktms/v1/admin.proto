@@ -115,7 +115,8 @@ message MintAPIKeyRequest {
 
 // APIKeyPolicy limits one client key, on top of its team's limits and each
 // model's rpm. Refusals: PERMISSION_DENIED for a model outside allowed_models,
-// RESOURCE_EXHAUSTED throttled:key_rpm / throttled:key_tpm for the rates.
+// RESOURCE_EXHAUSTED throttled:key_rpm / throttled:key_tpm for the rates, and
+// FAILED_PRECONDITION request_too_large for a call above a minute of tokens.
 message APIKeyPolicy {
   repeated string allowed_models = 1; // model ids the key may call; empty = any
   int32 rpm_limit = 2; // calls per minute over all models, 0 = unlimited

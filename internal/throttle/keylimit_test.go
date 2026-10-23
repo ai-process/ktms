@@ -108,3 +108,20 @@ func TestKeyLimitsFailOpen(t *testing.T) {
 		t.Fatalf("no Redis refused the call: %s", kind)
 	}
 }
+
+// A stream that outlives its token key still books what it used.
+func TestKeyTPMSettlesAfterTheKeyExpired(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	rl := keyLimiter(t, &now)
+	ctx := context.Background()
+	settle, _, _ := rl.AdmitKey(ctx, "k", 0, 1000, 10)
+	now = now.Add(3 * time.Minute)
+	if err := rl.client.Del(ctx, rl.keys.KeyTPM("k")).Err(); err != nil {
+		t.Fatal(err)
+	}
+	settle(1510)
+	_, kind, retry := rl.AdmitKey(ctx, "k", 0, 1000, 10)
+	if kind != KindKeyTPM || retry < 29*time.Second || retry > 31*time.Second {
+		t.Fatalf("kind %q retry %v, want key_tpm in about 30s", kind, retry)
+	}
+}

@@ -476,7 +476,8 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
 - `rpm_limit`: calls per minute over all models, a minute of them as burst.
 - `tpm_limit`: tokens per minute over all models (GCRA weighted by tokens). A call books its input
   estimate when admitted and its real input + output when it ends, so an underestimate is paid
-  for by the next calls; a call larger than a minute of tokens never fits.
+  for by the next calls; a call larger than a minute of tokens never fits and is refused with
+  `FAILED_PRECONDITION request_too_large` (HTTP 400). A cache hit counts as a call, with no tokens.
 - Both rates count text generation, embeddings, judgments, speech and images (media calls by
   their real tokens only), not batches. Refusals are `RESOURCE_EXHAUSTED` `throttled:key_rpm` /
   `throttled:key_tpm` with `RetryInfo` (HTTP 429 with `Retry-After`). Like every limit they need
@@ -1172,7 +1173,8 @@ lexical hash encoder that folds case, homoglyphs, zero-width and spaced-out lett
 | `UNAVAILABLE` | `vendors_unavailable` | The whole chain failed: retry with backoff. When vendors paused every model in the chain with `Retry-After`, details carry `RetryInfo` (HTTP: `Retry-After` header): wait that long first. |
 | `UNAVAILABLE` | `auth_unavailable`, `storage_unavailable` | Postgres is unreachable for a key check (past `AUTH_STALE_IF_ERROR`) or a batch or admin write. Retry with backoff. |
 | `RESOURCE_EXHAUSTED` | `throttled:rpm`, `throttled:budget_key`, `throttled:budget_user` | Back off; don't hot-retry. Daily budget exhausted before batch submission. |
-| `RESOURCE_EXHAUSTED` | `throttled:key_rpm`, `throttled:key_tpm` | The key's own `rpm_limit` or `tpm_limit`. Details carry `RetryInfo`; without it, the call is larger than a minute of the key's tokens and never fits. |
+| `RESOURCE_EXHAUSTED` | `throttled:key_rpm`, `throttled:key_tpm` | The key's own `rpm_limit` or `tpm_limit`. Details carry `RetryInfo`: wait that long. |
+| `FAILED_PRECONDITION` | `request_too_large` | The call needs more tokens than a minute of the key's `tpm_limit`; it never fits. Shrink it or raise the limit. |
 | `RESOURCE_EXHAUSTED` | `throttled:spend_key_daily`, `throttled:spend_key_monthly`, `throttled:spend_user_daily`, `throttled:spend_user_monthly`, `throttled:spend_team_monthly` | Spend limit reached. Details carry `ErrorInfo{reason: "insufficient_quota"}` and `RetryInfo` until the period resets. |
 | `UNAVAILABLE` | `throttled:spend_unavailable` | Spend counters unreachable with `SPEND_LIMITS_FAIL_MODE=closed`. Retry with backoff. |
 | `PERMISSION_DENIED` | `model "<id>" not allowed for <key\|team>`, `no models in chain allowed for <key\|team>`, `model access denied by key or team policy` (batch) | The key's or its team's `allowed_models` excludes that model. |

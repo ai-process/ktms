@@ -1035,7 +1035,8 @@ func (x *MintAPIKeyRequest) GetPolicy() *APIKeyPolicy {
 
 // APIKeyPolicy limits one client key, on top of its team's limits and each
 // model's rpm. Refusals: PERMISSION_DENIED for a model outside allowed_models,
-// RESOURCE_EXHAUSTED throttled:key_rpm / throttled:key_tpm for the rates.
+// RESOURCE_EXHAUSTED throttled:key_rpm / throttled:key_tpm for the rates, and
+// FAILED_PRECONDITION request_too_large for a call above a minute of tokens.
 type APIKeyPolicy struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AllowedModels []string               `protobuf:"bytes,1,rep,name=allowed_models,json=allowedModels,proto3" json:"allowed_models,omitempty"` // model ids the key may call; empty = any

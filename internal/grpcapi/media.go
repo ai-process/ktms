@@ -51,8 +51,8 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 		return nil, err
 	}
 
-	// Media calls book no estimate: their tokens are known only afterwards.
-	settleKey, err := s.admitKey(ctx, plan.identity, 0)
+	estimate := int64(len([]rune(speechText))/4 + 1)
+	settleKey, err := s.admitKey(ctx, plan.identity, estimate)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 		TeamID:  plan.identity.TeamID,
 		// Input-side estimate only; Settle replaces it with what the vendor
 		// billed, which for speech is audio tokens and far larger.
-		Estimate:        int64(len([]rune(speechText))/4 + 1),
+		Estimate:        estimate,
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,
 		Cooldown:        plan.cooldown,
@@ -85,11 +85,11 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 			return res.Usage, nil
 		},
 	})
+	var used *llm.TokensUsage
 	if out != nil {
-		settleKey(out.Usage)
-	} else {
-		settleKey(llm.TokensUsage{})
+		used = &out.Usage
 	}
+	settleKey(used)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
@@ -126,8 +126,8 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 		return nil, err
 	}
 
-	// Media calls book no estimate: their tokens are known only afterwards.
-	settleKey, err := s.admitKey(ctx, plan.identity, 0)
+	estimate := int64(len([]rune(prompt))/4 + 1)
+	settleKey, err := s.admitKey(ctx, plan.identity, estimate)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +139,7 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 		TeamID:  plan.identity.TeamID,
 		// Input-side estimate only; image output tokens dwarf it, so Settle is
 		// what makes the budget accounting true.
-		Estimate:        int64(len([]rune(prompt))/4 + 1),
+		Estimate:        estimate,
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,
 		Cooldown:        plan.cooldown,
@@ -158,11 +158,11 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 			return res.Usage, nil
 		},
 	})
+	var used *llm.TokensUsage
 	if out != nil {
-		settleKey(out.Usage)
-	} else {
-		settleKey(llm.TokensUsage{})
+		used = &out.Usage
 	}
+	settleKey(used)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}

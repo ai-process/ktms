@@ -109,6 +109,12 @@ func TestKeyRatesRefuseAndSettle(t *testing.T) {
 	if retry != 1500*time.Millisecond {
 		t.Fatalf("RetryInfo = %v, want 1.5s", retry)
 	}
+	never := &fakeKeyLimiter{kind: "key_tpm"}
+	s = newTestServer(t, models, catchAllRules("m1"), nil).WithKeyLimiter(never)
+	if _, err := s.GenerateText(limited, req); status.Code(err) != codes.FailedPrecondition ||
+		status.Convert(err).Message() != "request_too_large" {
+		t.Fatalf("a call that never fits: %v, want FailedPrecondition request_too_large", err)
+	}
 	if vendor.count() != 2 {
 		t.Fatalf("vendor called %d times, want only the two admitted calls", vendor.count())
 	}

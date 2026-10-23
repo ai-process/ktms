@@ -26,27 +26,31 @@ func (s *ProxyServer) WithKeyLimiter(l KeyLimiter) *ProxyServer {
 	return s
 }
 
-// admitKey books a call on its key's rates; the returned func settles it with
-// the tokens the call used, so tokens are booked by estimate and then by fact.
-func (s *ProxyServer) admitKey(ctx context.Context, id *apikeys.Identity, estimate int64) (func(llm.TokensUsage), error) {
+// admitKey books a call on its key's rates. The returned func settles it with
+// the tokens used; nil (unknown, a failed call) keeps the estimate booked.
+func (s *ProxyServer) admitKey(ctx context.Context, id *apikeys.Identity, estimate int64) (func(*llm.TokensUsage), error) {
 	if s.keyLimiter == nil || id == nil || (id.RPMLimit <= 0 && id.TPMLimit <= 0) {
-		return func(llm.TokensUsage) {}, nil
+		return func(*llm.TokensUsage) {}, nil
 	}
 	settle, kind, retry := s.keyLimiter.AdmitKey(ctx, id.Name, id.RPMLimit, id.TPMLimit, estimate)
 	if kind != "" {
 		observability.ThrottledTotal.WithLabelValues(kind).Inc()
 		return nil, keyLimitStatus(kind, retry)
 	}
-	return func(u llm.TokensUsage) { settle(int64(u.Input + u.Output)) }, nil
+	return func(u *llm.TokensUsage) {
+		if u != nil {
+			settle(int64(u.Input + u.Output))
+		}
+	}, nil
 }
 
-// keyLimitStatus carries RetryInfo (HTTP: Retry-After) unless the call can
-// never fit, being larger than a minute of the key's tokens.
+// keyLimitStatus carries RetryInfo (HTTP: Retry-After). A call larger than a
+// minute of the key's tokens never fits, so it is refused as not retryable.
 func keyLimitStatus(kind string, retry time.Duration) error {
-	st := status.New(codes.ResourceExhausted, "throttled:"+kind)
 	if retry <= 0 {
-		return st.Err()
+		return status.Error(codes.FailedPrecondition, "request_too_large")
 	}
+	st := status.New(codes.ResourceExhausted, "throttled:"+kind)
 	if withInfo, err := st.WithDetails(&errdetails.RetryInfo{RetryDelay: durationpb.New(retry)}); err == nil {
 		return withInfo.Err()
 	}

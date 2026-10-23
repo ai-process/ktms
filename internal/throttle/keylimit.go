@@ -16,10 +16,9 @@ const (
 	KindKeyTPM = "key_tpm"
 )
 
-// keyAdmitScript is GCRA over a key's requests (KEYS[1]) and, weighted by
-// tokens, its tokens (KEYS[2]); either key may be "". A minute of the rate is
-// the burst. Both pass before either is booked. Returns {0, 0} when admitted,
-// else {1 (requests) or 2 (tokens), ms until it would be; -1: never}.
+// keyAdmitScript is GCRA on a key's requests (KEYS[1]) and tokens (KEYS[2]),
+// with a minute as burst; both pass before either is booked. Returns {0, 0}, or
+// {1 requests | 2 tokens, ms until admitted, -1 never}.
 var keyAdmitScript = redis.NewScript(`
 local now = tonumber(ARGV[1])
 if not now or now <= 0 then
@@ -59,17 +58,24 @@ end
 return {0, 0}
 `)
 
-// keySettleScript moves a key's token arrival time by the difference between
-// the tokens a call used and the tokens it booked.
+// keySettleScript books the tokens a call used beyond its estimate, or returns
+// the rest. Overspend lands even on an expired key: a long stream outlives it.
 var keySettleScript = redis.NewScript(`
 local v = tonumber(redis.call('GET', KEYS[1]))
-if not v then return 0 end
 local now = tonumber(ARGV[3])
 if not now or now <= 0 then
     local t = redis.call('TIME')
     now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 end
-local new = v + tonumber(ARGV[1]) * 60000 / tonumber(ARGV[2])
+local d = tonumber(ARGV[1]) * 60000 / tonumber(ARGV[2])
+local new
+if d > 0 then
+    if not v or v < now then v = now end
+    new = v + d
+else
+    if not v or v <= now then return 0 end
+    new = v + d
+end
 if new <= now then
     redis.call('DEL', KEYS[1])
     return 0
@@ -78,10 +84,9 @@ redis.call('SET', KEYS[1], string.format('%.3f', new), 'PX', math.ceil(new - now
 return 0
 `)
 
-// AdmitKey takes one of the key's requests per minute and books estimate
-// tokens on its tokens per minute. settle(actual) then books the call's real
-// tokens instead. kind is KindKeyRPM or KindKeyTPM when refused, with retry the
-// wait (0: the call can never fit). Fails open, like every other limit.
+// AdmitKey takes a request and books estimate tokens on the key's rates;
+// settle(actual) rebooks the real tokens. A refusal names its kind and wait
+// (0: never fits). Fails open, like every other limit.
 func (t *Redis) AdmitKey(ctx context.Context, keyName string, rpm int32, tpm, estimate int64) (settle func(actual int64), kind string, retry time.Duration) {
 	settle = func(int64) {}
 	if t.client == nil || (rpm <= 0 && tpm <= 0) {

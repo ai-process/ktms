@@ -52,7 +52,7 @@ const (
 // not allowed for <key|team>", "no models in chain allowed for <key|team>",
 // "model access denied by key or team policy" for batches); do not retry.
 // FAILED_PRECONDITION: "output_truncated" (raise max_output_tokens, do not
-// retry as-is), "no_capable_model", "no_vendor_key", "not_configured",
+// retry as-is), "request_too_large" (above a minute of the key's tpm_limit), "no_capable_model", "no_vendor_key", "not_configured",
 // "batch not configured".
 // INVALID_ARGUMENT: "guardrail_violation" (PII or prompt injection detected),
 // "bad_request: <message>" (validation errors, empty batch, duplicate custom_id).
@@ -261,7 +261,7 @@ func (c *gatewayServiceClient) CancelBatch(ctx context.Context, in *CancelBatchR
 // not allowed for <key|team>", "no models in chain allowed for <key|team>",
 // "model access denied by key or team policy" for batches); do not retry.
 // FAILED_PRECONDITION: "output_truncated" (raise max_output_tokens, do not
-// retry as-is), "no_capable_model", "no_vendor_key", "not_configured",
+// retry as-is), "request_too_large" (above a minute of the key's tpm_limit), "no_capable_model", "no_vendor_key", "not_configured",
 // "batch not configured".
 // INVALID_ARGUMENT: "guardrail_violation" (PII or prompt injection detected),
 // "bad_request: <message>" (validation errors, empty batch, duplicate custom_id).

@@ -67,8 +67,8 @@ func (s *ProxyServer) GetEmbeddings(ctx context.Context, req *pb.GetEmbeddingsRe
 		ActionID:   req.GetActionId(),
 	}
 
-	// Media calls book no estimate: their tokens are known only afterwards.
-	settleKey, err := s.admitKey(ctx, plan.identity, 0)
+	estimate := int64(totalRunes/4 + 1)
+	settleKey, err := s.admitKey(ctx, plan.identity, estimate)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +78,7 @@ func (s *ProxyServer) GetEmbeddings(ctx context.Context, req *pb.GetEmbeddingsRe
 		KeyName:         plan.identity.Name,
 		UserID:          router.UserID(plan.attrs, plan.identity.Name),
 		TeamID:          plan.identity.TeamID,
-		Estimate:        int64(totalRunes/4 + 1),
+		Estimate:        estimate,
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,
 		Cooldown:        plan.cooldown,
@@ -96,11 +96,11 @@ func (s *ProxyServer) GetEmbeddings(ctx context.Context, req *pb.GetEmbeddingsRe
 			return res.Usage, nil
 		},
 	})
+	var used *llm.TokensUsage
 	if out != nil {
-		settleKey(out.Usage)
-	} else {
-		settleKey(llm.TokensUsage{})
+		used = &out.Usage
 	}
+	settleKey(used)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}

@@ -154,7 +154,8 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 	if plan.shadowEval {
 		shadowEvaluator = s.makeShadowEvaluator(id, chat, req.GetAttributes())
 	}
-	settleKey, err := s.admitKey(ctx, id, estimateTokens(req))
+	estimate := estimateTokens(req)
+	settleKey, err := s.admitKey(ctx, id, estimate)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +164,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		KeyName:          id.Name,
 		UserID:           router.UserID(req.GetAttributes(), id.Name),
 		TeamID:           id.TeamID,
-		Estimate:         estimateTokens(req),
+		Estimate:         estimate,
 		Chat:             chat,
 		CircuitBreaker:   s.circuitBreaker,
 		Cooldown:         s.cooldownFor(snap, id),
@@ -175,9 +176,9 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		ShadowEvaluator:  shadowEvaluator,
 	})
 	if resp != nil {
-		settleKey(resp.Usage)
+		settleKey(&resp.Usage)
 	} else {
-		settleKey(llm.TokensUsage{})
+		settleKey(nil)
 	}
 	if err != nil {
 		return nil, router.ToStatus(err)
@@ -296,23 +297,25 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 	if plan.shadowEval {
 		shadowEvaluator = s.makeShadowEvaluator(id, chat, inner.GetAttributes())
 	}
-	settleKey, err := s.admitKey(stream.Context(), id, estimateTokens(inner))
+	estimate := estimateTokens(inner)
+	settleKey, err := s.admitKey(stream.Context(), id, estimate)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		var u llm.TokensUsage
+		// A stream cut before its usage chunk still produced what was sent.
+		u := llm.TokensUsage{Input: int(estimate), Output: llm.EstimateOutputTokens(streamText.Len())}
 		if streamUsage != nil {
 			u = llm.TokensUsage{Input: int(streamUsage.GetInput()), Output: int(streamUsage.GetOutput())}
 		}
-		settleKey(u)
+		settleKey(&u)
 	}()
 	_, err = router.ExecuteStream(stream.Context(), s.throttle, router.Request{
 		Chain:            plan.models,
 		KeyName:          id.Name,
 		UserID:           router.UserID(inner.GetAttributes(), id.Name),
 		TeamID:           id.TeamID,
-		Estimate:         estimateTokens(inner),
+		Estimate:         estimate,
 		Chat:             chat,
 		CircuitBreaker:   s.circuitBreaker,
 		Cooldown:         s.cooldownFor(snap, id),

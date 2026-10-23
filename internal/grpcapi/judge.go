@@ -84,8 +84,8 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 		return nil, err
 	}
 
-	// Media calls book no estimate: their tokens are known only afterwards.
-	settleKey, err := s.admitKey(ctx, plan.identity, 0)
+	estimate := judgeEstimate(judgeReq)
+	settleKey, err := s.admitKey(ctx, plan.identity, estimate)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +95,7 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 		KeyName:         plan.identity.Name,
 		UserID:          router.UserID(plan.attrs, plan.identity.Name),
 		TeamID:          plan.identity.TeamID,
-		Estimate:        judgeEstimate(judgeReq),
+		Estimate:        estimate,
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,
 		Cooldown:        plan.cooldown,
@@ -115,11 +115,11 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 			return res.Usage, nil
 		},
 	})
+	var used *llm.TokensUsage
 	if out != nil {
-		settleKey(out.Usage)
-	} else {
-		settleKey(llm.TokensUsage{})
+		used = &out.Usage
 	}
+	settleKey(used)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
@@ -500,8 +500,8 @@ func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRoll
 	}
 
 	userID := router.UserID(plan.attrs, plan.identity.Name)
-	// Media calls book no estimate: their tokens are known only afterwards.
-	settleKey, err := s.admitKey(ctx, plan.identity, 0)
+	estimate := rolloutEstimate(rolloutReq)
+	settleKey, err := s.admitKey(ctx, plan.identity, estimate)
 	if err != nil {
 		return nil, err
 	}
@@ -511,7 +511,7 @@ func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRoll
 		KeyName:         plan.identity.Name,
 		UserID:          userID,
 		TeamID:          plan.identity.TeamID,
-		Estimate:        rolloutEstimate(rolloutReq),
+		Estimate:        estimate,
 		CircuitBreaker:  s.circuitBreaker,
 		UpstreamTimeout: s.upstreamTimeout,
 		Cooldown:        plan.cooldown,
@@ -545,11 +545,11 @@ func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRoll
 			return res.Usage, nil
 		},
 	})
+	var used *llm.TokensUsage
 	if out != nil {
-		settleKey(out.Usage)
-	} else {
-		settleKey(llm.TokensUsage{})
+		used = &out.Usage
 	}
+	settleKey(used)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
