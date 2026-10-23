@@ -1280,6 +1280,106 @@ Failed calls to Redis, Postgres and the usage collector are counted in `ktms_dep
 | Postgres | Admin RPCs, batches | `UNAVAILABLE storage_unavailable` (cause logged). A batch whose idempotency check fails is refused rather than submitted, so it is never paid for twice. | |
 | Postgres | Startup | Migrations and the first config load must succeed (the first load within 30s); otherwise the process exits and the orchestrator restarts it. | Nothing to serve without a first snapshot. |
 
+### Metrics and alerts
+
+Prometheus metrics are served on `METRICS_ADDR` (`:9091`) at `/metrics`; the Helm chart can add a
+`ServiceMonitor`. Every name starts with `ktms_`.
+
+| Metric | Labels | What it tells you |
+| --- | --- | --- |
+| `ktms_requests_total` | `vendor`, `model`, `effort`, `status` (`success`, `error`) | Upstream calls and their outcome. |
+| `ktms_request_duration_seconds` | `vendor`, `model`, `effort` | Upstream latency, histogram. |
+| `ktms_time_to_first_token_seconds` | `vendor`, `model` | Time to the first streamed chunk, histogram. |
+| `ktms_tokens_total` | `vendor`, `model`, `type` (`input`, `output`) | Tokens consumed. |
+| `ktms_active_requests` | `vendor`, `model` | Upstream calls in flight. |
+| `ktms_throttled_total` | `reason` (`rpm`, `budget_key`, `budget_user`, `spend_<key\|user\|team>_<daily\|monthly>`, `spend_unavailable`) | Calls refused by a limit. |
+| `ktms_fallbacks_total` | `from_model`, `to_model`, `reason` | Moves down a fallback chain. |
+| `ktms_circuit_breaker_state` | `vendor`, `model` | `0` closed, `1` open, `2` half-open. |
+| `ktms_circuit_breaker_transitions_total`, `ktms_circuit_breaker_rejections_total` | `vendor`, `model` (+ `from`, `to`) | Breaker flaps and the calls it refused. |
+| `ktms_vendor_cooldowns_total` | `vendor`, `model` | Pauses started from a vendor `Retry-After`. |
+| `ktms_dependency_errors_total` | `dependency` (`redis`, `postgres`, `usage_collector`), `operation` | Failed calls to a dependency. |
+| `ktms_usage_events_dropped_total` | `reason` | Usage events that never reached light-tokenmeter. |
+| `ktms_batch_jobs_total`, `ktms_batch_items_total` | `vendor`, `state` | Batch progress. |
+| `ktms_batch_poll_duration_seconds` | `vendor` | Vendor batch polling, histogram. |
+| `ktms_shadow_requests_total`, `ktms_shadow_judge_evaluations_total`, `ktms_shadow_judge_scores` | | Shadow traffic and its judged quality. |
+| `ktms_legacy_headers_requests_total` | `header` | Clients still sending `X-LLM-Proxy-*` headers. |
+
+Suggested alerts (tune thresholds to your traffic):
+
+```yaml
+groups:
+  - name: ktms
+    rules:
+      - alert: KTMSUpstreamErrorRate
+        expr: sum by (vendor, model) (rate(ktms_requests_total{status="error"}[5m]))
+          / sum by (vendor, model) (rate(ktms_requests_total[5m])) > 0.05
+        for: 10m
+      - alert: KTMSUpstreamLatencyP99
+        expr: histogram_quantile(0.99, sum by (le, vendor, model) (rate(ktms_request_duration_seconds_bucket[5m]))) > 30
+        for: 15m
+      - alert: KTMSCircuitOpen
+        expr: max by (vendor, model) (ktms_circuit_breaker_state) == 1
+        for: 5m
+      - alert: KTMSDependencyErrors
+        expr: sum by (dependency) (rate(ktms_dependency_errors_total[5m])) > 0
+        for: 5m
+      - alert: KTMSUsageEventsDropped
+        expr: sum (increase(ktms_usage_events_dropped_total[15m])) > 0
+      - alert: KTMSSpendLimitReached
+        expr: sum by (reason) (increase(ktms_throttled_total{reason=~"spend_.*|budget_.*"}[15m])) > 0
+      - alert: KTMSDown
+        expr: up{job="ktms"} == 0
+        for: 2m
+```
+
+`KTMSDependencyErrors` and `KTMSUsageEventsDropped` matter most: Redis and the collector fail
+open, so the calls keep succeeding and only these metrics show that limits or accounting stopped.
+Also probe `/readyz`: it turns `degraded`, then 503, during a Postgres outage.
+
+### Sizing
+
+From the [benchmark](#resource-footprint): about 0.65 s of CPU per 1,000 proxied requests, under
+50 MiB of memory at 4,000 RPS, no drift at a steady load. Upstream time does not cost CPU, so size
+by request rate, not by how long vendors take to answer.
+
+- **CPU:** plan 1 vCPU per 1,000 RPS, which leaves headroom for TLS, logging and streaming.
+  Guardrails, the semantic cache and the latent encoder add CPU per call; measure them with
+  `go test -bench` (see [Semantic cache and latent guardrails](#semantic-cache-and-latent-guardrails)).
+- **Memory:** memory follows the bodies in flight, not RPS. The chart's default (256 MiB request,
+  512 MiB limit) covers thousands of concurrent short calls; raise it for large prompts, images
+  or audio (`GRPC_MAX_RECV_MSG_SIZE` is 16 MiB per message).
+- **Replicas:** run at least two behind a load balancer; they share nothing but Postgres and
+  Redis. Each replica keeps its own circuit breakers and vendor pauses.
+- **Postgres:** replicas × `DB_MAX_CONNS` (25 by default) must fit under `max_connections` with
+  room for migrations and the other services. Routing serves from a snapshot reloaded every
+  `ROUTING_RELOAD_SECONDS`, so the hot path costs one indexed key lookup per call; size
+  Postgres for that query rate.
+- **Redis:** a few commands per call when limits, caches or the node pool are on, each bounded by
+  `REDIS_TIMEOUT`. Keep it in the same zone as the gateway; one small instance serves every
+  replica.
+
+### Security checklist
+
+- **TLS in front.** gRPC and HTTP are plaintext; terminate TLS at a load balancer, ingress or mesh,
+  use TLS to Postgres (`sslmode=require`) and to the collector (`USAGE_COLLECTOR_TLS`). The Redis
+  client has no TLS: keep Redis on a private network and set `REDIS_PASSWORD`.
+- **Keep internal ports internal.** Expose only the gRPC (`:9090`) and HTTP (`:8080`) API ports.
+  Metrics (`:9091`) and the health endpoints belong on the cluster network; restrict them with
+  network policies.
+- **Network policies.** The gateway needs egress to the vendors, Postgres, Redis, the collector
+  and the nodes, and nothing else. Only the console and your clients need to reach it.
+- **Least-privilege keys.** Give clients `generate` keys and reserve `admin` keys for the console
+  and operators; one key per client, so revocation and spend are per client. Unset
+  `BOOTSTRAP_ADMIN_KEY` once real keys exist.
+- **Spend limits on every client key**, and `SPEND_LIMITS_FAIL_MODE=closed` where an unmetered
+  Redis outage is worse than refused calls.
+- **Secrets.** Keep `KTMS_ENCRYPTION_KEYS`, `DATABASE_URL` and the collector token in a secret
+  manager; rotate the keyring with [Rotating the encryption key](#rotating-the-encryption-key).
+- **Collector token.** Set `USAGE_COLLECTOR_TOKEN` to a light-tokenmeter token with only the
+  `write` scope.
+- **Nodes.** Leave `NODE_ALLOW_LOCALHOST_ENDPOINTS=false` outside development; node agents
+  authenticate with their own `ktms_node_` keys.
+
 ## Development
 
 ```bash
