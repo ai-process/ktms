@@ -29,10 +29,11 @@ func modelMaxOutputTokens(model string) int {
 }
 
 type AnthropicAdapter struct {
-	client     *anthropic.Client
-	throttle   *llm.ThrottleControl
-	model      string
-	softSchema bool
+	client      *anthropic.Client
+	throttle    *llm.ThrottleControl
+	model       string
+	softSchema  bool
+	promptCache bool
 }
 
 func NewAnthropicAdapter(client *anthropic.Client, model string, throttle *llm.ThrottleControl) *AnthropicAdapter {
@@ -42,6 +43,11 @@ func NewAnthropicAdapter(client *anthropic.Client, model string, throttle *llm.T
 		throttle: throttle,
 	}
 }
+
+// SetPromptCache marks the tools and system prompt as a cache breakpoint, so
+// repeat calls read that prefix at 0.1x input. Each new prefix is written at
+// 1.25x, which pays off only when instructions repeat; hence opt-in per model.
+func (a *AnthropicAdapter) SetPromptCache(on bool) { a.promptCache = on }
 
 // SetSoftSchema switches this adapter to prompt-described schemas.
 func (a *AnthropicAdapter) SetSoftSchema(soft bool) { a.softSchema = soft }
@@ -490,6 +496,15 @@ func (a *AnthropicAdapter) buildParams(chat *llm.ChatContext, ceiling int) anthr
 			tools = append(tools, anthropic.ToolUnionParam{OfTool: &toolParam})
 		}
 		params.Tools = tools
+	}
+	if a.promptCache {
+		// Anthropic caches the prefix in the order tools, system, messages: one
+		// breakpoint on the system prompt covers both, else one on the last tool.
+		if len(params.System) > 0 {
+			params.System[len(params.System)-1].CacheControl = anthropic.NewCacheControlEphemeralParam()
+		} else if n := len(params.Tools); n > 0 && params.Tools[n-1].OfTool != nil {
+			params.Tools[n-1].OfTool.CacheControl = anthropic.NewCacheControlEphemeralParam()
+		}
 	}
 
 	if tc := chat.GetToolChoice(); tc != nil {

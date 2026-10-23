@@ -555,6 +555,7 @@ Capabilities a model may declare:
 | `batch` | Can serve asynchronous batch text generation requests (`SubmitBatch`). |
 | `google_search` | Can serve requests with `enable_google_search`. |
 | `no_thinking` | The model reasons by default and bills the reasoning as output (DeepSeek V4, Gemma 4 on Ollama). The proxy turns it off: `thinking: {"type": "disabled"}` for DeepSeek, `reasoning_effort: "none"` for Ollama, and for `local` models when the serving node runs Ollama (other engines get no switch). OpenAI-compatible vendors only. |
+| `prompt_cache` | Anthropic only: marks each call's tools and system prompt as a cache breakpoint, so repeat calls read them at 0.1x input. A new prefix is written at 1.25x, so set it on models whose instructions repeat across calls. |
 | `vision` | Can process image parts in multimodal messages (`ImagePart`). |
 | `audio_input` | Can process audio parts in multimodal messages (`AudioPart`). |
 | `pdf_input` | Can process PDF document parts in multimodal messages (`DocumentPart`). |

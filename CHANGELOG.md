@@ -33,6 +33,8 @@ version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.
   `SetAPIKeyPolicy` and `ListAPIKeys`. The allowlist narrows chains on top of the team's; the rates
   cover all models (tokens by GCRA, booked by estimate and then by fact) and refuse with
   `throttled:key_rpm` / `throttled:key_tpm` and `RetryInfo`.
+- `prompt_cache` model capability: Anthropic calls mark their tools and system prompt with
+  `cache_control`, so long instructions that repeat are read from the cache at 0.1x input.
 - `GetSpend`: a key's, user's or team's current spend, cap and remaining amount per UTC day and
   month, from the counters that enforce the caps.
 

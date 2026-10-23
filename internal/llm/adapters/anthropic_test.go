@@ -854,3 +854,62 @@ func TestAnthropicGenerateTextStream_ErrorAfterMessageStartDoesNotEmitChunk(t *t
 		t.Errorf("expected 0 chunks emitted before content error, got %d", chunkCount)
 	}
 }
+
+func TestAnthropicPromptCacheBreakpoint(t *testing.T) {
+	tools := []*llm.Tool{
+		{Type: "function", Function: llm.FunctionDefinition{Name: "a", Parameters: &llm.ResponseSchema{Type: llm.SchemaPropertyTypeObject}}},
+		{Type: "function", Function: llm.FunctionDefinition{Name: "b", Parameters: &llm.ResponseSchema{Type: llm.SchemaPropertyTypeObject}}},
+	}
+	type block struct {
+		Name         string          `json:"name"`
+		CacheControl json.RawMessage `json:"cache_control"`
+	}
+	type body struct {
+		System []block `json:"system"`
+		Tools  []block `json:"tools"`
+	}
+	build := func(cache bool, system string) body {
+		adapter := NewAnthropicAdapter(nil, "claude-test", nil)
+		adapter.SetPromptCache(cache)
+		chat := llm.NewChatContext()
+		if system != "" {
+			chat.AddSystemMessage(system)
+		}
+		chat.AddUserMessage("hi")
+		chat.SetTools(tools)
+		raw, err := json.Marshal(adapter.buildParams(chat, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var b body
+		if err := json.Unmarshal(raw, &b); err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	marked := func(bs []block) (n int, last bool) {
+		for i, b := range bs {
+			if string(b.CacheControl) == `{"type":"ephemeral"}` {
+				n++
+				last = i == len(bs)-1
+			}
+		}
+		return n, last
+	}
+
+	b := build(false, "long instructions")
+	if n, _ := marked(append(b.System, b.Tools...)); n != 0 {
+		t.Fatalf("%d breakpoints without the capability", n)
+	}
+	b = build(true, "long instructions")
+	if n, _ := marked(b.Tools); n != 0 {
+		t.Fatalf("tools marked although the system prompt covers them")
+	}
+	if n, last := marked(b.System); n != 1 || !last {
+		t.Fatalf("system breakpoints = %d (last %v), want one on the system prompt", n, last)
+	}
+	b = build(true, "")
+	if n, last := marked(b.Tools); n != 1 || !last {
+		t.Fatalf("tool breakpoints = %d (last %v), want one on the last tool", n, last)
+	}
+}
