@@ -1,12 +1,11 @@
 package registry
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"sort"
 	"sync"
 
+	"github.com/ai-process/ktms/internal/crypto"
 	"github.com/ai-process/ktms/internal/llm"
 	"github.com/ai-process/ktms/internal/proxydb"
 	"github.com/ai-process/ktms/internal/spendlimit"
@@ -88,8 +87,7 @@ type vendorCred struct {
 }
 
 func newVendorCred(plain string) vendorCred {
-	sum := sha256.Sum256([]byte(plain))
-	return vendorCred{plain: plain, fp: hex.EncodeToString(sum[:8])}
+	return vendorCred{plain: plain, fp: crypto.Fingerprint(plain)}
 }
 
 // credsFrom wraps plain credentials keyed [apiKeyID][vendor].

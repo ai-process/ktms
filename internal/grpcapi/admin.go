@@ -165,13 +165,21 @@ func (s *AdminServer) GetConfig(ctx context.Context, _ *pb.GetConfigRequest) (*p
 		resp.Rules = append(resp.Rules, ruleToProto(r))
 	}
 	for _, vk := range vendorKeys {
-		// Metadata only — the credential itself never leaves this service.
-		resp.VendorKeys = append(resp.VendorKeys, &pb.VendorKeyInfo{
+		// Metadata and a fingerprint only — the credential never leaves this service.
+		info := &pb.VendorKeyInfo{
 			ApiKeyName: vk.APIKeyName,
 			Vendor:     vk.Vendor,
 			KeyVersion: vk.KeyVersion,
 			CreatedAt:  timestamppb.New(vk.CreatedAt),
-		})
+		}
+		if s.keyring != nil {
+			if plain, err := s.keyring.Decrypt(vk.KeyCiphertext, int(vk.KeyVersion)); err == nil {
+				info.Fingerprint = crypto.Fingerprint(plain)
+			} else {
+				log.Warn().Err(err).Str("api_key", vk.APIKeyName).Str("vendor", vk.Vendor).Msg("vendor key unreadable for its fingerprint")
+			}
+		}
+		resp.VendorKeys = append(resp.VendorKeys, info)
 	}
 	for _, u := range userRateLimits {
 		resp.UserRateLimits = append(resp.UserRateLimits, userRateLimitToProto(u))
