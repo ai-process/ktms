@@ -21,7 +21,7 @@ build does not pass. Docker images (signature, SBOM and SLSA provenance are atta
 image; each platform manifest is signed too):
 
 ```bash
-V=v1.0.0
+V=v1.1.0
 cosign verify coyl/ktms:${V#v} \
   --certificate-identity "https://github.com/ai-process/ktms/.github/workflows/docker-publish.yml@refs/tags/$V" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
@@ -29,7 +29,7 @@ docker buildx imagetools inspect coyl/ktms:${V#v} --format '{{ json .SBOM }}'
 docker buildx imagetools inspect coyl/ktms:${V#v} --format '{{ json .Provenance }}'
 ```
 
-The Helm chart (from 1.0.1; chart 1.0.0 was published unsigned):
+The Helm chart (from 1.1.0; chart 1.0.0 was published unsigned):
 
 ```bash
 cosign verify ghcr.io/ai-process/charts/ktms:${V#v} \
