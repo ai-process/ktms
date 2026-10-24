@@ -38,7 +38,8 @@ models, it asks for an effort and Keystone's rules pick the chain.
 - Turn off the SDK's own retries and apply the [error contract](https://github.com/ai-process/ktms/blob/main/README.md#error-contract) once: wait
   out `Retry-After` on 429, back off on 503, never retry configuration errors
   (`no_capable_model`, `no_vendor_key`, `not allowed for key`).
-- Log `X-KTMS-Rule`, `X-KTMS-Model` and `X-KTMS-Vendor` at debug level.
+- Log `X-KTMS-Rule`, `X-KTMS-Vendor` and the response's `model` (the model that answered) at
+  debug level.
 
 ## Check
 

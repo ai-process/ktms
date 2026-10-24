@@ -31,7 +31,8 @@ Prefer the `tokenmeter` MCP tools; the same answers come from the CLI:
 ## Build a report or alert
 
 1. Pick the query from the table and the schedule (cron, CI, a job).
-2. Run the CLI with `-o json` or `-o csv` and the token from the environment
+2. Run the CLI with `-o json` or `-o csv` (`usage export` takes `--format` and `--out`) and the
+   token from the environment
    (`TOKENMETER_TOKEN`), or call `pkg/client` from Go; exit code 7 means retry later.
 3. Derived numbers (cost per request, error share, average latency) come from the summary's
    counts; convert nano-USD once.

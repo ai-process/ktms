@@ -17,22 +17,22 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// tokenmeterTools are light-tokenmeter's MCP tools, which live in its own
-// repository; TestSkills fails on a tool name that is in neither server.
+// tokenmeterTools are light-tokenmeter's MCP tools, read from its source when
+// TOKENMETER_MCP_SRC names it, as CI does; this list is the fallback.
 var tokenmeterTools = []string{"usage_summary", "top_spenders", "cost_per_action", "usage_by_meta", "health"}
 
 var (
-	codeSpan = regexp.MustCompile("`([^`\n]+)`")
+	codeSpan = regexp.MustCompile("`([^`]+)`")
 	mdLink   = regexp.MustCompile(`\]\((https://github\.com/ai-process/(ktms|light-tokenmeter)/blob/main/README\.md)#([^)]+)\)`)
-	// A tool name: a verb these servers use, an underscore, more words; amounts
-	// such as cost_usd are fields, not tools.
-	toolName = regexp.MustCompile(`^(list|get|config|mint|revoke|set|delete|drain|explain|usage|top|cost)_[a-z_]{4,}$`)
+	// A tool name: a verb these servers use and more words, or health.
+	toolName = regexp.MustCompile(`^((list|get|config|mint|revoke|set|delete|drain|explain|usage|top|cost)_[a-z_]+|health)$`)
+	// Fields the skills name that look like tool names.
+	notTools  = []string{"cost_usd", "cost_nanousd", "top_p", "list_price"}
+	tmToolDef = regexp.MustCompile(`read\("([a-z_]+)"`)
 )
 
-// TestSkills keeps the plugin's skills true to this version: every command
-// and flag they show exists, every MCP tool they name is served, every README
-// link has its section. light-tokenmeter's commands and README are checked
-// when TOKENMETER_BIN and TOKENMETER_README are set, as the skills CI job does.
+// TestSkills fails on a skill that names a command, flag, MCP tool or README
+// section this version lacks: an assistant would follow it into an error.
 func TestSkills(t *testing.T) {
 	dirs, err := filepath.Glob("../../plugin/skills/*/SKILL.md")
 	if err != nil || len(dirs) == 0 {
@@ -42,6 +42,17 @@ func TestSkills(t *testing.T) {
 	anchors := map[string]map[string]bool{"ktms": readmeAnchors(t, "../../README.md")}
 	if p := os.Getenv("TOKENMETER_README"); p != "" {
 		anchors["light-tokenmeter"] = readmeAnchors(t, p)
+	}
+	tmTools := tokenmeterTools
+	if p := os.Getenv("TOKENMETER_MCP_SRC"); p != "" {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tmTools = nil
+		for _, m := range tmToolDef.FindAllStringSubmatch(string(b), -1) {
+			tmTools = append(tmTools, m[1])
+		}
 	}
 	tmBin := os.Getenv("TOKENMETER_BIN")
 	if tmBin == "" || anchors["light-tokenmeter"] == nil {
@@ -60,7 +71,7 @@ func TestSkills(t *testing.T) {
 			t.Errorf("%s: frontmatter name %q (want %q), description of %d characters", path, name, dir, len(desc))
 		}
 		for _, m := range codeSpan.FindAllStringSubmatch(text, -1) {
-			span := strings.TrimSpace(m[1])
+			span := strings.Join(strings.Fields(m[1]), " ")
 			switch {
 			case strings.HasPrefix(span, "ktms "):
 				if err := checkKtms(span); err != "" {
@@ -70,8 +81,8 @@ func TestSkills(t *testing.T) {
 				if err := checkTokenmeter(tmBin, span); err != "" {
 					t.Errorf("%s: `%s`: %s", dir, span, err)
 				}
-			case toolName.MatchString(span) && !strings.HasSuffix(span, "usd"):
-				if !slices.Contains(ktmsTools, span) && !slices.Contains(tokenmeterTools, span) {
+			case toolName.MatchString(span) && !slices.Contains(notTools, span):
+				if !slices.Contains(ktmsTools, span) && !slices.Contains(tmTools, span) {
 					t.Errorf("%s: MCP tool `%s` is served by neither ktms mcp nor tokenmeter mcp", dir, span)
 				}
 			}
@@ -137,19 +148,30 @@ func checkKtms(span string) string {
 		return "not a command"
 	}
 	for _, w := range words {
-		if f, ok := flagName(w); ok && cmd.Flags().Lookup(f) == nil && cmd.InheritedFlags().Lookup(f) == nil {
+		f, short, ok := flagName(w)
+		if !ok {
+			continue
+		}
+		if short && cmd.Flags().ShorthandLookup(f) == nil && cmd.InheritedFlags().ShorthandLookup(f) == nil {
+			return "no flag -" + f + " on " + cmd.CommandPath()
+		}
+		if !short && cmd.Flags().Lookup(f) == nil && cmd.InheritedFlags().Lookup(f) == nil {
 			return "no flag --" + f + " on " + cmd.CommandPath()
 		}
 	}
 	return ""
 }
 
-func flagName(w string) (string, bool) {
-	if !strings.HasPrefix(w, "--") || len(w) < 3 {
-		return "", false
+// flagName reads --name, --name=value and -x.
+func flagName(w string) (name string, short, ok bool) {
+	switch {
+	case strings.HasPrefix(w, "--") && len(w) > 2:
+		f, _, _ := strings.Cut(w[2:], "=")
+		return f, false, true
+	case strings.HasPrefix(w, "-") && len(w) == 2 && w[1] != '-':
+		return w[1:], true, true
 	}
-	f, _, _ := strings.Cut(w[2:], "=")
-	return f, true
+	return "", false, false
 }
 
 // checkTokenmeter asks the built tokenmeter for the command's help.
@@ -172,8 +194,16 @@ func checkTokenmeter(bin, span string) string {
 		return "no command tokenmeter " + strings.Join(path, " ")
 	}
 	for _, w := range strings.Fields(span) {
-		if f, ok := flagName(w); ok && !strings.Contains(help, "--"+f) {
-			return "no flag --" + f
+		f, short, ok := flagName(w)
+		if !ok {
+			continue
+		}
+		pat := `(?m)^\s+--` + regexp.QuoteMeta(f) + `\b`
+		if short {
+			pat = `(?m)^\s+-` + regexp.QuoteMeta(f) + `, --`
+		}
+		if !regexp.MustCompile(pat).MatchString(help) {
+			return "no flag " + w
 		}
 	}
 	return ""
@@ -231,13 +261,14 @@ func readmeAnchors(t *testing.T, path string) map[string]bool {
 	return out
 }
 
-
 func TestSkillChecksCatchStaleCommands(t *testing.T) {
 	for span, ok := range map[string]bool{
 		"ktms route explain KEY --effort low --attr k=v": true,
 		"ktms completion zsh":                            true,
 		"ktms keys mnt NAME":                             false,
 		"ktms keys mint NAME --colour red":               false,
+		"ktms config validate -f FILE":                   true,
+		"ktms config validate -x FILE":                   false,
 		"ktms nonsense":                                  false,
 	} {
 		if got := checkKtms(span); (got == "") != ok {

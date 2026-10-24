@@ -19,10 +19,17 @@ claude plugin marketplace add ai-process/ktms && claude plugin install ktms@ai-p
 
 The assistant picks a skill by itself when the task fits; the slash command starts one by name.
 
+## Requirements
+
+Keystone 1.2 or later with its `ktms` CLI, and light-tokenmeter 1.1 or later with its `tokenmeter`
+CLI, for the skills' commands and the MCP servers. Until those releases are out, build both CLIs
+from `main` (`go install github.com/ai-process/ktms/cmd/ktms@main`,
+`go install github.com/ai-process/light-tokenmeter/cmd/tokenmeter@main`).
+
 ## MCP servers
 
 `.mcp.json` starts `ktms mcp` and `tokenmeter mcp`, read-only. Both binaries must be on `PATH`
-(release archives, `go install …/cmd/ktms@latest`, `go install …/cmd/tokenmeter@latest`), and they
+(release archives or `go install`, see above), and they
 find Keystone and light-tokenmeter the way the CLIs do: the current context, or `KTMS_CONTEXT`,
 `KTMS_ADDR`, `KTMS_ADMIN_KEY`, `TOKENMETER_ADDR`, `TOKENMETER_TOKEN` in the environment Claude
 Code runs in. Use an `admin:read` key and a `read` token. To let the assistant change Keystone,

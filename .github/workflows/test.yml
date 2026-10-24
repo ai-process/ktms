@@ -70,8 +70,8 @@ jobs:
       - name: Upgrade from the previous release
         run: ./scripts/upgrade-test.sh
 
-  # The plugin's skills against this checkout and light-tokenmeter's main: every
-  # command, flag, MCP tool and README section they name must exist.
+  # The plugin's skills against this checkout and light-tokenmeter's main (its
+  # first release with the CLI is still to come; then pin it to that tag).
   skills:
     runs-on: ubuntu-latest
     steps:
@@ -84,11 +84,13 @@ jobs:
         run: |
           GOBIN="$RUNNER_TEMP" go install github.com/ai-process/light-tokenmeter/cmd/tokenmeter@main
           curl -fsSL https://raw.githubusercontent.com/ai-process/light-tokenmeter/main/README.md -o "$RUNNER_TEMP/tokenmeter-README.md"
+          curl -fsSL https://raw.githubusercontent.com/ai-process/light-tokenmeter/main/cmd/tokenmeter/mcp.go -o "$RUNNER_TEMP/tokenmeter-mcp.go"
       - name: Skills
         run: go test -count=1 -run '^TestSkill' ./cmd/ktms/
         env:
           TOKENMETER_BIN: ${{ runner.temp }}/tokenmeter
           TOKENMETER_README: ${{ runner.temp }}/tokenmeter-README.md
+          TOKENMETER_MCP_SRC: ${{ runner.temp }}/tokenmeter-mcp.go
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
