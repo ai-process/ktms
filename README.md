@@ -201,6 +201,10 @@ docker pull coyl/ktms:latest      # default lightweight image (~67 MB)
 docker pull coyl/ktms:audio       # with ffmpeg for Gemini speech synthesis (~195 MB)
 ```
 
+`X.Y` (and `X.Y-slim`, `X.Y-audio`) follows the newest release of its line; `latest`, `slim` and
+`audio` follow the newest release of all. The [changelog](CHANGELOG.md) lists what each release
+changed.
+
 If Gemini TTS is requested without ffmpeg available (e.g. on the default slim image), the proxy returns gRPC `Codes.Unimplemented` / HTTP 501 Not Implemented: `ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/ktms:audio' container image`. OpenAI TTS produces native Opus directly and works on both variants without ffmpeg.
 
 The image runs as a non-root user (`appuser`, UID 10001), exposes `8080` (HTTP) and `9090` (gRPC), and is configured entirely through environment variables. From 1.0.0, images are signed with cosign and carry an SBOM and provenance, and the release's `checksums.txt` is signed: see [Verifying a Release](SECURITY.md#verifying-a-release).
@@ -1673,56 +1677,8 @@ Layout: `cmd/server` (entrypoint), `internal/router` (rule matching, fallback, a
 adapters), `internal/throttle` (Redis limits), `internal/grpcapi` (RPC handlers),
 `internal/crypto` (keyring), `migrations/` (embedded SQL).
 
-Pull requests are welcome; read [`CONTRIBUTING.md`](CONTRIBUTING.md) first.
-
-### Releasing
-
-1. Move the `[Unreleased]` entries in [CHANGELOG.md](CHANGELOG.md) under the new version and
-   date, and pick the version by [API stability](#api-stability): a fix is a patch, a feature is a
-   minor, a break of the public API is a major.
-2. Push a `vX.Y.Z` tag (the `v` matters: it makes the tag a valid Go module version, so
-   `go install github.com/ai-process/ktms/cmd/node-agent@vX.Y.Z` works):
-
-```bash
-git tag v1.0.0 && git push origin v1.0.0
-```
-
-The release workflow first runs `.github/workflows/compat.yml`: `buf breaking` against the
-previous published release in the tag's history, and the upgrade test from it (and from the
-oldest release of the same major). If it fails, nothing is published; nor if
-`deploy/helm/ktms/Chart.yaml` does not carry the tag's version as `version` and `appVersion`
-(bump both in the release commit). Then GoReleaser publishes the binaries, after it the Docker
-images, and last the Helm chart. An image on Docker Hub marks a complete release, which is how
-the next release finds its predecessor (re-run a failed image job before tagging again); a
-failed chart job can be re-run at any time and keeps a version already pushed. A release that breaks the proto on purpose (an Experimental change, or a new major) sets
-the repository variable `ALLOW_BREAKING_TAG` to its tag, which skips the proto checks; the
-upgrade test still runs. Only the newest stable tag moves `latest`, `slim` and `audio`, so a
-backport does not.
-
-- **GitHub Release** (GoReleaser, `.github/workflows/release.yml`): `ktms-node` and
-  `ktms-server` archives for darwin and linux, amd64 and arm64, plus `checksums.txt`.
-- **Docker Hub** (`.github/workflows/docker-publish.yml`): multi-arch `coyl/ktms` tagged as
-  `:<tag>`, `:<tag>-slim`, `:latest`, `:slim` (default lightweight Alpine without ffmpeg),
-  and `:<tag>-audio`, `:audio` (with ffmpeg), plus `coyl/ktms-node:<tag>` (node agent).
-  The repository needs the secrets `DOCKER_USERNAME` and `DOCKER_PASSWORD` (an access token).
-- **Helm chart** (`.github/workflows/release.yml`): `oci://ghcr.io/ai-process/charts/ktms`,
-  version and `appVersion` from the tag, signed with cosign. It needs no secret; after the
-  first release the `charts/ktms` package has to be made public once in the organization's
-  package settings. CI installs the chart from an OCI registry on kind
-  (`scripts/helm-kind.sh`).
-- **Buf Schema Registry** (`.github/workflows/buf.yml`): each push to `main` that passes lint and
-  the breaking check publishes `ktms.v1` to `buf.build/ai-process/ktms`, which generates the SDKs
-  (or run the workflow by hand on `main`). It needs the secret `BUF_TOKEN` (a
-  buf.build token of the `ai-process` organization); without it the `bsr-push` job fails, so an
-  unpublished SDK does not go unnoticed.
-- **Optional, off until their secrets exist:** macOS signing and notarization
-  (`MACOS_SIGN_P12`, `MACOS_SIGN_PASSWORD`, `MACOS_NOTARY_ISSUER_ID`, `MACOS_NOTARY_KEY_ID`,
-  `MACOS_NOTARY_KEY`) and a Homebrew formula pushed to `ai-process/homebrew-tap`
-  (`HOMEBREW_TAP_TOKEN`; the tap repository must exist). Without them the release is unsigned.
-  Binaries fetched with `curl` or installed by `brew` carry no quarantine flag and run;
-  only browser downloads trigger Gatekeeper.
-
-Dry run: `go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean --skip=publish`.
+Pull requests are welcome; read [`CONTRIBUTING.md`](CONTRIBUTING.md) first. Maintainers release
+as described in [`RELEASING.md`](RELEASING.md).
 
 ## License
 
