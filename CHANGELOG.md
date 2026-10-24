@@ -13,6 +13,10 @@ All notable changes to KTMS are listed here. The format follows
   `NODE_USAGE_RETENTION_HOURS` (default 168, `0` turns it off). The node pulls it with
   `NodeRegistryService.PullNodeUsage` by cursor; a cursor older than the log gets `gap_until`.
   Needs Redis 6.2 or newer. Revoking a node key deletes the node's log.
+- The node agent keeps that log locally for the machine's owner (`--stats-dir`, default
+  `~/.ktms-node/stats`): requests pulled every minute, plus its own minute samples (level, state,
+  load, GPU), as JSON Lines per day, closed days gzipped, kept `--stats-retention` (default 90d).
+  `--stats=false` turns it off; `doctor` checks it.
 
 ## [1.2.0] - 2026-10-24
 

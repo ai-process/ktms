@@ -40,6 +40,8 @@ type AgentConfig struct {
 	MaxConcurrent  uint32
 	ScheduleFile   string        // capacity levels by local time; missing = 100%
 	Warmup         time.Duration // load the model this long before a paused window ends
+	StatsDir       string        // where the usage log is kept for the owner; "" = none
+	StatsRetention time.Duration // days of usage log kept; 0 = all
 }
 
 type Agent struct {
@@ -57,6 +59,8 @@ type Agent struct {
 	gateway    *Gateway // nil unless exposed through the built-in gateway
 
 	pause      pauseState
+	stats      statsState
+	statsEvery time.Duration
 	engineDone chan engineResult
 	now        func() time.Time
 	levelEvery time.Duration
@@ -99,6 +103,7 @@ func NewAgent(cfg AgentConfig) *Agent {
 		now:        time.Now,
 		levelEvery: defaultLevelEvery,
 		pauseGrace: defaultPauseGrace,
+		statsEvery: defaultStatsEvery,
 
 		retryInitial: retryInitial,
 		retryMax:     retryMax,
@@ -296,6 +301,10 @@ func (a *Agent) Run(ctx context.Context) error {
 	defer ticker.Stop()
 	levelTicker := time.NewTicker(a.levelEvery)
 	defer levelTicker.Stop()
+	a.openStats()
+	a.stats.beatEvery = interval
+	statsTicker := time.NewTicker(a.statsEvery)
+	defer statsTicker.Stop()
 
 	needRegister := false
 	var retryAt time.Time
@@ -335,6 +344,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		if err != nil {
 			log.Warn().Err(err).Msg("heartbeat failed")
 			return
+		}
+		if hbResp.GetOk() {
+			a.noteBeat(currRes, currModels, active, queued, hbResp.GetActiveProxyRequests())
 		}
 
 		if hbResp.ReRegisterRequired {
@@ -379,6 +391,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		case r := <-a.engineDone:
 			a.finishEngineCall(r)
 			a.stepPause()
+		case <-statsTicker.C:
+			a.statsTick(authCtx)
 		}
 	}
 }

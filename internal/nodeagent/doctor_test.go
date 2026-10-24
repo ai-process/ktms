@@ -526,3 +526,32 @@ func TestDoctorSchedule(t *testing.T) {
 		t.Errorf("no --schedule-file: %+v, want no finding", fs)
 	}
 }
+
+func TestDoctorStats(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "stats")
+	d := newDoctor(AgentConfig{StatsDir: dir})
+	if f := one(t, d.checkStats(), "Usage log"); f.Level != LevelOK || !strings.Contains(f.Message, "No usage log yet") {
+		t.Errorf("fresh: %+v", f)
+	}
+	st, _ := OpenStats(dir, true)
+	if err := st.SetCursor("1-0"); err != nil {
+		t.Fatal(err)
+	}
+	if f := one(t, d.checkStats(), "Usage log"); f.Level != LevelOK {
+		t.Errorf("just pulled: %+v", f)
+	}
+	d.Now = func() time.Time { return time.Now().Add(time.Hour) }
+	if f := one(t, d.checkStats(), "Usage log"); f.Level != LevelWarn || !strings.Contains(f.Message, "1h0m0s ago") {
+		t.Errorf("stale: %+v", f)
+	}
+	ro := filepath.Join(t.TempDir(), "ro")
+	if err := os.Mkdir(ro, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	if f := one(t, newDoctor(AgentConfig{StatsDir: ro}).checkStats(), "Usage log"); f.Level != LevelProblem && os.Geteuid() != 0 {
+		t.Errorf("read-only dir: %+v", f)
+	}
+	if fs := newDoctor(AgentConfig{}).checkStats(); len(fs) != 0 {
+		t.Errorf("--stats=false: %+v", fs)
+	}
+}
