@@ -49,6 +49,9 @@ type settings struct {
 	maxConcurrent *uint
 	scheduleFile  *string
 	warmup        *time.Duration
+	stats         *bool
+	statsDir      *string
+	statsKeep     *string
 	onlyModels    stringList
 	judgeModels   stringList
 }
@@ -85,6 +88,9 @@ func newSettings(name string) *settings {
 		maxConcurrent: fs.Uint("max-concurrent", 16, "Maximum concurrent requests"),
 		scheduleFile:  fs.String("schedule-file", "", "Capacity levels by local time, one \"[days] HH:MM-HH:MM level\" rule per line; re-read when it changes, a missing file means 100%"),
 		warmup:        fs.Duration("warmup", 5*time.Minute, "Load the model this long before a paused window ends"),
+		stats:         fs.Bool("stats", true, "Keep a local log of the requests the proxy sends here, for `stats`"),
+		statsDir:      fs.String("stats-dir", nodeagent.DefaultStatsDir(), "Where the usage log is kept"),
+		statsKeep:     fs.String("stats-retention", "90d", "How long the usage log is kept (e.g. 90d, 36h; 0 = forever)"),
 	}
 	fs.Var(&s.onlyModels, "only-model", "Report only these engine models to the proxy; repeat the flag or comma-separate (default: every model the engine has)")
 	fs.Var(&s.judgeModels, "judge-model", "Model ID that serves the judge capability; repeat or comma-separate")
@@ -118,6 +124,14 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 		name = id
 	}
 	pollURL, reportURL := nodeagent.ResolveURLs(*s.engineURL, *s.endpoint)
+	keep, err := nodeagent.ParseRetention(*s.statsKeep)
+	if err != nil {
+		return nodeagent.AgentConfig{}, fmt.Errorf("--stats-retention: %w", err)
+	}
+	statsDir := *s.statsDir
+	if !*s.stats {
+		statsDir = ""
+	}
 
 	return nodeagent.AgentConfig{
 		ProxyAddr:      *s.proxyAddr,
@@ -138,6 +152,8 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 		MaxConcurrent:  uint32(*s.maxConcurrent),
 		ScheduleFile:   *s.scheduleFile,
 		Warmup:         *s.warmup,
+		StatsDir:       statsDir,
+		StatsRetention: keep,
 	}, nil
 }
 

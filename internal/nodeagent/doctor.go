@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
@@ -126,7 +127,48 @@ func (d *Doctor) Run(ctx context.Context) []Finding {
 	} else {
 		out = append(out, d.checkEndpoint(ctx)...)
 	}
-	return append(out, schedFindings...)
+	out = append(out, schedFindings...)
+	return append(out, d.checkStats()...)
+}
+
+// ---- usage log ------------------------------------------------------------
+
+// checkStats tells whether the agent keeps its usage log: the directory must
+// take writes, and a running agent moves the cursor every minute.
+func (d *Doctor) checkStats() []Finding {
+	if d.Cfg.StatsDir == "" {
+		return nil
+	}
+	st, err := OpenStats(d.Cfg.StatsDir, false)
+	if err == nil {
+		err = probeWritable(d.Cfg.StatsDir)
+	}
+	if err != nil {
+		return []Finding{{"Usage log", LevelProblem, "The usage log directory cannot be written: " + shortErr(err), "Fix the permissions of " + d.Cfg.StatsDir + ", or pass --stats-dir."}}
+	}
+	age, ok := st.CursorAge(d.Now())
+	switch {
+	case !ok:
+		return []Finding{{"Usage log", LevelOK, "No usage log yet; the agent starts it once it is registered.", ""}}
+	case age > 10*time.Minute:
+		return []Finding{{"Usage log", LevelWarn, fmt.Sprintf("The agent last pulled its usage log %s ago.", age.Round(time.Minute)),
+			"Check that the agent runs and that the proxy keeps the log (NODE_USAGE_RETENTION_HOURS above 0, KTMS with PullNodeUsage)."}}
+	}
+	return []Finding{{"Usage log", LevelOK, fmt.Sprintf("Usage log kept in %s; `ktms-node stats` shows it.", d.Cfg.StatsDir), ""}}
+}
+
+// probeWritable creates dir if needed and writes a scratch file into it.
+func probeWritable(dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, ".probe-*")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	f.Close()
+	return os.Remove(name)
 }
 
 // ---- schedule -------------------------------------------------------------

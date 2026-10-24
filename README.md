@@ -322,6 +322,14 @@ models and registers the node with the allowed ones; it refuses only when none i
 `--cloudflared-path` to pick the binary. `NODE_AUTH_TOKEN` is the bearer the engine itself
 requires, if any.
 
+The agent keeps a usage log for the machine's owner in `--stats-dir` (default
+`~/.ktms-node/stats`, or `$KTMS_HOME/stats`): every minute it pulls the requests the proxy sent
+here with `PullNodeUsage` (time, model, tokens, outcome, level; no user, key or text) into
+`requests-YYYY-MM-DD.jsonl`, and writes its own sample (schedule level, state, proxy and engine
+load, GPU) to `samples-YYYY-MM-DD.jsonl`. Closed days are gzipped and kept for
+`--stats-retention` (default `90d`, `0` = forever); `--stats=false` turns it off. Against a
+proxy without the log it keeps only the samples. `doctor` checks that the log moves.
+
 If a node does not show up or serves badly, `ktms-node doctor` takes the same flags (plus
 `--model`) and says in plain words what is wrong: engine not answering, model missing or not
 loaded, Ollama on the CPU (an Intel build under Rosetta on Apple Silicon), proxy unreachable or
