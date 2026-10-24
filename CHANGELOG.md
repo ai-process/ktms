@@ -7,6 +7,8 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-24
+
 ### Fixed
 - The release publishes again with `HOMEBREW_TAP_TOKEN` set: the Homebrew formula step used
   `isEnvSet`, a GoReleaser Pro template function, and stopped the 1.3.0 release after its GitHub
@@ -275,7 +277,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/ai-process/ktms/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/ai-process/ktms/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/ai-process/ktms/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/ai-process/ktms/compare/v1.0.0...v1.1.0
