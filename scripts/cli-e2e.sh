@@ -52,7 +52,8 @@ docker run -d --name "$P-pg" --network "$NET" \
 	-e POSTGRES_USER=ktms -e POSTGRES_PASSWORD=ktms -e POSTGRES_DB=ktms postgres:17-alpine >/dev/null
 docker run -d --name "$P-redis" --network "$NET" redis:7-alpine >/dev/null
 docker run -d --name "$P-mock" --network "$NET" -e MOCK_REQUIRE_KEY=vk-e2e -e MOCK_CHUNKS=3 "$P-mock" >/dev/null
-retry 60 docker exec "$P-pg" pg_isready -U ktms -d ktms >/dev/null 2>&1 || fail "postgres did not start"
+# Over TCP: while the image initializes, its temporary server answers on the socket only.
+retry 60 docker exec "$P-pg" pg_isready -h 127.0.0.1 -U ktms -d ktms >/dev/null 2>&1 || fail "postgres did not start"
 
 docker run -d --name "$P-gw" --network "$NET" -p 127.0.0.1::9090 -p 127.0.0.1::8080 \
 	-e DATABASE_URL="postgres://ktms:ktms@$P-pg:5432/ktms?sslmode=disable" \
