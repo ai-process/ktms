@@ -23,6 +23,7 @@ const (
 	NodeRegistryService_ValidateNode_FullMethodName   = "/ktms.v1.NodeRegistryService/ValidateNode"
 	NodeRegistryService_Heartbeat_FullMethodName      = "/ktms.v1.NodeRegistryService/Heartbeat"
 	NodeRegistryService_UnregisterNode_FullMethodName = "/ktms.v1.NodeRegistryService/UnregisterNode"
+	NodeRegistryService_PullNodeUsage_FullMethodName  = "/ktms.v1.NodeRegistryService/PullNodeUsage"
 )
 
 // NodeRegistryServiceClient is the client API for NodeRegistryService service.
@@ -38,6 +39,9 @@ type NodeRegistryServiceClient interface {
 	ValidateNode(ctx context.Context, in *ValidateNodeRequest, opts ...grpc.CallOption) (*ValidateNodeResponse, error)
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 	UnregisterNode(ctx context.Context, in *UnregisterNodeRequest, opts ...grpc.CallOption) (*UnregisterNodeResponse, error)
+	// PullNodeUsage returns the node's request log after a cursor. The proxy keeps
+	// it for NODE_USAGE_RETENTION_HOURS; the agent stores it for the owner.
+	PullNodeUsage(ctx context.Context, in *PullNodeUsageRequest, opts ...grpc.CallOption) (*PullNodeUsageResponse, error)
 }
 
 type nodeRegistryServiceClient struct {
@@ -88,6 +92,16 @@ func (c *nodeRegistryServiceClient) UnregisterNode(ctx context.Context, in *Unre
 	return out, nil
 }
 
+func (c *nodeRegistryServiceClient) PullNodeUsage(ctx context.Context, in *PullNodeUsageRequest, opts ...grpc.CallOption) (*PullNodeUsageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PullNodeUsageResponse)
+	err := c.cc.Invoke(ctx, NodeRegistryService_PullNodeUsage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NodeRegistryServiceServer is the server API for NodeRegistryService service.
 // All implementations must embed UnimplementedNodeRegistryServiceServer
 // for forward compatibility.
@@ -101,6 +115,9 @@ type NodeRegistryServiceServer interface {
 	ValidateNode(context.Context, *ValidateNodeRequest) (*ValidateNodeResponse, error)
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	UnregisterNode(context.Context, *UnregisterNodeRequest) (*UnregisterNodeResponse, error)
+	// PullNodeUsage returns the node's request log after a cursor. The proxy keeps
+	// it for NODE_USAGE_RETENTION_HOURS; the agent stores it for the owner.
+	PullNodeUsage(context.Context, *PullNodeUsageRequest) (*PullNodeUsageResponse, error)
 	mustEmbedUnimplementedNodeRegistryServiceServer()
 }
 
@@ -122,6 +139,9 @@ func (UnimplementedNodeRegistryServiceServer) Heartbeat(context.Context, *Heartb
 }
 func (UnimplementedNodeRegistryServiceServer) UnregisterNode(context.Context, *UnregisterNodeRequest) (*UnregisterNodeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UnregisterNode not implemented")
+}
+func (UnimplementedNodeRegistryServiceServer) PullNodeUsage(context.Context, *PullNodeUsageRequest) (*PullNodeUsageResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PullNodeUsage not implemented")
 }
 func (UnimplementedNodeRegistryServiceServer) mustEmbedUnimplementedNodeRegistryServiceServer() {}
 func (UnimplementedNodeRegistryServiceServer) testEmbeddedByValue()                             {}
@@ -216,6 +236,24 @@ func _NodeRegistryService_UnregisterNode_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NodeRegistryService_PullNodeUsage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PullNodeUsageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeRegistryServiceServer).PullNodeUsage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeRegistryService_PullNodeUsage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeRegistryServiceServer).PullNodeUsage(ctx, req.(*PullNodeUsageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NodeRegistryService_ServiceDesc is the grpc.ServiceDesc for NodeRegistryService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -238,6 +276,10 @@ var NodeRegistryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UnregisterNode",
 			Handler:    _NodeRegistryService_UnregisterNode_Handler,
+		},
+		{
+			MethodName: "PullNodeUsage",
+			Handler:    _NodeRegistryService_PullNodeUsage_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -254,6 +254,59 @@ func (s *NodeRegistryServer) UnregisterNode(ctx context.Context, req *pb.Unregis
 	return &pb.UnregisterNodeResponse{Ok: true}, nil
 }
 
+// PullNodeUsage hands a node its request log after a cursor, for the agent to
+// store for the machine's owner. Only the node itself may read it.
+func (s *NodeRegistryServer) PullNodeUsage(ctx context.Context, req *pb.PullNodeUsageRequest) (*pb.PullNodeUsageResponse, error) {
+	caller := apikeys.IdentityFrom(ctx)
+	if caller == nil {
+		return nil, status.Error(codes.Unauthenticated, "unauthenticated")
+	}
+	if req.GetNodeId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "node_id is required")
+	}
+	if caller.NodeID == "" {
+		return nil, status.Error(codes.PermissionDenied, "key is bound to no node, so it reads no node's usage log")
+	}
+	if caller.NodeID != req.GetNodeId() {
+		return nil, status.Errorf(codes.PermissionDenied, "key is bound to node_id %q", caller.NodeID)
+	}
+	ul := s.mgr.Usage()
+	if !ul.Enabled() {
+		return nil, status.Error(codes.FailedPrecondition, "the node usage log is off on this proxy (NODE_USAGE_RETENTION_HOURS=0)")
+	}
+	page, err := ul.Pull(ctx, req.GetNodeId(), req.GetAfterId(), int(req.GetLimit()))
+	if errors.Is(err, nodes.ErrBadCursor) {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if err != nil {
+		log.Warn().Err(err).Str("node_id", req.GetNodeId()).Msg("node usage log unreadable")
+		return nil, status.Error(codes.Unavailable, "node usage log unavailable")
+	}
+	resp := &pb.PullNodeUsageResponse{NextId: page.NextID, More: page.More}
+	if !page.GapUntil.IsZero() {
+		resp.GapUntil = timestamppb.New(page.GapUntil)
+	}
+	for _, r := range page.Records {
+		resp.Records = append(resp.Records, &pb.NodeUsageRecord{
+			Id:              r.ID,
+			RequestId:       r.RequestID,
+			StartedAt:       timestamppb.New(r.StartedAt),
+			DurationMs:      r.DurationMs,
+			TtftMs:          r.TTFTMs,
+			ModelId:         r.ModelID,
+			Kind:            r.Kind,
+			InputTokens:     r.InputTokens,
+			OutputTokens:    r.OutputTokens,
+			CacheReadTokens: r.CacheReadTokens,
+			Outcome:         r.Outcome,
+			ErrorCode:       r.ErrorCode,
+			CapacityPercent: r.CapacityPercent,
+			CooldownMs:      r.CooldownMs,
+		})
+	}
+	return resp, nil
+}
+
 // Extend AdminServer with Node Management RPCs
 
 func (s *AdminServer) MintNodeKey(ctx context.Context, req *pb.MintNodeKeyRequest) (*pb.MintNodeKeyResponse, error) {
@@ -300,6 +353,10 @@ func (s *AdminServer) RevokeNodeKey(ctx context.Context, req *pb.RevokeNodeKeyRe
 	if s.nodeMgr != nil && nodeID != "" {
 		if err := s.nodeMgr.Unregister(ctx, nodeID); err != nil {
 			log.Warn().Err(err).Str("node_id", nodeID).Msg("revoked node key, but evicting the node failed")
+		}
+		// Unregister keeps the log for a restarting agent; a revoked node's history goes.
+		if err := s.nodeMgr.Usage().Drop(ctx, nodeID); err != nil {
+			log.Warn().Err(err).Str("node_id", nodeID).Msg("revoked node key, but deleting its usage log failed")
 		}
 	}
 	return &pb.RevokeNodeKeyResponse{}, nil

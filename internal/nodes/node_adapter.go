@@ -59,6 +59,7 @@ type PoolAdapter struct {
 	model             *proxydb.Model
 	leaseTTL          time.Duration
 	userLimitResolver UserRateLimitResolver
+	async             func(func()) // runs the usage log write off the response path
 }
 
 func NewPoolAdapter(selector *Selector, keyring *crypto.Keyring, model *proxydb.Model, leaseTTL time.Duration, userLimitResolver UserRateLimitResolver) *PoolAdapter {
@@ -71,6 +72,7 @@ func NewPoolAdapter(selector *Selector, keyring *crypto.Keyring, model *proxydb.
 		model:             model,
 		leaseTTL:          leaseTTL,
 		userLimitResolver: userLimitResolver,
+		async:             func(f func()) { go f() },
 	}
 }
 
@@ -92,7 +94,8 @@ func (pa *PoolAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) 
 	if err != nil {
 		return nil, err
 	}
-	defer pa.holdLease(cand, reqID)()
+	call := &nodeCall{kind: usageKindChat}
+	defer pa.holdLease(ctx, cand, reqID, call)()
 
 	client, underlyingModel, _, err := pa.buildNodeClient(cand)
 	if err != nil {
@@ -103,6 +106,11 @@ func (pa *PoolAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) 
 	start := time.Now()
 	resp, err := adapter.GenerateText(ctx, chat)
 	duration := time.Since(start)
+	if resp != nil {
+		call.finish(resp.Usage, 0, err)
+	} else {
+		call.finish(llm.TokensUsage{}, 0, err)
+	}
 
 	if err != nil {
 		if (!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(ctx.Err(), context.Canceled)) || errors.Is(context.Cause(ctx), circuitbreaker.ErrUpstreamTimeout) {
@@ -146,7 +154,8 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 	if err != nil {
 		return err
 	}
-	defer pa.holdLease(cand, reqID)()
+	call := &nodeCall{kind: usageKindStream}
+	defer pa.holdLease(ctx, cand, reqID, call)()
 
 	client, underlyingModel, _, err := pa.buildNodeClient(cand)
 	if err != nil {
@@ -157,6 +166,7 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 	start := time.Now()
 	var firstTokenTime time.Time
 	var totalOutputTokens int
+	var usage llm.TokensUsage
 
 	err = adapter.GenerateTextStream(ctx, chat, func(chunk llm.StreamChunk) error {
 		if firstTokenTime.IsZero() && chunk.Delta != "" {
@@ -164,11 +174,17 @@ func (pa *PoolAdapter) GenerateTextStream(ctx context.Context, chat *llm.ChatCon
 		}
 		if chunk.Usage != nil {
 			totalOutputTokens = chunk.Usage.Output
+			usage = *chunk.Usage
 		}
 		return onChunk(chunk)
 	})
 
 	duration := time.Since(start)
+	var ttft time.Duration
+	if !firstTokenTime.IsZero() {
+		ttft = firstTokenTime.Sub(start)
+	}
+	call.finish(usage, ttft, err)
 	if err != nil {
 		if (!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(ctx.Err(), context.Canceled)) || errors.Is(context.Cause(ctx), circuitbreaker.ErrUpstreamTimeout) {
 			if recErr := pa.selector.mgr.Circuit().RecordFailure(context.Background(), cand.Snapshot.Meta.NodeID); recErr != nil {
@@ -237,9 +253,9 @@ func externalLoad(n *NodeSnapshot) int64 {
 
 // holdLease renews the slot for as long as the call runs: a unary generation
 // outlasts the TTL as easily as a stream, and a lapsed lease lets the pool
-// overbook the node. The returned func stops renewing and releases the slot,
-// holding it for the cooldown the node's level asks for.
-func (pa *PoolAdapter) holdLease(cand *Candidate, reqID string) func() {
+// overbook the node. The returned func stops renewing, releases the slot with
+// the cooldown the node's level asks for, and logs the call for its owner.
+func (pa *PoolAdapter) holdLease(ctx context.Context, cand *Candidate, reqID string, call *nodeCall) func() {
 	nodeID := cand.Snapshot.Meta.NodeID
 	started := time.Now()
 	every := pa.leaseTTL / 2
@@ -269,23 +285,48 @@ func (pa *PoolAdapter) holdLease(cand *Candidate, reqID string) func() {
 	return func() {
 		close(stop)
 		// No wait for an in-flight renewal: it cannot recreate a released lease.
-		cooldown := pa.cooldown(cand.Snapshot, time.Since(started))
+		took := time.Since(started)
+		cooldown, level := pa.cooldown(cand.Snapshot, took)
 		if err := pa.selector.mgr.Slots().ReleaseLease(context.Background(), nodeID, reqID, cooldown); err != nil {
 			log.Warn().Err(err).Str("node_id", nodeID).Str("req_id", reqID).Msg("failed to release node slot lease")
 		}
+		pa.logUsage(nodeID, call.record(ctx, reqID, pa.model.ID, started, took, level, cooldown))
 	}
 }
 
 // cooldown applies the node's level at release, not at selection: a schedule
 // that turned to 100% mid-request should not hold the slot afterwards.
-func (pa *PoolAdapter) cooldown(sn *NodeSnapshot, d time.Duration) time.Duration {
+func (pa *PoolAdapter) cooldown(sn *NodeSnapshot, d time.Duration) (time.Duration, uint32) {
 	hb, err := pa.selector.mgr.Store().GetHeartbeat(context.Background(), sn.Meta.NodeID)
 	if err != nil || hb == nil {
-		return sn.Cooldown(d)
+		return sn.Cooldown(d), sn.Capacity()
 	}
 	cur := *sn
 	cur.Heartbeat = hb
-	return cur.Cooldown(d)
+	return cur.Cooldown(d), cur.Capacity()
+}
+
+// logUsage appends the record to the node's usage log off the response path;
+// a failed write costs the owner one line of history, never the request.
+func (pa *PoolAdapter) logUsage(nodeID string, r UsageRecord) {
+	ul := pa.selector.mgr.Usage()
+	if !ul.Enabled() {
+		return
+	}
+	if !ul.reserve() {
+		observability.DependencyErrorsTotal.WithLabelValues("redis", "node_usage_backlog").Inc()
+		log.Debug().Str("node_id", nodeID).Str("req_id", r.RequestID).Msg("node usage log backed up; record dropped")
+		return
+	}
+	pa.async(func() {
+		defer ul.release()
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := ul.Append(ctx, nodeID, r); err != nil {
+			observability.DependencyErrorsTotal.WithLabelValues("redis", "node_usage").Inc()
+			log.Warn().Err(err).Str("node_id", nodeID).Str("req_id", r.RequestID).Msg("failed to log node usage")
+		}
+	})
 }
 
 // newNodeAdapter applies the same model config as registry.buildAdapter, keyed by the node's engine.
@@ -521,7 +562,8 @@ func (pa *PoolAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, userID 
 	if err != nil {
 		return nil, err
 	}
-	defer pa.holdLease(cand, reqID)()
+	call := &nodeCall{kind: usageKindJudge}
+	defer pa.holdLease(ctx, cand, reqID, call)()
 
 	client, underlyingModel, plainAuthToken, err := pa.buildNodeClient(cand)
 	if err != nil {
@@ -534,6 +576,11 @@ func (pa *PoolAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, userID 
 	start := time.Now()
 	res, err := adapter.Judge(ctx, req, userID, meta)
 	duration := time.Since(start)
+	if res != nil {
+		call.finish(res.Usage, 0, err)
+	} else {
+		call.finish(llm.TokensUsage{}, 0, err)
+	}
 
 	if err != nil {
 		isClientErr := ctx.Err() != nil && !errors.Is(context.Cause(ctx), circuitbreaker.ErrUpstreamTimeout)
@@ -612,7 +659,8 @@ func (pa *PoolAdapter) EvaluateRollouts(ctx context.Context, req *llm.EvaluateRo
 	if err != nil {
 		return nil, err
 	}
-	defer pa.holdLease(cand, reqID)()
+	call := &nodeCall{kind: usageKindRollouts}
+	defer pa.holdLease(ctx, cand, reqID, call)()
 
 	client, underlyingModel, plainAuthToken, err := pa.buildNodeClient(cand)
 	if err != nil {
@@ -625,6 +673,11 @@ func (pa *PoolAdapter) EvaluateRollouts(ctx context.Context, req *llm.EvaluateRo
 	start := time.Now()
 	res, err := adapter.EvaluateRollouts(ctx, req, userID, meta)
 	duration := time.Since(start)
+	if res != nil {
+		call.finish(res.Usage, 0, err)
+	} else {
+		call.finish(llm.TokensUsage{}, 0, err)
+	}
 
 	if err != nil {
 		isClientErr := ctx.Err() != nil && !errors.Is(context.Cause(ctx), circuitbreaker.ErrUpstreamTimeout)

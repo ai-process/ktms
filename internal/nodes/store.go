@@ -40,6 +40,7 @@ var (
 	ErrNodeNotFound      = errors.New("nodes: node not found")
 	ErrInvalidNode       = errors.New("nodes: invalid registration")   // the node's fault, not the pool's
 	ErrCorruptNode       = errors.New("nodes: unreadable node record") // Redis answered; the data is bad
+	ErrBadCursor         = errors.New("nodes: bad usage cursor")
 	ErrNodeSlotExhausted = &nodeCapacityError{msg: "nodes: max concurrent requests reached"}
 	ErrNodePoolFull      = &nodeCapacityError{msg: "nodes: all candidate nodes at capacity"}
 	ErrNoAvailableNodes  = &nodeCapacityError{msg: "nodes: no healthy nodes available for model"}

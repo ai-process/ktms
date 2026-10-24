@@ -199,6 +199,7 @@ func main() {
 			HeartbeatTTL:      cfg.NodeHeartbeatTTL,
 			RetentionTTL:      cfg.NodeRetentionTTL,
 			AllowLocalhost:    cfg.NodeAllowLocalhost,
+			UsageRetention:    cfg.NodeUsageRetention,
 		})
 		nodeMgr.Start(context.Background())
 		defer nodeMgr.Stop()

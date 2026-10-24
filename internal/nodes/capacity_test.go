@@ -195,11 +195,11 @@ func TestCooldownUsesLevelAtRelease(t *testing.T) {
 	pa := NewPoolAdapter(NewSelector(mgr), nil, &proxydb.Model{ID: "m"}, time.Minute, nil)
 
 	selected := snapshotAt(1, pct(50))
-	if got := pa.cooldown(selected, 20*time.Second); got != 0 {
-		t.Errorf("level back at 100%%: cooldown = %v, want 0", got)
+	if got, level := pa.cooldown(selected, 20*time.Second); got != 0 || level != 100 {
+		t.Errorf("level back at 100%%: cooldown = %v at %d%%, want 0 at 100%%", got, level)
 	}
 	offline := &NodeSnapshot{Meta: &NodeMeta{NodeID: "missing", MaxConcurrent: 1}, Heartbeat: &NodeHeartbeatData{CapacityPercent: pct(50)}}
-	if got := pa.cooldown(offline, 20*time.Second); got != 20*time.Second {
+	if got, _ := pa.cooldown(offline, 20*time.Second); got != 20*time.Second {
 		t.Errorf("no current heartbeat: cooldown = %v, want the selection-time 20s", got)
 	}
 }

@@ -84,6 +84,7 @@ type Config struct {
 	NodeHeartbeatTTL      time.Duration
 	NodeRetentionTTL      time.Duration
 	NodeAllowLocalhost    bool
+	NodeUsageRetention    time.Duration // per-node request log for node owners; 0 = off
 
 	BudgetGraceMargin float64
 
@@ -188,6 +189,7 @@ func Load() *Config {
 		NodeHeartbeatTTL:                time.Duration(getIntEnv("NODE_HEARTBEAT_TTL_SECONDS", 15)) * time.Second,
 		NodeRetentionTTL:                getRetentionEnv("NODE_RETENTION_TTL_DAYS", 24*time.Hour),
 		NodeAllowLocalhost:              getBoolEnv("NODE_ALLOW_LOCALHOST_ENDPOINTS", false),
+		NodeUsageRetention:              time.Duration(max(getIntEnv("NODE_USAGE_RETENTION_HOURS", 168), 0)) * time.Hour,
 		BudgetGraceMargin:               getFloatEnv("BUDGET_GRACE_MARGIN", 0.05),
 		SpendLimitsFailMode:             getEnv("SPEND_LIMITS_FAIL_MODE", "open"),
 		SpendDefaultOutputReserve:       getIntEnv("SPEND_DEFAULT_OUTPUT_RESERVE_TOKENS", 4096),

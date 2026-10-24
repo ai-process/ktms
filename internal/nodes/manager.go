@@ -20,6 +20,7 @@ type Config struct {
 	HeartbeatTTL      time.Duration
 	RetentionTTL      time.Duration
 	AllowLocalhost    bool
+	UsageRetention    time.Duration // how long each node's request log is kept; 0 = no log
 }
 
 type Manager struct {
@@ -27,6 +28,7 @@ type Manager struct {
 	slots          *LeaseManager
 	circuit        *CircuitBreaker
 	telemetry      *TelemetryTracker
+	usage          *UsageLog
 	cfg            Config
 	stopCh         chan struct{}
 	wg             sync.WaitGroup
@@ -49,6 +51,7 @@ func NewManager(store *Store, slots *LeaseManager, circuit *CircuitBreaker, tele
 		slots:     slots,
 		circuit:   circuit,
 		telemetry: telemetry,
+		usage:     NewUsageLog(store, cfg.UsageRetention),
 		cfg:       cfg,
 		stopCh:    make(chan struct{}),
 	}
@@ -68,6 +71,7 @@ func (m *Manager) Store() *Store                { return m.store }
 func (m *Manager) Slots() *LeaseManager         { return m.slots }
 func (m *Manager) Circuit() *CircuitBreaker     { return m.circuit }
 func (m *Manager) Telemetry() *TelemetryTracker { return m.telemetry }
+func (m *Manager) Usage() *UsageLog             { return m.usage }
 func (m *Manager) Config() Config               { return m.cfg }
 
 // Register handles node self-registration.

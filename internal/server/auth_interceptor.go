@@ -73,6 +73,7 @@ var methodScopes = map[string]string{
 	method(pb.NodeRegistryService_ValidateNode_FullMethodName):   apikeys.ScopeNode,
 	method(pb.NodeRegistryService_Heartbeat_FullMethodName):      apikeys.ScopeNode,
 	method(pb.NodeRegistryService_UnregisterNode_FullMethodName): apikeys.ScopeNode,
+	method(pb.NodeRegistryService_PullNodeUsage_FullMethodName):  apikeys.ScopeNode,
 }
 
 // method normalises the generated constants, which carry no leading slash on
