@@ -339,7 +339,8 @@ ktms-node stats --since 2026-10-01 --by model --format csv
 ktms-node stats --tail               # requests as they arrive
 ```
 
-Columns: requests, errors, tokens in and out, busy (the share of time at least one request ran;
+Columns: requests, errors (the node failed or timed out; refused and abandoned requests are not
+counted), tokens in and out, busy (the share of time at least one request ran;
 parallel requests count once), cooldown given, paused (the share of minutes at 0%), minutes
 without data (the agent was not running), TTFT p50/p95 and output tokens per second. Stretches
 the proxy no longer had when the agent pulled are listed as missing. `--format json|csv`,

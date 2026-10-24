@@ -17,7 +17,7 @@ import (
 type ReportRow struct {
 	Key          string  `json:"key"`
 	Requests     int     `json:"requests"`
-	Errors       int     `json:"errors"`
+	Errors       int     `json:"errors"` // outcome error or timeout
 	InputTokens  int64   `json:"input_tokens"`
 	OutputTokens int64   `json:"output_tokens"`
 	BusyMs       int64   `json:"busy_ms"` // time with at least one request running
@@ -96,7 +96,7 @@ func summarize(key string, reqs []RequestRecord, samples []Sample, from, to time
 	spans := make([]span, 0, len(reqs))
 	for _, r := range reqs {
 		row.Requests++
-		if r.Outcome != "ok" {
+		if r.Outcome == "error" || r.Outcome == "timeout" { // refused or abandoned requests are not the node failing
 			row.Errors++
 		}
 		row.InputTokens += r.InputTokens
