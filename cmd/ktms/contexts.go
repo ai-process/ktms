@@ -164,13 +164,26 @@ func (c *Contexts) names() []string {
 	return out
 }
 
-// writePrivate writes a file only its owner can read, replacing it whole.
+// writePrivate writes a file only its owner can read, replacing it whole. A
+// fresh temporary file keeps a leftover or planted one from setting the mode.
 func writePrivate(path string, b []byte) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	defer os.Remove(f.Name())
+	if err := f.Chmod(0o600); err != nil {
+		f.Close()
+		return err
+	}
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }
 
 func expandHome(p string) string {
@@ -226,6 +239,10 @@ func keychainSet(account, key string) error {
 	cmd.Stdout, cmd.Stderr = &errb, &errb
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("keychain: %v %s", err, strings.TrimSpace(errb.String()))
+	}
+	// security -i exits 0 even when the command in it failed, so read it back.
+	if got, err := keychainGet(account); err != nil || got != key {
+		return fmt.Errorf("keychain did not store the entry %s/%s %s", keychainService, account, strings.TrimSpace(errb.String()))
 	}
 	return nil
 }

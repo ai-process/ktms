@@ -127,9 +127,16 @@ func TestContexts(t *testing.T) {
 		t.Fatalf("admin key = %q %v", k, err)
 	}
 
-	// Flags beat the environment, which beats the context.
+	// Flags beat the environment, which beats the current context.
 	t.Setenv("KTMS_ADDR", "env.example.com:9090")
 	t.Setenv("KTMS_ADMIN_KEY", "ktms_env")
+	tg = target{}
+	if err := tg.resolve(); err != nil {
+		t.Fatal(err)
+	}
+	if k, _ := tg.adminKey(); tg.addr != "env.example.com:9090" || k != "ktms_env" {
+		t.Fatalf("env over the current context: %s %q", tg.addr, k)
+	}
 	tg = target{context: "local", addr: "flag.example.com:9090"}
 	if err := tg.resolve(); err != nil {
 		t.Fatal(err)
@@ -137,13 +144,23 @@ func TestContexts(t *testing.T) {
 	if tg.addr != "flag.example.com:9090" || tg.tls {
 		t.Fatalf("flags: %+v", tg)
 	}
-	if k, _ := tg.adminKey(); k != "ktms_env" {
-		t.Fatalf("env key = %q", k)
+	if _, err := tg.adminKey(); err == nil || !strings.Contains(err.Error(), "LOCAL_KEY") {
+		t.Fatalf("the named context's key source is not used: %v", err)
+	}
+	t.Setenv("KTMS_ADDR", "")
+
+	// A context asked for by name beats the shell's address and key.
+	t.Setenv("KTMS_ADMIN_KEY", "ktms_env")
+	tg = target{context: "prod"}
+	if k, _ := tg.adminKey(); k != "ktms_from_file" || tg.addr != "ktms.example.com:443" {
+		t.Fatalf("named context: addr %s key %q", tg.addr, k)
 	}
 	t.Setenv("KTMS_ADMIN_KEY", "")
-	if _, err := tg.adminKey(); err == nil || !strings.Contains(err.Error(), "LOCAL_KEY") {
-		t.Fatalf("missing env key: %v", err)
+	t.Setenv("KTMS_TLS", "yes please")
+	if code, _, _ := call("models", "list"); code != exitUsage {
+		t.Fatalf("bad KTMS_TLS = %d, want %d", code, exitUsage)
 	}
+	t.Setenv("KTMS_TLS", "")
 
 	if code, _, _ := call("context", "use", "nope"); code == 0 {
 		t.Fatal("use of an unknown context succeeded")

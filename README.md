@@ -912,7 +912,8 @@ ktms context use prod
 Contexts live in `~/.config/ktms/config.yaml` (`KTMS_CONFIG`). A key source is `env:VAR`,
 `file:PATH` or `keychain` (macOS Keychain, or the secret service through `secret-tool` on Linux);
 `store-key --file` keeps the key in a `0600` file instead. Flags win over `KTMS_ADDR`, `KTMS_TLS`,
-`KTMS_HTTP`, `KTMS_ADMIN_KEY` and `KTMS_API_KEY`, which win over the context.
+`KTMS_HTTP`, `KTMS_ADMIN_KEY` and `KTMS_API_KEY`, which win over the current context; a context named
+with `--context` or `KTMS_CONTEXT` wins over them, so its keys never go elsewhere.
 
 ```bash
 ktms health                                   # /healthz, /readyz and the server's version
