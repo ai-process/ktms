@@ -121,7 +121,7 @@ func TestContexts(t *testing.T) {
 		t.Fatal(err)
 	}
 	if tg.addr != "ktms.example.com:443" || !tg.tls || tg.http != "https://ktms.example.com:8080" {
-		t.Fatalf("resolved %+v", tg)
+		t.Fatalf("resolved %+v", &tg)
 	}
 	if k, err := tg.adminKey(); err != nil || k != "ktms_from_file" {
 		t.Fatalf("admin key = %q %v", k, err)
@@ -142,7 +142,7 @@ func TestContexts(t *testing.T) {
 		t.Fatal(err)
 	}
 	if tg.addr != "flag.example.com:9090" || tg.tls {
-		t.Fatalf("flags: %+v", tg)
+		t.Fatalf("flags: %+v", &tg)
 	}
 	if _, err := tg.adminKey(); err == nil || !strings.Contains(err.Error(), "LOCAL_KEY") {
 		t.Fatalf("the named context's key source is not used: %v", err)

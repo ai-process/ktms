@@ -929,12 +929,61 @@ ktms node-keys mint gpu-1 --node-id gpu-1 --allowed-cidrs 10.0.0.0/8
 ktms keys revoke billing                      # asks first; --yes for scripts
 ktms rotate-encryption
 ktms completion zsh > "${fpath[1]}/_ktms"     # also bash and fish
+ktms mcp                                      # tools for AI assistants, see below
 ```
 
 `admin:read` is enough for everything that only reads (`list`, `get`, `config plan|export`).
 Exit codes follow the [error contract](#error-contract): 0 done, 1 failed, 2 bad usage, 3 plan
 has changes (`--detailed-exitcode`), 4 not authenticated or not allowed, 5 not found, 6 rejected as
 invalid, 7 unavailable or throttled (retry later).
+
+### MCP server for AI assistants
+
+`ktms mcp` gives Claude Code, Claude Desktop, Cursor and other MCP clients Keystone's tools, so an
+assistant reads and changes the configuration itself instead of writing `grpcurl` scripts. It uses
+the same contexts and keys as the CLI; the key never reaches the assistant.
+
+- **Read tools** (the only ones by default): `get_config` (the live configuration as a ktms config
+  file), `list_models`, `list_rules`, `list_keys`, `list_vendor_keys`, `list_teams`,
+  `list_spend_limits`, `get_spend`, `list_nodes`, `list_node_keys`, `health`. An `admin:read` key
+  is enough.
+- **Write tools**, offered only with `--allow-write`: `config_plan` (a ktms config file in, the plan
+  and a `plan_id` out; nothing changes) and `config_apply` (applies that plan once, in the session
+  that planned it, and only if the live configuration has not changed since), `mint_key` (the key
+  comes back once, marked for the user), `revoke_key`, `set_key_policy`, `set_spend_limit`,
+  `delete_spend_limit`, `drain_node`. Vendor keys in a plan come from the MCP server's
+  environment, never from the chat, and only from variables named `KTMS_VENDOR_KEY_*` (the names
+  `ktms config export` writes), so an assistant cannot point `plain_key_env` at the admin key or
+  another secret. Each tool carries `readOnlyHint` / `destructiveHint`.
+- **Resources** `ktms://config` (the live configuration) and `ktms://schema` (the file's JSON
+  Schema); **prompts** `configure_routing`, `integrate_service`, `local_node`, `production_review`.
+- Names and values from Keystone are other people's text: the tools say so, and an assistant should
+  treat them as data.
+
+Claude Code (`.mcp.json` in a repository, or `claude mcp add ktms -- ktms mcp`), Claude Desktop
+(`claude_desktop_config.json`) and Cursor (`.cursor/mcp.json`) take the same entry:
+
+```json
+{
+  "mcpServers": {
+    "ktms": { "command": "ktms", "args": ["mcp"], "env": { "KTMS_CONTEXT": "prod" } }
+  }
+}
+```
+
+Add `"--allow-write"` to `args` to let the assistant plan and apply changes. Over the network,
+`ktms mcp --listen 127.0.0.1:8765` serves streamable HTTP at `/mcp`; every request needs
+`Authorization: Bearer <token>` with the token from `KTMS_MCP_TOKEN` (16+ characters, e.g.
+`openssl rand -hex 32`). It speaks plain HTTP: keep it on localhost or behind a TLS proxy.
+
+```json
+{
+  "mcpServers": {
+    "ktms": { "type": "http", "url": "http://127.0.0.1:8765/mcp",
+              "headers": { "Authorization": "Bearer ${KTMS_MCP_TOKEN}" } }
+  }
+}
+```
 
 ## Calling Keystone
 

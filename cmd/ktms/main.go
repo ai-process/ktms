@@ -15,6 +15,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
+
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
 )
 
 func main() {
@@ -27,6 +29,7 @@ type app struct {
 	stdout, stderr io.Writer
 	t              target
 	timeout        time.Duration
+	admin          pb.AdminServiceClient // set while ktms mcp serves, nil otherwise
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -123,7 +126,7 @@ context; admin:read is enough for every command that only reads.
 		a.configCmd(), a.contextCmd(),
 		a.modelsCmd(), a.rulesCmd(), a.keysCmd(), a.vendorKeysCmd(), a.orgsCmd(), a.teamsCmd(),
 		a.spendCmd(), a.limitsCmd(), a.nodesCmd(), a.nodeKeysCmd(), a.rotateCmd(),
-		a.chatCmd(), a.healthCmd(), &cobra.Command{
+		a.chatCmd(), a.healthCmd(), a.mcpCmd(), &cobra.Command{
 			Use: "version", Short: "Print the version", Args: cobra.NoArgs,
 			RunE: func(*cobra.Command, []string) error {
 				fmt.Fprintln(a.stdout, version)
