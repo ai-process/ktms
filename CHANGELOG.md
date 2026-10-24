@@ -17,6 +17,10 @@ All notable changes to KTMS are listed here. The format follows
   `~/.ktms-node/stats`): requests pulled every minute, plus its own minute samples (level, state,
   load, GPU), as JSON Lines per day, closed days gzipped, kept `--stats-retention` (default 90d).
   `--stats=false` turns it off; `doctor` checks it.
+- `ktms-node stats` shows that log offline: requests, errors, tokens, busy share, cooldown, time
+  paused, minutes without data and TTFT/TPS by hour, day or model (`--since`, `--until`, `--by`,
+  `--format table|json|csv`), or new requests as they arrive (`--tail`). The installer passes
+  `--stats-dir` and prints the command.
 
 ## [1.2.0] - 2026-10-24
 

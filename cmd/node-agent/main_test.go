@@ -7,6 +7,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/ai-process/ktms/internal/nodeagent"
 )
 
 func TestOnlyModelFlag(t *testing.T) {
@@ -45,6 +48,36 @@ func TestScheduleCommand(t *testing.T) {
 		code := runSchedule(c.args, &out, &errOut)
 		if code != c.code || !strings.Contains(out.String(), c.out) || !strings.Contains(errOut.String(), c.errOut) || (c.out == "" && out.Len() > 0) {
 			t.Errorf("schedule %v: code %d, stdout %q, stderr %q", c.args, code, out.String(), errOut.String())
+		}
+	}
+}
+
+func TestStatsCommand(t *testing.T) {
+	dir := t.TempDir()
+	st, err := nodeagent.OpenStats(dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().Add(-time.Hour)
+	if err := st.AppendRequests([]nodeagent.RequestRecord{{RequestID: "a", StartedAt: at, DurationMs: 2000, Model: "tiny:1b", Outcome: "ok", InputTokens: 7}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		args        []string
+		code        int
+		out, errOut string
+	}{
+		{[]string{"--dir", dir, "--format", "json"}, 0, `"input_tokens": 7`, ""},
+		{[]string{"--dir", dir, "--by", "model"}, 0, "tiny:1b", ""},
+		{[]string{"--dir", filepath.Join(dir, "none")}, 0, "No usage log", ""},
+		{[]string{"--dir", dir, "--since", "yesterday"}, 2, "", "bad time"},
+		{[]string{"--dir", dir, "--since", "1h", "--until", "2h"}, 2, "", "--until must be after --since"},
+		{[]string{"--dir", dir, "--format", "xml"}, 2, "", "unknown --format"},
+	} {
+		var out, errOut bytes.Buffer
+		code := runStats(c.args, &out, &errOut)
+		if code != c.code || !strings.Contains(out.String(), c.out) || !strings.Contains(errOut.String(), c.errOut) {
+			t.Errorf("stats %v: code %d, stdout %q, stderr %q", c.args, code, out.String(), errOut.String())
 		}
 	}
 }
