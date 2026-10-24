@@ -7,17 +7,19 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
-## [1.2.0] - 2026-10-24
-
-Tools for people and AI assistants: the `ktms` CLI, `ktms mcp`, a dry run of routing, the
-`admin:read` scope and a Claude Code plugin. Works with light-tokenmeter 1.1 for usage reports.
-
 ### Added
 - Node usage log: every request the proxy sends to a local node is logged per node in Redis
   (time, model, kind, tokens, outcome, level and cooldown; no user, key or text) for
   `NODE_USAGE_RETENTION_HOURS` (default 168, `0` turns it off). The node pulls it with
   `NodeRegistryService.PullNodeUsage` by cursor; a cursor older than the log gets `gap_until`.
   Needs Redis 6.2 or newer. Revoking a node key deletes the node's log.
+
+## [1.2.0] - 2026-10-24
+
+Tools for people and AI assistants: the `ktms` CLI, `ktms mcp`, a dry run of routing, the
+`admin:read` scope and a Claude Code plugin. Works with light-tokenmeter 1.1 for usage reports.
+
+### Added
 - The `ktms` CLI beyond `config`: contexts in `~/.config/ktms/config.yaml` with keys from an
   environment variable, a 0600 file or the system keychain; `models`, `rules`, `keys`,
   `vendor-keys`, `orgs`, `teams`, `spend`, `limits`, `nodes`, `node-keys`, `rotate-encryption`;
