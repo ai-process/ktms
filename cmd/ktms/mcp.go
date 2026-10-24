@@ -60,6 +60,23 @@ KTMS_MCP_TOKEN or --mcp-token-file. The server speaks plain HTTP: keep it on
 localhost, or put a TLS proxy in front of it.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			var token string
+			if listen == "" {
+				if cmd.Flags().Changed("mcp-token-file") {
+					return usageError{errors.New("--mcp-token-file is for --listen; stdio needs no token")}
+				}
+			} else {
+				token = os.Getenv("KTMS_MCP_TOKEN")
+				if tokenFile != "" {
+					var err error
+					if token, err = readKeyFile(tokenFile); err != nil {
+						return err
+					}
+				}
+				if len(token) < 16 {
+					return usageError{errors.New("--listen needs a bearer token of 16 characters or more in KTMS_MCP_TOKEN or --mcp-token-file")}
+				}
+			}
 			// One connection for the server's life: the key is read once, and tool
 			// calls neither dial nor ask the keychain again.
 			c, closeConn, err := a.t.admin()
@@ -71,20 +88,14 @@ localhost, or put a TLS proxy in front of it.`,
 			srv := a.mcpServer(allowWrite)
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			if listen == "" {
-				return srv.Run(ctx, &mcp.StdioTransport{})
+			if listen != "" {
+				return a.serveMCP(ctx, srv, listen, token)
 			}
-			token := os.Getenv("KTMS_MCP_TOKEN")
-			if tokenFile != "" {
-				var err error
-				if token, err = readKeyFile(tokenFile); err != nil {
-					return err
-				}
+			// A signal is how hosts stop a stdio server: a clean exit, not an error.
+			if err := srv.Run(ctx, &mcp.StdioTransport{}); err != nil && ctx.Err() == nil {
+				return err
 			}
-			if len(token) < 16 {
-				return usageError{errors.New("--listen needs a bearer token of 16 characters or more in KTMS_MCP_TOKEN or --mcp-token-file")}
-			}
-			return a.serveMCP(ctx, srv, listen, token)
+			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&allowWrite, "allow-write", false, "offer the tools that change Keystone")
@@ -93,16 +104,16 @@ localhost, or put a TLS proxy in front of it.`,
 	return cmd
 }
 
-// serveMCP serves streamable HTTP until ctx ends.
+// serveMCP serves streamable HTTP until ctx ends, then lets running calls
+// finish before it returns and the caller closes the connection they use.
 func (a *app) serveMCP(ctx context.Context, srv *mcp.Server, listen, token string) error {
 	if !loopback(listen) {
 		fmt.Fprintf(a.stderr, "ktms: warning: MCP on %s is plain HTTP; put a TLS proxy in front of it\n", listen)
 	}
 	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, &mcp.StreamableHTTPOptions{SessionTimeout: 30 * time.Minute})
-	want := []byte("Bearer " + token)
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", http.NewCrossOriginProtection().Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), want) != 1 {
+		if !bearerOK(r.Header.Get("Authorization"), token) {
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
@@ -115,16 +126,26 @@ func (a *app) serveMCP(ctx context.Context, srv *mcp.Server, listen, token strin
 	}
 	hs := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	fmt.Fprintf(a.stderr, "ktms: MCP on http://%s/mcp\n", lis.Addr())
+	drained := make(chan error, 1)
 	go func() {
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = hs.Shutdown(sctx)
+		drained <- hs.Shutdown(sctx)
 	}()
 	if err := hs.Serve(lis); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
-	return nil
+	return <-drained
+}
+
+// bearerOK checks an Authorization header; the scheme is case-insensitive.
+func bearerOK(header, token string) bool {
+	scheme, got, ok := strings.Cut(strings.TrimSpace(header), " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(strings.TrimSpace(got)), []byte(token)) == 1
 }
 
 func (a *app) mcpServer(allowWrite bool) *mcp.Server {

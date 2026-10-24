@@ -155,7 +155,7 @@ rules:
 		t.Fatalf("a refused plan claims partial steps: %s", out)
 	}
 
-		// A new key comes once, for the user.
+	// A new key comes once, for the user.
 	res, err := rw.CallTool(context.Background(), &mcp.CallToolParams{Name: "mint_key", Arguments: map[string]any{"name": "bot"}})
 	if err != nil || res.IsError {
 		t.Fatalf("mint_key: %v %+v", err, res)
@@ -287,9 +287,17 @@ func TestMCPOverHTTP(t *testing.T) {
 
 func TestMCPNeedsAToken(t *testing.T) {
 	isolate(t)
-	t.Setenv("KTMS_ADMIN_KEY", "ktms_x")
 	t.Setenv("KTMS_MCP_TOKEN", "short")
+	// Checked before the admin key or any call to Keystone.
 	if code, _, errs := call("mcp", "--listen", "127.0.0.1:0"); code != exitUsage || !strings.Contains(errs, "bearer token") {
 		t.Fatalf("mcp --listen with a short token = %d %q", code, errs)
+	}
+	if code, _, _ := call("mcp", "--mcp-token-file", "x"); code != exitUsage {
+		t.Fatalf("--mcp-token-file without --listen = %d", code)
+	}
+	for h, ok := range map[string]bool{"Bearer abc": true, "bearer abc": true, " Bearer  abc ": true, "Basic abc": false, "Bearer abd": false, "abc": false} {
+		if bearerOK(h, "abc") != ok {
+			t.Errorf("bearerOK(%q) = %v", h, !ok)
+		}
 	}
 }
