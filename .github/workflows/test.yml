@@ -70,8 +70,8 @@ jobs:
       - name: Upgrade from the previous release
         run: ./scripts/upgrade-test.sh
 
-  # The plugin's skills against this checkout and light-tokenmeter's main (its
-  # first release with the CLI is still to come; then pin it to that tag).
+  # The plugin's skills against this checkout and the light-tokenmeter release
+  # they describe; move TOKENMETER_REF with each release the skills rely on.
   skills:
     runs-on: ubuntu-latest
     steps:
@@ -81,10 +81,12 @@ jobs:
           go-version: '1.27.3'
           cache: true
       - name: light-tokenmeter's CLI and README
+        env:
+          TOKENMETER_REF: v1.1.0
         run: |
-          GOBIN="$RUNNER_TEMP" go install github.com/ai-process/light-tokenmeter/cmd/tokenmeter@main
-          curl -fsSL https://raw.githubusercontent.com/ai-process/light-tokenmeter/main/README.md -o "$RUNNER_TEMP/tokenmeter-README.md"
-          curl -fsSL https://raw.githubusercontent.com/ai-process/light-tokenmeter/main/cmd/tokenmeter/mcp.go -o "$RUNNER_TEMP/tokenmeter-mcp.go"
+          GOBIN="$RUNNER_TEMP" go install github.com/ai-process/light-tokenmeter/cmd/tokenmeter@${TOKENMETER_REF}
+          curl -fsSL https://raw.githubusercontent.com/ai-process/light-tokenmeter/${TOKENMETER_REF}/README.md -o "$RUNNER_TEMP/tokenmeter-README.md"
+          curl -fsSL https://raw.githubusercontent.com/ai-process/light-tokenmeter/${TOKENMETER_REF}/cmd/tokenmeter/mcp.go -o "$RUNNER_TEMP/tokenmeter-mcp.go"
       - name: Skills
         run: go test -count=1 -run '^TestSkill' ./cmd/ktms/
         env:
