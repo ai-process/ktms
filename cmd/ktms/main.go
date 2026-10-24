@@ -15,6 +15,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
+
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
 )
 
 func main() {
@@ -27,6 +29,7 @@ type app struct {
 	stdout, stderr io.Writer
 	t              target
 	timeout        time.Duration
+	admin          pb.AdminServiceClient // set while ktms mcp serves, nil otherwise
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {

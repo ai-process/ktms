@@ -16,14 +16,47 @@ import (
 
 // call runs fn against the Admin API within --timeout.
 func (a *app) call(fn func(context.Context, pb.AdminServiceClient) error) error {
-	c, closeConn, err := a.t.admin()
-	if err != nil {
-		return err
+	return a.callCtx(context.Background(), fn)
+}
+
+// callCtx is call under a parent context, such as an MCP request's. A long
+// running server keeps one connection in a.admin instead of dialing per call.
+func (a *app) callCtx(ctx context.Context, fn func(context.Context, pb.AdminServiceClient) error) error {
+	c := a.admin
+	if c == nil {
+		var closeConn func()
+		var err error
+		if c, closeConn, err = a.t.admin(); err != nil {
+			return err
+		}
+		defer closeConn()
 	}
-	defer closeConn()
-	ctx, cancel := a.ctx()
+	ctx, cancel := context.WithTimeout(ctx, a.timeout)
 	defer cancel()
 	return fn(ctx, c)
+}
+
+// mintRequest names the key's organization and team by id, as the API wants.
+func mintRequest(ctx context.Context, c pb.AdminServiceClient, name string, scopes []string, org, team string, pol *pb.APIKeyPolicy) (*pb.MintAPIKeyRequest, error) {
+	req := &pb.MintAPIKeyRequest{Name: name, Scopes: scopes, Policy: pol}
+	if org == "" && team == "" {
+		return req, nil
+	}
+	t, err := loadTenants(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	if org != "" {
+		if req.OrgId, err = t.org(org); err != nil {
+			return nil, err
+		}
+	}
+	if team != "" {
+		if req.TeamId, err = t.team(team); err != nil {
+			return nil, err
+		}
+	}
+	return req, nil
 }
 
 // tenants maps organization and team ids to names and back; teams go by
@@ -217,23 +250,9 @@ func (a *app) keysCmd() *cobra.Command {
 				return err
 			}
 			return a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
-				req := &pb.MintAPIKeyRequest{Name: args[0], Scopes: scopes,
-					Policy: policy(models, rpm, tpm)}
-				if org != "" || team != "" {
-					t, err := loadTenants(ctx, c)
-					if err != nil {
-						return err
-					}
-					if org != "" {
-						if req.OrgId, err = t.org(org); err != nil {
-							return err
-						}
-					}
-					if team != "" {
-						if req.TeamId, err = t.team(team); err != nil {
-							return err
-						}
-					}
+				req, err := mintRequest(ctx, c, args[0], scopes, org, team, policy(models, rpm, tpm))
+				if err != nil {
+					return err
 				}
 				res, err := c.MintAPIKey(ctx, req)
 				if err != nil {

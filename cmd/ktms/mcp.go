@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/proto"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 	"github.com/ai-process/ktms/internal/declarative"
@@ -58,10 +60,14 @@ KTMS_MCP_TOKEN or --mcp-token-file. The server speaks plain HTTP: keep it on
 localhost, or put a TLS proxy in front of it.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// Resolve and check the key now: tools then only read the settled target.
-			if _, err := a.t.adminKey(); err != nil {
+			// One connection for the server's life: the key is read once, and tool
+			// calls neither dial nor ask the keychain again.
+			c, closeConn, err := a.t.admin()
+			if err != nil {
 				return err
 			}
+			defer closeConn()
+			a.admin = c
 			srv := a.mcpServer(allowWrite)
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
@@ -295,18 +301,6 @@ func (a *app) adminTool(fn func(context.Context, pb.AdminServiceClient, struct{}
 	return adminTool(a, fn)
 }
 
-// callCtx is call with the caller's context, as a tool call has its own.
-func (a *app) callCtx(ctx context.Context, fn func(context.Context, pb.AdminServiceClient) error) error {
-	c, closeConn, err := a.t.admin()
-	if err != nil {
-		return err
-	}
-	defer closeConn()
-	ctx, cancel := context.WithTimeout(ctx, a.timeout)
-	defer cancel()
-	return fn(ctx, c)
-}
-
 func (a *app) exportYAML(ctx context.Context) (string, error) {
 	var b bytes.Buffer
 	err := a.callCtx(ctx, func(ctx context.Context, c pb.AdminServiceClient) error {
@@ -340,17 +334,20 @@ func jsonResult(v any) (*mcp.CallToolResult, any, error) {
 
 func ptr[T any](v T) *T { return &v }
 
-// plans holds what config_plan showed, so config_apply applies exactly that.
+// plans holds what config_plan showed, so config_apply applies exactly that,
+// and only in the session that was shown it.
 type plans struct {
 	mu sync.Mutex
 	m  map[string]*shownPlan
 }
 
 type shownPlan struct {
-	cfg   *declarative.Config
-	prune bool
-	text  string
-	at    time.Time
+	session any // the *mcp.ServerSession that planned it
+	cfg     *declarative.Config
+	prune   bool
+	text    string
+	live    [32]byte // digest of the live configuration it was planned against
+	at      time.Time
 }
 
 const planTTL = time.Hour
@@ -371,15 +368,58 @@ func (p *plans) put(sp *shownPlan) string {
 }
 
 // take removes the plan: one plan is applied at most once.
-func (p *plans) take(id string) *shownPlan {
+func (p *plans) take(id string, session any) *shownPlan {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	sp := p.m[id]
+	if sp == nil || sp.session != session {
+		return nil
+	}
 	delete(p.m, id)
-	if sp == nil || time.Since(sp.at) > planTTL {
+	if time.Since(sp.at) > planTTL {
 		return nil
 	}
 	return sp
+}
+
+// digest identifies a live configuration, so a change that renders the same
+// plan text, such as a rotated vendor key, still stops a shown plan.
+func digest(live *declarative.State) [32]byte {
+	h := sha256.New()
+	opt := proto.MarshalOptions{Deterministic: true}
+	add := func(m proto.Message) {
+		b, _ := opt.Marshal(m)
+		fmt.Fprintf(h, "%d:", len(b))
+		h.Write(b)
+	}
+	add(live.Config)
+	for _, k := range live.Keys {
+		add(k)
+	}
+	for _, o := range live.Orgs {
+		add(o)
+	}
+	for _, t := range live.Teams {
+		add(t)
+	}
+	var d [32]byte
+	copy(d[:], h.Sum(nil))
+	return d
+}
+
+// mcpVendorEnv is the only kind of variable a plan over MCP may read: the
+// assistant writes plain_key_env, and must not name the admin key or a cloud
+// secret of the server's environment.
+const mcpVendorEnv = "KTMS_VENDOR_KEY_"
+
+func vendorEnvAllowed(cfg *declarative.Config) error {
+	for _, v := range cfg.VendorKeys {
+		if !strings.HasPrefix(v.PlainKeyEnv, mcpVendorEnv) {
+			return fmt.Errorf("vendor key %s/%s: over MCP, plain_key_env must start with %s (e.g. %sBILLING_OPENAI), got %q",
+				v.APIKeyName, v.Vendor, mcpVendorEnv, mcpVendorEnv, v.PlainKeyEnv)
+		}
+	}
+	return nil
 }
 
 func planText(p *declarative.Plan) string {
@@ -399,17 +439,21 @@ func (a *app) addWriteTools(srv *mcp.Server, tool func(name, title, desc string,
 		Prune  bool   `json:"prune,omitempty" jsonschema:"also delete what the file's sections do not list"`
 	}
 	mcp.AddTool(srv, tool("config_plan", "Plan a configuration change",
-		"Compare a ktms config file with the live configuration and return the plan and a plan_id. Nothing changes. Vendor keys are read from the MCP server's environment variables named in plain_key_env, never passed here. Show the plan to the user before config_apply.",
+		"Compare a ktms config file with the live configuration and return the plan and a plan_id. Nothing changes. Vendor keys are read from the MCP server's environment variables named in plain_key_env, which must start with KTMS_VENDOR_KEY_; never pass a key here. Show the plan to the user before config_apply.",
 		&mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(false)}),
-		func(ctx context.Context, _ *mcp.CallToolRequest, in planIn) (*mcp.CallToolResult, any, error) {
+		func(ctx context.Context, req *mcp.CallToolRequest, in planIn) (*mcp.CallToolResult, any, error) {
 			cfg, err := declarative.Parse([]byte(in.Config))
 			if err != nil {
 				return nil, nil, err
 			}
+			if err := vendorEnvAllowed(cfg); err != nil {
+				return nil, nil, err
+			}
 			var plan *declarative.Plan
+			var live *declarative.State
 			err = a.callCtx(ctx, func(ctx context.Context, c pb.AdminServiceClient) error {
-				live, err := declarative.Fetch(ctx, c)
-				if err != nil {
+				var err error
+				if live, err = declarative.Fetch(ctx, c); err != nil {
 					return err
 				}
 				plan, err = declarative.Build(cfg, live, declarative.Options{Prune: in.Prune})
@@ -422,22 +466,23 @@ func (a *app) addWriteTools(srv *mcp.Server, tool func(name, title, desc string,
 			if plan.Empty() {
 				return jsonResult(map[string]any{"plan": text, "changes": false})
 			}
-			id := store.put(&shownPlan{cfg: cfg, prune: in.Prune, text: text, at: time.Now()})
+			id := store.put(&shownPlan{session: req.Session, cfg: cfg, prune: in.Prune, text: text, live: digest(live), at: time.Now()})
 			return jsonResult(map[string]any{"plan": text, "changes": true, "plan_id": id,
 				"next": "show this plan to the user; call config_apply with plan_id only after they agree"})
 		})
 
 	mcp.AddTool(srv, tool("config_apply", "Apply a shown plan",
-		"Apply the plan config_plan returned, by plan_id, if the live configuration has not changed since; otherwise plan again. Each plan applies once. New client keys are returned once.", destroy),
-		func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+		"Apply the plan config_plan returned in this session, by plan_id, if the live configuration has not changed since; otherwise plan again. Each plan applies once. New client keys are returned once.", destroy),
+		func(ctx context.Context, req *mcp.CallToolRequest, in struct {
 			PlanID string `json:"plan_id" jsonschema:"plan_id from config_plan"`
 		}) (*mcp.CallToolResult, any, error) {
-			sp := store.take(in.PlanID)
+			sp := store.take(in.PlanID, req.Session)
 			if sp == nil {
-				return nil, nil, errors.New("no such plan, or it expired: call config_plan again")
+				return nil, nil, errors.New("no such plan in this session, or it expired: call config_plan again")
 			}
 			var progress bytes.Buffer
 			var res *declarative.Result
+			applying := false
 			err := a.callCtx(ctx, func(ctx context.Context, c pb.AdminServiceClient) error {
 				live, err := declarative.Fetch(ctx, c)
 				if err != nil {
@@ -447,12 +492,16 @@ func (a *app) addWriteTools(srv *mcp.Server, tool func(name, title, desc string,
 				if err != nil {
 					return err
 				}
-				if planText(plan) != sp.text {
-					return errors.New("the live configuration changed since config_plan: nothing applied; plan again and show the new plan")
+				if digest(live) != sp.live || planText(plan) != sp.text {
+					return errors.New("the live configuration changed since config_plan, so nothing was applied: plan again and show the new plan")
 				}
+				applying = true
 				res, err = declarative.Apply(ctx, c, live, plan, &progress)
 				return err
 			})
+			if err != nil && !applying {
+				return nil, nil, errors.New(errText(err))
+			}
 			out := []mcp.Content{&mcp.TextContent{Text: progress.String()}}
 			out = append(out, secrets(res)...)
 			if err != nil {
@@ -479,22 +528,9 @@ func (a *app) addWriteTools(srv *mcp.Server, tool func(name, title, desc string,
 			}
 			var plain string
 			err := a.callCtx(ctx, func(ctx context.Context, c pb.AdminServiceClient) error {
-				req := &pb.MintAPIKeyRequest{Name: in.Name, Scopes: scopes, Policy: policy(in.AllowedModels, in.RPMLimit, in.TPMLimit)}
-				if in.Organization != "" || in.Team != "" {
-					t, err := loadTenants(ctx, c)
-					if err != nil {
-						return err
-					}
-					if in.Organization != "" {
-						if req.OrgId, err = t.org(in.Organization); err != nil {
-							return err
-						}
-					}
-					if in.Team != "" {
-						if req.TeamId, err = t.team(in.Team); err != nil {
-							return err
-						}
-					}
+				req, err := mintRequest(ctx, c, in.Name, scopes, in.Organization, in.Team, policy(in.AllowedModels, in.RPMLimit, in.TPMLimit))
+				if err != nil {
+					return err
 				}
 				res, err := c.MintAPIKey(ctx, req)
 				plain = res.GetPlainKey()
@@ -533,8 +569,8 @@ func (a *app) addWriteTools(srv *mcp.Server, tool func(name, title, desc string,
 	}
 	mcp.AddTool(srv, tool("set_spend_limit", "Set a spend limit", "Cap a key's or user's spend per UTC day or month.", setting),
 		writeTool(a, func(ctx context.Context, c pb.AdminServiceClient, in limitIn) (string, error) {
-			if !(in.LimitUSD > 0 && in.LimitUSD < 9e9) {
-				return "", errors.New("limit_usd must be above 0")
+			if !(in.LimitUSD > 0 && in.LimitUSD < math.MaxInt64/1e9) {
+				return "", errors.New("limit_usd must be a positive amount of USD")
 			}
 			_, err := c.SetSpendLimit(ctx, &pb.SetSpendLimitRequest{SpendLimit: &pb.SpendLimitSpec{
 				SubjectType: in.SubjectType, SubjectId: in.SubjectID, Period: in.Period, LimitNanousd: int64(math.Round(in.LimitUSD * 1e9))}})
@@ -555,7 +591,7 @@ func (a *app) addWriteTools(srv *mcp.Server, tool func(name, title, desc string,
 		}))
 }
 
-// writeTool adapts fn into a tool that answers fn's message.
+// writeTool is adminTool for changes, which answer a sentence, not data.
 func writeTool[In any](a *app, fn func(context.Context, pb.AdminServiceClient, In) (string, error)) mcp.ToolHandlerFor[In, any] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, any, error) {
 		var msg string

@@ -168,7 +168,6 @@ func apiMessage(raw []byte) string {
 	return s
 }
 
-// probe is one health endpoint's answer.
 type probe struct {
 	Path    string         `json:"path"`
 	Status  int            `json:"status"`
@@ -176,7 +175,7 @@ type probe struct {
 	Problem string         `json:"error,omitempty"`
 }
 
-// probes asks /healthz and /readyz; ready is whether both answered 200.
+// probes is shared by ktms health and the MCP health tool.
 func (a *app) probes(ctx context.Context) (base string, probes []probe, ready bool, err error) {
 	base, err = a.t.httpBase()
 	if err != nil {

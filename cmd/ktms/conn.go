@@ -11,6 +11,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -33,6 +35,8 @@ type target struct {
 	ctxName  string
 	warn     io.Writer
 	resolved bool
+	httpOnce sync.Once
+	hc       *http.Client
 	// KTMS_ADMIN_KEY and KTMS_API_KEY, unless a context was asked for by name.
 	envAdminKey, envClientKey string
 }
@@ -181,11 +185,16 @@ func (t *target) httpBase() (string, error) {
 	return t.http, nil
 }
 
+// httpClient is shared: ktms mcp probes health for as long as it runs.
 func (t *target) httpClient() *http.Client {
-	return &http.Client{Transport: &http.Transport{
-		Proxy:           http.ProxyFromEnvironment,
-		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
-	}}
+	t.httpOnce.Do(func() {
+		t.hc = &http.Client{Transport: &http.Transport{
+			Proxy:           http.ProxyFromEnvironment,
+			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+			IdleConnTimeout: 90 * time.Second,
+		}}
+	})
+	return t.hc
 }
 
 func loopback(addr string) bool {

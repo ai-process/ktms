@@ -127,7 +127,35 @@ rules:
 		t.Fatalf("stale plan applied: %s", out)
 	}
 
-	// A new key comes once, for the user.
+	// Over MCP a plan reads only KTMS_VENDOR_KEY_* variables of the server.
+	leak := file + "api_keys: [{name: k}]\nvendor_keys: [{api_key_name: k, vendor: openai, plain_key_env: KTMS_ADMIN_KEY}]\n"
+	if out, isErr = callTool(t, rw, "config_plan", map[string]any{"config": leak}); !isErr || !strings.Contains(out, "must start with KTMS_VENDOR_KEY_") {
+		t.Fatalf("plan reading KTMS_ADMIN_KEY: %s", out)
+	}
+
+	// A plan applies only in the session that was shown it.
+	other := session(t, true)
+	out, _ = callTool(t, rw, "config_plan", map[string]any{"config": strings.Replace(file, "0.15", "0.4", 1)})
+	theirs := between(out, `"plan_id": "`, `"`)
+	if out, isErr = callTool(t, other, "config_apply", map[string]any{"plan_id": theirs}); !isErr || !strings.Contains(out, "in this session") {
+		t.Fatalf("another session applied the plan: %s", out)
+	}
+
+	// A change the plan text does not show, here a vendor key, still stops it.
+	if code, _, errs := callIn("sk-1\n", "keys", "mint", "spare"); code != 0 {
+		t.Fatalf("mint spare: %s", errs)
+	}
+	if code, _, errs := callIn("sk-1\n", "vendor-keys", "set", "spare", "openai"); code != 0 {
+		t.Fatalf("vendor-keys set: %s", errs)
+	}
+	if out, isErr = callTool(t, rw, "config_apply", map[string]any{"plan_id": theirs}); !isErr || !strings.Contains(out, "changed since config_plan") {
+		t.Fatalf("plan applied over a changed vendor key: %s", out)
+	}
+	if strings.Contains(out, "stay applied") {
+		t.Fatalf("a refused plan claims partial steps: %s", out)
+	}
+
+		// A new key comes once, for the user.
 	res, err := rw.CallTool(context.Background(), &mcp.CallToolParams{Name: "mint_key", Arguments: map[string]any{"name": "bot"}})
 	if err != nil || res.IsError {
 		t.Fatalf("mint_key: %v %+v", err, res)

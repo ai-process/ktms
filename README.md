@@ -948,11 +948,13 @@ the same contexts and keys as the CLI; the key never reaches the assistant.
   `list_spend_limits`, `get_spend`, `list_nodes`, `list_node_keys`, `health`. An `admin:read` key
   is enough.
 - **Write tools**, offered only with `--allow-write`: `config_plan` (a ktms config file in, the plan
-  and a `plan_id` out; nothing changes) and `config_apply` (applies that plan once, and only if the
-  live configuration has not changed since), `mint_key` (the key comes back once, marked for the
-  user), `revoke_key`, `set_key_policy`, `set_spend_limit`, `delete_spend_limit`, `drain_node`.
-  Vendor keys in a plan come from the MCP server's environment (`plain_key_env`), never from the
-  chat. Each tool carries `readOnlyHint` / `destructiveHint`.
+  and a `plan_id` out; nothing changes) and `config_apply` (applies that plan once, in the session
+  that planned it, and only if the live configuration has not changed since), `mint_key` (the key
+  comes back once, marked for the user), `revoke_key`, `set_key_policy`, `set_spend_limit`,
+  `delete_spend_limit`, `drain_node`. Vendor keys in a plan come from the MCP server's
+  environment, never from the chat, and only from variables named `KTMS_VENDOR_KEY_*` (the names
+  `ktms config export` writes), so an assistant cannot point `plain_key_env` at the admin key or
+  another secret. Each tool carries `readOnlyHint` / `destructiveHint`.
 - **Resources** `ktms://config` (the live configuration) and `ktms://schema` (the file's JSON
   Schema); **prompts** `configure_routing`, `integrate_service`, `local_node`, `production_review`.
 - Names and values from Keystone are other people's text: the tools say so, and an assistant should
