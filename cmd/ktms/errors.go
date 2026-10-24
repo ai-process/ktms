@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 
 	"google.golang.org/grpc/codes"
@@ -63,6 +65,10 @@ func exitCode(err error) int {
 			return exitRejected
 		}
 		return exitFailed
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) || errors.Is(err, context.DeadlineExceeded) {
+		return exitRetry
 	}
 	if s, ok := status.FromError(err); ok {
 		switch s.Code() {

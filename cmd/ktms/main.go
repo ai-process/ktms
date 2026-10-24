@@ -57,19 +57,37 @@ type codeError struct{ code int }
 
 func (e codeError) Error() string { return fmt.Sprintf("exit %d", e.code) }
 
-// isUsage tells cobra's own argument errors from the API's.
+// isUsage tells cobra's own errors from the API's. Argument and flag errors
+// are wrapped as usageError by strict; these two come from cobra's dispatch.
 func isUsage(err error) bool {
 	var u usageError
 	if errors.As(err, &u) {
 		return true
 	}
 	msg := err.Error()
-	for _, p := range []string{"unknown command", "accepts ", "requires at least", "required flag", "if any flags in the group"} {
-		if strings.HasPrefix(msg, p) {
-			return true
+	return strings.HasPrefix(msg, "unknown command") || strings.HasPrefix(msg, "required flag")
+}
+
+// strict makes argument errors usage errors, and a command group called
+// without a known subcommand one too instead of help with exit 0.
+func strict(cmd *cobra.Command) {
+	if cmd.HasSubCommands() && cmd.Run == nil && cmd.RunE == nil {
+		cmd.Args = cobra.NoArgs
+		cmd.RunE = func(c *cobra.Command, _ []string) error {
+			return usageError{fmt.Errorf("%s needs a subcommand (%s --help)", c.CommandPath(), c.CommandPath())}
 		}
 	}
-	return false
+	if v := cmd.Args; v != nil {
+		cmd.Args = func(c *cobra.Command, args []string) error {
+			if err := v(c, args); err != nil {
+				return usageError{err}
+			}
+			return nil
+		}
+	}
+	for _, c := range cmd.Commands() {
+		strict(c)
+	}
 }
 
 func (a *app) root() *cobra.Command {
@@ -113,6 +131,9 @@ context; admin:read is enough for every command that only reads.
 			},
 		},
 	)
+	for _, c := range root.Commands() {
+		strict(c)
+	}
 	return root
 }
 

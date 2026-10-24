@@ -31,6 +31,7 @@ func (a *app) call(fn func(context.Context, pb.AdminServiceClient) error) error 
 type tenants struct {
 	orgName, teamName map[string]string
 	orgID, teamID     map[string]string
+	teams             []*pb.Team
 }
 
 func loadTenants(ctx context.Context, c pb.AdminServiceClient) (*tenants, error) {
@@ -42,7 +43,8 @@ func loadTenants(ctx context.Context, c pb.AdminServiceClient) (*tenants, error)
 	if err != nil {
 		return nil, err
 	}
-	t := &tenants{orgName: map[string]string{}, teamName: map[string]string{}, orgID: map[string]string{}, teamID: map[string]string{}}
+	t := &tenants{orgName: map[string]string{}, teamName: map[string]string{}, orgID: map[string]string{}, teamID: map[string]string{},
+		teams: teams.GetTeams()}
 	for _, o := range orgs.GetOrganizations() {
 		t.orgName[o.GetId()], t.orgID[o.GetName()] = o.GetName(), o.GetId()
 	}
@@ -362,21 +364,23 @@ func (a *app) teamsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				req := &pb.ListTeamsRequest{}
+				orgID := ""
 				if org != "" {
-					if req.OrgId, err = t.org(org); err != nil {
+					if orgID, err = t.org(org); err != nil {
 						return err
 					}
 				}
-				res, err := c.ListTeams(ctx, req)
-				if err != nil {
-					return err
+				var teams []*pb.Team
+				for _, tm := range t.teams {
+					if orgID == "" || tm.GetOrgId() == orgID {
+						teams = append(teams, tm)
+					}
 				}
 				if !p.table() {
-					return p.data(messages(res.GetTeams()))
+					return p.data(messages(teams))
 				}
 				var rows [][]string
-				for _, tm := range res.GetTeams() {
+				for _, tm := range teams {
 					budget := "-"
 					if tm.GetMonthlyBudgetUsd() > 0 {
 						budget = fmt.Sprintf("$%g", tm.GetMonthlyBudgetUsd())
@@ -431,10 +435,10 @@ func (a *app) spendCmd() *cobra.Command {
 				for _, w := range res.GetWindows() {
 					capped, spent, left := "-", "-", "-"
 					if w.GetLimitNanousd() > 0 {
-						capped, left = usd(w.GetLimitNanousd()), usd(w.GetRemainingNanousd())
+						capped = usd(w.GetLimitNanousd())
 					}
 					if w.GetMetered() {
-						spent = usd(w.GetSpentNanousd())
+						spent, left = usd(w.GetSpentNanousd()), usd(w.GetRemainingNanousd())
 					}
 					rows = append(rows, []string{w.GetPeriod(), spent, capped, left, when(w.GetResetsAt())})
 				}
@@ -503,7 +507,7 @@ func (a *app) limitsCmd() *cobra.Command {
 				return err
 			}
 			dollars, err := strconv.ParseFloat(args[3], 64)
-			if err != nil || dollars <= 0 || dollars > math.MaxInt64/1e9 {
+			if err != nil || !(dollars > 0 && dollars < math.MaxInt64/1e9) {
 				return usageError{fmt.Errorf("limit %q: want a positive amount in USD", args[3])}
 			}
 			return a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
@@ -645,9 +649,9 @@ func (a *app) nodeKeysCmd() *cobra.Command {
 	revoke := &cobra.Command{
 		Use: "revoke ID|NAME", Short: "Revoke a node key", Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
-				id, err := strconv.ParseInt(args[0], 10, 64)
-				if err != nil {
+			id, err := strconv.ParseInt(args[0], 10, 64)
+			if err != nil {
+				err = a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
 					res, err := c.ListNodeKeys(ctx, &pb.ListNodeKeysRequest{})
 					if err != nil {
 						return err
@@ -663,15 +667,21 @@ func (a *app) nodeKeysCmd() *cobra.Command {
 						return fmt.Errorf("no active node key %q", args[0])
 					case 1:
 						id = ids[0]
-					default:
-						return errors.New("several node keys are named " + args[0] + "; revoke by id")
+						return nil
 					}
+					return errors.New("several node keys are named " + args[0] + "; revoke by id")
+				})
+				if err != nil {
+					return err
 				}
-				if !yes {
-					if err := a.confirm(fmt.Sprintf("Revoke node key %s (id %d)?", args[0], id)); err != nil {
-						return err
-					}
+			}
+			// Asked outside a.call, so time at the prompt does not eat the deadline.
+			if !yes {
+				if err := a.confirm(fmt.Sprintf("Revoke node key %s (id %d)?", args[0], id)); err != nil {
+					return err
 				}
+			}
+			return a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
 				if _, err := c.RevokeNodeKey(ctx, &pb.RevokeNodeKeyRequest{Id: id}); err != nil {
 					return err
 				}

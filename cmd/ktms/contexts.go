@@ -103,13 +103,16 @@ func configDir() (string, error) {
 	return filepath.Join(home, ".config", "ktms"), nil
 }
 
+// contextsUnreachable is a contexts file with no place to be, as without $HOME.
+type contextsUnreachable struct{ error }
+
 func contextsPath() (string, error) {
 	if p := os.Getenv("KTMS_CONFIG"); p != "" {
 		return p, nil
 	}
 	d, err := configDir()
 	if err != nil {
-		return "", err
+		return "", contextsUnreachable{err}
 	}
 	return filepath.Join(d, "config.yaml"), nil
 }

@@ -41,11 +41,17 @@ func (t *target) resolve() error {
 		return nil
 	}
 	t.resolved = true
+	asked := firstNonEmpty(t.context, os.Getenv("KTMS_CONTEXT"))
 	cs, err := loadContexts()
+	var noHome contextsUnreachable
+	if errors.As(err, &noHome) && asked == "" {
+		// No home directory (cron, systemd): flags and environment still work.
+		cs, err = &Contexts{}, nil
+	}
 	if err != nil {
 		return err
 	}
-	name := firstNonEmpty(t.context, os.Getenv("KTMS_CONTEXT"), cs.Current)
+	name := firstNonEmpty(asked, cs.Current)
 	if name != "" {
 		c, ok := cs.Contexts[name]
 		if !ok {
@@ -155,7 +161,10 @@ func (t *target) admin() (pb.AdminServiceClient, func(), error) {
 
 // httpBase is the HTTP API's base URL.
 func (t *target) httpBase() (string, error) {
-	return t.http, t.resolve()
+	if err := t.resolve(); err != nil {
+		return "", err
+	}
+	return t.http, nil
 }
 
 func (t *target) httpClient() *http.Client {

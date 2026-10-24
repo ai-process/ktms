@@ -48,7 +48,9 @@ func TestValidateAndSchema(t *testing.T) {
 	if code, out, _ := call("config", "schema"); code != 0 || !strings.Contains(out, `"$schema"`) {
 		t.Fatalf("schema = %d", code)
 	}
-	for _, args := range [][]string{{"nonsense"}, {"keys", "list", "--bogus"}, {"keys", "mint"}, {"models", "list", "-o", "xml"}} {
+	for _, args := range [][]string{{"nonsense"}, {"keys", "list", "--bogus"}, {"keys", "mint"}, {"models", "list", "-o", "xml"},
+		{"keys"}, {"keys", "revok", "bot"}, {"config", "bogus"}, {"keys", "policy"}, {"limits", "set", "key", "a", "day", "NaN"},
+		{"node-keys", "mint", "gpu"}} {
 		if code, _, _ := call(args...); code != exitUsage {
 			t.Errorf("ktms %v = %d, want %d", args, code, exitUsage)
 		}
@@ -241,4 +243,17 @@ func TestExitCodes(t *testing.T) {
 
 func jsonDecode(r *http.Request, v any) error {
 	return json.NewDecoder(r.Body).Decode(v)
+}
+
+func TestNoHomeAndUnreachableHTTP(t *testing.T) {
+	isolate(t)
+	t.Setenv("KTMS_CONFIG", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("HOME", "")
+	t.Setenv("KTMS_API_KEY", "ktms_x")
+	// Without a home directory the environment still names the target.
+	code, _, errs := call("chat", "--http", "http://127.0.0.1:1", "hi")
+	if code != exitRetry || strings.Contains(errs, "HOME") {
+		t.Fatalf("chat to a closed port = %d %q, want %d", code, errs, exitRetry)
+	}
 }
