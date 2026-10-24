@@ -24,6 +24,7 @@ const (
 	defaultUsageLimit = 500
 	maxUsageLimit     = 5000
 	maxUsageWrites    = 256 // pending writes before records are dropped, so a slow Redis cannot pile up goroutines
+	usageMarkFactor   = 4   // the last-write mark outlives the log this many times over
 )
 
 // UsageRecord is one request on a node as its owner sees it: what the machine
@@ -89,6 +90,7 @@ func (l *UsageLog) Append(ctx context.Context, nodeID string, r UsageRecord) err
 			Values: []any{usageField, data},
 		})
 		p.Expire(ctx, key, l.retention)
+		p.Set(ctx, l.store.keys.NodeUsageMark(nodeID), l.now().UnixMilli(), usageMarkFactor*l.retention)
 		return nil
 	})
 	return err
@@ -97,7 +99,7 @@ func (l *UsageLog) Append(ctx context.Context, nodeID string, r UsageRecord) err
 // Drop deletes a node's log: a new key for the same node id must not read the
 // previous holder's history.
 func (l *UsageLog) Drop(ctx context.Context, nodeID string) error {
-	return l.rdb.Del(ctx, l.store.keys.NodeUsage(nodeID)).Err()
+	return l.rdb.Del(ctx, l.store.keys.NodeUsage(nodeID), l.store.keys.NodeUsageMark(nodeID)).Err()
 }
 
 // reserve claims a slot for one background write; false means too many are pending.
@@ -145,7 +147,7 @@ func (l *UsageLog) Pull(ctx context.Context, nodeID, afterID string, limit int) 
 		page.Records = append(page.Records, r)
 	}
 	if afterID != "" {
-		gap, err := l.gapAfter(ctx, key, afterID)
+		gap, err := l.gapAfter(ctx, nodeID, afterID)
 		if err != nil {
 			return nil, err
 		}
@@ -156,18 +158,26 @@ func (l *UsageLog) Pull(ctx context.Context, nodeID, afterID string, limit int) 
 
 // gapAfter tells how far records after the cursor may have been trimmed.
 // Trimming only drops the oldest records and nothing newer than the
-// retention, so a gap needs an old cursor and a log that starts after it.
-func (l *UsageLog) gapAfter(ctx context.Context, key, afterID string) (time.Time, error) {
+// retention, so a gap needs an old cursor and a log that starts after it. An
+// expired log lost records only if it was written after the cursor.
+func (l *UsageLog) gapAfter(ctx context.Context, nodeID, afterID string) (time.Time, error) {
 	ms, seq, _ := parseStreamID(afterID)
 	cutoff := l.now().Add(-l.retention)
 	if !time.UnixMilli(ms).Before(cutoff) {
 		return time.Time{}, nil
 	}
-	oldest, err := l.rdb.XRangeN(ctx, key, "-", "+", 1).Result()
+	oldest, err := l.rdb.XRangeN(ctx, l.store.keys.NodeUsage(nodeID), "-", "+", 1).Result()
 	if err != nil {
 		return time.Time{}, err
 	}
 	if len(oldest) == 0 {
+		mark, err := l.rdb.Get(ctx, l.store.keys.NodeUsageMark(nodeID)).Int64()
+		if err == nil && mark <= ms {
+			return time.Time{}, nil // nothing was written after the cursor
+		}
+		if err != nil && !errors.Is(err, redis.Nil) {
+			return time.Time{}, err
+		}
 		return cutoff, nil
 	}
 	fms, fseq, _ := parseStreamID(oldest[0].ID)
@@ -236,12 +246,13 @@ func (c *nodeCall) record(ctx context.Context, reqID, modelID string, started ti
 const (
 	usageOutcomeOK        = "ok"
 	usageOutcomeError     = "error"
+	usageOutcomeRejected  = "rejected" // the engine refused the request itself (4xx): not the node failing
 	usageOutcomeCancelled = "cancelled"
 	usageOutcomeTimeout   = "timeout"
 )
 
 // callOutcome sorts a call's end the way the circuit breaker does: the
-// caller leaving is not the node's fault, an upstream timeout is.
+// caller leaving or a refused request is not the node's fault, a timeout is.
 func callOutcome(ctx context.Context, err error) (outcome, code string) {
 	switch {
 	case err == nil:
@@ -251,13 +262,21 @@ func callOutcome(ctx context.Context, err error) (outcome, code string) {
 	case errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled):
 		return usageOutcomeCancelled, ""
 	}
+	status := 0
 	var apiErr *openai.Error
-	if errors.As(err, &apiErr) && apiErr.StatusCode > 0 {
-		return usageOutcomeError, fmt.Sprintf("http_%d", apiErr.StatusCode)
-	}
 	var decisionErr *adapters.OpenAIDecisionError
-	if errors.As(err, &decisionErr) && decisionErr.Status > 0 {
-		return usageOutcomeError, fmt.Sprintf("http_%d", decisionErr.Status)
+	switch {
+	case errors.As(err, &apiErr):
+		status = apiErr.StatusCode
+	case errors.As(err, &decisionErr):
+		status = decisionErr.Status
 	}
-	return usageOutcomeError, ""
+	if status == 0 {
+		return usageOutcomeError, ""
+	}
+	code = fmt.Sprintf("http_%d", status)
+	if status >= 400 && status < 500 && status != 408 && status != 429 {
+		return usageOutcomeRejected, code
+	}
+	return usageOutcomeError, code
 }

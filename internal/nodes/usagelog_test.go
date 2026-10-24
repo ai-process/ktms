@@ -91,8 +91,25 @@ func TestUsageLogTrimsAndReportsGap(t *testing.T) {
 		t.Errorf("gap until %v, want the oldest kept record at %v", page.GapUntil, start.Add(2*time.Hour))
 	}
 
+	// An expired log written after the cursor lost records; one idle since did not.
+	idle := all.NextID
+	set(start.Add(30 * time.Hour))
+	if err := ul.rdb.Del(ctx, ul.store.keys.NodeUsage("n")).Err(); err != nil { // as the TTL would
+		t.Fatal(err)
+	}
+	if page, _ := ul.Pull(ctx, "n", cursor, 0); page.GapUntil.IsZero() {
+		t.Error("expired log with writes after the cursor: no gap reported")
+	}
+	if page, _ := ul.Pull(ctx, "n", idle, 0); !page.GapUntil.IsZero() {
+		t.Errorf("expired log idle since the cursor: gap until %v, want none", page.GapUntil)
+	}
+	if err := ul.Append(ctx, "n", UsageRecord{RequestID: "after-idle"}); err != nil {
+		t.Fatal(err)
+	}
+	all, _ = ul.Pull(ctx, "n", "", 0)
+
 	// A cursor at the oldest kept record lost nothing, however old.
-	set(start.Add(5 * time.Hour))
+	set(start.Add(35 * time.Hour))
 	if page, _ := ul.Pull(ctx, "n", all.NextID, 0); !page.GapUntil.IsZero() {
 		t.Errorf("cursor at the oldest record: gap until %v, want none", page.GapUntil)
 	}
@@ -125,7 +142,10 @@ func TestCallOutcome(t *testing.T) {
 		{"deadline", bg, context.DeadlineExceeded, usageOutcomeTimeout, ""},
 		{"upstream timeout beats cancel", upstream, context.Canceled, usageOutcomeTimeout, ""},
 		{"engine status", bg, &openai.Error{StatusCode: 503}, usageOutcomeError, "http_503"},
-		{"decision status", bg, &adapters.OpenAIDecisionError{Status: 422}, usageOutcomeError, "http_422"},
+		{"engine overloaded", bg, &openai.Error{StatusCode: 429}, usageOutcomeError, "http_429"},
+		{"request refused", bg, &openai.Error{StatusCode: 400}, usageOutcomeRejected, "http_400"},
+		{"no decisions route", bg, &adapters.OpenAIDecisionError{Status: 404}, usageOutcomeRejected, "http_404"},
+		{"decision refused", bg, &adapters.OpenAIDecisionError{Status: 422}, usageOutcomeRejected, "http_422"},
 		{"other", bg, errors.New("boom"), usageOutcomeError, ""},
 	} {
 		if o, code := callOutcome(c.ctx, c.err); o != c.outcome || code != c.code {
@@ -197,8 +217,8 @@ func TestUsageLogExpiresAndDrops(t *testing.T) {
 	if err := ul.Drop(ctx, "n"); err != nil {
 		t.Fatal(err)
 	}
-	if mr.Exists(key) {
-		t.Fatal("Drop left the log in place")
+	if mr.Exists(key) || mr.Exists(ul.store.keys.NodeUsageMark("n")) {
+		t.Fatal("Drop left the log or its mark in place")
 	}
 }
 

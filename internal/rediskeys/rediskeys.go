@@ -76,6 +76,12 @@ func (k Keys) NodeUsage(nodeID string) string {
 	return fmt.Sprintf("%snode:usage:%s", k.prefix, nodeID)
 }
 
+// NodeUsageMark holds when the node's usage log was last written; it outlives
+// the log so a pull after the log expired can tell lost records from none.
+func (k Keys) NodeUsageMark(nodeID string) string {
+	return fmt.Sprintf("%snode:usage:mark:%s", k.prefix, nodeID)
+}
+
 // NodePerf holds EWMA metrics (tps_ema, ttft_ema_ms) for a specific node and model.
 func (k Keys) NodePerf(nodeID, modelID string) string {
 	return fmt.Sprintf("%snode:perf:%s:%s", k.prefix, nodeID, modelID)

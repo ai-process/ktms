@@ -740,7 +740,7 @@ type NodeUsageRecord struct {
 	InputTokens     int64                  `protobuf:"varint,8,opt,name=input_tokens,json=inputTokens,proto3" json:"input_tokens,omitempty"`
 	OutputTokens    int64                  `protobuf:"varint,9,opt,name=output_tokens,json=outputTokens,proto3" json:"output_tokens,omitempty"`
 	CacheReadTokens int64                  `protobuf:"varint,10,opt,name=cache_read_tokens,json=cacheReadTokens,proto3" json:"cache_read_tokens,omitempty"`
-	Outcome         string                 `protobuf:"bytes,11,opt,name=outcome,proto3" json:"outcome,omitempty"`                                         // ok | error | cancelled | timeout
+	Outcome         string                 `protobuf:"bytes,11,opt,name=outcome,proto3" json:"outcome,omitempty"`                                         // ok | error | timeout (the node failed) | rejected (engine refused the request, 4xx) | cancelled (caller left)
 	ErrorCode       string                 `protobuf:"bytes,12,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`                    // e.g. http_503; empty when not known
 	CapacityPercent uint32                 `protobuf:"varint,13,opt,name=capacity_percent,json=capacityPercent,proto3" json:"capacity_percent,omitempty"` // the node's level when the request ended
 	CooldownMs      int64                  `protobuf:"varint,14,opt,name=cooldown_ms,json=cooldownMs,proto3" json:"cooldown_ms,omitempty"`                // slot hold after the request at that level

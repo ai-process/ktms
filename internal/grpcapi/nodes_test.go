@@ -287,3 +287,25 @@ func TestPullNodeUsage(t *testing.T) {
 		}
 	}
 }
+
+// Revoking a node key deletes the node's usage log, so the next key minted
+// for the same node id cannot read the previous holder's history.
+func TestRevokeNodeKeyDropsUsageLog(t *testing.T) {
+	db := rotateTestDB(t)
+	_, mgr := newRegistryWithUsage(t, time.Hour)
+	admin := &AdminServer{db: db, nodeMgr: mgr}
+	ctx := context.Background()
+	minted, err := admin.MintNodeKey(ctx, &pb.MintNodeKeyRequest{Name: "anna", NodeId: "anna-mac"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.Usage().Append(ctx, "anna-mac", nodes.UsageRecord{RequestID: "r1", Outcome: "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.RevokeNodeKey(ctx, &pb.RevokeNodeKeyRequest{Id: minted.GetId()}); err != nil {
+		t.Fatal(err)
+	}
+	if page, err := mgr.Usage().Pull(ctx, "anna-mac", "", 0); err != nil || len(page.Records) != 0 {
+		t.Fatalf("after revoke: %d records (%v), want none", len(page.Records), err)
+	}
+}

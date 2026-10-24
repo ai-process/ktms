@@ -314,7 +314,7 @@ func (pa *PoolAdapter) logUsage(nodeID string, r UsageRecord) {
 		return
 	}
 	if !ul.reserve() {
-		observability.DependencyErrorsTotal.WithLabelValues("redis", "node_usage").Inc()
+		observability.DependencyErrorsTotal.WithLabelValues("redis", "node_usage_backlog").Inc()
 		log.Debug().Str("node_id", nodeID).Str("req_id", r.RequestID).Msg("node usage log backed up; record dropped")
 		return
 	}

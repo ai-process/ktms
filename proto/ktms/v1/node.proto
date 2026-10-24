@@ -100,7 +100,7 @@ message NodeUsageRecord {
   int64 input_tokens = 8;
   int64 output_tokens = 9;
   int64 cache_read_tokens = 10;
-  string outcome = 11; // ok | error | cancelled | timeout
+  string outcome = 11; // ok | error | timeout (the node failed) | rejected (engine refused the request, 4xx) | cancelled (caller left)
   string error_code = 12; // e.g. http_503; empty when not known
   uint32 capacity_percent = 13; // the node's level when the request ended
   int64 cooldown_ms = 14; // slot hold after the request at that level

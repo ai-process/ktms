@@ -264,7 +264,10 @@ func (s *NodeRegistryServer) PullNodeUsage(ctx context.Context, req *pb.PullNode
 	if req.GetNodeId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "node_id is required")
 	}
-	if caller.NodeID != req.GetNodeId() { // a key bound to no node reads no node's log
+	if caller.NodeID == "" {
+		return nil, status.Error(codes.PermissionDenied, "key is bound to no node, so it reads no node's usage log")
+	}
+	if caller.NodeID != req.GetNodeId() {
 		return nil, status.Errorf(codes.PermissionDenied, "key is bound to node_id %q", caller.NodeID)
 	}
 	ul := s.mgr.Usage()
