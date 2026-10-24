@@ -7,6 +7,11 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- The release publishes again with `HOMEBREW_TAP_TOKEN` set: the Homebrew formula step used
+  `isEnvSet`, a GoReleaser Pro template function, and stopped the 1.3.0 release after its GitHub
+  release, before the images, the chart and the formulas. Use 1.3.1 instead of 1.3.0.
+
 ## [1.3.0] - 2026-10-24
 
 A usage log for local nodes: the gateway records each request it sends to a node, the node keeps
