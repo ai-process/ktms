@@ -267,6 +267,11 @@ func runStats(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if *tail {
+		sinceSet := false
+		fs.Visit(func(f *flag.Flag) { sinceSet = sinceSet || f.Name == "since" })
+		if !sinceSet {
+			from = now // watch what arrives, not the day behind
+		}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		if err := nodeagent.TailRequests(ctx, st, from, stdout, 2*time.Second); err != nil {

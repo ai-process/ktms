@@ -44,10 +44,12 @@ type Report struct {
 
 // BuildReport reads the log in [from, to) and sums it by "hour", "day" or "model".
 func BuildReport(st *StatsStore, from, to, now time.Time, by string) (*Report, error) {
-	reqs, err := st.Requests(from, to)
+	// Requests that began before the range still make its start busy.
+	all, err := st.Requests(from.Add(-busyLookback), to)
 	if err != nil {
 		return nil, err
 	}
+	reqs := startedIn(all, from, to)
 	samples, err := st.Samples(from, to)
 	if err != nil {
 		return nil, err
@@ -58,12 +60,15 @@ func BuildReport(st *StatsStore, from, to, now time.Time, by string) (*Report, e
 	}
 	end := minTime(to, now)
 	rep := &Report{From: from, To: to, By: by, Gaps: gaps}
-	rep.Total = summarize("total", reqs, samples, from, end)
+	rep.Total = summarize("total", reqs, all, samples, from, end)
 	switch by {
 	case "model":
-		groups := map[string][]RequestRecord{}
+		groups, busy := map[string][]RequestRecord{}, map[string][]RequestRecord{}
 		for _, r := range reqs {
 			groups[r.Model] = append(groups[r.Model], r)
+		}
+		for _, r := range all {
+			busy[r.Model] = append(busy[r.Model], r)
 		}
 		models := make([]string, 0, len(groups))
 		for m := range groups {
@@ -71,7 +76,7 @@ func BuildReport(st *StatsStore, from, to, now time.Time, by string) (*Report, e
 		}
 		sort.Strings(models)
 		for _, m := range models {
-			row := summarize(m, groups[m], nil, from, end)
+			row := summarize(m, groups[m], busy[m], nil, from, end)
 			row.PausedShare, row.NoDataMin = -1, 0 // samples belong to the node, not a model
 			rep.Rows = append(rep.Rows, row)
 		}
@@ -79,7 +84,7 @@ func BuildReport(st *StatsStore, from, to, now time.Time, by string) (*Report, e
 		for start := st.periodStart(from, by); start.Before(end); {
 			next := st.periodNext(start, by)
 			a, b := maxTime(start, from), minTime(next, end)
-			rep.Rows = append(rep.Rows, summarize(st.periodKey(start, by), within(reqs, a, b), withinSamples(samples, a, b), a, b))
+			rep.Rows = append(rep.Rows, summarize(st.periodKey(start, by), startedIn(reqs, a, b), all, withinSamples(samples, a, b), a, b))
 			start = next
 		}
 	default:
@@ -88,12 +93,17 @@ func BuildReport(st *StatsStore, from, to, now time.Time, by string) (*Report, e
 	return rep, nil
 }
 
-func summarize(key string, reqs []RequestRecord, samples []Sample, from, to time.Time) ReportRow {
+// busyLookback is how far before a range requests are read for its busy time.
+const busyLookback = 6 * time.Hour
+
+// summarize counts the requests that started in the period and takes busy
+// time from every request that overlaps it, so rows add up to the total.
+func summarize(key string, reqs, busyReqs []RequestRecord, samples []Sample, from, to time.Time) ReportRow {
 	row := ReportRow{Key: key, SpanMs: max(to.Sub(from).Milliseconds(), 0), PausedShare: -1}
 	var ttfts []int64
 	var tpsOut, tpsMs int64
 	type span struct{ a, b time.Time }
-	spans := make([]span, 0, len(reqs))
+	spans := make([]span, 0, len(busyReqs))
 	for _, r := range reqs {
 		row.Requests++
 		if r.Outcome == "error" || r.Outcome == "timeout" { // refused or abandoned requests are not the node failing
@@ -109,6 +119,8 @@ func summarize(key string, reqs []RequestRecord, samples []Sample, from, to time
 			tpsOut += r.OutputTokens
 			tpsMs += r.DurationMs
 		}
+	}
+	for _, r := range busyReqs {
 		a := maxTime(r.StartedAt, from)
 		b := minTime(r.StartedAt.Add(time.Duration(r.DurationMs)*time.Millisecond), to)
 		if b.After(a) {
@@ -174,11 +186,10 @@ func noData(samples []Sample, from, to time.Time) time.Duration {
 	return missing
 }
 
-func within(reqs []RequestRecord, a, b time.Time) []RequestRecord {
+func startedIn(reqs []RequestRecord, a, b time.Time) []RequestRecord {
 	var out []RequestRecord
 	for _, r := range reqs {
-		end := r.StartedAt.Add(time.Duration(r.DurationMs) * time.Millisecond)
-		if r.StartedAt.Before(b) && (end.After(a) || !r.StartedAt.Before(a)) {
+		if !r.StartedAt.Before(a) && r.StartedAt.Before(b) {
 			out = append(out, r)
 		}
 	}
@@ -212,8 +223,8 @@ func (s *StatsStore) periodNext(t time.Time, by string) time.Time {
 }
 
 func (s *StatsStore) periodKey(t time.Time, by string) string {
-	if by == "hour" {
-		return s.local(t).Format("2006-01-02 15:00")
+	if by == "hour" { // the zone tells apart the hour a DST night repeats
+		return s.local(t).Format("2006-01-02 15:00 MST")
 	}
 	return s.local(t).Format("2006-01-02 Mon")
 }
@@ -246,7 +257,7 @@ func WriteReport(w io.Writer, rep *Report, format string) error {
 			rows = append(rows, []string{r.Key, strconv.Itoa(r.Requests), strconv.Itoa(r.Errors),
 				strconv.FormatInt(r.InputTokens, 10), strconv.FormatInt(r.OutputTokens, 10),
 				strconv.FormatFloat(r.BusyShare, 'f', 4, 64), strconv.FormatInt(r.BusyMs, 10), strconv.FormatInt(r.CooldownMs, 10),
-				strconv.FormatFloat(r.PausedShare, 'f', 4, 64), strconv.Itoa(r.NoDataMin),
+				pausedCSV(r.PausedShare), strconv.Itoa(r.NoDataMin),
 				strconv.FormatInt(r.TTFTp50Ms, 10), strconv.FormatInt(r.TTFTp95Ms, 10), strconv.FormatFloat(r.TPS, 'f', 1, 64)})
 		}
 		return cw.WriteAll(rows)
@@ -281,6 +292,14 @@ func WriteReport(w io.Writer, rep *Report, format string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown --format %q (want table, json or csv)", format)
+}
+
+// pausedCSV leaves the cell empty where there are no samples (model rows).
+func pausedCSV(f float64) string {
+	if f < 0 {
+		return ""
+	}
+	return strconv.FormatFloat(f, 'f', 4, 64)
 }
 
 func percent(f float64) string { return fmt.Sprintf("%.0f%%", f*100) }
@@ -359,25 +378,35 @@ func ParseWhen(s string, now time.Time) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("bad time %q (want e.g. 24h, 7d, 2026-10-01 or 2026-10-01T15:04)", s)
 }
 
+// tailWindow is how far back each poll looks: records reach the log when their
+// request ends, up to a pull later, so a long request lands well after it began.
+const tailWindow = time.Hour
+
 // TailRequests prints requests as they reach the log, from since on, until ctx ends.
 func TailRequests(ctx context.Context, st *StatsStore, since time.Time, w io.Writer, every time.Duration) error {
-	seen := map[string]bool{}
+	seen := map[string]time.Time{}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for {
-		recs, err := st.Requests(since, time.Now().Add(24*time.Hour))
+		now := time.Now()
+		recs, err := st.Requests(maxTime(since, now.Add(-tailWindow)), now.Add(time.Minute))
 		if err != nil {
 			return err
 		}
 		for _, r := range recs {
-			if seen[r.RequestID] {
+			if _, ok := seen[r.RequestID]; ok {
 				continue
 			}
-			seen[r.RequestID] = true
+			seen[r.RequestID] = r.StartedAt
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d→%d tok\t%s\t%d%%\n", r.StartedAt.Local().Format("15:04:05"), r.Kind, r.Model,
 				outcomeCell(r), r.InputTokens, r.OutputTokens, humanDur(r.DurationMs), r.Level)
 		}
 		if err := tw.Flush(); err != nil {
 			return err
+		}
+		for id, at := range seen { // out of the window: never read again
+			if at.Before(now.Add(-tailWindow)) {
+				delete(seen, id)
+			}
 		}
 		select {
 		case <-ctx.Done():

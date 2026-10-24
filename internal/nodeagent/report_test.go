@@ -44,8 +44,17 @@ func TestReportByHour(t *testing.T) {
 	if h10.PausedShare != 0.5 || h10.NoDataMin != 0 || h10.TTFTp50Ms != 300 || h10.TPS == 0 {
 		t.Errorf("10:00 paused %.2f, no data %d, ttft %d, tps %.1f", h10.PausedShare, h10.NoDataMin, h10.TTFTp50Ms, h10.TPS)
 	}
-	if h11.Requests != 1 || h11.BusyMs != 30_000 || h11.PausedShare != -1 || h11.NoDataMin != 60 {
-		t.Errorf("11:00 = %+v, want the tail of c, no samples, 60 min without data", h11)
+	if h11.Requests != 0 || h11.BusyMs != 30_000 || h11.PausedShare != -1 || h11.NoDataMin != 60 {
+		t.Errorf("11:00 = %+v, want only c's busy tail (it is counted where it started), no samples", h11)
+	}
+	if h10.Requests+h11.Requests != rep.Total.Requests || h10.InputTokens+h11.InputTokens != rep.Total.InputTokens {
+		t.Errorf("rows %d+%d requests do not add up to the total %d", h10.Requests, h11.Requests, rep.Total.Requests)
+	}
+
+	// A request that began before --since still makes the start of the range busy.
+	late, err := BuildReport(st, at(11, 0, 0), at(12, 0, 0), at(12, 0, 0), "hour")
+	if err != nil || late.Total.Requests != 0 || late.Total.BusyMs != 30_000 {
+		t.Errorf("from 11:00: %+v (%v), want no requests and c's 30 s busy", late.Total, err)
 	}
 	if rep.Total.Requests != 3 || rep.Total.BusyMs != 150_000 || rep.Total.CooldownMs != 60_000 {
 		t.Errorf("total = %+v", rep.Total)
@@ -118,6 +127,14 @@ func TestWriteReportFormats(t *testing.T) {
 	if rows, err := csv.NewReader(&cs).ReadAll(); err != nil || len(rows) != len(rep.Rows)+2 || rows[0][0] != "period" {
 		t.Errorf("csv rows = %d (%v)", len(rows), err)
 	}
+	byModel, _ := BuildReport(st, at.Add(-2*time.Hour), at.Add(time.Hour), at.Add(time.Hour), "model")
+	var mcs bytes.Buffer
+	if err := WriteReport(&mcs, byModel, "csv"); err != nil {
+		t.Fatal(err)
+	}
+	if rows, _ := csv.NewReader(&mcs).ReadAll(); len(rows) < 2 || rows[1][8] != "" {
+		t.Errorf("model rows must leave the paused cell empty, got %q", rows[1][8])
+	}
 	if err := WriteReport(&cs, rep, "xml"); err == nil {
 		t.Error("unknown format accepted")
 	}
@@ -155,5 +172,24 @@ func TestTailRequests(t *testing.T) {
 	line := out.String()
 	if strings.Count(line, "tiny:1b") != 1 || !strings.Contains(line, "error http_503") || !strings.Contains(line, "12→3 tok") {
 		t.Errorf("tail printed %q, want the request once", line)
+	}
+}
+
+func TestReportNamesTheRepeatedDSTHour(t *testing.T) {
+	st, loc := pinnedStore(t)
+	from := time.Date(2026, 10, 25, 1, 0, 0, 0, loc)
+	rep, err := BuildReport(st, from, from.Add(4*time.Hour), from.Add(4*time.Hour), "hour")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := map[string]bool{}
+	for _, r := range rep.Rows {
+		if keys[r.Key] {
+			t.Fatalf("hour %q appears twice: %+v", r.Key, rep.Rows)
+		}
+		keys[r.Key] = true
+	}
+	if len(rep.Rows) != 4 {
+		t.Errorf("rows = %d, want four real hours across the fall-back", len(rep.Rows))
 	}
 }
