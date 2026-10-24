@@ -42,6 +42,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The plugin pins its version, so users get the skills of this release.
+      - name: plugin.json matches the tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          grep -q "\"version\": \"${TAG#v}\"" plugin/.claude-plugin/plugin.json ||
+            { echo "::error::set version in plugin/.claude-plugin/plugin.json to ${TAG#v}"; exit 1; }
+
       # A checkout's chart then runs the image of its own release.
       - name: Chart.yaml matches the tag
         env:

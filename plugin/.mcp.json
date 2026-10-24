@@ -1,0 +1,6 @@
+{
+  "mcpServers": {
+    "ktms": { "command": "ktms", "args": ["mcp"] },
+    "tokenmeter": { "command": "tokenmeter", "args": ["mcp"] }
+  }
+}

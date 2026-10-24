@@ -1,0 +1,12 @@
+{
+  "name": "ai-process",
+  "description": "Keystone (KTMS) and light-tokenmeter for AI assistants",
+  "owner": { "name": "ai-process", "url": "https://ai-process.dev" },
+  "plugins": [
+    {
+      "name": "ktms",
+      "source": "./plugin",
+      "description": "Skills for connecting services to Keystone, routing, deployment, local nodes, migration, usage reports and production reviews, with the ktms and tokenmeter MCP servers"
+    }
+  ]
+}

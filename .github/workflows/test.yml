@@ -70,6 +70,33 @@ jobs:
       - name: Upgrade from the previous release
         run: ./scripts/upgrade-test.sh
 
+  # The plugin's skills against this checkout and light-tokenmeter's main: every
+  # command, flag, MCP tool and README section they name must exist.
+  skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache: true
+      - name: light-tokenmeter's CLI and README
+        run: |
+          GOBIN="$RUNNER_TEMP" go install github.com/ai-process/light-tokenmeter/cmd/tokenmeter@main
+          curl -fsSL https://raw.githubusercontent.com/ai-process/light-tokenmeter/main/README.md -o "$RUNNER_TEMP/tokenmeter-README.md"
+      - name: Skills
+        run: go test -count=1 -run '^TestSkill' ./cmd/ktms/
+        env:
+          TOKENMETER_BIN: ${{ runner.temp }}/tokenmeter
+          TOKENMETER_README: ${{ runner.temp }}/tokenmeter-README.md
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Plugin and marketplace manifests
+        run: |
+          npx -y @anthropic-ai/claude-code plugin validate --strict ./plugin
+          npx -y @anthropic-ai/claude-code plugin validate --strict .
+
   # The ktms CLI against a built Keystone: config apply, keys mint, chat, spend get.
   cli-e2e:
     runs-on: ubuntu-latest
