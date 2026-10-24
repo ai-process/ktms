@@ -330,6 +330,21 @@ load, GPU) to `samples-YYYY-MM-DD.jsonl`. Closed days are gzipped and kept for
 `--stats-retention` (default `90d`, `0` = forever); `--stats=false` turns it off. Against a
 proxy without the log it keeps only the samples. `doctor` checks that the log moves.
 
+The owner reads it with the same binary, offline and without the node key:
+
+```bash
+ktms-node stats                      # last 24 hours by hour
+ktms-node stats --since 7d           # by day
+ktms-node stats --since 2026-10-01 --by model --format csv
+ktms-node stats --tail               # requests as they arrive
+```
+
+Columns: requests, errors, tokens in and out, busy (the share of time at least one request ran;
+parallel requests count once), cooldown given, paused (the share of minutes at 0%), minutes
+without data (the agent was not running), TTFT p50/p95 and output tokens per second. Stretches
+the proxy no longer had when the agent pulled are listed as missing. `--format json|csv`,
+`--until`, and `--dir` for a log elsewhere.
+
 If a node does not show up or serves badly, `ktms-node doctor` takes the same flags (plus
 `--model`) and says in plain words what is wrong: engine not answering, model missing or not
 loaded, Ollama on the CPU (an Intel build under Rosetta on Apple Silicon), proxy unreachable or
@@ -833,7 +848,8 @@ To keep the machine free while its owner works, add `--schedule FILE` with load 
 time (format above, under the node agent). The installer checks the file and copies it to
 `~/.ktms-node/schedule`; edit that file later and the agent picks it up, no re-run needed. The
 last lines then show the level now and the next switch (`Schedule: now 0%, next 23:00 100%`), and
-during a pause the installer does not load the model into memory.
+during a pause the installer does not load the model into memory. The `Stats:` line gives the
+command that shows how the machine was used (`~/.ktms-node/bin/ktms-node stats`).
 
 Run the same command again to update; a re-run only restarts what changed, and a new agent that
 fails to start is rolled back. Remove everything with the same command plus `--uninstall`

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -27,6 +29,9 @@ func main() {
 	}
 	if len(args) > 0 && args[0] == "schedule" {
 		os.Exit(runSchedule(args[1:], os.Stdout, os.Stderr))
+	}
+	if len(args) > 0 && args[0] == "stats" {
+		os.Exit(runStats(args[1:], os.Stdout, os.Stderr))
 	}
 	os.Exit(runAgent(args))
 }
@@ -221,6 +226,73 @@ func runSchedule(args []string, stdout, stderr io.Writer) int {
 	}
 	if !*quiet {
 		fmt.Fprintln(stdout, s.Status(time.Now()))
+	}
+	return 0
+}
+
+// runStats prints the node's usage log. It reads local files only: no proxy,
+// no key, works offline.
+func runStats(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("stats", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	dir := fs.String("dir", nodeagent.DefaultStatsDir(), "Usage log directory (the agent's --stats-dir)")
+	since := fs.String("since", "24h", "Start: 24h, 7d, 2026-10-01 or 2026-10-01T15:04 (local time)")
+	until := fs.String("until", "", "End, same forms (default: now)")
+	by := fs.String("by", "", "Rows per hour, day or model (default: hour up to two days, else day)")
+	format := fs.String("format", "table", "table, json or csv")
+	tail := fs.Bool("tail", false, "Print requests as they arrive, until interrupted")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	now := time.Now()
+	from, err := nodeagent.ParseWhen(*since, now)
+	if err != nil {
+		fmt.Fprintf(stderr, "stats: --since: %v\n", err)
+		return 2
+	}
+	to := now
+	if *until != "" {
+		if to, err = nodeagent.ParseWhen(*until, now); err != nil {
+			fmt.Fprintf(stderr, "stats: --until: %v\n", err)
+			return 2
+		}
+	}
+	if !to.After(from) {
+		fmt.Fprintln(stderr, "stats: --until must be after --since")
+		return 2
+	}
+	st, err := nodeagent.OpenStats(*dir, false)
+	if err != nil {
+		fmt.Fprintf(stderr, "stats: %v\n", err)
+		return 1
+	}
+	if *tail {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := nodeagent.TailRequests(ctx, st, from, stdout, 2*time.Second); err != nil {
+			fmt.Fprintf(stderr, "stats: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+	if *by == "" {
+		*by = "hour"
+		if to.Sub(from) > 48*time.Hour {
+			*by = "day"
+		}
+	}
+	rep, err := nodeagent.BuildReport(st, from, to, now, *by)
+	if err != nil {
+		fmt.Fprintf(stderr, "stats: %v\n", err)
+		return 1
+	}
+	if *format == "table" && rep.Total.Requests == 0 && rep.Total.Samples == 0 {
+		fmt.Fprintf(stdout, "No usage log in %s for this period yet.\n", *dir)
+		return 0
+	}
+	if err := nodeagent.WriteReport(stdout, rep, *format); err != nil {
+		fmt.Fprintf(stderr, "stats: %v\n", err)
+		return 2
 	}
 	return 0
 }

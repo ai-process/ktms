@@ -660,6 +660,11 @@ agent_has_schedule() { # binary
 	[ -x "$1" ] && NODE_KEY="" "$1" schedule --file /dev/null --quiet </dev/null >/dev/null 2>&1
 }
 
+# agent_has_stats tells whether an agent binary keeps a usage log (`stats`).
+agent_has_stats() { # binary
+	[ -x "$1" ] && NODE_KEY="" "$1" stats --dir "$BASE/stats" --since 1m </dev/null >/dev/null 2>&1
+}
+
 # check_schedule validates a schedule file with the agent's own parser, or dies.
 check_schedule() { # binary file what
 	out=$("$1" schedule --file "$2" 2>&1) || die "invalid $3: ${out#"schedule: $2: "}"
@@ -754,6 +759,8 @@ write_node_service() { # binary
 	fi
 	# Always passed, file or not: a schedule created later needs no reinstall.
 	agent_has_schedule "$bin" && set -- "$@" --schedule-file "$BASE/schedule"
+	# Explicit: the agent's own default follows $KTMS_HOME, which its service does not set.
+	agent_has_stats "$bin" && set -- "$@" --stats-dir "$BASE/stats"
 	# Keep the machine awake while the node runs.
 	if [ "$OS" = darwin ]; then
 		set -- /usr/bin/caffeinate -is "$@"
@@ -817,7 +824,7 @@ do_uninstall() {
 	done
 	if [ "$OS" = linux ]; then systemctl --user daemon-reload 2>/dev/null || true; fi
 	rm -rf "${BASE:?}"
-	say "Removed services, binaries, logs and the stored node key."
+	say "Removed services, binaries, logs, the usage log and the stored node key."
 	if [ -d "$BACKUP_ROOT" ]; then
 		if [ "$PURGE_BACKUPS" = 1 ]; then
 			rm -rf "${BACKUP_ROOT:?}"
@@ -839,6 +846,8 @@ print_status() {
 		sched="none, 100% all the time (add one with --schedule FILE)"
 		[ -f "$BASE/schedule" ] && sched="see $BASE/schedule"
 	fi
+	stats="needs a newer node agent"
+	agent_has_stats "$BASE/bin/ktms-node" && stats="$BASE/bin/ktms-node stats --since 24h (log in $BASE/stats)"
 	cat <<EOF
 
 Node $NODE_ID is running and registered.
@@ -846,6 +855,7 @@ Node $NODE_ID is running and registered.
   Engine:  $engine on $OLLAMA_ADDR, model $MODEL
   Address: ${ep:-see $BASE/logs/node.log}
   Schedule: $sched
+  Stats:   $stats
   Logs:    $BASE/logs/node.log
   Update:  run the same command again
   Remove:  re-run with --uninstall

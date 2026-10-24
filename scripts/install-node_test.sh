@@ -181,6 +181,7 @@ make_agent() { # version mode os arch
 	mkdir -p "$d" "$W/pack"
 	case $2 in
 	no_schedule) body="[ \"\$1\" = schedule ] && { [ -n \"\${NODE_KEY:-}\" ] && sleep 300; exit 1; } # runs for real with a key
+[ \"\$1\" = stats ] && exit 1
 
 [ \"\$1\" = --version ] && { echo $1; exit 0; }; exit 0" ;;
 	broken_start) body='[ "$1" = --version ] && exit 1; exit 0' ;;
@@ -331,6 +332,7 @@ eq "linux: fresh install exits 0" 0 "$RC"
 has "linux: reports the node running" "Node node-9 is running and registered" "$OUT"
 hasnt "linux: no macOS login note on Linux" "automatic login" "$OUT"
 has "linux: reports the tunnel address" "https://fake-abc.trycloudflare.com" "$OUT"
+has "linux: status says how to see the usage log" "Stats:   $BASE/bin/ktms-node stats --since 24h" "$OUT"
 eq "linux: key stored with 0600" 600 "$(mode_of "$BASE/key")"
 eq "linux: key content" "ktms_node_test_key" "$(cat "$BASE/key")"
 eq "linux: agent installed" "0.10.0" "$("$BASE/bin/ktms-node" --version)"
@@ -344,6 +346,7 @@ has "linux: node reads key from file" "--node-key-file" "$NODE_UNIT"
 hasnt "linux: key never in the unit" "ktms_node_test_key" "$NODE_UNIT"
 has "linux: tls on by default" '"--tls"' "$NODE_UNIT"
 has "linux: node reports only the chosen model" '"--only-model" "tiny:1b"' "$NODE_UNIT"
+has "linux: node keeps its usage log in the install dir" "\"--stats-dir\" \"$BASE/stats\"" "$NODE_UNIT"
 has "linux: ollama keeps model loaded" 'OLLAMA_KEEP_ALIVE=-1' "$OLL_UNIT"
 has "linux: ollama parallel follows concurrency" 'OLLAMA_NUM_PARALLEL=2' "$OLL_UNIT"
 has "linux: ollama context" 'OLLAMA_CONTEXT_LENGTH=4096' "$OLL_UNIT"
@@ -489,6 +492,8 @@ has "schedule: old agent explained" "does not support --schedule" "$OUT"
 OUT=$(NODE_KEY=ktms_node_env run_install $ARGS)
 eq "schedule: old agent installs without one, NODE_KEY set or not" 0 "$?"
 hasnt "schedule: old agent gets no --schedule-file" "--schedule-file" "$(cat "$W/svc/ktms-node.service")"
+hasnt "stats: old agent gets no --stats-dir" "--stats-dir" "$(cat "$W/svc/ktms-node.service")"
+has "stats: old agent's status says so" "Stats:   needs a newer node agent" "$OUT"
 make_agent 0.11.0 never_registers linux amd64
 OUT=$(run_install $ARGS --version v0.11.0)
 has "schedule: rollback announced" "restoring the previous one" "$OUT"
