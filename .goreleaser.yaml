@@ -61,7 +61,8 @@ signs:
     args: ["sign-blob", "--yes", "--bundle=${signature}", "${artifact}"]
 
 # Developer ID signing and notarization; skipped unless the secrets are set.
-# Templates use `index .Env`: isEnvSet is GoReleaser Pro only and fails the release.
+# A tap token must be exactly {{ .Env.NAME }}: GoReleaser refuses anything else there.
+# It is read only on upload, which skip_upload turns off when the secret is unset.
 notarize:
   macos:
     - enabled: '{{ if index .Env "MACOS_SIGN_P12" }}true{{ else }}false{{ end }}'
@@ -86,7 +87,7 @@ brews:
     repository:
       owner: ai-process
       name: homebrew-tap
-      token: '{{ index .Env "HOMEBREW_TAP_TOKEN" }}'
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     skip_upload: '{{ if index .Env "HOMEBREW_TAP_TOKEN" }}false{{ else }}true{{ end }}'
     test: |
       system "#{bin}/ktms-node", "--version"
@@ -98,7 +99,7 @@ brews:
     repository:
       owner: ai-process
       name: homebrew-tap
-      token: '{{ index .Env "HOMEBREW_TAP_TOKEN" }}'
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     skip_upload: '{{ if index .Env "HOMEBREW_TAP_TOKEN" }}false{{ else }}true{{ end }}'
     install: |
       bin.install "ktms"

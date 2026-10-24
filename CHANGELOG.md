@@ -7,12 +7,18 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- The release publishes the images, the chart and the Homebrew formulas again: GoReleaser takes a
+  tap token only as exactly `{{ .Env.HOMEBREW_TAP_TOKEN }}`. 1.3.0 and 1.3.1 have binaries on
+  GitHub but no images, chart or formulas; use 1.3.2.
+
 ## [1.3.1] - 2026-10-24
 
 ### Fixed
-- The release publishes again with `HOMEBREW_TAP_TOKEN` set: the Homebrew formula step used
-  `isEnvSet`, a GoReleaser Pro template function, and stopped the 1.3.0 release after its GitHub
-  release, before the images, the chart and the formulas. Use 1.3.1 instead of 1.3.0.
+- Not fixed in this release: with `HOMEBREW_TAP_TOKEN` set, the Homebrew formula step stopped the
+  1.3.0 release after its GitHub release, before the images, the chart and the formulas. 1.3.1
+  rewrote the tap token template but still not as GoReleaser requires, and stopped the same way;
+  1.3.2 fixes it.
 
 ## [1.3.0] - 2026-10-24
 
