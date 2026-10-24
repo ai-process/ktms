@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package ktms.v1;
 
+import "google/protobuf/timestamp.proto";
+
 option go_package = "github.com/ai-process/ktms/gen/ktms/v1;ktmsv1";
 
 enum NodeState {
@@ -85,6 +87,40 @@ message HeartbeatResponse {
   bool capacity_applied = 5; // false from proxies that ignore capacity_percent
 }
 
+// NodeUsageRecord is one request the proxy sent to a node, as the node's owner
+// sees it: how much the machine worked, never for whom (no user, key or text).
+message NodeUsageRecord {
+  string id = 1; // stream entry id; pass it back as after_id
+  string request_id = 2; // the slot lease id; unique, for de-duplication
+  google.protobuf.Timestamp started_at = 3;
+  int64 duration_ms = 4;
+  int64 ttft_ms = 5; // 0 when not measured (non-streaming calls)
+  string model_id = 6;
+  string kind = 7; // chat | stream | judge | rollouts
+  int64 input_tokens = 8;
+  int64 output_tokens = 9;
+  int64 cache_read_tokens = 10;
+  string outcome = 11; // ok | error | cancelled | timeout
+  string error_code = 12; // e.g. http_503; empty when not known
+  uint32 capacity_percent = 13; // the node's level when the request ended
+  int64 cooldown_ms = 14; // slot hold after the request at that level
+}
+
+message PullNodeUsageRequest {
+  string node_id = 1;
+  string after_id = 2; // cursor from the last pull; empty = from the oldest kept record
+  uint32 limit = 3; // default 500, at most 5000
+}
+
+message PullNodeUsageResponse {
+  repeated NodeUsageRecord records = 1;
+  string next_id = 2; // cursor for the next pull; after_id when nothing is new
+  bool more = 3; // more records are waiting: pull again now
+  // Set when after_id is older than the proxy keeps: records before this
+  // moment may be missing.
+  google.protobuf.Timestamp gap_until = 4;
+}
+
 message UnregisterNodeRequest {
   string node_id = 1;
   string reason = 2;
@@ -103,4 +139,7 @@ service NodeRegistryService {
   rpc ValidateNode(ValidateNodeRequest) returns (ValidateNodeResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
   rpc UnregisterNode(UnregisterNodeRequest) returns (UnregisterNodeResponse);
+  // PullNodeUsage returns the node's request log after a cursor. The proxy keeps
+  // it for NODE_USAGE_RETENTION_HOURS; the agent stores it for the owner.
+  rpc PullNodeUsage(PullNodeUsageRequest) returns (PullNodeUsageResponse);
 }

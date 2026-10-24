@@ -80,6 +80,12 @@ func TestValidateNode(t *testing.T) {
 
 func newRegistry(t *testing.T) (*NodeRegistryServer, *nodes.Manager) {
 	t.Helper()
+	return newRegistryWithUsage(t, 0)
+}
+
+// newRegistryWithUsage keeps each node's request log for usage (0 = off).
+func newRegistryWithUsage(t *testing.T, usage time.Duration) (*NodeRegistryServer, *nodes.Manager) {
+	t.Helper()
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
@@ -87,7 +93,7 @@ func newRegistry(t *testing.T) (*NodeRegistryServer, *nodes.Manager) {
 	mgr := nodes.NewManager(store, nodes.NewLeaseManager(rdb, store),
 		nodes.NewCircuitBreaker(rdb, store, 3, time.Second),
 		nodes.NewTelemetryTracker(rdb, store, 0.2, time.Hour),
-		nodes.Config{HeartbeatInterval: time.Second, HeartbeatTTL: 5 * time.Second, RetentionTTL: time.Minute, AllowLocalhost: true})
+		nodes.Config{HeartbeatInterval: time.Second, HeartbeatTTL: 5 * time.Second, RetentionTTL: time.Minute, AllowLocalhost: true, UsageRetention: usage})
 	return NewNodeRegistryServer(mgr, nil), mgr
 }
 
@@ -236,5 +242,47 @@ func TestListNodesReportsLevel(t *testing.T) {
 	hb, err := s.Heartbeat(ctx, &pb.HeartbeatRequest{NodeId: "node-1", CapacityPercent: &half})
 	if err != nil || hb.GetActiveProxyRequests() != 1 {
 		t.Errorf("heartbeat active_proxy_requests = %d (%v), want 1", hb.GetActiveProxyRequests(), err)
+	}
+}
+
+func TestPullNodeUsage(t *testing.T) {
+	off, _ := newRegistry(t)
+	ctx := apikeys.WithIdentity(context.Background(), &apikeys.Identity{NodeID: "node-1"})
+	if _, err := off.PullNodeUsage(ctx, &pb.PullNodeUsageRequest{NodeId: "node-1"}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("log off: code = %v, want FailedPrecondition", status.Code(err))
+	}
+
+	s, mgr := newRegistryWithUsage(t, time.Hour)
+	at := time.Date(2026, 10, 24, 9, 0, 0, 0, time.UTC)
+	if err := mgr.Usage().Append(context.Background(), "node-1", nodes.UsageRecord{
+		RequestID: "r1", StartedAt: at, DurationMs: 1500, ModelID: "tiny:1b", Kind: "chat",
+		InputTokens: 10, OutputTokens: 4, Outcome: "ok", CapacityPercent: 50, CooldownMs: 1500,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := s.PullNodeUsage(ctx, &pb.PullNodeUsageRequest{NodeId: "node-1"})
+	if err != nil || len(resp.GetRecords()) != 1 || resp.GetNextId() == "" || resp.GetMore() || resp.GetGapUntil() != nil {
+		t.Fatalf("PullNodeUsage = %v (%v)", resp, err)
+	}
+	r := resp.GetRecords()[0]
+	if r.GetRequestId() != "r1" || !r.GetStartedAt().AsTime().Equal(at) || r.GetDurationMs() != 1500 || r.GetModelId() != "tiny:1b" ||
+		r.GetInputTokens() != 10 || r.GetOutputTokens() != 4 || r.GetCapacityPercent() != 50 || r.GetCooldownMs() != 1500 || r.GetId() != resp.GetNextId() {
+		t.Errorf("record = %v", r)
+	}
+
+	for _, c := range []struct {
+		name string
+		ctx  context.Context
+		req  *pb.PullNodeUsageRequest
+		code codes.Code
+	}{
+		{"another node's log", ctx, &pb.PullNodeUsageRequest{NodeId: "node-2"}, codes.PermissionDenied},
+		{"no node id", ctx, &pb.PullNodeUsageRequest{}, codes.InvalidArgument},
+		{"bad cursor", ctx, &pb.PullNodeUsageRequest{NodeId: "node-1", AfterId: "x"}, codes.InvalidArgument},
+		{"no identity", context.Background(), &pb.PullNodeUsageRequest{NodeId: "node-1"}, codes.Unauthenticated},
+	} {
+		if _, err := s.PullNodeUsage(c.ctx, c.req); status.Code(err) != c.code {
+			t.Errorf("%s: code = %v, want %v", c.name, status.Code(err), c.code)
+		}
 	}
 }

@@ -438,6 +438,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `NODE_HEARTBEAT_TTL_SECONDS` | `15` | Heartbeat TTL in seconds before an idle node transitions to `OFFLINE`. |
 | `NODE_RETENTION_TTL_DAYS` | `1` | Retention period in days for inactive/offline nodes before garbage collection. |
 | `NODE_ALLOW_LOCALHOST_ENDPOINTS` | `false` | Allow loopback/link-local endpoints for local inference nodes (useful in tests/dev). |
+| `NODE_USAGE_RETENTION_HOURS` | `168` | Hours each node's request log (time, model, tokens, outcome; no user, key or text) is kept in Redis for the node's agent to pull with `PullNodeUsage`. `0` turns the log off. |
 | `BOOTSTRAP_ADMIN_KEY` | empty | Implicit admin key for creating the first real key. Unset afterwards. |
 | `USAGE_COLLECTOR_HOST` | empty | `host:port` of a gRPC usage sink. Empty disables reporting. |
 | `USAGE_COLLECTOR_TLS` | `false` | Reach the sink over TLS, e.g. light-tokenmeter on Cloud Run (`host:443`). |
