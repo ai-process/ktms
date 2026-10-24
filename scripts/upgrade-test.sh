@@ -120,7 +120,8 @@ for from in $PREV; do
 	docker run -d --name "$P-pg" --network "$NET" \
 		-e POSTGRES_USER=ktms -e POSTGRES_PASSWORD=ktms -e POSTGRES_DB=ktms postgres:17-alpine >/dev/null
 	docker run -d --name "$P-mock" --network "$NET" -e MOCK_REQUIRE_KEY=vk-upgrade -e MOCK_CHUNKS=3 "$P-mock" >/dev/null
-	until docker exec "$P-pg" pg_isready -U ktms -d ktms >/dev/null 2>&1; do sleep 1; done
+	# Over TCP: while the image initializes, its temporary server answers on the socket only.
+	until docker exec "$P-pg" pg_isready -h 127.0.0.1 -U ktms -d ktms >/dev/null 2>&1; do sleep 1; done
 
 	old="coyl/ktms:${from#v}"
 	if ! docker image inspect "$old" >/dev/null 2>&1; then
