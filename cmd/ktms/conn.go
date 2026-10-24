@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -32,6 +33,8 @@ type target struct {
 	ctxName  string
 	warn     io.Writer
 	resolved bool
+	// KTMS_ADMIN_KEY and KTMS_API_KEY, unless a context was asked for by name.
+	envAdminKey, envClientKey string
 }
 
 // resolve fills addr, tls and http from the environment and the context, on
@@ -63,15 +66,26 @@ func (t *target) resolve() error {
 	if c == nil {
 		c = &Context{}
 	}
-	t.addr = firstNonEmpty(t.addr, os.Getenv("KTMS_ADDR"), c.Addr, "localhost:9090")
+	// A context asked for by name wins over the environment, so its keys never
+	// go to an address left in the shell, nor the shell's keys to its address.
+	env := os.Getenv
+	if asked != "" {
+		env = func(string) string { return "" }
+	}
+	t.envAdminKey, t.envClientKey = env("KTMS_ADMIN_KEY"), env("KTMS_API_KEY")
+	t.addr = firstNonEmpty(t.addr, env("KTMS_ADDR"), c.Addr, "localhost:9090")
 	if !t.tlsSet {
-		if v := os.Getenv("KTMS_TLS"); v != "" {
-			t.tls = v == "true" || v == "1"
+		if v := env("KTMS_TLS"); v != "" {
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return usageError{fmt.Errorf("KTMS_TLS=%q: want true or false", v)}
+			}
+			t.tls = b
 		} else {
 			t.tls = c.TLS
 		}
 	}
-	t.http = firstNonEmpty(t.http, os.Getenv("KTMS_HTTP"), c.HTTP)
+	t.http = firstNonEmpty(t.http, env("KTMS_HTTP"), c.HTTP)
 	if t.http == "" {
 		host, _, err := net.SplitHostPort(t.addr)
 		if err != nil {
@@ -96,8 +110,8 @@ func (t *target) adminKey() (string, error) {
 	if t.keyFile != "" {
 		return readKeyFile(t.keyFile)
 	}
-	if k := os.Getenv("KTMS_ADMIN_KEY"); k != "" {
-		return k, nil
+	if t.envAdminKey != "" {
+		return t.envAdminKey, nil
 	}
 	if t.ctx != nil && !t.ctx.Key.empty() {
 		k, err := t.ctx.Key.read(t.ctxName)
@@ -117,8 +131,8 @@ func (t *target) clientKey(file string) (string, error) {
 	if file != "" {
 		return readKeyFile(file)
 	}
-	if k := os.Getenv("KTMS_API_KEY"); k != "" {
-		return k, nil
+	if t.envClientKey != "" {
+		return t.envClientKey, nil
 	}
 	if t.ctx != nil && !t.ctx.ClientKey.empty() {
 		k, err := t.ctx.ClientKey.read(t.ctxName + "/client")

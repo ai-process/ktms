@@ -14,6 +14,8 @@ All notable changes to KTMS are listed here. The format follows
   `chat` for a test call showing the rule, model and vendor; `health`; `-o json|yaml`; exit codes
   by error class; completion for bash, zsh and fish. Released as archives, the `coyl/ktms-cli`
   image and a Homebrew formula (published once the tap token is set).
+  A context named with `--context` or `KTMS_CONTEXT` wins over `KTMS_ADDR`, `KTMS_ADMIN_KEY` and
+  the other variables.
 - `/healthz` reports the server's `version`.
 - Configuration as a file: `ktms config validate|plan|apply|export|schema` keeps models, rules,
   organizations and teams, client keys and their policies, vendor keys (from environment
