@@ -26,6 +26,10 @@ All notable changes to KTMS are listed here. The format follows
   the chain kept or dropped with the reason, what a call would try, canary weights and the shadow
   model, or the error a call would get. No vendor or judge is called and nothing is spent; it
   takes `admin:read`. `ktms route explain` and the MCP tool `explain_route` use it.
+- A Claude Code plugin in `plugin/` (marketplace `ai-process` in this repository): skills to
+  integrate a service, configure routing, deploy, add a local node, migrate, report on usage and
+  review for production, and the `ktms` and `tokenmeter` MCP servers. CI checks that every
+  command, flag, MCP tool and README section a skill names exists.
 - `/healthz` reports the server's `version`.
 - Configuration as a file: `ktms config validate|plan|apply|export|schema` keeps models, rules,
   organizations and teams, client keys and their policies, vendor keys (from environment

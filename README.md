@@ -994,6 +994,20 @@ Add `"--allow-write"` to `args` to let the assistant plan and apply changes. Ove
 }
 ```
 
+### Claude Code plugin and skills
+
+[`plugin/`](plugin) is a Claude Code plugin with both MCP servers (`ktms mcp`, `tokenmeter mcp`,
+read-only) and skills for the usual tasks: connecting a service, configuring routing, deploying,
+adding a local node, migrating from LiteLLM, usage reports and a production review.
+
+```bash
+claude plugin marketplace add ai-process/ktms && claude plugin install ktms@ai-process
+```
+
+The skills are plain `SKILL.md` folders, so other agents that read Agent Skills can use them too;
+see [plugin/README.md](plugin/README.md). CI fails when a skill names a command, flag, MCP tool or
+README section that does not exist.
+
 ## Calling Keystone
 
 Authenticate every call with `authorization: Bearer ktms_…` (legacy `llm_…` keys supported) gRPC metadata.
