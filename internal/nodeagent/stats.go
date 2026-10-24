@@ -156,11 +156,19 @@ func (s *StatsStore) AppendGap(g Gap) error {
 }
 
 func (s *StatsStore) appendLines(name string, lines [][]byte) error {
-	f, err := os.OpenFile(filepath.Join(s.dir, name), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	f, err := os.OpenFile(filepath.Join(s.dir, name), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
 	var buf bytes.Buffer
+	// A crash mid-write leaves a line without its newline; end it, or the next
+	// record would join the fragment and be lost with it.
+	if fi, err := f.Stat(); err == nil && fi.Size() > 0 {
+		last := make([]byte, 1)
+		if _, err := f.ReadAt(last, fi.Size()-1); err == nil && last[0] != '\n' {
+			buf.WriteByte('\n')
+		}
+	}
 	for _, l := range lines {
 		buf.Write(l)
 		buf.WriteByte('\n')
@@ -225,6 +233,9 @@ func (s *StatsStore) Maintain(now time.Time, retention time.Duration) error {
 		oldest = s.day(now.Add(-retention))
 	}
 	var errs []error
+	if oldest != "" {
+		errs = append(errs, s.pruneGaps(now.Add(-retention)))
+	}
 	for _, e := range entries {
 		m := dayFile.FindStringSubmatch(e.Name())
 		if m == nil {
@@ -240,6 +251,28 @@ func (s *StatsStore) Maintain(now time.Time, retention time.Duration) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// pruneGaps drops gaps that ended before the retention, with the days they covered.
+func (s *StatsStore) pruneGaps(before time.Time) error {
+	gaps, err := s.Gaps(before, time.Now().AddDate(100, 0, 0))
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	for _, g := range gaps {
+		line, err := json.Marshal(g)
+		if err != nil {
+			return err
+		}
+		buf.Write(line)
+		buf.WriteByte('\n')
+	}
+	path := filepath.Join(s.dir, "gaps.jsonl")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil
+	}
+	return writeFileAtomic(path, buf.Bytes())
 }
 
 func gzipInto(src, dst string) error {
@@ -315,11 +348,12 @@ func (s *StatsStore) Days(kind, from, to string) ([]string, error) {
 	return days, nil
 }
 
-// readDay calls fn for each line of a day's files, gzipped part first; a torn
-// last line (crash mid-write) is skipped.
+// readDay calls fn for each line of a day's files; a torn line (crash
+// mid-write) is skipped. The open file goes first: if the agent gzips it in
+// between, its lines show up twice (callers drop repeats), never not at all.
 func (s *StatsStore) readDay(kind, day string, fn func([]byte) error) error {
 	base := filepath.Join(s.dir, kind+"-"+day+".jsonl")
-	for _, p := range []string{base + ".gz", base} {
+	for _, p := range []string{base, base + ".gz"} {
 		f, err := os.Open(p)
 		if os.IsNotExist(err) {
 			continue
@@ -385,17 +419,22 @@ func (s *StatsStore) Requests(from, to time.Time) ([]RequestRecord, error) {
 	return out, nil
 }
 
-// Samples returns the samples taken in [from, to).
+// Samples returns the samples taken in [from, to), each once.
 func (s *StatsStore) Samples(from, to time.Time) ([]Sample, error) {
 	days, err := s.Days("samples", s.day(from), s.day(to))
 	if err != nil {
 		return nil, err
 	}
+	seen := map[int64]bool{}
 	var out []Sample
 	for _, d := range days {
 		err := s.readDay("samples", d, func(line []byte) error {
 			var sm Sample
-			if json.Unmarshal(line, &sm) == nil && !sm.At.Before(from) && sm.At.Before(to) {
+			if json.Unmarshal(line, &sm) != nil || seen[sm.At.UnixNano()] {
+				return nil
+			}
+			seen[sm.At.UnixNano()] = true
+			if !sm.At.Before(from) && sm.At.Before(to) {
 				out = append(out, sm)
 			}
 			return nil

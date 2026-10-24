@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -16,7 +17,7 @@ const (
 	statsPageLimit    = 1000
 	statsMaxPages     = 20 // per tick, so a long catch-up never stalls heartbeats
 	statsRetryLater   = time.Hour
-	statsPullTimeout  = 10 * time.Second
+	statsPullTimeout  = 5 * time.Second
 )
 
 // statsState is the agent's usage-log bookkeeping; only Run's goroutine touches it.
@@ -28,6 +29,7 @@ type statsState struct {
 	maintDay  string
 	beat      Sample // fields from the last heartbeat; At is when it succeeded
 	beatEvery time.Duration
+	busy      atomic.Bool // a tick's pull and writes are running off the loop
 }
 
 // openStats prepares the local log; a node that cannot keep one still serves.
@@ -61,22 +63,28 @@ func (a *Agent) noteBeat(res *pb.NodeResources, models []*pb.NodeModelSpec, runn
 	a.stats.beat = s
 }
 
-// statsTick pulls new records, writes a sample and tidies old days.
+// statsTick pulls new records, writes a sample and tidies old days, off the
+// loop: a slow proxy or disk must not hold heartbeats back. The goroutine owns
+// the cursor and pull state; one tick runs at a time.
 func (a *Agent) statsTick(ctx context.Context) {
 	st := a.stats.store
-	if st == nil {
+	if st == nil || !a.stats.busy.CompareAndSwap(false, true) {
 		return
 	}
-	a.pullUsage(ctx)
-	if err := st.AppendSample(a.sample()); err != nil {
-		log.Warn().Err(err).Str("dir", st.Dir()).Msg("cannot write a usage sample")
-	}
-	if day := st.day(a.now()); day != a.stats.maintDay {
-		if err := st.Maintain(a.now(), a.cfg.StatsRetention); err != nil {
-			log.Warn().Err(err).Str("dir", st.Dir()).Msg("usage log upkeep failed")
+	sample, now := a.sample(), a.now()
+	go func() {
+		defer a.stats.busy.Store(false)
+		a.pullUsage(ctx)
+		if err := st.AppendSample(sample); err != nil {
+			log.Warn().Err(err).Str("dir", st.Dir()).Msg("cannot write a usage sample")
 		}
-		a.stats.maintDay = day
-	}
+		if day := st.day(now); day != a.stats.maintDay {
+			if err := st.Maintain(now, a.cfg.StatsRetention); err != nil {
+				log.Warn().Err(err).Str("dir", st.Dir()).Msg("usage log upkeep failed")
+			}
+			a.stats.maintDay = day
+		}
+	}()
 }
 
 func (a *Agent) sample() Sample {

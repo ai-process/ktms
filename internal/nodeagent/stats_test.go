@@ -247,3 +247,44 @@ func newEngineServer(t *testing.T, h http.Handler) string {
 	t.Cleanup(srv.Close)
 	return srv.URL
 }
+
+func TestStatsStoreSurvivesTornLine(t *testing.T) {
+	st, loc := pinnedStore(t)
+	at := time.Date(2026, 10, 24, 10, 0, 0, 0, loc)
+	path := filepath.Join(st.Dir(), "requests-2026-10-24.jsonl")
+	if err := os.WriteFile(path, []byte(`{"request_id":"torn","started_at":"2026-10-24T`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendRequests([]RequestRecord{{RequestID: "next", StartedAt: at, Outcome: "ok"}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.Requests(at.Add(-time.Hour), at.Add(time.Hour))
+	if err != nil || len(got) != 1 || got[0].RequestID != "next" {
+		t.Fatalf("after a torn line: %+v (%v), want the next record intact", got, err)
+	}
+}
+
+func TestStatsStorePrunesGapsAndDedupsSamples(t *testing.T) {
+	st, loc := pinnedStore(t)
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, loc)
+	for _, g := range []Gap{{From: now.AddDate(0, 0, -40), Until: now.AddDate(0, 0, -39)}, {From: now.Add(-2 * time.Hour), Until: now.Add(-time.Hour)}} {
+		if err := st.AppendGap(g); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sm := Sample{At: now.Add(-time.Minute), State: SampleStateServing}
+	for range 2 { // as a crash between gzip and removing the day file leaves it
+		if err := st.AppendSample(sm); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.Maintain(now, 30*24*time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if gaps, _ := st.Gaps(time.Time{}, now); len(gaps) != 1 {
+		t.Errorf("gaps after retention = %+v, want only the recent one", gaps)
+	}
+	if s, _ := st.Samples(now.Add(-time.Hour), now); len(s) != 1 {
+		t.Errorf("samples = %d, want the repeated one once", len(s))
+	}
+}
