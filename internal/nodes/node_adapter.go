@@ -313,7 +313,13 @@ func (pa *PoolAdapter) logUsage(nodeID string, r UsageRecord) {
 	if !ul.Enabled() {
 		return
 	}
+	if !ul.reserve() {
+		observability.DependencyErrorsTotal.WithLabelValues("redis", "node_usage").Inc()
+		log.Debug().Str("node_id", nodeID).Str("req_id", r.RequestID).Msg("node usage log backed up; record dropped")
+		return
+	}
 	pa.async(func() {
+		defer ul.release()
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if err := ul.Append(ctx, nodeID, r); err != nil {

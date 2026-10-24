@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/openai/openai-go/v3"
@@ -22,6 +23,7 @@ const (
 	usageField        = "r"
 	defaultUsageLimit = 500
 	maxUsageLimit     = 5000
+	maxUsageWrites    = 256 // pending writes before records are dropped, so a slow Redis cannot pile up goroutines
 )
 
 // UsageRecord is one request on a node as its owner sees it: what the machine
@@ -58,15 +60,18 @@ type UsageLog struct {
 	store     *Store
 	retention time.Duration // 0 disables the log
 	now       func() time.Time
+	pending   atomic.Int32
 }
 
-func NewUsageLog(rdb redis.UniversalClient, store *Store, retention time.Duration) *UsageLog {
-	return &UsageLog{rdb: rdb, store: store, retention: retention, now: time.Now}
+func NewUsageLog(store *Store, retention time.Duration) *UsageLog {
+	return &UsageLog{rdb: store.rdb, store: store, retention: retention, now: time.Now}
 }
 
 func (l *UsageLog) Enabled() bool { return l != nil && l.retention > 0 }
 
-// Append adds a record and drops those older than the retention.
+// Append adds a record and drops those older than the retention. The TTL,
+// refreshed on each write, removes the log of a node that stopped getting
+// requests or is gone, which no later write would trim.
 func (l *UsageLog) Append(ctx context.Context, nodeID string, r UsageRecord) error {
 	if !l.Enabled() {
 		return nil
@@ -75,13 +80,36 @@ func (l *UsageLog) Append(ctx context.Context, nodeID string, r UsageRecord) err
 	if err != nil {
 		return fmt.Errorf("marshal usage record: %w", err)
 	}
-	return l.rdb.XAdd(ctx, &redis.XAddArgs{
-		Stream: l.store.keys.NodeUsage(nodeID),
-		MinID:  strconv.FormatInt(l.now().Add(-l.retention).UnixMilli(), 10),
-		Approx: true,
-		Values: []any{usageField, data},
-	}).Err()
+	key := l.store.keys.NodeUsage(nodeID)
+	_, err = l.rdb.Pipelined(ctx, func(p redis.Pipeliner) error {
+		p.XAdd(ctx, &redis.XAddArgs{
+			Stream: key,
+			MinID:  strconv.FormatInt(l.now().Add(-l.retention).UnixMilli(), 10),
+			Approx: true,
+			Values: []any{usageField, data},
+		})
+		p.Expire(ctx, key, l.retention)
+		return nil
+	})
+	return err
 }
+
+// Drop deletes a node's log: a new key for the same node id must not read the
+// previous holder's history.
+func (l *UsageLog) Drop(ctx context.Context, nodeID string) error {
+	return l.rdb.Del(ctx, l.store.keys.NodeUsage(nodeID)).Err()
+}
+
+// reserve claims a slot for one background write; false means too many are pending.
+func (l *UsageLog) reserve() bool {
+	if l.pending.Add(1) > maxUsageWrites {
+		l.pending.Add(-1)
+		return false
+	}
+	return true
+}
+
+func (l *UsageLog) release() { l.pending.Add(-1) }
 
 // Pull returns up to limit records after the cursor afterID ("" = the oldest kept).
 func (l *UsageLog) Pull(ctx context.Context, nodeID, afterID string, limit int) (*UsagePage, error) {

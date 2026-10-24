@@ -264,7 +264,7 @@ func (s *NodeRegistryServer) PullNodeUsage(ctx context.Context, req *pb.PullNode
 	if req.GetNodeId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "node_id is required")
 	}
-	if caller.NodeID != "" && caller.NodeID != req.GetNodeId() {
+	if caller.NodeID != req.GetNodeId() { // a key bound to no node reads no node's log
 		return nil, status.Errorf(codes.PermissionDenied, "key is bound to node_id %q", caller.NodeID)
 	}
 	ul := s.mgr.Usage()
@@ -350,6 +350,10 @@ func (s *AdminServer) RevokeNodeKey(ctx context.Context, req *pb.RevokeNodeKeyRe
 	if s.nodeMgr != nil && nodeID != "" {
 		if err := s.nodeMgr.Unregister(ctx, nodeID); err != nil {
 			log.Warn().Err(err).Str("node_id", nodeID).Msg("revoked node key, but evicting the node failed")
+		}
+		// Unregister keeps the log for a restarting agent; a revoked node's history goes.
+		if err := s.nodeMgr.Usage().Drop(ctx, nodeID); err != nil {
+			log.Warn().Err(err).Str("node_id", nodeID).Msg("revoked node key, but deleting its usage log failed")
 		}
 	}
 	return &pb.RevokeNodeKeyResponse{}, nil

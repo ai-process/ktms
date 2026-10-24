@@ -280,6 +280,7 @@ func TestPullNodeUsage(t *testing.T) {
 		{"no node id", ctx, &pb.PullNodeUsageRequest{}, codes.InvalidArgument},
 		{"bad cursor", ctx, &pb.PullNodeUsageRequest{NodeId: "node-1", AfterId: "x"}, codes.InvalidArgument},
 		{"no identity", context.Background(), &pb.PullNodeUsageRequest{NodeId: "node-1"}, codes.Unauthenticated},
+		{"key bound to no node", apikeys.WithIdentity(context.Background(), &apikeys.Identity{}), &pb.PullNodeUsageRequest{NodeId: "node-1"}, codes.PermissionDenied},
 	} {
 		if _, err := s.PullNodeUsage(c.ctx, c.req); status.Code(err) != c.code {
 			t.Errorf("%s: code = %v, want %v", c.name, status.Code(err), c.code)

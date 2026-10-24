@@ -51,7 +51,7 @@ func NewManager(store *Store, slots *LeaseManager, circuit *CircuitBreaker, tele
 		slots:     slots,
 		circuit:   circuit,
 		telemetry: telemetry,
-		usage:     NewUsageLog(store.rdb, store, cfg.UsageRetention),
+		usage:     NewUsageLog(store, cfg.UsageRetention),
 		cfg:       cfg,
 		stopCh:    make(chan struct{}),
 	}

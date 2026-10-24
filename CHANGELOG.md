@@ -17,6 +17,7 @@ Tools for people and AI assistants: the `ktms` CLI, `ktms mcp`, a dry run of rou
   (time, model, kind, tokens, outcome, level and cooldown; no user, key or text) for
   `NODE_USAGE_RETENTION_HOURS` (default 168, `0` turns it off). The node pulls it with
   `NodeRegistryService.PullNodeUsage` by cursor; a cursor older than the log gets `gap_until`.
+  Needs Redis 6.2 or newer. Revoking a node key deletes the node's log.
 - The `ktms` CLI beyond `config`: contexts in `~/.config/ktms/config.yaml` with keys from an
   environment variable, a 0600 file or the system keychain; `models`, `rules`, `keys`,
   `vendor-keys`, `orgs`, `teams`, `spend`, `limits`, `nodes`, `node-keys`, `rotate-encryption`;

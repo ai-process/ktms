@@ -209,7 +209,8 @@ If Gemini TTS is requested without ffmpeg available (e.g. on the default slim im
 
 The image runs as a non-root user (`appuser`, UID 10001), exposes `8080` (HTTP) and `9090` (gRPC), and is configured entirely through environment variables. From 1.0.0, images are signed with cosign and carry an SBOM and provenance, and the release's `checksums.txt` is signed: see [Verifying a Release](SECURITY.md#verifying-a-release).
 
-You need a Postgres database (required; 16 is what the compose file uses) and a Redis (optional, see below):
+You need a Postgres database (required; 16 is what the compose file uses) and a Redis (optional, see below;
+6.2 or newer for the local node pool's usage log):
 
 ```bash
 # generate the at-rest encryption keyring once and keep it safe
@@ -438,7 +439,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `NODE_HEARTBEAT_TTL_SECONDS` | `15` | Heartbeat TTL in seconds before an idle node transitions to `OFFLINE`. |
 | `NODE_RETENTION_TTL_DAYS` | `1` | Retention period in days for inactive/offline nodes before garbage collection. |
 | `NODE_ALLOW_LOCALHOST_ENDPOINTS` | `false` | Allow loopback/link-local endpoints for local inference nodes (useful in tests/dev). |
-| `NODE_USAGE_RETENTION_HOURS` | `168` | Hours each node's request log (time, model, tokens, outcome; no user, key or text) is kept in Redis for the node's agent to pull with `PullNodeUsage`. `0` turns the log off. |
+| `NODE_USAGE_RETENTION_HOURS` | `168` | Hours each node's request log (time, model, tokens, outcome; no user, key or text) is kept in Redis (6.2+) for the node's agent to pull with `PullNodeUsage`; a node with no requests for that long loses its log, and revoking its key deletes it. `0` turns the log off. |
 | `BOOTSTRAP_ADMIN_KEY` | empty | Implicit admin key for creating the first real key. Unset afterwards. |
 | `USAGE_COLLECTOR_HOST` | empty | `host:port` of a gRPC usage sink. Empty disables reporting. |
 | `USAGE_COLLECTOR_TLS` | `false` | Reach the sink over TLS, e.g. light-tokenmeter on Cloud Run (`host:443`). |

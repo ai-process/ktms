@@ -24,7 +24,7 @@ import (
 func usageLogAt(t *testing.T, retention time.Duration) (*UsageLog, *miniredis.Miniredis, func(time.Time)) {
 	t.Helper()
 	mgr, mr := setupTestManager(t)
-	ul := NewUsageLog(mgr.store.rdb, mgr.store, retention)
+	ul := NewUsageLog(mgr.store, retention)
 	set := func(at time.Time) {
 		mr.SetTime(at) // stream ids come from Redis's clock, the cutoff from ours
 		ul.now = func() time.Time { return at }
@@ -149,7 +149,7 @@ func TestPoolAdapterLogsCalls(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	mgr, _ := setupTestManager(t)
-	mgr.usage = NewUsageLog(mgr.store.rdb, mgr.store, time.Hour)
+	mgr.usage = NewUsageLog(mgr.store, time.Hour)
 	if err := mgr.Register(ctx, &NodeMeta{
 		NodeID: "n", Name: "n", Endpoint: srv.URL, Engine: "ollama", BaseWeight: 10, MaxConcurrent: 2,
 		Models: []*pb.NodeModelSpec{{ModelId: "local-gemma", RemoteModelName: "gemma", IsWarm: true}},
@@ -181,5 +181,39 @@ func TestPoolAdapterLogsCalls(t *testing.T) {
 	}
 	if bad.Outcome != usageOutcomeError || bad.ErrorCode != "http_503" || bad.RequestID == ok.RequestID {
 		t.Errorf("failed record = %+v", bad)
+	}
+}
+
+func TestUsageLogExpiresAndDrops(t *testing.T) {
+	ctx := context.Background()
+	ul, mr, _ := usageLogAt(t, time.Hour)
+	if err := ul.Append(ctx, "n", UsageRecord{RequestID: "r"}); err != nil {
+		t.Fatal(err)
+	}
+	key := ul.store.keys.NodeUsage("n")
+	if ttl := mr.TTL(key); ttl != time.Hour {
+		t.Fatalf("TTL = %v, want the retention: an idle node's log must expire", ttl)
+	}
+	if err := ul.Drop(ctx, "n"); err != nil {
+		t.Fatal(err)
+	}
+	if mr.Exists(key) {
+		t.Fatal("Drop left the log in place")
+	}
+}
+
+func TestUsageLogBoundsPendingWrites(t *testing.T) {
+	ul, _, _ := usageLogAt(t, time.Hour)
+	for i := range maxUsageWrites {
+		if !ul.reserve() {
+			t.Fatalf("write %d refused below the bound", i)
+		}
+	}
+	if ul.reserve() {
+		t.Fatal("a write beyond the bound was accepted")
+	}
+	ul.release()
+	if !ul.reserve() {
+		t.Fatal("a released slot was not reusable")
 	}
 }
