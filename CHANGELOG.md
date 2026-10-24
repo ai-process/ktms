@@ -7,6 +7,11 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-24
+
+Tools for people and AI assistants: the `ktms` CLI, `ktms mcp`, a dry run of routing, the
+`admin:read` scope and a Claude Code plugin. Works with light-tokenmeter 1.1 for usage reports.
+
 ### Added
 - The `ktms` CLI beyond `config`: contexts in `~/.config/ktms/config.yaml` with keys from an
   environment variable, a 0600 file or the system keychain; `models`, `rules`, `keys`,
@@ -244,7 +249,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/ai-process/ktms/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/ai-process/ktms/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/ai-process/ktms/compare/v0.14.0...v1.0.0
 [0.14.0]: https://github.com/ai-process/ktms/compare/v0.13.1...v0.14.0
