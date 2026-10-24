@@ -123,7 +123,7 @@ context; admin:read is enough for every command that only reads.
 		a.configCmd(), a.contextCmd(),
 		a.modelsCmd(), a.rulesCmd(), a.keysCmd(), a.vendorKeysCmd(), a.orgsCmd(), a.teamsCmd(),
 		a.spendCmd(), a.limitsCmd(), a.nodesCmd(), a.nodeKeysCmd(), a.rotateCmd(),
-		a.chatCmd(), a.healthCmd(), &cobra.Command{
+		a.chatCmd(), a.healthCmd(), a.mcpCmd(), &cobra.Command{
 			Use: "version", Short: "Print the version", Args: cobra.NoArgs,
 			RunE: func(*cobra.Command, []string) error {
 				fmt.Fprintln(a.stdout, version)

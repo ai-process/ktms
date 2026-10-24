@@ -16,6 +16,11 @@ All notable changes to KTMS are listed here. The format follows
   image and a Homebrew formula (published once the tap token is set).
   A context named with `--context` or `KTMS_CONTEXT` wins over `KTMS_ADDR`, `KTMS_ADMIN_KEY` and
   the other variables.
+- `ktms mcp`: an MCP server for AI assistants over stdio or streamable HTTP (`--listen`, bearer
+  token): read tools by default; with `--allow-write`, `config_plan` and `config_apply` (a shown
+  plan applies once and only if nothing changed since), key, limit and node tools; the live
+  configuration and the file schema as resources; prompts for routing, integration, local nodes
+  and a production review.
 - `/healthz` reports the server's `version`.
 - Configuration as a file: `ktms config validate|plan|apply|export|schema` keeps models, rules,
   organizations and teams, client keys and their policies, vendor keys (from environment

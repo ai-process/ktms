@@ -114,4 +114,10 @@ code=0
 KTMS_ADMIN_KEY=$READ_KEY ktms keys revoke e2e --yes 2>/dev/null || code=$?
 [ "$code" = 4 ] || fail "read key on a mutation exited $code, want 4"
 
+echo "--- mcp over stdio"
+KTMS_E2E_BIN="$TMP/ktms" KTMS_E2E_MOCK="http://$P-mock:8000/v1" go test -count=1 -tags e2e -run '^TestMCPStdio$' ./cmd/ktms/ ||
+	fail "mcp scenario failed"
+# The rule added through MCP serves a call that carries its attribute.
+retry 15 sh -c 'ktms chat --attr tier=mcp "Say hi" 2>&1 >/dev/null | grep -q "rule: from-mcp"' || fail "the MCP rule does not route"
+
 echo "cli e2e: ok"

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -167,6 +168,42 @@ func apiMessage(raw []byte) string {
 	return s
 }
 
+// probe is one health endpoint's answer.
+type probe struct {
+	Path    string         `json:"path"`
+	Status  int            `json:"status"`
+	Body    map[string]any `json:"body,omitempty"`
+	Problem string         `json:"error,omitempty"`
+}
+
+// probes asks /healthz and /readyz; ready is whether both answered 200.
+func (a *app) probes(ctx context.Context) (base string, probes []probe, ready bool, err error) {
+	base, err = a.t.httpBase()
+	if err != nil {
+		return "", nil, false, err
+	}
+	ready = true
+	for _, path := range []string{"/healthz", "/readyz"} {
+		pr := probe{Path: path}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
+		if err != nil {
+			return "", nil, false, err
+		}
+		res, err := a.t.httpClient().Do(req)
+		if err != nil {
+			pr.Problem, ready = err.Error(), false
+		} else {
+			raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<16))
+			res.Body.Close()
+			pr.Status = res.StatusCode
+			_ = json.Unmarshal(raw, &pr.Body)
+			ready = ready && res.StatusCode == http.StatusOK
+		}
+		probes = append(probes, pr)
+	}
+	return base, probes, ready, nil
+}
+
 func (a *app) healthCmd() *cobra.Command {
 	var format string
 	cmd := &cobra.Command{
@@ -178,37 +215,11 @@ func (a *app) healthCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			base, err := a.t.httpBase()
-			if err != nil {
-				return err
-			}
 			ctx, cancel := a.ctx()
 			defer cancel()
-			type probe struct {
-				Path    string         `json:"path"`
-				Status  int            `json:"status"`
-				Body    map[string]any `json:"body,omitempty"`
-				Problem string         `json:"error,omitempty"`
-			}
-			var probes []probe
-			ready := true
-			for _, path := range []string{"/healthz", "/readyz"} {
-				pr := probe{Path: path}
-				req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
-				if err != nil {
-					return err
-				}
-				res, err := a.t.httpClient().Do(req)
-				if err != nil {
-					pr.Problem, ready = err.Error(), false
-				} else {
-					raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<16))
-					res.Body.Close()
-					pr.Status = res.StatusCode
-					_ = json.Unmarshal(raw, &pr.Body)
-					ready = ready && res.StatusCode == http.StatusOK
-				}
-				probes = append(probes, pr)
+			base, probes, ready, err := a.probes(ctx)
+			if err != nil {
+				return err
 			}
 			if !p.table() {
 				if err := p.data(map[string]any{"http": base, "probes": probes}); err != nil {
