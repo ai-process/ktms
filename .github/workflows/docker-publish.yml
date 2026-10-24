@@ -1,7 +1,7 @@
 name: Publish Docker image
 
-# Every v* release becomes images on Docker Hub: coyl/ktms:<tag> (server slim & audio)
-# and coyl/ktms-node:<tag> (node agent).
+# Every v* release becomes images on Docker Hub: coyl/ktms:<tag> (server slim & audio),
+# coyl/ktms-node:<tag> (node agent) and coyl/ktms-cli:<tag> (the ktms CLI).
 # Needs the repository secrets DOCKER_USERNAME and DOCKER_PASSWORD (an access token).
 # Called by release.yml after the compatibility check passed.
 on:
@@ -43,6 +43,12 @@ jobs:
             flavor_latest: "true"
             tag_suffix: ""
             scope: coyl-ktms-node
+          - image: coyl/ktms-cli
+            dockerfile: Dockerfile.cli
+            target: ""
+            flavor_latest: "true"
+            tag_suffix: ""
+            scope: coyl-ktms-cli
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -92,7 +98,7 @@ jobs:
           context: .
           file: ${{ matrix.dockerfile }}
           target: ${{ matrix.target }}
-          build-args: ${{ matrix.image == 'coyl/ktms-node' && format('VERSION={0}', steps.meta.outputs.version) || '' }}
+          build-args: VERSION=${{ github.ref_name }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

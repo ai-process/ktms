@@ -41,6 +41,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 - [Setting it up: keys, models, rules](#setting-it-up-keys-models-rules)
 - [Run a node](#run-a-node)
 - [Web console](#web-console)
+- [Command-line tool](#command-line-tool)
 - [Calling Keystone](#calling-keystone)
 - [OpenAI-compatible HTTP API](#openai-compatible-http-api)
 - [Concepts](#concepts)
@@ -470,16 +471,15 @@ Everything is an environment variable; see [`env.example`](env.example).
 
 All of this is done with the admin service (`AdminService`) using a key that has
 the `admin` scope. Mutations are validated in a transaction together with the existing
-config, so an invalid state can never become active. Prefer a browser to `grpcurl`? See the
-[web console](#web-console).
+config, so an invalid state can never become active. Prefer a browser or a terminal to
+`grpcurl`? See the [web console](#web-console) and the [command-line tool](#command-line-tool).
 
 ### Configuration as a file
 
-Everything below can also live in a YAML file in your repository and be applied with the `ktms`
-command, which plans the changes first, like `terraform plan`:
+Everything below can also live in a YAML file in your repository and be applied with the
+[`ktms` command](#command-line-tool), which plans the changes first, like `terraform plan`:
 
 ```bash
-go install github.com/ai-process/ktms/cmd/ktms@latest
 export KTMS_ADDR=localhost:9090 KTMS_ADMIN_KEY=ktms_...   # admin; admin:read is enough for plan and export
 ktms config export -o ktms.yaml      # start from what is running
 ktms config plan -f ktms.yaml        # what would change; --detailed-exitcode exits 3 on drift
@@ -887,6 +887,53 @@ docker run -d -p 8081:8080 \
   -e KTMS_ADDR=ktms:9090 -e KTMS_ADMIN_KEY=ktms_… \
   coyl/ktms-admin:latest
 ```
+
+## Command-line tool
+
+`ktms` covers the everyday admin jobs without `grpcurl` and the proto: the configuration as a
+file, keys, spend and limits, nodes, a test call and health checks. Keys never go on the command
+line, and none is printed except a new one, once.
+
+```bash
+# a release archive (darwin/linux, amd64/arm64, signed checksums), or:
+go install github.com/ai-process/ktms/cmd/ktms@latest
+docker run --rm -e KTMS_ADDR -e KTMS_ADMIN_KEY coyl/ktms-cli:latest models list
+```
+
+A context names a Keystone and where its keys live, so a command needs no flags:
+
+```bash
+ktms context set prod --addr ktms.example.com:443 --tls --http https://ktms.example.com
+ktms context store-key prod             # reads the admin key without echo, into the keychain
+ktms context store-key prod --client    # a generate key for ktms chat
+ktms context use prod
+```
+
+Contexts live in `~/.config/ktms/config.yaml` (`KTMS_CONFIG`). A key source is `env:VAR`,
+`file:PATH` or `keychain` (macOS Keychain, or the secret service through `secret-tool` on Linux);
+`store-key --file` keeps the key in a `0600` file instead. Flags win over `KTMS_ADDR`, `KTMS_TLS`,
+`KTMS_HTTP`, `KTMS_ADMIN_KEY` and `KTMS_API_KEY`, which win over the context.
+
+```bash
+ktms health                                   # /healthz, /readyz and the server's version
+ktms models list; ktms rules list             # -o json or -o yaml for scripts
+ktms keys mint billing --team acme/search --rpm 120
+echo "$OPENAI_KEY" | ktms vendor-keys set billing openai
+ktms keys policy set billing --allowed-models gpt-4o-mini --tpm 200000
+ktms chat "Say hi"                            # the answer, then rule, model and vendor
+ktms limits set key billing day 5             # USD per UTC day; * sets the default
+ktms spend get key billing                    # or user ID, team org/team
+ktms nodes list; ktms nodes drain gpu-1
+ktms node-keys mint gpu-1 --node-id gpu-1 --allowed-cidrs 10.0.0.0/8
+ktms keys revoke billing                      # asks first; --yes for scripts
+ktms rotate-encryption
+ktms completion zsh > "${fpath[1]}/_ktms"     # also bash and fish
+```
+
+`admin:read` is enough for everything that only reads (`list`, `get`, `config plan|export`).
+Exit codes follow the [error contract](#error-contract): 0 done, 1 failed, 2 bad usage, 3 plan
+has changes (`--detailed-exitcode`), 4 not authenticated or not allowed, 5 not found, 6 rejected as
+invalid, 7 unavailable or throttled (retry later).
 
 ## Calling Keystone
 
@@ -1400,7 +1447,7 @@ advance:
 
 ## Operations
 
-- **Health:** `GET :8080/healthz` (process up) and `GET :8080/readyz` (database reachable).
+- **Health:** `GET :8080/healthz` (process up, with its `version`) and `GET :8080/readyz` (database reachable).
 - **Logs:** structured JSON via zerolog. Vendor keys, client keys and the keyring are never logged.
 - **Config changes** are picked up by all replicas within `ROUTING_RELOAD_SECONDS`; the replica that
   handled the admin call applies them immediately.

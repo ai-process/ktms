@@ -4,6 +4,10 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"strings"
 
@@ -14,27 +18,116 @@ import (
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 )
 
-// target is where and how to reach Keystone's Admin API.
+// target is where and how to reach Keystone. Flags win over environment
+// variables, which win over the selected context.
 type target struct {
+	context string
 	addr    string
 	tls     bool
+	tlsSet  bool
+	http    string
 	keyFile string
+
+	ctx      *Context // the selected context, nil without one
+	ctxName  string
+	warn     io.Writer
+	resolved bool
 }
 
-// adminKey reads the key from KTMS_ADMIN_KEY or a file, never from a flag,
-// so it stays out of shell history and process listings.
-func (t target) adminKey() (string, error) {
-	if t.keyFile != "" {
-		b, err := os.ReadFile(t.keyFile)
-		if err != nil {
-			return "", err
+// resolve fills addr, tls and http from the environment and the context, on
+// first use, so commands that need no Keystone never read the contexts file.
+func (t *target) resolve() error {
+	if t.resolved {
+		return nil
+	}
+	t.resolved = true
+	asked := firstNonEmpty(t.context, os.Getenv("KTMS_CONTEXT"))
+	cs, err := loadContexts()
+	var noHome contextsUnreachable
+	if errors.As(err, &noHome) && asked == "" {
+		// No home directory (cron, systemd): flags and environment still work.
+		cs, err = &Contexts{}, nil
+	}
+	if err != nil {
+		return err
+	}
+	name := firstNonEmpty(asked, cs.Current)
+	if name != "" {
+		c, ok := cs.Contexts[name]
+		if !ok {
+			return fmt.Errorf("no context %q (ktms context list)", name)
 		}
-		return strings.TrimSpace(string(b)), nil
+		t.ctx, t.ctxName = c, name
+	}
+	c := t.ctx
+	if c == nil {
+		c = &Context{}
+	}
+	t.addr = firstNonEmpty(t.addr, os.Getenv("KTMS_ADDR"), c.Addr, "localhost:9090")
+	if !t.tlsSet {
+		if v := os.Getenv("KTMS_TLS"); v != "" {
+			t.tls = v == "true" || v == "1"
+		} else {
+			t.tls = c.TLS
+		}
+	}
+	t.http = firstNonEmpty(t.http, os.Getenv("KTMS_HTTP"), c.HTTP)
+	if t.http == "" {
+		host, _, err := net.SplitHostPort(t.addr)
+		if err != nil {
+			host = t.addr
+		}
+		scheme := "http"
+		if t.tls {
+			scheme = "https"
+		}
+		t.http = scheme + "://" + net.JoinHostPort(host, "8080")
+	}
+	t.http = strings.TrimRight(t.http, "/")
+	return nil
+}
+
+// adminKey reads the key from --key-file, KTMS_ADMIN_KEY or the context, never
+// from a flag value, so it stays out of shell history and process listings.
+func (t *target) adminKey() (string, error) {
+	if err := t.resolve(); err != nil {
+		return "", err
+	}
+	if t.keyFile != "" {
+		return readKeyFile(t.keyFile)
 	}
 	if k := os.Getenv("KTMS_ADMIN_KEY"); k != "" {
 		return k, nil
 	}
-	return "", errors.New("no admin key: set KTMS_ADMIN_KEY or pass --key-file")
+	if t.ctx != nil && !t.ctx.Key.empty() {
+		k, err := t.ctx.Key.read(t.ctxName)
+		if err != nil {
+			return "", fmt.Errorf("admin key of context %s: %w", t.ctxName, err)
+		}
+		return k, nil
+	}
+	return "", authError{errors.New("no admin key: set KTMS_ADMIN_KEY, pass --key-file or add a context (ktms context set)")}
+}
+
+// clientKey is the generate key ktms chat calls /v1 with.
+func (t *target) clientKey(file string) (string, error) {
+	if err := t.resolve(); err != nil {
+		return "", err
+	}
+	if file != "" {
+		return readKeyFile(file)
+	}
+	if k := os.Getenv("KTMS_API_KEY"); k != "" {
+		return k, nil
+	}
+	if t.ctx != nil && !t.ctx.ClientKey.empty() {
+		k, err := t.ctx.ClientKey.read(t.ctxName + "/client")
+		if err != nil {
+			return "", fmt.Errorf("client key of context %s: %w", t.ctxName, err)
+		}
+		return k, nil
+	}
+	return "", authError{errors.New("no client key: set KTMS_API_KEY, pass --client-key-file or set the context's client_key")}
 }
 
 type bearer struct {
@@ -47,10 +140,13 @@ func (b bearer) GetRequestMetadata(context.Context, ...string) (map[string]strin
 }
 func (b bearer) RequireTransportSecurity() bool { return b.secure }
 
-func (t target) admin() (pb.AdminServiceClient, func(), error) {
+func (t *target) admin() (pb.AdminServiceClient, func(), error) {
 	key, err := t.adminKey()
 	if err != nil {
 		return nil, nil, err
+	}
+	if !t.tls && !loopback(t.addr) {
+		fmt.Fprintf(t.warn, "ktms: warning: sending the admin key to %s without TLS; pass --tls unless this network is private\n", t.addr)
 	}
 	creds := insecure.NewCredentials()
 	if t.tls {
@@ -61,4 +157,40 @@ func (t target) admin() (pb.AdminServiceClient, func(), error) {
 		return nil, nil, err
 	}
 	return pb.NewAdminServiceClient(conn), func() { _ = conn.Close() }, nil
+}
+
+// httpBase is the HTTP API's base URL.
+func (t *target) httpBase() (string, error) {
+	if err := t.resolve(); err != nil {
+		return "", err
+	}
+	return t.http, nil
+}
+
+func (t *target) httpClient() *http.Client {
+	return &http.Client{Transport: &http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
+		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+	}}
+}
+
+func loopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func firstNonEmpty(vs ...string) string {
+	for _, v := range vs {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

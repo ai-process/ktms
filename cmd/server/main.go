@@ -47,6 +47,7 @@ const initialLoadTimeout = 30 * time.Second
 func main() {
 	_ = godotenv.Load() // .env is absent in prod on purpose
 
+	server.Version = version
 	cfg := config.Load()
 	logger.Init(logger.Options{
 		Level: cfg.LogLevel, SentryDSN: cfg.SentryDSN, SentryEnvironment: cfg.SentryEnvironment,
