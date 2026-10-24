@@ -7,6 +7,8 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-10-24
+
 ### Fixed
 - The release publishes the images, the chart and the Homebrew formulas again: GoReleaser takes a
   tap token only as exactly `{{ .Env.HOMEBREW_TAP_TOKEN }}`. 1.3.0 and 1.3.1 have binaries on
@@ -283,7 +285,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/ai-process/ktms/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/ai-process/ktms/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/ai-process/ktms/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/ai-process/ktms/compare/v1.1.0...v1.2.0
