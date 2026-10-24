@@ -61,9 +61,10 @@ signs:
     args: ["sign-blob", "--yes", "--bundle=${signature}", "${artifact}"]
 
 # Developer ID signing and notarization; skipped unless the secrets are set.
+# Templates use `index .Env`: isEnvSet is GoReleaser Pro only and fails the release.
 notarize:
   macos:
-    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+    - enabled: '{{ if index .Env "MACOS_SIGN_P12" }}true{{ else }}false{{ end }}'
       ids: [node, server, cli]
       sign:
         certificate: "{{ .Env.MACOS_SIGN_P12 }}"
@@ -85,8 +86,8 @@ brews:
     repository:
       owner: ai-process
       name: homebrew-tap
-      token: '{{ if isEnvSet "HOMEBREW_TAP_TOKEN" }}{{ .Env.HOMEBREW_TAP_TOKEN }}{{ end }}'
-    skip_upload: '{{ if isEnvSet "HOMEBREW_TAP_TOKEN" }}false{{ else }}true{{ end }}'
+      token: '{{ index .Env "HOMEBREW_TAP_TOKEN" }}'
+    skip_upload: '{{ if index .Env "HOMEBREW_TAP_TOKEN" }}false{{ else }}true{{ end }}'
     test: |
       system "#{bin}/ktms-node", "--version"
   - name: ktms
@@ -97,8 +98,8 @@ brews:
     repository:
       owner: ai-process
       name: homebrew-tap
-      token: '{{ if isEnvSet "HOMEBREW_TAP_TOKEN" }}{{ .Env.HOMEBREW_TAP_TOKEN }}{{ end }}'
-    skip_upload: '{{ if isEnvSet "HOMEBREW_TAP_TOKEN" }}false{{ else }}true{{ end }}'
+      token: '{{ index .Env "HOMEBREW_TAP_TOKEN" }}'
+    skip_upload: '{{ if index .Env "HOMEBREW_TAP_TOKEN" }}false{{ else }}true{{ end }}'
     install: |
       bin.install "ktms"
       generate_completions_from_executable(bin/"ktms", "completion")
