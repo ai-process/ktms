@@ -226,9 +226,7 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 			effort = m.Efforts[0]
 		}
 		tr.matched(effort)
-		cands := router.ExplainChain(snap, []string{req.GetModelOverride()}, id.KeyID, effort, req.GetEnableGoogleSearch(), tr.capabilities(req)...)
-		tr.add(cands...)
-		models, err := router.Kept(cands)
+		models, err := tr.filter(snap, []string{req.GetModelOverride()}, id.KeyID, effort, req.GetEnableGoogleSearch(), tr.capabilities(req))
 		if err != nil {
 			return nil, router.ToStatus(err)
 		}
@@ -281,9 +279,7 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 	tr.start(routeMode, chain, rule)
 
 	reqCaps := tr.capabilities(req)
-	cands := router.ExplainChain(snap, chain, id.KeyID, effort, req.GetEnableGoogleSearch(), reqCaps...)
-	tr.add(cands...)
-	models, err := router.Kept(cands)
+	models, err := tr.filter(snap, chain, id.KeyID, effort, req.GetEnableGoogleSearch(), reqCaps)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}

@@ -467,10 +467,9 @@ service AdminService {
   rpc GetTeamSpend(GetTeamSpendRequest) returns (GetTeamSpendResponse);
   rpc GetSpend(GetSpendRequest) returns (GetSpendResponse);
 
-  // ExplainRoute dry-runs routing for a client key on the same code as
-  // GenerateText: the rule a request would match and every model of its
-  // chain, kept or dropped with the reason. It calls no vendor or judge and
-  // spends no limit. A read, so admin:read is enough.
+  // ExplainRoute dry-runs GenerateText's routing for a client key: the rule
+  // and every model of its chain, kept or dropped with the reason. No vendor
+  // or judge is called and nothing is spent; rate limits are not checked.
   rpc ExplainRoute(ExplainRouteRequest) returns (ExplainRouteResponse);
 }
 
@@ -487,10 +486,9 @@ message ExplainRouteRequest {
 message RouteCandidate {
   string model_id = 1;
   string vendor = 2;
-  // Empty when the model stays in the chain. Otherwise why it was dropped:
-  // not_found (disabled or deleted), effort, capability, no_vendor_key,
-  // key_policy, team_policy, placement, circuit_open, vendor_paused (see
-  // paused_for), node_unavailable, node_pool_disabled. New reasons may appear.
+  // Why the model was dropped, empty if it stays: not_found, effort, capability, no_vendor_key,
+  // key_policy, team_policy, placement, circuit_open, vendor_paused (paused_for),
+  // node_unavailable, node_pool_disabled. New reasons may appear.
   string dropped = 3;
   google.protobuf.Duration paused_for = 4; // vendor_paused: until the vendor's Retry-After ends
 }
@@ -506,7 +504,7 @@ message ExplainRouteResponse {
   string shadow_model = 8; // mirrored model, if the rule mirrors and it is callable
   double shadow_percentage = 9;
   bool judge_skipped = 10; // auto_route without effort: a real call would ask the judge first
-  // Set when a real call would fail before reaching a vendor: the gRPC code
-  // and message it would return, e.g. "FAILED_PRECONDITION: no_vendor_key".
+  // The code and message a real call would fail with before any vendor, as in the
+  // error contract, e.g. "FAILED_PRECONDITION: no_vendor_key"; empty if it would go out.
   string error = 11;
 }

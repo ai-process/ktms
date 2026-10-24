@@ -937,7 +937,8 @@ ktms mcp                                      # tools for AI assistants, see bel
 such a request would go: the rule, every model of its chain kept or dropped with the reason (no
 vendor key, key or team policy, capability, placement, circuit open, vendor paused, no node), and
 what a call would try. It runs Keystone's own routing (`AdminService/ExplainRoute`), calls no vendor
-or judge and spends nothing; with `--auto` and no effort it shows the judge's fallback, medium.
+or judge and spends nothing; rate limits and budgets are not checked. With `--auto` and no effort it
+shows the judge's fallback, medium.
 
 `admin:read` is enough for everything that only reads (`list`, `get`, `route explain`,
 `config plan|export`).

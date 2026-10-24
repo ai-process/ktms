@@ -104,6 +104,21 @@ func (b *Breaker) Allow() bool {
 	return allowed
 }
 
+// WouldAllow is Allow without its effects: it takes no probe slot and moves no
+// state, for a dry run of routing.
+func (b *Breaker) WouldAllow() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := b.now()
+	switch b.state {
+	case StateOpen:
+		return now.Sub(b.openedAt) >= b.cooldown
+	case StateHalfOpen:
+		return !b.probeInProgress || now.Sub(b.probeStartedAt) > b.cooldown
+	}
+	return true
+}
+
 // Release frees any active probe lock when a request was admitted by Allow but skipped
 // before calling the upstream vendor (e.g. rate limits or pre-call errors).
 func (b *Breaker) Release() {
@@ -260,6 +275,18 @@ func (m *Manager) State(vendor, model string) State {
 		return StateClosed
 	}
 	return b.State()
+}
+
+// WouldAllow reports whether Allow would let a call through, changing nothing.
+func (m *Manager) WouldAllow(vendor, model string) bool {
+	if !m.cfg.Enabled {
+		return true
+	}
+	key := vendor + "/" + model
+	m.mu.RLock()
+	b, ok := m.breakers[key]
+	m.mu.RUnlock()
+	return !ok || b.WouldAllow()
 }
 
 // IsClosed reports whether the model breaker is in CLOSED state.

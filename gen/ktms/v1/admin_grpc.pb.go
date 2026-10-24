@@ -94,10 +94,9 @@ type AdminServiceClient interface {
 	DeleteTeam(ctx context.Context, in *DeleteTeamRequest, opts ...grpc.CallOption) (*DeleteTeamResponse, error)
 	GetTeamSpend(ctx context.Context, in *GetTeamSpendRequest, opts ...grpc.CallOption) (*GetTeamSpendResponse, error)
 	GetSpend(ctx context.Context, in *GetSpendRequest, opts ...grpc.CallOption) (*GetSpendResponse, error)
-	// ExplainRoute dry-runs routing for a client key on the same code as
-	// GenerateText: the rule a request would match and every model of its
-	// chain, kept or dropped with the reason. It calls no vendor or judge and
-	// spends no limit. A read, so admin:read is enough.
+	// ExplainRoute dry-runs GenerateText's routing for a client key: the rule
+	// and every model of its chain, kept or dropped with the reason. No vendor
+	// or judge is called and nothing is spent; rate limits are not checked.
 	ExplainRoute(ctx context.Context, in *ExplainRouteRequest, opts ...grpc.CallOption) (*ExplainRouteResponse, error)
 }
 
@@ -479,10 +478,9 @@ type AdminServiceServer interface {
 	DeleteTeam(context.Context, *DeleteTeamRequest) (*DeleteTeamResponse, error)
 	GetTeamSpend(context.Context, *GetTeamSpendRequest) (*GetTeamSpendResponse, error)
 	GetSpend(context.Context, *GetSpendRequest) (*GetSpendResponse, error)
-	// ExplainRoute dry-runs routing for a client key on the same code as
-	// GenerateText: the rule a request would match and every model of its
-	// chain, kept or dropped with the reason. It calls no vendor or judge and
-	// spends no limit. A read, so admin:read is enough.
+	// ExplainRoute dry-runs GenerateText's routing for a client key: the rule
+	// and every model of its chain, kept or dropped with the reason. No vendor
+	// or judge is called and nothing is spent; rate limits are not checked.
 	ExplainRoute(context.Context, *ExplainRouteRequest) (*ExplainRouteResponse, error)
 	mustEmbedUnimplementedAdminServiceServer()
 }

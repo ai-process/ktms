@@ -96,8 +96,10 @@ ktms keys list | grep -q '^e2e ' || fail "keys list misses e2e"
 ktms keys list -o json | grep -q "$KTMS_API_KEY" && fail "keys list shows the key"
 
 echo "--- route explain"
-ktms route explain e2e --effort low | tee "$TMP/explain"
-grep -q "tries: mock-model" "$TMP/explain" || fail "route explain does not route e2e to mock-model"
+# The new vendor key reaches routing within ROUTING_RELOAD_SECONDS.
+routed() { ktms route explain e2e --effort low >"$TMP/explain" && grep -q "tries: mock-model" "$TMP/explain"; }
+retry 15 routed || { cat "$TMP/explain" >&2; fail "route explain does not route e2e to mock-model"; }
+cat "$TMP/explain"
 
 echo "--- chat"
 # The gateway picks up the new configuration within ROUTING_RELOAD_SECONDS.
@@ -123,7 +125,8 @@ KTMS_E2E_BIN="$TMP/ktms" KTMS_E2E_MOCK="http://$P-mock:8000/v1" go test -count=1
 	fail "mcp scenario failed"
 # The rule added through MCP serves a call that carries its attribute, and
 # route explain says so before the call.
-ktms route explain e2e --effort low --attr tier=mcp | grep -q "rule: from-mcp" || fail "route explain misses the MCP rule"
+mcprule() { ktms route explain e2e --effort low --attr tier=mcp | grep -q "rule: from-mcp"; }
+retry 15 mcprule || fail "route explain misses the MCP rule"
 retry 15 sh -c 'ktms chat --attr tier=mcp "Say hi" 2>&1 >/dev/null | grep -q "rule: from-mcp"' || fail "the MCP rule does not route"
 
 echo "cli e2e: ok"

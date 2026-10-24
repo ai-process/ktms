@@ -89,29 +89,8 @@ func (s *Selector) SelectNodeForCapability(ctx context.Context, modelID string, 
 	}
 
 	for _, n := range nodes {
-		if n.State == pb.NodeState_NODE_STATE_OFFLINE ||
-			n.State == pb.NodeState_NODE_STATE_DRAINING ||
-			n.State == pb.NodeState_NODE_STATE_PAUSED {
-			continue
-		}
-
-		// Find model spec
-		var spec *pb.NodeModelSpec
-		for _, m := range n.Meta.Models {
-			if m.ModelId == modelID {
-				spec = m
-				break
-			}
-		}
+		spec := eligibleSpec(n, modelID, capability)
 		if spec == nil {
-			continue
-		}
-
-		if capability != "" {
-			if !hasCapability(spec.Capabilities, capability) {
-				continue
-			}
-		} else if isJudgeOnly(spec.Capabilities) {
 			continue
 		}
 
@@ -256,6 +235,47 @@ func (s *Selector) SelectNodeForCapability(ctx context.Context, modelID string, 
 		s.curWeight[best.Snapshot.Meta.NodeID] -= totalWeight
 	}
 	return best, nil
+}
+
+// eligibleSpec is the node's spec for modelID if the node may take it at all,
+// before capacity and load balancing; nil otherwise.
+func eligibleSpec(n *NodeSnapshot, modelID, capability string) *pb.NodeModelSpec {
+	if n.State == pb.NodeState_NODE_STATE_OFFLINE ||
+		n.State == pb.NodeState_NODE_STATE_DRAINING ||
+		n.State == pb.NodeState_NODE_STATE_PAUSED {
+		return nil
+	}
+	for _, m := range n.Meta.Models {
+		if m.ModelId != modelID {
+			continue
+		}
+		if capability != "" {
+			if !hasCapability(m.Capabilities, capability) {
+				return nil
+			}
+		} else if isJudgeOnly(m.Capabilities) {
+			return nil
+		}
+		return m
+	}
+	return nil
+}
+
+// Serves reports whether some node may take modelID now, by the same filter
+// SelectNode applies; ExplainRoute asks it instead of guessing.
+func Serves(ctx context.Context, mgr interface {
+	ListNodes(context.Context) ([]*NodeSnapshot, error)
+}, modelID string) (bool, error) {
+	nodes, err := mgr.ListNodes(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, n := range nodes {
+		if eligibleSpec(n, modelID, "") != nil {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func hasCapability(caps []string, target string) bool {

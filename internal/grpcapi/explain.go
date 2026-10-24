@@ -13,6 +13,7 @@ import (
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/nodes"
 	"github.com/ai-process/ktms/internal/proxydb"
 	"github.com/ai-process/ktms/internal/registry"
 	"github.com/ai-process/ktms/internal/router"
@@ -60,6 +61,16 @@ func (t *routeTrace) add(c ...router.Candidate) {
 	}
 }
 
+// filter is router.FilterChain, recording each model's fate when tracing.
+func (t *routeTrace) filter(snap *registry.Snapshot, use []string, keyID, effort string, search bool, caps []string) ([]*proxydb.Model, error) {
+	if t == nil {
+		return router.FilterChain(snap, use, keyID, effort, search, caps...)
+	}
+	cands := router.ExplainChain(snap, use, keyID, effort, search, caps...)
+	t.add(cands...)
+	return router.Kept(cands)
+}
+
 // capabilities are the request's own, plus those the explained request names.
 func (t *routeTrace) capabilities(req *pb.GenerateTextRequest) []string {
 	caps := requiredCapabilities(req)
@@ -102,12 +113,14 @@ func (t *routeTrace) placed(before, after []*proxydb.Model) {
 	}
 }
 
-// ExplainRoute plans a call for id as GenerateText would, through the same
-// planRoute, then marks what Execute would skip right now. Nothing is called
-// and nothing is spent. A call that would fail still returns its trace, with
-// the error the call would get.
+// ExplainRoute runs planRoute with a trace, then marks what Execute would
+// skip now. A routing error comes back with the trace, not instead of it.
 func (s *ProxyServer) ExplainRoute(ctx context.Context, id *apikeys.Identity, in *pb.ExplainRouteRequest) *pb.ExplainRouteResponse {
 	out := &pb.ExplainRouteResponse{}
+	if !id.HasScope(apikeys.ScopeGenerate) {
+		out.Error = statusText(status.Error(codes.PermissionDenied, "apikeys: insufficient scope: need "+apikeys.ScopeGenerate))
+		return out
+	}
 	snap := s.snapshots.Snapshot()
 	if !snap.Configured() {
 		out.Error = statusText(router.ToStatus(router.ErrNotConfigured))
@@ -125,16 +138,18 @@ func (s *ProxyServer) ExplainRoute(ctx context.Context, id *apikeys.Identity, in
 	}
 	plan, err := s.planRoute(ctx, snap, id, req, tr)
 
+	// Execute's order: a vendor pause first, then the breaker, asked without
+	// taking the probe slot a real call would.
 	cooldown := s.cooldownFor(snap, id)
 	for i := range tr.candidates {
 		c := &tr.candidates[i]
 		if c.Dropped != "" || c.Model == nil || err != nil {
 			continue
 		}
-		if s.circuitBreaker != nil && !s.circuitBreaker.IsClosed(c.Model.Vendor, c.Model.ID) {
-			c.Dropped = dropCircuitOpen
-		} else if cooldown != nil && cooldown.Remaining(c.Model) > 0 {
+		if cooldown != nil && cooldown.Remaining(c.Model) > 0 {
 			c.Dropped = dropVendorPaused
+		} else if !s.breakerWouldAllow(c.Model) {
+			c.Dropped = dropCircuitOpen
 		}
 	}
 
@@ -161,13 +176,29 @@ func (s *ProxyServer) ExplainRoute(ctx context.Context, id *apikeys.Identity, in
 			out.Models = append(out.Models, m.ID)
 		}
 	}
-	if plan.shadowModel != nil {
-		out.ShadowModel, out.ShadowPercentage = plan.shadowModel.ID, plan.shadowPercentage
+	// Execute mirrors only to a shadow whose breaker is closed.
+	if m := plan.shadowModel; m != nil && (s.circuitBreaker == nil || s.circuitBreaker.IsClosed(m.Vendor, m.ID)) {
+		out.ShadowModel, out.ShadowPercentage = m.ID, plan.shadowPercentage
 	}
 	if len(out.Models) == 0 {
 		out.Error = statusText(status.Error(codes.Unavailable, "vendors_unavailable"))
 	}
 	return out
+}
+
+// breakerWouldAllow asks without effects when the breaker can; one that
+// cannot is asked whether it is closed, which may hide a due probe.
+func (s *ProxyServer) breakerWouldAllow(m *proxydb.Model) bool {
+	switch cb := s.circuitBreaker.(type) {
+	case nil:
+		return true
+	case interface {
+		WouldAllow(vendor, model string) bool
+	}:
+		return cb.WouldAllow(m.Vendor, m.ID)
+	default:
+		return cb.IsClosed(m.Vendor, m.ID)
+	}
 }
 
 func keptNow(cands []*pb.RouteCandidate, id string) bool {
@@ -222,16 +253,14 @@ func (s *AdminServer) ExplainRoute(ctx context.Context, req *pb.ExplainRouteRequ
 		return nil, status.Errorf(codes.FailedPrecondition, "client key %q is revoked", req.GetApiKeyName())
 	}
 	out := s.explain(ctx, apikeys.IdentityFor(row), req)
-	if err := s.markNodes(ctx, out); err != nil {
-		return nil, err
-	}
+	s.markNodes(ctx, out)
 	return out, nil
 }
 
-// markNodes drops local models no node can take now, as the node selector
-// would find no candidate for them.
-func (s *AdminServer) markNodes(ctx context.Context, out *pb.ExplainRouteResponse) error {
-	var serving map[string]bool
+// markNodes drops local models no node may take now, by the node selector's
+// own filter. If the nodes cannot be listed, the trace still comes back.
+func (s *AdminServer) markNodes(ctx context.Context, out *pb.ExplainRouteResponse) {
+	asked := map[string]bool{}
 	for _, c := range out.GetCandidates() {
 		if c.GetDropped() != "" || c.GetVendor() != registry.VendorLocal {
 			continue
@@ -240,22 +269,16 @@ func (s *AdminServer) markNodes(ctx context.Context, out *pb.ExplainRouteRespons
 			c.Dropped = dropNodePoolDisabled
 			continue
 		}
-		if serving == nil {
-			nodes, err := s.nodeMgr.ListNodes(ctx)
-			if err != nil {
-				return status.Errorf(codes.Unavailable, "list nodes: %v", err)
+		serves, ok := asked[c.GetModelId()]
+		if !ok {
+			var err error
+			if serves, err = nodes.Serves(ctx, s.nodeMgr, c.GetModelId()); err != nil {
+				out.Error = statusText(status.Errorf(codes.Unavailable, "list nodes: %v", err))
+				return
 			}
-			serving = map[string]bool{}
-			for _, n := range nodes {
-				if n.State == pb.NodeState_NODE_STATE_OFFLINE || n.State == pb.NodeState_NODE_STATE_DRAINING || n.State == pb.NodeState_NODE_STATE_PAUSED {
-					continue
-				}
-				for _, m := range n.Meta.Models {
-					serving[m.ModelId] = true
-				}
-			}
+			asked[c.GetModelId()] = serves
 		}
-		if !serving[c.GetModelId()] {
+		if !serves {
 			c.Dropped = dropNodeUnavailable
 		}
 	}
@@ -269,5 +292,4 @@ func (s *AdminServer) markNodes(ctx context.Context, out *pb.ExplainRouteRespons
 	if len(models) == 0 && out.GetError() == "" {
 		out.Error = statusText(status.Error(codes.Unavailable, "vendors_unavailable"))
 	}
-	return nil
 }

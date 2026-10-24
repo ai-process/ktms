@@ -4294,10 +4294,9 @@ type RouteCandidate struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	ModelId string                 `protobuf:"bytes,1,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
 	Vendor  string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`
-	// Empty when the model stays in the chain. Otherwise why it was dropped:
-	// not_found (disabled or deleted), effort, capability, no_vendor_key,
-	// key_policy, team_policy, placement, circuit_open, vendor_paused (see
-	// paused_for), node_unavailable, node_pool_disabled. New reasons may appear.
+	// Why the model was dropped, empty if it stays: not_found, effort, capability, no_vendor_key,
+	// key_policy, team_policy, placement, circuit_open, vendor_paused (paused_for),
+	// node_unavailable, node_pool_disabled. New reasons may appear.
 	Dropped       string               `protobuf:"bytes,3,opt,name=dropped,proto3" json:"dropped,omitempty"`
 	PausedFor     *durationpb.Duration `protobuf:"bytes,4,opt,name=paused_for,json=pausedFor,proto3" json:"paused_for,omitempty"` // vendor_paused: until the vendor's Retry-After ends
 	unknownFields protoimpl.UnknownFields
@@ -4374,8 +4373,8 @@ type ExplainRouteResponse struct {
 	ShadowModel      string                 `protobuf:"bytes,8,opt,name=shadow_model,json=shadowModel,proto3" json:"shadow_model,omitempty"` // mirrored model, if the rule mirrors and it is callable
 	ShadowPercentage float64                `protobuf:"fixed64,9,opt,name=shadow_percentage,json=shadowPercentage,proto3" json:"shadow_percentage,omitempty"`
 	JudgeSkipped     bool                   `protobuf:"varint,10,opt,name=judge_skipped,json=judgeSkipped,proto3" json:"judge_skipped,omitempty"` // auto_route without effort: a real call would ask the judge first
-	// Set when a real call would fail before reaching a vendor: the gRPC code
-	// and message it would return, e.g. "FAILED_PRECONDITION: no_vendor_key".
+	// The code and message a real call would fail with before any vendor, as in the
+	// error contract, e.g. "FAILED_PRECONDITION: no_vendor_key"; empty if it would go out.
 	Error         string `protobuf:"bytes,11,opt,name=error,proto3" json:"error,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
