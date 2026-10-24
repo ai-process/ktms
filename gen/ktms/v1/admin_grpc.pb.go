@@ -51,14 +51,15 @@ const (
 	AdminService_DeleteTeam_FullMethodName          = "/ktms.v1.AdminService/DeleteTeam"
 	AdminService_GetTeamSpend_FullMethodName        = "/ktms.v1.AdminService/GetTeamSpend"
 	AdminService_GetSpend_FullMethodName            = "/ktms.v1.AdminService/GetSpend"
+	AdminService_ExplainRoute_FullMethodName        = "/ktms.v1.AdminService/ExplainRoute"
 )
 
 // AdminServiceClient is the client API for AdminService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Admin RPCs require the "admin" scope; the Get* and List* reads also accept
-// "admin:read". Every config mutation validates the resulting full config in
+// Admin RPCs require the "admin" scope; the Get* and List* reads and
+// ExplainRoute also accept "admin:read". Every config mutation validates the resulting full config in
 // one transaction and bumps the config version.
 type AdminServiceClient interface {
 	UpsertModel(ctx context.Context, in *UpsertModelRequest, opts ...grpc.CallOption) (*UpsertModelResponse, error)
@@ -93,6 +94,11 @@ type AdminServiceClient interface {
 	DeleteTeam(ctx context.Context, in *DeleteTeamRequest, opts ...grpc.CallOption) (*DeleteTeamResponse, error)
 	GetTeamSpend(ctx context.Context, in *GetTeamSpendRequest, opts ...grpc.CallOption) (*GetTeamSpendResponse, error)
 	GetSpend(ctx context.Context, in *GetSpendRequest, opts ...grpc.CallOption) (*GetSpendResponse, error)
+	// ExplainRoute dry-runs routing for a client key on the same code as
+	// GenerateText: the rule a request would match and every model of its
+	// chain, kept or dropped with the reason. It calls no vendor or judge and
+	// spends no limit. A read, so admin:read is enough.
+	ExplainRoute(ctx context.Context, in *ExplainRouteRequest, opts ...grpc.CallOption) (*ExplainRouteResponse, error)
 }
 
 type adminServiceClient struct {
@@ -423,12 +429,22 @@ func (c *adminServiceClient) GetSpend(ctx context.Context, in *GetSpendRequest, 
 	return out, nil
 }
 
+func (c *adminServiceClient) ExplainRoute(ctx context.Context, in *ExplainRouteRequest, opts ...grpc.CallOption) (*ExplainRouteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExplainRouteResponse)
+	err := c.cc.Invoke(ctx, AdminService_ExplainRoute_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AdminServiceServer is the server API for AdminService service.
 // All implementations must embed UnimplementedAdminServiceServer
 // for forward compatibility.
 //
-// Admin RPCs require the "admin" scope; the Get* and List* reads also accept
-// "admin:read". Every config mutation validates the resulting full config in
+// Admin RPCs require the "admin" scope; the Get* and List* reads and
+// ExplainRoute also accept "admin:read". Every config mutation validates the resulting full config in
 // one transaction and bumps the config version.
 type AdminServiceServer interface {
 	UpsertModel(context.Context, *UpsertModelRequest) (*UpsertModelResponse, error)
@@ -463,6 +479,11 @@ type AdminServiceServer interface {
 	DeleteTeam(context.Context, *DeleteTeamRequest) (*DeleteTeamResponse, error)
 	GetTeamSpend(context.Context, *GetTeamSpendRequest) (*GetTeamSpendResponse, error)
 	GetSpend(context.Context, *GetSpendRequest) (*GetSpendResponse, error)
+	// ExplainRoute dry-runs routing for a client key on the same code as
+	// GenerateText: the rule a request would match and every model of its
+	// chain, kept or dropped with the reason. It calls no vendor or judge and
+	// spends no limit. A read, so admin:read is enough.
+	ExplainRoute(context.Context, *ExplainRouteRequest) (*ExplainRouteResponse, error)
 	mustEmbedUnimplementedAdminServiceServer()
 }
 
@@ -568,6 +589,9 @@ func (UnimplementedAdminServiceServer) GetTeamSpend(context.Context, *GetTeamSpe
 }
 func (UnimplementedAdminServiceServer) GetSpend(context.Context, *GetSpendRequest) (*GetSpendResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSpend not implemented")
+}
+func (UnimplementedAdminServiceServer) ExplainRoute(context.Context, *ExplainRouteRequest) (*ExplainRouteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExplainRoute not implemented")
 }
 func (UnimplementedAdminServiceServer) mustEmbedUnimplementedAdminServiceServer() {}
 func (UnimplementedAdminServiceServer) testEmbeddedByValue()                      {}
@@ -1166,6 +1190,24 @@ func _AdminService_GetSpend_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AdminService_ExplainRoute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExplainRouteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).ExplainRoute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_ExplainRoute_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).ExplainRoute(ctx, req.(*ExplainRouteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AdminService_ServiceDesc is the grpc.ServiceDesc for AdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1300,6 +1342,10 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSpend",
 			Handler:    _AdminService_GetSpend_Handler,
+		},
+		{
+			MethodName: "ExplainRoute",
+			Handler:    _AdminService_ExplainRoute_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

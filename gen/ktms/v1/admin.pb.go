@@ -9,6 +9,7 @@ package ktmsv1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -4197,11 +4198,301 @@ func (x *GetSpendResponse) GetWindows() []*SpendWindow {
 	return nil
 }
 
+type ExplainRouteRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ApiKeyName    string                 `protobuf:"bytes,1,opt,name=api_key_name,json=apiKeyName,proto3" json:"api_key_name,omitempty"`                                                       // the client key the request would carry
+	Effort        Effort                 `protobuf:"varint,2,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"`                                                              // as in GenerateTextRequest; with auto_route, the effort the judge would otherwise pick
+	AutoRoute     bool                   `protobuf:"varint,3,opt,name=auto_route,json=autoRoute,proto3" json:"auto_route,omitempty"`                                                           // as in GenerateTextRequest; without an effort the judge is not called (judge_skipped)
+	Attributes    map[string]string      `protobuf:"bytes,4,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // request attributes the rules match on, user_id and canary_key included
+	Placement     string                 `protobuf:"bytes,5,opt,name=placement,proto3" json:"placement,omitempty"`                                                                             // nodes_first | nodes_only | cloud_first | cloud_only, empty for the rule's default
+	ModelOverride string                 `protobuf:"bytes,6,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`                                                // as in GenerateTextRequest
+	Capabilities  []string               `protobuf:"bytes,7,rep,name=capabilities,proto3" json:"capabilities,omitempty"`                                                                       // capabilities the request needs, e.g. "google_search"
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExplainRouteRequest) Reset() {
+	*x = ExplainRouteRequest{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[76]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExplainRouteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExplainRouteRequest) ProtoMessage() {}
+
+func (x *ExplainRouteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[76]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExplainRouteRequest.ProtoReflect.Descriptor instead.
+func (*ExplainRouteRequest) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{76}
+}
+
+func (x *ExplainRouteRequest) GetApiKeyName() string {
+	if x != nil {
+		return x.ApiKeyName
+	}
+	return ""
+}
+
+func (x *ExplainRouteRequest) GetEffort() Effort {
+	if x != nil {
+		return x.Effort
+	}
+	return Effort_EFFORT_UNSPECIFIED
+}
+
+func (x *ExplainRouteRequest) GetAutoRoute() bool {
+	if x != nil {
+		return x.AutoRoute
+	}
+	return false
+}
+
+func (x *ExplainRouteRequest) GetAttributes() map[string]string {
+	if x != nil {
+		return x.Attributes
+	}
+	return nil
+}
+
+func (x *ExplainRouteRequest) GetPlacement() string {
+	if x != nil {
+		return x.Placement
+	}
+	return ""
+}
+
+func (x *ExplainRouteRequest) GetModelOverride() string {
+	if x != nil {
+		return x.ModelOverride
+	}
+	return ""
+}
+
+func (x *ExplainRouteRequest) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
+type RouteCandidate struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	ModelId string                 `protobuf:"bytes,1,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
+	Vendor  string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`
+	// Empty when the model stays in the chain. Otherwise why it was dropped:
+	// not_found (disabled or deleted), effort, capability, no_vendor_key,
+	// key_policy, team_policy, placement, circuit_open, vendor_paused (see
+	// paused_for), node_unavailable, node_pool_disabled. New reasons may appear.
+	Dropped       string               `protobuf:"bytes,3,opt,name=dropped,proto3" json:"dropped,omitempty"`
+	PausedFor     *durationpb.Duration `protobuf:"bytes,4,opt,name=paused_for,json=pausedFor,proto3" json:"paused_for,omitempty"` // vendor_paused: until the vendor's Retry-After ends
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RouteCandidate) Reset() {
+	*x = RouteCandidate{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[77]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RouteCandidate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RouteCandidate) ProtoMessage() {}
+
+func (x *RouteCandidate) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[77]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RouteCandidate.ProtoReflect.Descriptor instead.
+func (*RouteCandidate) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{77}
+}
+
+func (x *RouteCandidate) GetModelId() string {
+	if x != nil {
+		return x.ModelId
+	}
+	return ""
+}
+
+func (x *RouteCandidate) GetVendor() string {
+	if x != nil {
+		return x.Vendor
+	}
+	return ""
+}
+
+func (x *RouteCandidate) GetDropped() string {
+	if x != nil {
+		return x.Dropped
+	}
+	return ""
+}
+
+func (x *RouteCandidate) GetPausedFor() *durationpb.Duration {
+	if x != nil {
+		return x.PausedFor
+	}
+	return nil
+}
+
+type ExplainRouteResponse struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Rule             string                 `protobuf:"bytes,1,opt,name=rule,proto3" json:"rule,omitempty"`                                  // the matched rule; empty with model_override
+	Effort           string                 `protobuf:"bytes,2,opt,name=effort,proto3" json:"effort,omitempty"`                              // the effort matched on
+	RouteMode        string                 `protobuf:"bytes,3,opt,name=route_mode,json=routeMode,proto3" json:"route_mode,omitempty"`       // direct | override | auto-effort | auto-default, as X-KTMS-Route-Mode
+	Chain            []string               `protobuf:"bytes,4,rep,name=chain,proto3" json:"chain,omitempty"`                                // the rule's chain after the canary draw
+	Candidates       []*RouteCandidate      `protobuf:"bytes,5,rep,name=candidates,proto3" json:"candidates,omitempty"`                      // every model of chain, in order
+	Models           []string               `protobuf:"bytes,6,rep,name=models,proto3" json:"models,omitempty"`                              // what a call would try, in order: the kept candidates
+	Weights          []int32                `protobuf:"varint,7,rep,packed,name=weights,proto3" json:"weights,omitempty"`                    // the rule's canary weights over its use list; empty = none
+	ShadowModel      string                 `protobuf:"bytes,8,opt,name=shadow_model,json=shadowModel,proto3" json:"shadow_model,omitempty"` // mirrored model, if the rule mirrors and it is callable
+	ShadowPercentage float64                `protobuf:"fixed64,9,opt,name=shadow_percentage,json=shadowPercentage,proto3" json:"shadow_percentage,omitempty"`
+	JudgeSkipped     bool                   `protobuf:"varint,10,opt,name=judge_skipped,json=judgeSkipped,proto3" json:"judge_skipped,omitempty"` // auto_route without effort: a real call would ask the judge first
+	// Set when a real call would fail before reaching a vendor: the gRPC code
+	// and message it would return, e.g. "FAILED_PRECONDITION: no_vendor_key".
+	Error         string `protobuf:"bytes,11,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExplainRouteResponse) Reset() {
+	*x = ExplainRouteResponse{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[78]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExplainRouteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExplainRouteResponse) ProtoMessage() {}
+
+func (x *ExplainRouteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[78]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExplainRouteResponse.ProtoReflect.Descriptor instead.
+func (*ExplainRouteResponse) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{78}
+}
+
+func (x *ExplainRouteResponse) GetRule() string {
+	if x != nil {
+		return x.Rule
+	}
+	return ""
+}
+
+func (x *ExplainRouteResponse) GetEffort() string {
+	if x != nil {
+		return x.Effort
+	}
+	return ""
+}
+
+func (x *ExplainRouteResponse) GetRouteMode() string {
+	if x != nil {
+		return x.RouteMode
+	}
+	return ""
+}
+
+func (x *ExplainRouteResponse) GetChain() []string {
+	if x != nil {
+		return x.Chain
+	}
+	return nil
+}
+
+func (x *ExplainRouteResponse) GetCandidates() []*RouteCandidate {
+	if x != nil {
+		return x.Candidates
+	}
+	return nil
+}
+
+func (x *ExplainRouteResponse) GetModels() []string {
+	if x != nil {
+		return x.Models
+	}
+	return nil
+}
+
+func (x *ExplainRouteResponse) GetWeights() []int32 {
+	if x != nil {
+		return x.Weights
+	}
+	return nil
+}
+
+func (x *ExplainRouteResponse) GetShadowModel() string {
+	if x != nil {
+		return x.ShadowModel
+	}
+	return ""
+}
+
+func (x *ExplainRouteResponse) GetShadowPercentage() float64 {
+	if x != nil {
+		return x.ShadowPercentage
+	}
+	return 0
+}
+
+func (x *ExplainRouteResponse) GetJudgeSkipped() bool {
+	if x != nil {
+		return x.JudgeSkipped
+	}
+	return false
+}
+
+func (x *ExplainRouteResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_ktms_v1_admin_proto protoreflect.FileDescriptor
 
 const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\n" +
-	"\x13ktms/v1/admin.proto\x12\aktms.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15ktms/v1/gateway.proto\"\xcb\x06\n" +
+	"\x13ktms/v1/admin.proto\x12\aktms.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15ktms/v1/gateway.proto\"\xcb\x06\n" +
 	"\tModelSpec\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06vendor\x18\x02 \x01(\tR\x06vendor\x12\x1a\n" +
@@ -4483,7 +4774,44 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\tresets_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bresetsAt\x12\x18\n" +
 	"\ametered\x18\x06 \x01(\bR\ametered\"B\n" +
 	"\x10GetSpendResponse\x12.\n" +
-	"\awindows\x18\x01 \x03(\v2\x14.ktms.v1.SpendWindowR\awindows2\xea\x13\n" +
+	"\awindows\x18\x01 \x03(\v2\x14.ktms.v1.SpendWindowR\awindows\"\xf5\x02\n" +
+	"\x13ExplainRouteRequest\x12 \n" +
+	"\fapi_key_name\x18\x01 \x01(\tR\n" +
+	"apiKeyName\x12'\n" +
+	"\x06effort\x18\x02 \x01(\x0e2\x0f.ktms.v1.EffortR\x06effort\x12\x1d\n" +
+	"\n" +
+	"auto_route\x18\x03 \x01(\bR\tautoRoute\x12L\n" +
+	"\n" +
+	"attributes\x18\x04 \x03(\v2,.ktms.v1.ExplainRouteRequest.AttributesEntryR\n" +
+	"attributes\x12\x1c\n" +
+	"\tplacement\x18\x05 \x01(\tR\tplacement\x12%\n" +
+	"\x0emodel_override\x18\x06 \x01(\tR\rmodelOverride\x12\"\n" +
+	"\fcapabilities\x18\a \x03(\tR\fcapabilities\x1a=\n" +
+	"\x0fAttributesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x97\x01\n" +
+	"\x0eRouteCandidate\x12\x19\n" +
+	"\bmodel_id\x18\x01 \x01(\tR\amodelId\x12\x16\n" +
+	"\x06vendor\x18\x02 \x01(\tR\x06vendor\x12\x18\n" +
+	"\adropped\x18\x03 \x01(\tR\adropped\x128\n" +
+	"\n" +
+	"paused_for\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\tpausedFor\"\xed\x02\n" +
+	"\x14ExplainRouteResponse\x12\x12\n" +
+	"\x04rule\x18\x01 \x01(\tR\x04rule\x12\x16\n" +
+	"\x06effort\x18\x02 \x01(\tR\x06effort\x12\x1d\n" +
+	"\n" +
+	"route_mode\x18\x03 \x01(\tR\trouteMode\x12\x14\n" +
+	"\x05chain\x18\x04 \x03(\tR\x05chain\x127\n" +
+	"\n" +
+	"candidates\x18\x05 \x03(\v2\x17.ktms.v1.RouteCandidateR\n" +
+	"candidates\x12\x16\n" +
+	"\x06models\x18\x06 \x03(\tR\x06models\x12\x18\n" +
+	"\aweights\x18\a \x03(\x05R\aweights\x12!\n" +
+	"\fshadow_model\x18\b \x01(\tR\vshadowModel\x12+\n" +
+	"\x11shadow_percentage\x18\t \x01(\x01R\x10shadowPercentage\x12#\n" +
+	"\rjudge_skipped\x18\n" +
+	" \x01(\bR\fjudgeSkipped\x12\x14\n" +
+	"\x05error\x18\v \x01(\tR\x05error2\xb7\x14\n" +
 	"\fAdminService\x12H\n" +
 	"\vUpsertModel\x12\x1b.ktms.v1.UpsertModelRequest\x1a\x1c.ktms.v1.UpsertModelResponse\x12H\n" +
 	"\vDeleteModel\x12\x1b.ktms.v1.DeleteModelRequest\x1a\x1c.ktms.v1.DeleteModelResponse\x12K\n" +
@@ -4520,7 +4848,8 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\n" +
 	"DeleteTeam\x12\x1a.ktms.v1.DeleteTeamRequest\x1a\x1b.ktms.v1.DeleteTeamResponse\x12K\n" +
 	"\fGetTeamSpend\x12\x1c.ktms.v1.GetTeamSpendRequest\x1a\x1d.ktms.v1.GetTeamSpendResponse\x12?\n" +
-	"\bGetSpend\x12\x18.ktms.v1.GetSpendRequest\x1a\x19.ktms.v1.GetSpendResponseB\x85\x01\n" +
+	"\bGetSpend\x12\x18.ktms.v1.GetSpendRequest\x1a\x19.ktms.v1.GetSpendResponse\x12K\n" +
+	"\fExplainRoute\x12\x1c.ktms.v1.ExplainRouteRequest\x1a\x1d.ktms.v1.ExplainRouteResponseB\x85\x01\n" +
 	"\vcom.ktms.v1B\n" +
 	"AdminProtoP\x01Z-github.com/ai-process/ktms/gen/ktms/v1;ktmsv1\xa2\x02\x03KXX\xaa\x02\aKtms.V1\xca\x02\aKtms\\V1\xe2\x02\x13Ktms\\V1\\GPBMetadata\xea\x02\bKtms::V1b\x06proto3"
 
@@ -4536,7 +4865,7 @@ func file_ktms_v1_admin_proto_rawDescGZIP() []byte {
 	return file_ktms_v1_admin_proto_rawDescData
 }
 
-var file_ktms_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 77)
+var file_ktms_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 81)
 var file_ktms_v1_admin_proto_goTypes = []any{
 	(*ModelSpec)(nil),                   // 0: ktms.v1.ModelSpec
 	(*RuleSpec)(nil),                    // 1: ktms.v1.RuleSpec
@@ -4614,17 +4943,22 @@ var file_ktms_v1_admin_proto_goTypes = []any{
 	(*GetSpendRequest)(nil),             // 73: ktms.v1.GetSpendRequest
 	(*SpendWindow)(nil),                 // 74: ktms.v1.SpendWindow
 	(*GetSpendResponse)(nil),            // 75: ktms.v1.GetSpendResponse
-	nil,                                 // 76: ktms.v1.RuleSpec.AttributesEntry
-	(Effort)(0),                         // 77: ktms.v1.Effort
-	(*timestamppb.Timestamp)(nil),       // 78: google.protobuf.Timestamp
+	(*ExplainRouteRequest)(nil),         // 76: ktms.v1.ExplainRouteRequest
+	(*RouteCandidate)(nil),              // 77: ktms.v1.RouteCandidate
+	(*ExplainRouteResponse)(nil),        // 78: ktms.v1.ExplainRouteResponse
+	nil,                                 // 79: ktms.v1.RuleSpec.AttributesEntry
+	nil,                                 // 80: ktms.v1.ExplainRouteRequest.AttributesEntry
+	(Effort)(0),                         // 81: ktms.v1.Effort
+	(*timestamppb.Timestamp)(nil),       // 82: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),         // 83: google.protobuf.Duration
 }
 var file_ktms_v1_admin_proto_depIdxs = []int32{
-	77, // 0: ktms.v1.ModelSpec.efforts:type_name -> ktms.v1.Effort
-	77, // 1: ktms.v1.RuleSpec.effort:type_name -> ktms.v1.Effort
-	76, // 2: ktms.v1.RuleSpec.attributes:type_name -> ktms.v1.RuleSpec.AttributesEntry
+	81, // 0: ktms.v1.ModelSpec.efforts:type_name -> ktms.v1.Effort
+	81, // 1: ktms.v1.RuleSpec.effort:type_name -> ktms.v1.Effort
+	79, // 2: ktms.v1.RuleSpec.attributes:type_name -> ktms.v1.RuleSpec.AttributesEntry
 	0,  // 3: ktms.v1.UpsertModelRequest.model:type_name -> ktms.v1.ModelSpec
 	1,  // 4: ktms.v1.ReplaceRulesRequest.rules:type_name -> ktms.v1.RuleSpec
-	78, // 5: ktms.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	82, // 5: ktms.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 6: ktms.v1.GetConfigResponse.models:type_name -> ktms.v1.ModelSpec
 	1,  // 7: ktms.v1.GetConfigResponse.rules:type_name -> ktms.v1.RuleSpec
 	12, // 8: ktms.v1.GetConfigResponse.vendor_keys:type_name -> ktms.v1.VendorKeyInfo
@@ -4632,97 +4966,103 @@ var file_ktms_v1_admin_proto_depIdxs = []int32{
 	46, // 10: ktms.v1.GetConfigResponse.spend_limits:type_name -> ktms.v1.SpendLimitSpec
 	16, // 11: ktms.v1.MintAPIKeyRequest.policy:type_name -> ktms.v1.APIKeyPolicy
 	16, // 12: ktms.v1.SetAPIKeyPolicyRequest.policy:type_name -> ktms.v1.APIKeyPolicy
-	78, // 13: ktms.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	82, // 13: ktms.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
 	16, // 14: ktms.v1.APIKeyInfo.policy:type_name -> ktms.v1.APIKeyPolicy
 	23, // 15: ktms.v1.ListAPIKeysResponse.keys:type_name -> ktms.v1.APIKeyInfo
-	78, // 16: ktms.v1.NodeKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	82, // 16: ktms.v1.NodeKeyInfo.created_at:type_name -> google.protobuf.Timestamp
 	32, // 17: ktms.v1.ListNodeKeysResponse.keys:type_name -> ktms.v1.NodeKeyInfo
-	78, // 18: ktms.v1.NodeInfo.last_heartbeat:type_name -> google.protobuf.Timestamp
+	82, // 18: ktms.v1.NodeInfo.last_heartbeat:type_name -> google.protobuf.Timestamp
 	35, // 19: ktms.v1.ListNodesResponse.nodes:type_name -> ktms.v1.NodeInfo
 	39, // 20: ktms.v1.SetUserRateLimitRequest.rate_limit:type_name -> ktms.v1.UserRateLimitSpec
 	39, // 21: ktms.v1.ListUserRateLimitsResponse.rate_limits:type_name -> ktms.v1.UserRateLimitSpec
 	46, // 22: ktms.v1.SetSpendLimitRequest.spend_limit:type_name -> ktms.v1.SpendLimitSpec
 	46, // 23: ktms.v1.ListSpendLimitsResponse.spend_limits:type_name -> ktms.v1.SpendLimitSpec
-	78, // 24: ktms.v1.Organization.created_at:type_name -> google.protobuf.Timestamp
-	78, // 25: ktms.v1.Team.created_at:type_name -> google.protobuf.Timestamp
+	82, // 24: ktms.v1.Organization.created_at:type_name -> google.protobuf.Timestamp
+	82, // 25: ktms.v1.Team.created_at:type_name -> google.protobuf.Timestamp
 	53, // 26: ktms.v1.CreateOrganizationResponse.organization:type_name -> ktms.v1.Organization
 	53, // 27: ktms.v1.ListOrganizationsResponse.organizations:type_name -> ktms.v1.Organization
 	54, // 28: ktms.v1.CreateTeamResponse.team:type_name -> ktms.v1.Team
 	54, // 29: ktms.v1.GetTeamResponse.team:type_name -> ktms.v1.Team
 	54, // 30: ktms.v1.ListTeamsResponse.teams:type_name -> ktms.v1.Team
 	54, // 31: ktms.v1.UpdateTeamResponse.team:type_name -> ktms.v1.Team
-	78, // 32: ktms.v1.GetTeamSpendResponse.resets_at:type_name -> google.protobuf.Timestamp
-	78, // 33: ktms.v1.SpendWindow.resets_at:type_name -> google.protobuf.Timestamp
+	82, // 32: ktms.v1.GetTeamSpendResponse.resets_at:type_name -> google.protobuf.Timestamp
+	82, // 33: ktms.v1.SpendWindow.resets_at:type_name -> google.protobuf.Timestamp
 	74, // 34: ktms.v1.GetSpendResponse.windows:type_name -> ktms.v1.SpendWindow
-	2,  // 35: ktms.v1.AdminService.UpsertModel:input_type -> ktms.v1.UpsertModelRequest
-	4,  // 36: ktms.v1.AdminService.DeleteModel:input_type -> ktms.v1.DeleteModelRequest
-	6,  // 37: ktms.v1.AdminService.ReplaceRules:input_type -> ktms.v1.ReplaceRulesRequest
-	8,  // 38: ktms.v1.AdminService.SetVendorKey:input_type -> ktms.v1.SetVendorKeyRequest
-	10, // 39: ktms.v1.AdminService.DeleteVendorKey:input_type -> ktms.v1.DeleteVendorKeyRequest
-	13, // 40: ktms.v1.AdminService.GetConfig:input_type -> ktms.v1.GetConfigRequest
-	15, // 41: ktms.v1.AdminService.MintAPIKey:input_type -> ktms.v1.MintAPIKeyRequest
-	20, // 42: ktms.v1.AdminService.RevokeAPIKey:input_type -> ktms.v1.RevokeAPIKeyRequest
-	22, // 43: ktms.v1.AdminService.ListAPIKeys:input_type -> ktms.v1.ListAPIKeysRequest
-	17, // 44: ktms.v1.AdminService.SetAPIKeyPolicy:input_type -> ktms.v1.SetAPIKeyPolicyRequest
-	25, // 45: ktms.v1.AdminService.RotateEncryption:input_type -> ktms.v1.RotateEncryptionRequest
-	27, // 46: ktms.v1.AdminService.MintNodeKey:input_type -> ktms.v1.MintNodeKeyRequest
-	29, // 47: ktms.v1.AdminService.RevokeNodeKey:input_type -> ktms.v1.RevokeNodeKeyRequest
-	31, // 48: ktms.v1.AdminService.ListNodeKeys:input_type -> ktms.v1.ListNodeKeysRequest
-	34, // 49: ktms.v1.AdminService.ListNodes:input_type -> ktms.v1.ListNodesRequest
-	37, // 50: ktms.v1.AdminService.DrainNode:input_type -> ktms.v1.DrainNodeRequest
-	40, // 51: ktms.v1.AdminService.SetUserRateLimit:input_type -> ktms.v1.SetUserRateLimitRequest
-	42, // 52: ktms.v1.AdminService.DeleteUserRateLimit:input_type -> ktms.v1.DeleteUserRateLimitRequest
-	44, // 53: ktms.v1.AdminService.ListUserRateLimits:input_type -> ktms.v1.ListUserRateLimitsRequest
-	47, // 54: ktms.v1.AdminService.SetSpendLimit:input_type -> ktms.v1.SetSpendLimitRequest
-	49, // 55: ktms.v1.AdminService.DeleteSpendLimit:input_type -> ktms.v1.DeleteSpendLimitRequest
-	51, // 56: ktms.v1.AdminService.ListSpendLimits:input_type -> ktms.v1.ListSpendLimitsRequest
-	55, // 57: ktms.v1.AdminService.CreateOrganization:input_type -> ktms.v1.CreateOrganizationRequest
-	57, // 58: ktms.v1.AdminService.ListOrganizations:input_type -> ktms.v1.ListOrganizationsRequest
-	59, // 59: ktms.v1.AdminService.DeleteOrganization:input_type -> ktms.v1.DeleteOrganizationRequest
-	61, // 60: ktms.v1.AdminService.CreateTeam:input_type -> ktms.v1.CreateTeamRequest
-	63, // 61: ktms.v1.AdminService.GetTeam:input_type -> ktms.v1.GetTeamRequest
-	65, // 62: ktms.v1.AdminService.ListTeams:input_type -> ktms.v1.ListTeamsRequest
-	67, // 63: ktms.v1.AdminService.UpdateTeam:input_type -> ktms.v1.UpdateTeamRequest
-	69, // 64: ktms.v1.AdminService.DeleteTeam:input_type -> ktms.v1.DeleteTeamRequest
-	71, // 65: ktms.v1.AdminService.GetTeamSpend:input_type -> ktms.v1.GetTeamSpendRequest
-	73, // 66: ktms.v1.AdminService.GetSpend:input_type -> ktms.v1.GetSpendRequest
-	3,  // 67: ktms.v1.AdminService.UpsertModel:output_type -> ktms.v1.UpsertModelResponse
-	5,  // 68: ktms.v1.AdminService.DeleteModel:output_type -> ktms.v1.DeleteModelResponse
-	7,  // 69: ktms.v1.AdminService.ReplaceRules:output_type -> ktms.v1.ReplaceRulesResponse
-	9,  // 70: ktms.v1.AdminService.SetVendorKey:output_type -> ktms.v1.SetVendorKeyResponse
-	11, // 71: ktms.v1.AdminService.DeleteVendorKey:output_type -> ktms.v1.DeleteVendorKeyResponse
-	14, // 72: ktms.v1.AdminService.GetConfig:output_type -> ktms.v1.GetConfigResponse
-	19, // 73: ktms.v1.AdminService.MintAPIKey:output_type -> ktms.v1.MintAPIKeyResponse
-	21, // 74: ktms.v1.AdminService.RevokeAPIKey:output_type -> ktms.v1.RevokeAPIKeyResponse
-	24, // 75: ktms.v1.AdminService.ListAPIKeys:output_type -> ktms.v1.ListAPIKeysResponse
-	18, // 76: ktms.v1.AdminService.SetAPIKeyPolicy:output_type -> ktms.v1.SetAPIKeyPolicyResponse
-	26, // 77: ktms.v1.AdminService.RotateEncryption:output_type -> ktms.v1.RotateEncryptionResponse
-	28, // 78: ktms.v1.AdminService.MintNodeKey:output_type -> ktms.v1.MintNodeKeyResponse
-	30, // 79: ktms.v1.AdminService.RevokeNodeKey:output_type -> ktms.v1.RevokeNodeKeyResponse
-	33, // 80: ktms.v1.AdminService.ListNodeKeys:output_type -> ktms.v1.ListNodeKeysResponse
-	36, // 81: ktms.v1.AdminService.ListNodes:output_type -> ktms.v1.ListNodesResponse
-	38, // 82: ktms.v1.AdminService.DrainNode:output_type -> ktms.v1.DrainNodeResponse
-	41, // 83: ktms.v1.AdminService.SetUserRateLimit:output_type -> ktms.v1.SetUserRateLimitResponse
-	43, // 84: ktms.v1.AdminService.DeleteUserRateLimit:output_type -> ktms.v1.DeleteUserRateLimitResponse
-	45, // 85: ktms.v1.AdminService.ListUserRateLimits:output_type -> ktms.v1.ListUserRateLimitsResponse
-	48, // 86: ktms.v1.AdminService.SetSpendLimit:output_type -> ktms.v1.SetSpendLimitResponse
-	50, // 87: ktms.v1.AdminService.DeleteSpendLimit:output_type -> ktms.v1.DeleteSpendLimitResponse
-	52, // 88: ktms.v1.AdminService.ListSpendLimits:output_type -> ktms.v1.ListSpendLimitsResponse
-	56, // 89: ktms.v1.AdminService.CreateOrganization:output_type -> ktms.v1.CreateOrganizationResponse
-	58, // 90: ktms.v1.AdminService.ListOrganizations:output_type -> ktms.v1.ListOrganizationsResponse
-	60, // 91: ktms.v1.AdminService.DeleteOrganization:output_type -> ktms.v1.DeleteOrganizationResponse
-	62, // 92: ktms.v1.AdminService.CreateTeam:output_type -> ktms.v1.CreateTeamResponse
-	64, // 93: ktms.v1.AdminService.GetTeam:output_type -> ktms.v1.GetTeamResponse
-	66, // 94: ktms.v1.AdminService.ListTeams:output_type -> ktms.v1.ListTeamsResponse
-	68, // 95: ktms.v1.AdminService.UpdateTeam:output_type -> ktms.v1.UpdateTeamResponse
-	70, // 96: ktms.v1.AdminService.DeleteTeam:output_type -> ktms.v1.DeleteTeamResponse
-	72, // 97: ktms.v1.AdminService.GetTeamSpend:output_type -> ktms.v1.GetTeamSpendResponse
-	75, // 98: ktms.v1.AdminService.GetSpend:output_type -> ktms.v1.GetSpendResponse
-	67, // [67:99] is the sub-list for method output_type
-	35, // [35:67] is the sub-list for method input_type
-	35, // [35:35] is the sub-list for extension type_name
-	35, // [35:35] is the sub-list for extension extendee
-	0,  // [0:35] is the sub-list for field type_name
+	81, // 35: ktms.v1.ExplainRouteRequest.effort:type_name -> ktms.v1.Effort
+	80, // 36: ktms.v1.ExplainRouteRequest.attributes:type_name -> ktms.v1.ExplainRouteRequest.AttributesEntry
+	83, // 37: ktms.v1.RouteCandidate.paused_for:type_name -> google.protobuf.Duration
+	77, // 38: ktms.v1.ExplainRouteResponse.candidates:type_name -> ktms.v1.RouteCandidate
+	2,  // 39: ktms.v1.AdminService.UpsertModel:input_type -> ktms.v1.UpsertModelRequest
+	4,  // 40: ktms.v1.AdminService.DeleteModel:input_type -> ktms.v1.DeleteModelRequest
+	6,  // 41: ktms.v1.AdminService.ReplaceRules:input_type -> ktms.v1.ReplaceRulesRequest
+	8,  // 42: ktms.v1.AdminService.SetVendorKey:input_type -> ktms.v1.SetVendorKeyRequest
+	10, // 43: ktms.v1.AdminService.DeleteVendorKey:input_type -> ktms.v1.DeleteVendorKeyRequest
+	13, // 44: ktms.v1.AdminService.GetConfig:input_type -> ktms.v1.GetConfigRequest
+	15, // 45: ktms.v1.AdminService.MintAPIKey:input_type -> ktms.v1.MintAPIKeyRequest
+	20, // 46: ktms.v1.AdminService.RevokeAPIKey:input_type -> ktms.v1.RevokeAPIKeyRequest
+	22, // 47: ktms.v1.AdminService.ListAPIKeys:input_type -> ktms.v1.ListAPIKeysRequest
+	17, // 48: ktms.v1.AdminService.SetAPIKeyPolicy:input_type -> ktms.v1.SetAPIKeyPolicyRequest
+	25, // 49: ktms.v1.AdminService.RotateEncryption:input_type -> ktms.v1.RotateEncryptionRequest
+	27, // 50: ktms.v1.AdminService.MintNodeKey:input_type -> ktms.v1.MintNodeKeyRequest
+	29, // 51: ktms.v1.AdminService.RevokeNodeKey:input_type -> ktms.v1.RevokeNodeKeyRequest
+	31, // 52: ktms.v1.AdminService.ListNodeKeys:input_type -> ktms.v1.ListNodeKeysRequest
+	34, // 53: ktms.v1.AdminService.ListNodes:input_type -> ktms.v1.ListNodesRequest
+	37, // 54: ktms.v1.AdminService.DrainNode:input_type -> ktms.v1.DrainNodeRequest
+	40, // 55: ktms.v1.AdminService.SetUserRateLimit:input_type -> ktms.v1.SetUserRateLimitRequest
+	42, // 56: ktms.v1.AdminService.DeleteUserRateLimit:input_type -> ktms.v1.DeleteUserRateLimitRequest
+	44, // 57: ktms.v1.AdminService.ListUserRateLimits:input_type -> ktms.v1.ListUserRateLimitsRequest
+	47, // 58: ktms.v1.AdminService.SetSpendLimit:input_type -> ktms.v1.SetSpendLimitRequest
+	49, // 59: ktms.v1.AdminService.DeleteSpendLimit:input_type -> ktms.v1.DeleteSpendLimitRequest
+	51, // 60: ktms.v1.AdminService.ListSpendLimits:input_type -> ktms.v1.ListSpendLimitsRequest
+	55, // 61: ktms.v1.AdminService.CreateOrganization:input_type -> ktms.v1.CreateOrganizationRequest
+	57, // 62: ktms.v1.AdminService.ListOrganizations:input_type -> ktms.v1.ListOrganizationsRequest
+	59, // 63: ktms.v1.AdminService.DeleteOrganization:input_type -> ktms.v1.DeleteOrganizationRequest
+	61, // 64: ktms.v1.AdminService.CreateTeam:input_type -> ktms.v1.CreateTeamRequest
+	63, // 65: ktms.v1.AdminService.GetTeam:input_type -> ktms.v1.GetTeamRequest
+	65, // 66: ktms.v1.AdminService.ListTeams:input_type -> ktms.v1.ListTeamsRequest
+	67, // 67: ktms.v1.AdminService.UpdateTeam:input_type -> ktms.v1.UpdateTeamRequest
+	69, // 68: ktms.v1.AdminService.DeleteTeam:input_type -> ktms.v1.DeleteTeamRequest
+	71, // 69: ktms.v1.AdminService.GetTeamSpend:input_type -> ktms.v1.GetTeamSpendRequest
+	73, // 70: ktms.v1.AdminService.GetSpend:input_type -> ktms.v1.GetSpendRequest
+	76, // 71: ktms.v1.AdminService.ExplainRoute:input_type -> ktms.v1.ExplainRouteRequest
+	3,  // 72: ktms.v1.AdminService.UpsertModel:output_type -> ktms.v1.UpsertModelResponse
+	5,  // 73: ktms.v1.AdminService.DeleteModel:output_type -> ktms.v1.DeleteModelResponse
+	7,  // 74: ktms.v1.AdminService.ReplaceRules:output_type -> ktms.v1.ReplaceRulesResponse
+	9,  // 75: ktms.v1.AdminService.SetVendorKey:output_type -> ktms.v1.SetVendorKeyResponse
+	11, // 76: ktms.v1.AdminService.DeleteVendorKey:output_type -> ktms.v1.DeleteVendorKeyResponse
+	14, // 77: ktms.v1.AdminService.GetConfig:output_type -> ktms.v1.GetConfigResponse
+	19, // 78: ktms.v1.AdminService.MintAPIKey:output_type -> ktms.v1.MintAPIKeyResponse
+	21, // 79: ktms.v1.AdminService.RevokeAPIKey:output_type -> ktms.v1.RevokeAPIKeyResponse
+	24, // 80: ktms.v1.AdminService.ListAPIKeys:output_type -> ktms.v1.ListAPIKeysResponse
+	18, // 81: ktms.v1.AdminService.SetAPIKeyPolicy:output_type -> ktms.v1.SetAPIKeyPolicyResponse
+	26, // 82: ktms.v1.AdminService.RotateEncryption:output_type -> ktms.v1.RotateEncryptionResponse
+	28, // 83: ktms.v1.AdminService.MintNodeKey:output_type -> ktms.v1.MintNodeKeyResponse
+	30, // 84: ktms.v1.AdminService.RevokeNodeKey:output_type -> ktms.v1.RevokeNodeKeyResponse
+	33, // 85: ktms.v1.AdminService.ListNodeKeys:output_type -> ktms.v1.ListNodeKeysResponse
+	36, // 86: ktms.v1.AdminService.ListNodes:output_type -> ktms.v1.ListNodesResponse
+	38, // 87: ktms.v1.AdminService.DrainNode:output_type -> ktms.v1.DrainNodeResponse
+	41, // 88: ktms.v1.AdminService.SetUserRateLimit:output_type -> ktms.v1.SetUserRateLimitResponse
+	43, // 89: ktms.v1.AdminService.DeleteUserRateLimit:output_type -> ktms.v1.DeleteUserRateLimitResponse
+	45, // 90: ktms.v1.AdminService.ListUserRateLimits:output_type -> ktms.v1.ListUserRateLimitsResponse
+	48, // 91: ktms.v1.AdminService.SetSpendLimit:output_type -> ktms.v1.SetSpendLimitResponse
+	50, // 92: ktms.v1.AdminService.DeleteSpendLimit:output_type -> ktms.v1.DeleteSpendLimitResponse
+	52, // 93: ktms.v1.AdminService.ListSpendLimits:output_type -> ktms.v1.ListSpendLimitsResponse
+	56, // 94: ktms.v1.AdminService.CreateOrganization:output_type -> ktms.v1.CreateOrganizationResponse
+	58, // 95: ktms.v1.AdminService.ListOrganizations:output_type -> ktms.v1.ListOrganizationsResponse
+	60, // 96: ktms.v1.AdminService.DeleteOrganization:output_type -> ktms.v1.DeleteOrganizationResponse
+	62, // 97: ktms.v1.AdminService.CreateTeam:output_type -> ktms.v1.CreateTeamResponse
+	64, // 98: ktms.v1.AdminService.GetTeam:output_type -> ktms.v1.GetTeamResponse
+	66, // 99: ktms.v1.AdminService.ListTeams:output_type -> ktms.v1.ListTeamsResponse
+	68, // 100: ktms.v1.AdminService.UpdateTeam:output_type -> ktms.v1.UpdateTeamResponse
+	70, // 101: ktms.v1.AdminService.DeleteTeam:output_type -> ktms.v1.DeleteTeamResponse
+	72, // 102: ktms.v1.AdminService.GetTeamSpend:output_type -> ktms.v1.GetTeamSpendResponse
+	75, // 103: ktms.v1.AdminService.GetSpend:output_type -> ktms.v1.GetSpendResponse
+	78, // 104: ktms.v1.AdminService.ExplainRoute:output_type -> ktms.v1.ExplainRouteResponse
+	72, // [72:105] is the sub-list for method output_type
+	39, // [39:72] is the sub-list for method input_type
+	39, // [39:39] is the sub-list for extension type_name
+	39, // [39:39] is the sub-list for extension extendee
+	0,  // [0:39] is the sub-list for field type_name
 }
 
 func init() { file_ktms_v1_admin_proto_init() }
@@ -4737,7 +5077,7 @@ func file_ktms_v1_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ktms_v1_admin_proto_rawDesc), len(file_ktms_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   77,
+			NumMessages:   81,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

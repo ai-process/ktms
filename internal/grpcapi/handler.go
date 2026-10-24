@@ -135,7 +135,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		return hit.resp, nil
 	}
 
-	plan, err := s.planRoute(ctx, snap, id, req)
+	plan, err := s.planRoute(ctx, snap, id, req, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +265,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		return sendCachedStream(stream, hit.resp)
 	}
 
-	plan, err := s.planRoute(stream.Context(), snap, id, inner)
+	plan, err := s.planRoute(stream.Context(), snap, id, inner, nil)
 	if err != nil {
 		return err
 	}

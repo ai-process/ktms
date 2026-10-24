@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package ktms.v1;
 
+import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "ktms/v1/gateway.proto";
 
@@ -428,8 +429,8 @@ message GetSpendResponse {
   repeated SpendWindow windows = 1;
 }
 
-// Admin RPCs require the "admin" scope; the Get* and List* reads also accept
-// "admin:read". Every config mutation validates the resulting full config in
+// Admin RPCs require the "admin" scope; the Get* and List* reads and
+// ExplainRoute also accept "admin:read". Every config mutation validates the resulting full config in
 // one transaction and bumps the config version.
 service AdminService {
   rpc UpsertModel(UpsertModelRequest) returns (UpsertModelResponse);
@@ -465,4 +466,47 @@ service AdminService {
   rpc DeleteTeam(DeleteTeamRequest) returns (DeleteTeamResponse);
   rpc GetTeamSpend(GetTeamSpendRequest) returns (GetTeamSpendResponse);
   rpc GetSpend(GetSpendRequest) returns (GetSpendResponse);
+
+  // ExplainRoute dry-runs routing for a client key on the same code as
+  // GenerateText: the rule a request would match and every model of its
+  // chain, kept or dropped with the reason. It calls no vendor or judge and
+  // spends no limit. A read, so admin:read is enough.
+  rpc ExplainRoute(ExplainRouteRequest) returns (ExplainRouteResponse);
+}
+
+message ExplainRouteRequest {
+  string api_key_name = 1; // the client key the request would carry
+  Effort effort = 2; // as in GenerateTextRequest; with auto_route, the effort the judge would otherwise pick
+  bool auto_route = 3; // as in GenerateTextRequest; without an effort the judge is not called (judge_skipped)
+  map<string, string> attributes = 4; // request attributes the rules match on, user_id and canary_key included
+  string placement = 5; // nodes_first | nodes_only | cloud_first | cloud_only, empty for the rule's default
+  string model_override = 6; // as in GenerateTextRequest
+  repeated string capabilities = 7; // capabilities the request needs, e.g. "google_search"
+}
+
+message RouteCandidate {
+  string model_id = 1;
+  string vendor = 2;
+  // Empty when the model stays in the chain. Otherwise why it was dropped:
+  // not_found (disabled or deleted), effort, capability, no_vendor_key,
+  // key_policy, team_policy, placement, circuit_open, vendor_paused (see
+  // paused_for), node_unavailable, node_pool_disabled. New reasons may appear.
+  string dropped = 3;
+  google.protobuf.Duration paused_for = 4; // vendor_paused: until the vendor's Retry-After ends
+}
+
+message ExplainRouteResponse {
+  string rule = 1; // the matched rule; empty with model_override
+  string effort = 2; // the effort matched on
+  string route_mode = 3; // direct | override | auto-effort | auto-default, as X-KTMS-Route-Mode
+  repeated string chain = 4; // the rule's chain after the canary draw
+  repeated RouteCandidate candidates = 5; // every model of chain, in order
+  repeated string models = 6; // what a call would try, in order: the kept candidates
+  repeated int32 weights = 7; // the rule's canary weights over its use list; empty = none
+  string shadow_model = 8; // mirrored model, if the rule mirrors and it is callable
+  double shadow_percentage = 9;
+  bool judge_skipped = 10; // auto_route without effort: a real call would ask the judge first
+  // Set when a real call would fail before reaching a vendor: the gRPC code
+  // and message it would return, e.g. "FAILED_PRECONDITION: no_vendor_key".
+  string error = 11;
 }

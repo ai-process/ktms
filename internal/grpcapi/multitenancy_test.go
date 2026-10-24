@@ -90,7 +90,7 @@ func TestTeamAllowedModels_ChainFiltering(t *testing.T) {
 	ctxM2 := apikeys.WithIdentity(context.Background(), idWithM2)
 	plan, err := server.planRoute(ctxM2, snap, idWithM2, &pb.GenerateTextRequest{
 		Effort: pb.Effort_EFFORT_MEDIUM,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected planRoute error: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestTeamAllowedModels_ChainFiltering(t *testing.T) {
 	}
 	_, err = server.planRoute(ctxM2, snap, idWithM3, &pb.GenerateTextRequest{
 		Effort: pb.Effort_EFFORT_MEDIUM,
-	})
+	}, nil)
 	if status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("expected PermissionDenied when no chain models allowed, got: %v", err)
 	}

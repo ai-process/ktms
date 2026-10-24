@@ -144,34 +144,70 @@ func MatchModality(snap *registry.Snapshot, effort, modalityKey, modality string
 	return nil
 }
 
-// FilterChain narrows a rule's chain to models that can serve this request:
-// right effort, google_search capability when asked for, a vendor key
-// where the vendor needs one, and all required capabilities.
-func FilterChain(snap *registry.Snapshot, use []string, apiKeyID, effort string, needsGoogleSearch bool, requireCapabilities ...string) ([]*proxydb.Model, error) {
-	var out []*proxydb.Model
-	sawCapable := false
+// Why ExplainChain drops a model of a rule's chain.
+const (
+	DropNotFound    = "not_found"
+	DropEffort      = "effort"
+	DropCapability  = "capability"
+	DropNoVendorKey = "no_vendor_key"
+)
+
+// Candidate is one model of a chain and why it was dropped ("" if kept).
+// Model is nil when the chain names a model the snapshot lacks.
+type Candidate struct {
+	ID      string
+	Model   *proxydb.Model
+	Dropped string
+}
+
+// ExplainChain walks the chain as FilterChain does and says what happens to
+// each model. FilterChain is built on it, so ExplainRoute cannot drift from
+// a real call.
+func ExplainChain(snap *registry.Snapshot, use []string, apiKeyID, effort string, needsGoogleSearch bool, requireCapabilities ...string) []Candidate {
+	out := make([]Candidate, 0, len(use))
 outer:
 	for _, id := range use {
 		m, ok := snap.Models[id]
 		if !ok { // disabled since the rule was written
+			out = append(out, Candidate{ID: id, Dropped: DropNotFound})
 			continue
 		}
-		if !registry.Serves(m, effort) {
-			continue
+		c := Candidate{ID: id, Model: m}
+		switch {
+		case !registry.Serves(m, effort):
+			c.Dropped = DropEffort
+		case needsGoogleSearch && !registry.HasCapability(m, registry.CapabilityGoogleSearch):
+			c.Dropped = DropCapability
 		}
-		if needsGoogleSearch && !registry.HasCapability(m, registry.CapabilityGoogleSearch) {
-			continue
-		}
-		for _, cap := range requireCapabilities {
-			if cap != "" && !registry.HasCapability(m, cap) {
-				continue outer
+		if c.Dropped == "" {
+			for _, cap := range requireCapabilities {
+				if cap != "" && !registry.HasCapability(m, cap) {
+					out = append(out, Candidate{ID: id, Model: m, Dropped: DropCapability})
+					continue outer
+				}
+			}
+			if !snap.CanCall(apiKeyID, m) {
+				c.Dropped = DropNoVendorKey
 			}
 		}
-		sawCapable = true
-		if !snap.CanCall(apiKeyID, m) {
-			continue
+		out = append(out, c)
+	}
+	return out
+}
+
+// Kept returns the models ExplainChain kept, or the error a call would get
+// when none is left.
+func Kept(cands []Candidate) ([]*proxydb.Model, error) {
+	var out []*proxydb.Model
+	sawCapable := false
+	for _, c := range cands {
+		switch c.Dropped {
+		case "":
+			out = append(out, c.Model)
+			sawCapable = true
+		case DropNoVendorKey:
+			sawCapable = true
 		}
-		out = append(out, m)
 	}
 	if len(out) == 0 {
 		if sawCapable {
@@ -180,4 +216,11 @@ outer:
 		return nil, ErrNoCapableModel
 	}
 	return out, nil
+}
+
+// FilterChain narrows a rule's chain to models that can serve this request:
+// right effort, google_search capability when asked for, a vendor key
+// where the vendor needs one, and all required capabilities.
+func FilterChain(snap *registry.Snapshot, use []string, apiKeyID, effort string, needsGoogleSearch bool, requireCapabilities ...string) ([]*proxydb.Model, error) {
+	return Kept(ExplainChain(snap, use, apiKeyID, effort, needsGoogleSearch, requireCapabilities...))
 }

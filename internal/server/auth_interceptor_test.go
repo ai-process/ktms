@@ -188,7 +188,7 @@ func TestStreamAuthInterceptor(t *testing.T) {
 // adminReads are the AdminService methods a read key may call. Listed by hand
 // so a new RPC is an admin-only mutation until someone decides otherwise.
 var adminReads = []string{"GetConfig", "ListAPIKeys", "ListNodeKeys", "ListNodes", "ListUserRateLimits",
-	"ListSpendLimits", "ListOrganizations", "GetTeam", "ListTeams", "GetTeamSpend", "GetSpend"}
+	"ListSpendLimits", "ListOrganizations", "GetTeam", "ListTeams", "GetTeamSpend", "GetSpend", "ExplainRoute"}
 
 // A read key reaches every Admin API read and none of the methods that change state.
 func TestAdminReadKeyOnlyReads(t *testing.T) {

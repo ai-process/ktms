@@ -21,6 +21,7 @@ import (
 	"github.com/ai-process/ktms/internal/crypto"
 	"github.com/ai-process/ktms/internal/grpcapi"
 	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
 	"github.com/ai-process/ktms/internal/server"
 	"github.com/ai-process/ktms/migrations"
 )
@@ -81,7 +82,11 @@ func keystone(t *testing.T) string {
 	}
 	addr := lis.Addr().String()
 	_ = lis.Close()
-	srv := server.NewGRPCServer(pb.UnimplementedGatewayServiceServer{}, grpcapi.NewAdminServer(db, ring, nil), nil,
+	// Each change reloads routing at once, so route explain sees it.
+	loader := registry.NewLoader(db, ring, nil)
+	adminSrv := grpcapi.NewAdminServer(db, ring, func() { _ = loader.Load(context.Background()) })
+	adminSrv.SetRouteExplainer(grpcapi.NewProxyServer(loader, nil).ExplainRoute)
+	srv := server.NewGRPCServer(pb.UnimplementedGatewayServiceServer{}, adminSrv, nil,
 		apikeys.NewVerifier(db, bootstrapKey), addr, 0)
 	go func() { _ = srv.Start() }()
 	t.Cleanup(srv.Stop)
@@ -154,6 +159,16 @@ func TestAgainstKeystone(t *testing.T) {
 	if out := must(0, "", "vendor-keys", "list"); !strings.Contains(out, crypto.Fingerprint("sk-vendor")) || strings.Contains(out, "sk-vendor") {
 		t.Fatalf("vendor-keys list: %s", out)
 	}
+
+	// bot holds an openai key now and its team allows gpt-4o-mini only.
+	if out := must(0, "", "route", "explain", "bot", "--effort", "low"); !strings.Contains(out, "rule: default") || !strings.Contains(out, "tries: gpt-4o-mini") {
+		t.Fatalf("route explain:\n%s", out)
+	}
+	if out := must(0, "", "route", "explain", "search-bot", "--effort", "low", "-o", "json"); !strings.Contains(out, `"dropped": "no_vendor_key"`) || !strings.Contains(out, `"error": "FAILED_PRECONDITION: no_vendor_key"`) {
+		t.Fatalf("route explain for a key without vendor keys:\n%s", out)
+	}
+	must(exitNotFound, "", "route", "explain", "ghost", "--effort", "low")
+	must(exitUsage, "", "route", "explain", "bot", "--effort", "extreme")
 
 	must(0, "", "limits", "set", "key", "bot", "day", "2.5")
 	if out := must(0, "", "limits", "list"); !strings.Contains(out, "$2.5000") {

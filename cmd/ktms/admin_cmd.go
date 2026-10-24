@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -792,5 +793,94 @@ func (a *app) vendorKeysCmd() *cobra.Command {
 		},
 	}
 	cmd.AddCommand(ls, set, del)
+	return cmd
+}
+
+var efforts = map[string]pb.Effort{"low": pb.Effort_EFFORT_LOW, "medium": pb.Effort_EFFORT_MEDIUM, "high": pb.Effort_EFFORT_HIGH}
+
+// explainRequest builds ExplainRoute's request from names a person types.
+func explainRequest(key, effort string, auto bool, attrs map[string]string, placement, model string, caps []string) (*pb.ExplainRouteRequest, error) {
+	req := &pb.ExplainRouteRequest{ApiKeyName: key, AutoRoute: auto, Attributes: attrs, Placement: placement, ModelOverride: model, Capabilities: caps}
+	if effort != "" {
+		e, ok := efforts[effort]
+		if !ok {
+			return nil, usageError{fmt.Errorf("effort %q: want low, medium or high", effort)}
+		}
+		req.Effort = e
+	}
+	return req, nil
+}
+
+func (a *app) routeCmd() *cobra.Command {
+	var effort, placement, model, format string
+	var auto bool
+	var attrs map[string]string
+	var caps []string
+	explain := &cobra.Command{
+		Use:   "explain CLIENT_KEY [--effort E | --auto] [--attr k=v] [--placement P] [--model M] [--capability C]",
+		Short: "Show where a request with this key would go, and why each model is kept or dropped",
+		Long: `Dry-run routing on the server, on the same code as a real call: the rule a request
+would match and every model of its chain, kept or dropped with the reason
+(no vendor key, key or team policy, capability, placement, circuit open, vendor
+paused, no node). It calls no vendor or judge and spends no limit.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			p, err := newPrinter(a.stdout, format)
+			if err != nil {
+				return err
+			}
+			req, err := explainRequest(args[0], effort, auto, attrs, placement, model, caps)
+			if err != nil {
+				return err
+			}
+			return a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
+				res, err := c.ExplainRoute(ctx, req)
+				if err != nil {
+					return err
+				}
+				if !p.table() {
+					return p.data(res)
+				}
+				rule := orDash(res.GetRule())
+				fmt.Fprintf(a.stdout, "rule: %s   effort: %s   route mode: %s\n", rule, orDash(res.GetEffort()), orDash(res.GetRouteMode()))
+				if res.GetJudgeSkipped() {
+					fmt.Fprintln(a.stdout, "(auto route without an effort: a real call asks the judge first; shown with its fallback, medium)")
+				}
+				var rows [][]string
+				for i, c := range res.GetCandidates() {
+					state := "kept"
+					if c.GetDropped() != "" {
+						state = "dropped: " + c.GetDropped()
+						if d := c.GetPausedFor(); d != nil {
+							state += fmt.Sprintf(" (%s left)", d.AsDuration().Round(time.Second))
+						}
+					}
+					rows = append(rows, []string{strconv.Itoa(i + 1), c.GetModelId(), orDash(c.GetVendor()), state})
+				}
+				if err := p.rows([]string{"#", "MODEL", "VENDOR", "STATE"}, rows); err != nil {
+					return err
+				}
+				fmt.Fprintf(a.stdout, "tries: %s\n", orDash(strings.Join(res.GetModels(), " → ")))
+				if res.GetShadowModel() != "" {
+					fmt.Fprintf(a.stdout, "shadow: %s at %g%%\n", res.GetShadowModel(), res.GetShadowPercentage())
+				}
+				if res.GetError() != "" {
+					fmt.Fprintf(a.stdout, "a call would fail: %s\n", res.GetError())
+				}
+				return nil
+			})
+		},
+	}
+	f := explain.Flags()
+	f.StringVar(&effort, "effort", "", "low, medium or high")
+	f.BoolVar(&auto, "auto", false, "auto route, as model auto on /v1")
+	f.StringToStringVar(&attrs, "attr", nil, "request attribute key=value, matched by rules")
+	f.StringVar(&placement, "placement", "", "nodes_first, nodes_only, cloud_first or cloud_only")
+	f.StringVar(&model, "model", "", "a model override instead of the rules")
+	f.StringSliceVar(&caps, "capability", nil, "capabilities the request needs, e.g. google_search")
+	_ = explain.RegisterFlagCompletionFunc("effort", cobra.FixedCompletions([]string{"low", "medium", "high"}, cobra.ShellCompDirectiveNoFileComp))
+	outputFlag(explain, &format)
+	cmd := &cobra.Command{Use: "route", Short: "Routing"}
+	cmd.AddCommand(explain)
 	return cmd
 }

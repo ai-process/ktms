@@ -320,6 +320,12 @@ func (v *Verifier) lookup(ctx context.Context, plain, lookup string) (*Identity,
 		return nil, ErrUnauthenticated
 	}
 
+	return IdentityFor(row), nil
+}
+
+// IdentityFor is the caller a client key's row stands for, as Verify builds
+// it; ExplainRoute uses it to route as that key would.
+func IdentityFor(row *proxydb.APIKey) *Identity {
 	var orgID, teamID string
 	if row.OrgID != nil {
 		orgID = *row.OrgID
@@ -337,7 +343,7 @@ func (v *Verifier) lookup(ctx context.Context, plain, lookup string) (*Identity,
 		KeyAllowedModels:  row.AllowedModels,
 		RPMLimit:          row.RPMLimit,
 		TPMLimit:          row.TPMLimit,
-	}, nil
+	}
 }
 
 // VerifyScope authenticates and authorises in one step.
