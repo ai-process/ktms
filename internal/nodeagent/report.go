@@ -269,6 +269,10 @@ func WriteReport(w io.Writer, rep *Report, format string) error {
 			return err
 		}
 		for _, g := range rep.Gaps {
+			if g.From.IsZero() {
+				fmt.Fprintf(w, "\nMissing: the proxy no longer had requests from before %s.\n", fmtTime(g.Until))
+				continue
+			}
 			fmt.Fprintf(w, "\nMissing: the proxy no longer had requests from %s to %s.\n", fmtTime(g.From), fmtTime(g.Until))
 		}
 		if rep.Total.NoDataMin > 0 && rep.By != "model" {
