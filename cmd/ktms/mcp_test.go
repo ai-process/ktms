@@ -167,6 +167,9 @@ rules:
 	if out, _ = callTool(t, ro, "list_keys", nil); strings.Contains(out, "ktms_") || !strings.Contains(out, `"name": "bot"`) {
 		t.Fatalf("list_keys: %s", out)
 	}
+	if out, isErr = callTool(t, ro, "explain_route", map[string]any{"api_key_name": "bot", "effort": "low"}); isErr || !strings.Contains(out, `"rule": "default"`) || !strings.Contains(out, "no_vendor_key") {
+		t.Fatalf("explain_route: %s", out)
+	}
 	if out, isErr = callTool(t, rw, "set_spend_limit", map[string]any{"subject_type": "key", "subject_id": "bot", "period": "day", "limit_usd": 2}); isErr {
 		t.Fatalf("set_spend_limit: %s", out)
 	}

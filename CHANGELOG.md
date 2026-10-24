@@ -21,6 +21,11 @@ All notable changes to KTMS are listed here. The format follows
   plan applies once and only if nothing changed since), key, limit and node tools; the live
   configuration and the file schema as resources; prompts for routing, integration, local nodes
   and a production review.
+- `AdminService/ExplainRoute`: a dry run of routing for a client key on the same code as
+  `GenerateText` (the router's chain filter is now built on it): the matched rule, every model of
+  the chain kept or dropped with the reason, what a call would try, canary weights and the shadow
+  model, or the error a call would get. No vendor or judge is called and nothing is spent; it
+  takes `admin:read`. `ktms route explain` and the MCP tool `explain_route` use it.
 - `/healthz` reports the server's `version`.
 - Configuration as a file: `ktms config validate|plan|apply|export|schema` keeps models, rules,
   organizations and teams, client keys and their policies, vendor keys (from environment

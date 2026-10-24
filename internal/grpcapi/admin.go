@@ -38,6 +38,7 @@ type AdminServer struct {
 	db      *proxydb.DB
 	keyring *crypto.Keyring
 	nodeMgr *nodes.Manager
+	explain RouteExplainer
 	// onChange is called after a successful config mutation so this replica
 	// picks the change up immediately instead of waiting for the poll.
 	onChange func()

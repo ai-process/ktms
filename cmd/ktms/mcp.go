@@ -268,6 +268,23 @@ func (a *app) mcpServer(allowWrite bool) *mcp.Server {
 			}
 			return messages(res.GetKeys()), nil
 		}))
+	mcp.AddTool(srv, tool("explain_route", "Explain a route",
+		"Where a request with this client key would go, on Keystone's own routing code: the matched rule and every model of its chain, kept or dropped with the reason (no_vendor_key, key_policy, team_policy, capability, placement, circuit_open, vendor_paused, node_unavailable, ...). Calls no vendor and spends nothing; auto_route without effort does not ask the judge."+untrusted, read),
+		adminTool(a, func(ctx context.Context, c pb.AdminServiceClient, in struct {
+			Key          string            `json:"api_key_name" jsonschema:"the client key's name"`
+			Effort       string            `json:"effort,omitempty" jsonschema:"low, medium or high"`
+			AutoRoute    bool              `json:"auto_route,omitempty" jsonschema:"auto route, as model auto on /v1"`
+			Attributes   map[string]string `json:"attributes,omitempty" jsonschema:"request attributes the rules match on"`
+			Placement    string            `json:"placement,omitempty" jsonschema:"nodes_first, nodes_only, cloud_first or cloud_only"`
+			Model        string            `json:"model_override,omitempty" jsonschema:"a model instead of the rules"`
+			Capabilities []string          `json:"capabilities,omitempty" jsonschema:"capabilities the request needs, e.g. google_search"`
+		}) (any, error) {
+			req, err := explainRequest(in.Key, in.Effort, in.AutoRoute, in.Attributes, in.Placement, in.Model, in.Capabilities)
+			if err != nil {
+				return nil, err
+			}
+			return c.ExplainRoute(ctx, req)
+		}))
 	mcp.AddTool(srv, tool("health", "Health and version", "Keystone's /healthz and /readyz answers and its version.", read),
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 			ctx, cancel := context.WithTimeout(ctx, a.timeout)

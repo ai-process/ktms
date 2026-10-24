@@ -196,7 +196,8 @@ func (s *ProxyServer) judgeEffort(ctx context.Context, attrs map[string]string, 
 }
 
 // planRoute resolves the model candidate chain, evaluating placement preferences and auto-judge when applicable.
-func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id *apikeys.Identity, req *pb.GenerateTextRequest) (*routePlan, error) {
+// With a trace it also records why each model was dropped, and never calls the judge.
+func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id *apikeys.Identity, req *pb.GenerateTextRequest, tr *routeTrace) (*routePlan, error) {
 	placement := router.NormalizePlacement(req.GetPlacement())
 	isAuto := req.GetAutoRoute()
 	effortSpecified := req.GetEffortSpecified()
@@ -211,22 +212,28 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 	switch {
 	case req.GetModelOverride() != "":
 		routeMode = router.RouteModeOverride
+		tr.start(routeMode, []string{req.GetModelOverride()}, nil)
 		if !id.CanAccessModel(req.GetModelOverride()) {
+			tr.add(router.Candidate{ID: req.GetModelOverride(), Model: snap.Models[req.GetModelOverride()], Dropped: id.DeniedBy(req.GetModelOverride()) + "_policy"})
 			return nil, status.Errorf(codes.PermissionDenied, "model %q not allowed for %s", req.GetModelOverride(), id.DeniedBy(req.GetModelOverride()))
 		}
 		m, ok := snap.Models[req.GetModelOverride()]
 		if !ok {
+			tr.add(router.Candidate{ID: req.GetModelOverride(), Dropped: router.DropNotFound})
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: unknown model %q", req.GetModelOverride())
 		}
 		if effort == "" && len(m.Efforts) > 0 {
 			effort = m.Efforts[0]
 		}
-		models, err := router.FilterChain(snap, []string{req.GetModelOverride()}, id.KeyID, effort, req.GetEnableGoogleSearch(), requiredCapabilities(req)...)
+		tr.matched(effort)
+		models, err := tr.filter(snap, []string{req.GetModelOverride()}, id.KeyID, effort, req.GetEnableGoogleSearch(), tr.capabilities(req))
 		if err != nil {
 			return nil, router.ToStatus(err)
 		}
 		if placement != "" {
+			before := models
 			models, err = router.ApplyPlacement(models, placement)
+			tr.placed(before, models)
 			if err != nil {
 				return nil, router.ToStatus(err)
 			}
@@ -241,6 +248,9 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 	case isAuto:
 		if effortSpecified && effort != "" {
 			routeMode = router.RouteModeAutoEffort
+		} else if tr != nil {
+			// A dry run must not call a model: route as the judge's fallback does.
+			effort, routeMode, tr.judgeSkipped = registry.EffortMedium, router.RouteModeAutoDefault, true
 		} else {
 			jEffort, score, jModel, jErr := s.judgeEffort(ctx, req.GetAttributes(), promptText(req))
 			if jErr == nil && jEffort != "" {
@@ -258,25 +268,31 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 		return nil, status.Error(codes.InvalidArgument, "bad_request: effort is required")
 	}
 
+	tr.matched(effort)
 	rule := router.Match(snap, effort, routingAttributes(req.GetAttributes(), id))
 	if rule == nil {
+		tr.start(routeMode, nil, nil)
 		return nil, router.ToStatus(router.ErrNotConfigured)
 	}
 	canaryKey := router.CanaryKey(req.GetAttributes())
 	chain := router.ResolveChain(rule, canaryKey)
+	tr.start(routeMode, chain, rule)
 
-	reqCaps := requiredCapabilities(req)
-	models, err := router.FilterChain(snap, chain, id.KeyID, effort, req.GetEnableGoogleSearch(), reqCaps...)
+	reqCaps := tr.capabilities(req)
+	models, err := tr.filter(snap, chain, id.KeyID, effort, req.GetEnableGoogleSearch(), reqCaps)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
 
+	tr.policy(ctx, id, models)
 	if models, err = teamModels(ctx, id, models); err != nil {
 		return nil, err
 	}
 
 	if placement != "" {
+		before := models
 		models, err = router.ApplyPlacement(models, placement)
+		tr.placed(before, models)
 		if err != nil {
 			return nil, router.ToStatus(err)
 		}

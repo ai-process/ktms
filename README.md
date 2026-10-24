@@ -65,7 +65,7 @@ Two gRPC services share port `9090`:
 | Service | Purpose | Needed scope |
 | --- | --- | --- |
 | `ktms.v1.GatewayService` | `GenerateText`, `GenerateTextStream`, `SubmitBatch`, `GetBatch`, `ListBatchResults`, `CancelBatch`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `JudgeStream`, `EvaluateRollouts`, `GetEmbeddings`, `ListModels` | `generate` |
-| `ktms.v1.AdminService` | models, rules, vendor keys, API keys, key rotation | `admin`; `admin:read` for the `Get*` and `List*` reads |
+| `ktms.v1.AdminService` | models, rules, vendor keys, API keys, key rotation, `ExplainRoute` | `admin`; `admin:read` for the `Get*` and `List*` reads and `ExplainRoute` |
 
 Port `8080` serves the health probes (`/healthz`, `/readyz`) and the
 [OpenAI-compatible HTTP API](#openai-compatible-http-api) under `/v1`. gRPC server
@@ -535,7 +535,7 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
 
 Keys look like `ktms_<hex>` (keys minted before the rename start with `llm_` and keep working). Only a hash is stored, and the plaintext is returned once.
 Scopes: `generate` (data plane), `admin` (implies everything) and `admin:read` (the Admin API
-reads: `GetConfig`, `GetSpend`, `GetTeam`, `GetTeamSpend` and every `List*`; nothing that changes
+reads: `GetConfig`, `GetSpend`, `GetTeam`, `GetTeamSpend`, `ExplainRoute` and every `List*`; nothing that changes
 state). A read key sees every tenant, so it cannot be bound to an organization or team. `GetConfig`
 never returns a vendor key itself, only its fingerprint.
 `ListAPIKeys` and `RevokeAPIKey` do what they say.
@@ -924,6 +924,7 @@ ktms keys policy set billing --allowed-models gpt-4o-mini --tpm 200000
 ktms chat "Say hi"                            # the answer, then rule, model and vendor
 ktms limits set key billing day 5             # USD per UTC day; * sets the default
 ktms spend get key billing                    # or user ID, team org/team
+ktms route explain billing --effort high      # where it would go, and why
 ktms nodes list; ktms nodes drain gpu-1
 ktms node-keys mint gpu-1 --node-id gpu-1 --allowed-cidrs 10.0.0.0/8
 ktms keys revoke billing                      # asks first; --yes for scripts
@@ -932,7 +933,15 @@ ktms completion zsh > "${fpath[1]}/_ktms"     # also bash and fish
 ktms mcp                                      # tools for AI assistants, see below
 ```
 
-`admin:read` is enough for everything that only reads (`list`, `get`, `config plan|export`).
+`ktms route explain KEY --effort low [--attr k=v] [--placement P] [--model M]` asks Keystone where
+such a request would go: the rule, every model of its chain kept or dropped with the reason (no
+vendor key, key or team policy, capability, placement, circuit open, vendor paused, no node), and
+what a call would try. It runs Keystone's own routing (`AdminService/ExplainRoute`), calls no vendor
+or judge and spends nothing; rate limits and budgets are not checked. With `--auto` and no effort it
+shows the judge's fallback, medium.
+
+`admin:read` is enough for everything that only reads (`list`, `get`, `route explain`,
+`config plan|export`).
 Exit codes follow the [error contract](#error-contract): 0 done, 1 failed, 2 bad usage, 3 plan
 has changes (`--detailed-exitcode`), 4 not authenticated or not allowed, 5 not found, 6 rejected as
 invalid, 7 unavailable or throttled (retry later).
@@ -945,7 +954,7 @@ the same contexts and keys as the CLI; the key never reaches the assistant.
 
 - **Read tools** (the only ones by default): `get_config` (the live configuration as a ktms config
   file), `list_models`, `list_rules`, `list_keys`, `list_vendor_keys`, `list_teams`,
-  `list_spend_limits`, `get_spend`, `list_nodes`, `list_node_keys`, `health`. An `admin:read` key
+  `list_spend_limits`, `get_spend`, `list_nodes`, `list_node_keys`, `explain_route`, `health`. An `admin:read` key
   is enough.
 - **Write tools**, offered only with `--allow-write`: `config_plan` (a ktms config file in, the plan
   and a `plan_id` out; nothing changes) and `config_apply` (applies that plan once, in the session

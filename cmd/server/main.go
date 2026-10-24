@@ -247,6 +247,7 @@ func main() {
 	if rl, ok := limiter.(*throttle.Redis); ok {
 		proxySrv.WithKeyLimiter(rl)
 	}
+	adminSrv.SetRouteExplainer(proxySrv.ExplainRoute)
 	if cfg.CacheEnabled && redisClient != nil {
 		c := cache.New(redisClient, keyring, cfg.CacheTTL, cfg.CacheMaxBytes, cfg.RedisKeyPrefix)
 		proxySrv.WithCache(c)

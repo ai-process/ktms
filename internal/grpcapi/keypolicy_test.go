@@ -30,14 +30,14 @@ func TestKeyAllowedModels(t *testing.T) {
 		Messages: []*pb.ChatMessage{{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: "hi"}}}
 
 	key := &apikeys.Identity{KeyID: "key-1", Name: "k", KeyAllowedModels: []string{"m2"}}
-	plan, err := server.planRoute(context.Background(), snap, key, req)
+	plan, err := server.planRoute(context.Background(), snap, key, req, nil)
 	if err != nil || len(plan.models) != 1 || plan.models[0].ID != "m2" {
 		t.Fatalf("chain = %v, %v; want only m2", plan, err)
 	}
 
 	// Both lists apply: the key allows m2, the team only m1, so nothing is left.
 	both := &apikeys.Identity{KeyID: "key-1", Name: "k", KeyAllowedModels: []string{"m2"}, TeamAllowedModels: []string{"m1"}}
-	if _, err := server.planRoute(context.Background(), snap, both, req); status.Code(err) != codes.PermissionDenied {
+	if _, err := server.planRoute(context.Background(), snap, both, req, nil); status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("key and team lists disjoint: %v, want PermissionDenied", err)
 	}
 
