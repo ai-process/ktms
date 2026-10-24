@@ -430,8 +430,8 @@ message GetSpendResponse {
 }
 
 // Admin RPCs require the "admin" scope; the Get* and List* reads and
-// ExplainRoute also accept "admin:read". Every config mutation validates the resulting full config in
-// one transaction and bumps the config version.
+// ExplainRoute also accept "admin:read". Every config mutation validates the
+// resulting full config in one transaction and bumps the config version.
 service AdminService {
   rpc UpsertModel(UpsertModelRequest) returns (UpsertModelResponse);
   rpc DeleteModel(DeleteModelRequest) returns (DeleteModelResponse);
