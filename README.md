@@ -31,6 +31,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 - [How it works](#how-it-works)
 - [Quick start (Docker Compose)](#quick-start-docker-compose)
   - [With an AI assistant](#with-an-ai-assistant)
+  - [Setting it up from scratch with `ktms init`](#setting-it-up-from-scratch-with-ktms-init)
 - [Resource footprint](#resource-footprint)
 - [Installation](#installation)
   - [Docker image](#docker-image)
@@ -135,41 +136,46 @@ same tasks, starting with [Deploy the stack](https://ai-process.dev/docs/prompts
 
 ---
 
-### Manual Setup via Admin RPC (Advanced)
+### Setting it up from scratch with `ktms init`
 
-If you prefer to configure everything manually from scratch (without auto-seeding), disable `AUTO_SEED=false` and use [`grpcurl`](https://github.com/fullstorydev/grpcurl) with `BOOTSTRAP_ADMIN_KEY`:
+To start without auto-seeding, set `AUTO_SEED=false` and let the [`ktms` command](#command-line-tool)
+ask for the rest:
 
 ```bash
-export ADMIN="authorization: Bearer dev-bootstrap"
-G="grpcurl -plaintext -H"
-
-# 1. Mint a client API key (plaintext is returned once)
-$G "$ADMIN" -d '{"name":"my-app","scopes":["generate"]}' \
-  localhost:9090 ktms.v1.AdminService/MintAPIKey
-
-# 2. Assign vendor credential to the client key
-$G "$ADMIN" -d '{"api_key_name":"my-app","vendor":"openai","plain_key":"sk-..."}' \
-  localhost:9090 ktms.v1.AdminService/SetVendorKey
-
-# 3. Register a model
-$G "$ADMIN" -d '{"model":{"id":"gpt-4o-mini","vendor":"openai",
-  "efforts":["EFFORT_LOW","EFFORT_MEDIUM","EFFORT_HIGH"],
-  "price_in_per_mtok":0.15,"price_out_per_mtok":0.60,"enabled":true}}' \
-  localhost:9090 ktms.v1.AdminService/UpsertModel
-
-# 4. Set routing rules (catch-all for each effort tier is mandatory)
-$G "$ADMIN" -d '{"rules":[
-  {"name":"default","priority":1,"use":["gpt-4o-mini"],"enabled":true}]}' \
-  localhost:9090 ktms.v1.AdminService/ReplaceRules
-
-# 5. Call gRPC GenerateText with your client key
-$G "authorization: Bearer ktms_<your key>" -d '{
-  "effort":"EFFORT_LOW",
-  "messages":[{"role":"MESSAGE_ROLE_USER","text":"Say hi in three words."}]}' \
-  localhost:9090 ktms.v1.GatewayService/GenerateText
+ktms init                       # a context named local; ktms init prod for another one
 ```
 
-Once real keys exist in production, unset `BOOTSTRAP_ADMIN_KEY`.
+It asks for the Admin API address and the admin key (`BOOTSTRAP_ADMIN_KEY`, `dev-bootstrap` in
+Compose), keeps the key in the keychain or a `0600` file under a context it makes current, then for
+the vendor keys (OpenAI, Gemini, Anthropic; `OPENAI_API_KEY` and the like are offered when set) and
+a client key name. It writes `ktms.yaml` with the default models and rules of those vendors, shows
+the plan and applies it:
+
+```text
++ model gpt-4o-mini
++ api key my-app
++ vendor key my-app/openai
+~ rules (4 rules, replaced together)
+Plan: 5 to create, 1 to change, 0 to delete.
+Apply these changes? [y/N] y
+
+New client keys. They are shown only now; store them in your secret manager:
+  my-app: ktms_…
+```
+
+The vendor keys go to Keystone and stay out of the file; the client key is kept in the context too,
+so a test call needs nothing more. From then on the file is the configuration:
+
+```bash
+ktms chat "Say hi"              # the answer, then rule, model and vendor
+ktms config plan -f ktms.yaml   # after editing it
+ktms config apply -f ktms.yaml
+```
+
+On a Keystone that has models already, `ktms init` writes them to `ktms.yaml` instead. The same
+steps one by one are `ktms context set`, `ktms keys mint`, `ktms vendor-keys set` and
+[`ktms config apply`](#configuration-as-a-file). Once real keys exist in production, unset
+`BOOTSTRAP_ADMIN_KEY`.
 
 ## Resource footprint
 
@@ -948,6 +954,7 @@ docker run --rm -e KTMS_ADDR -e KTMS_ADMIN_KEY coyl/ktms-cli:latest models list
 A context names a Keystone and where its keys live, so a command needs no flags:
 
 ```bash
+ktms init prod                          # asks for all of it, see Quick start; or by hand:
 ktms context set prod --addr ktms.example.com:443 --tls --http https://ktms.example.com
 ktms context store-key prod             # reads the admin key without echo, into the keychain
 ktms context store-key prod --client    # a generate key for ktms chat

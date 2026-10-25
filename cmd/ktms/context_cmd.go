@@ -164,29 +164,12 @@ by ktms chat.`,
 			if err != nil {
 				return err
 			}
-			account, suffix := name, ""
-			if client {
-				account, suffix = name+"/client", ".client"
-			}
-			var src KeySource
-			if toFile {
-				dir, err := configDir()
-				if err != nil {
-					return err
+			src, err := storeKey(name, client, toFile, plain)
+			if err != nil {
+				if !toFile {
+					err = fmt.Errorf("%w (pass --file to keep the key in a file instead)", err)
 				}
-				if err := os.MkdirAll(dir, 0o700); err != nil {
-					return err
-				}
-				path := filepath.Join(dir, safeName(name)+suffix+".key")
-				if err := writePrivate(path, []byte(plain+"\n")); err != nil {
-					return err
-				}
-				src = KeySource{File: path}
-			} else {
-				if err := keychainSet(account, plain); err != nil {
-					return fmt.Errorf("%w (pass --file to keep the key in a file instead)", err)
-				}
-				src = KeySource{Keychain: true}
+				return err
 			}
 			if client {
 				c.ClientKey = src
@@ -205,6 +188,33 @@ by ktms chat.`,
 
 	cmd.AddCommand(list, use, set, del, store)
 	return cmd
+}
+
+// storeKey keeps a context's admin or client key in the keychain or, with
+// toFile, in a 0600 file next to the contexts, and says where it is.
+func storeKey(name string, client, toFile bool, plain string) (KeySource, error) {
+	account, suffix := name, ""
+	if client {
+		account, suffix = name+"/client", ".client"
+	}
+	if !toFile {
+		if err := keychainSet(account, plain); err != nil {
+			return KeySource{}, err
+		}
+		return KeySource{Keychain: true}, nil
+	}
+	dir, err := configDir()
+	if err != nil {
+		return KeySource{}, err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return KeySource{}, err
+	}
+	path := filepath.Join(dir, safeName(name)+suffix+".key")
+	if err := writePrivate(path, []byte(plain+"\n")); err != nil {
+		return KeySource{}, err
+	}
+	return KeySource{File: path}, nil
 }
 
 // readSecret reads one line from stdin, without echo on a terminal.

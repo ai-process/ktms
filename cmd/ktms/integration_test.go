@@ -205,3 +205,65 @@ func TestAgainstKeystone(t *testing.T) {
 	must(0, "", "config", "export")
 	must(exitAuth, "", "keys", "mint", "other")
 }
+
+func TestInitAgainstKeystone(t *testing.T) {
+	addr := keystone(t)
+	dir := t.TempDir()
+	t.Setenv("KTMS_CONFIG", filepath.Join(dir, "config.yaml"))
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	for _, v := range initVendors {
+		t.Setenv(v.env, "")
+	}
+	file := filepath.Join(dir, "ktms.yaml")
+
+	// address, TLS, HTTP, admin key, where to keep it, OpenAI, Gemini, Anthropic, key name, apply
+	answers := strings.Join([]string{addr, "n", "", bootstrapKey, "file", "sk-init", "", "", "", "y"}, "\n") + "\n"
+	code, out, errs := callIn(answers, "init", "dev", "-f", file)
+	if code != 0 {
+		t.Fatalf("init = %d\nstdout: %s\nstderr: %s", code, out, errs)
+	}
+	if strings.Contains(out, "sk-init") || strings.Contains(errs, "sk-init") {
+		t.Fatal("init printed the vendor key")
+	}
+	if !strings.Contains(out, "ktms_") || !strings.Contains(out, "Kept the client key in file:") {
+		t.Fatalf("init output:\n%s", out)
+	}
+	b, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := string(b); !strings.Contains(s, "gpt-4o-mini") || strings.Contains(s, "gemini") || strings.Contains(s, "vendor_keys") || !strings.Contains(s, "name: my-app") {
+		t.Fatalf("written file:\n%s", s)
+	}
+
+	must := func(args ...string) string {
+		t.Helper()
+		code, out, errs := callIn("", args...)
+		if code != 0 {
+			t.Fatalf("ktms %s = %d\nstdout: %s\nstderr: %s", strings.Join(args, " "), code, out, errs)
+		}
+		return out
+	}
+	// The context is current and its keys work without anything in the shell.
+	if out := must("config", "plan", "--detailed-exitcode", "-f", file); !strings.Contains(out, "No changes") {
+		t.Fatalf("plan after init: %s", out)
+	}
+	if out := must("vendor-keys", "list"); !strings.Contains(out, crypto.Fingerprint("sk-init")) {
+		t.Fatalf("vendor-keys list: %s", out)
+	}
+	if out := must("route", "explain", "my-app", "--effort", "low"); !strings.Contains(out, "tries: gpt-4o-mini") {
+		t.Fatalf("route explain:\n%s", out)
+	}
+	if out := must("context", "list"); !strings.Contains(out, "* ") || !strings.Contains(out, "dev.client.key") {
+		t.Fatalf("context list: %s", out)
+	}
+
+	// Run again: the context is reused and the live configuration exported.
+	code, out, errs = callIn("y\ny\n", "init", "dev", "-f", file)
+	if code != 0 || !strings.Contains(out, "already") {
+		t.Fatalf("second init = %d\nstdout: %s\nstderr: %s", code, out, errs)
+	}
+	if out := must("config", "plan", "--detailed-exitcode", "-f", file); !strings.Contains(out, "No changes") {
+		t.Fatalf("plan of the exported file: %s", out)
+	}
+}

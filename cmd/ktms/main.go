@@ -123,7 +123,7 @@ context; admin:read is enough for every command that only reads.
 	pf.DurationVar(&a.timeout, "timeout", time.Minute, "time limit for each call")
 
 	root.AddCommand(
-		a.configCmd(), a.contextCmd(),
+		a.initCmd(), a.configCmd(), a.contextCmd(),
 		a.modelsCmd(), a.rulesCmd(), a.keysCmd(), a.vendorKeysCmd(), a.orgsCmd(), a.teamsCmd(),
 		a.spendCmd(), a.limitsCmd(), a.nodesCmd(), a.nodeKeysCmd(), a.routeCmd(), a.rotateCmd(),
 		a.chatCmd(), a.healthCmd(), a.mcpCmd(), &cobra.Command{
