@@ -30,6 +30,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 
 - [How it works](#how-it-works)
 - [Quick start (Docker Compose)](#quick-start-docker-compose)
+  - [With an AI assistant](#with-an-ai-assistant)
 - [Resource footprint](#resource-footprint)
 - [Installation](#installation)
   - [Docker image](#docker-image)
@@ -118,6 +119,19 @@ print(response.choices[0].message.content)
 ```
 
 The response includes canonical observability headers (`X-KTMS-Vendor`, `X-KTMS-Rule`, `X-KTMS-Placement`) along with backwards-compatible `X-LLM-Proxy-*` headers.
+
+### With an AI assistant
+
+In Claude Code, the [plugin](#claude-code-plugin-and-skills) deploys and configures the stack for
+you: install it, then run `/ktms:deploy` for Compose or Helm with Keystone, light-tokenmeter and
+ktms-admin, and `/ktms:integrate` to connect a service.
+
+```bash
+claude plugin marketplace add ai-process/ktms && claude plugin install ktms@ai-process
+```
+
+For other assistants, [Prompts for AI assistants](https://ai-process.dev/docs/prompts/) covers the
+same tasks, starting with [Deploy the stack](https://ai-process.dev/docs/prompts/deploy-stack/).
 
 ---
 
@@ -1037,7 +1051,8 @@ claude plugin marketplace add ai-process/ktms && claude plugin install ktms@ai-p
 
 The skills are plain `SKILL.md` folders, so other agents that read Agent Skills can use them too;
 see [plugin/README.md](plugin/README.md). CI fails when a skill names a command, flag, MCP tool or
-README section that does not exist.
+README section that does not exist. Assistants without skills or MCP can use the
+[prompts](https://ai-process.dev/docs/prompts/), which cover the same tasks.
 
 ## Calling Keystone
 
