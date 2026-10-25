@@ -18,6 +18,32 @@ import (
 // exported: each vendor key becomes a plain_key_env reference to fill in, and
 // client keys are listed without theirs. Revoked keys are left out.
 func Export(live *State, w io.Writer) error {
+	doc, err := exportDoc(live)
+	if err != nil {
+		return err
+	}
+	return encode(doc, w)
+}
+
+// ExportListed is Export without the sections that list nothing, for a new
+// file: a section it leaves out stays unmanaged, so --prune never empties it.
+func ExportListed(live *State, w io.Writer) error {
+	doc, err := exportDoc(live)
+	if err != nil {
+		return err
+	}
+	kept := doc.Content[:0]
+	for i := 0; i < len(doc.Content); i += 2 {
+		if v := doc.Content[i+1]; v.Kind == yaml.SequenceNode && len(v.Content) == 0 {
+			continue
+		}
+		kept = append(kept, doc.Content[i], doc.Content[i+1])
+	}
+	doc.Content = kept
+	return encode(doc, w)
+}
+
+func exportDoc(live *State) (*yaml.Node, error) {
 	doc := mapping()
 	add(doc, "api_version", scalarNode(APIVersion))
 
@@ -27,7 +53,7 @@ func Export(live *State, w io.Writer) error {
 	for _, m := range ms {
 		n, err := messageNode(m, true)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		models.Content = append(models.Content, n)
 	}
@@ -39,7 +65,7 @@ func Export(live *State, w io.Writer) error {
 	for _, r := range rs {
 		n, err := messageNode(r, true)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		rules.Content = append(rules.Content, n)
 	}
@@ -89,7 +115,7 @@ func Export(live *State, w io.Writer) error {
 		if k.GetPolicy() != nil {
 			pn, err := messageNode(k.GetPolicy(), false)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			add(kn, "policy", pn)
 		}
@@ -128,12 +154,16 @@ func Export(live *State, w io.Writer) error {
 	for _, u := range live.Config.GetUserRateLimits() {
 		n, err := messageNode(u, false)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		urls.Content = append(urls.Content, n)
 	}
 	add(doc, "user_rate_limits", urls)
 
+	return doc, nil
+}
+
+func encode(doc *yaml.Node, w io.Writer) error {
 	enc := yaml.NewEncoder(w)
 	enc.SetIndent(2)
 	if err := enc.Encode(&yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{doc}}); err != nil {

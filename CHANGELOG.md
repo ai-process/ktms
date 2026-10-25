@@ -7,6 +7,14 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `ktms init [CONTEXT]` sets up a Keystone step by step: it asks for the address and the admin
+  key, saves a context with the key in the keychain or a 0600 file, then on a Keystone without
+  models asks for vendor keys and a client key name, writes `ktms.yaml` with the default models
+  and rules of those vendors, shows the plan and applies it. The new client key is kept in the
+  context for `ktms chat`; vendor keys go to Keystone only. On a Keystone with models it writes
+  the live configuration, without vendor keys, to the file instead.
+
 ## [1.3.2] - 2026-10-24
 
 ### Fixed
