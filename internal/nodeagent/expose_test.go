@@ -38,12 +38,16 @@ func (f *fakeRegistry) UnregisterNode(context.Context, *pb.UnregisterNodeRequest
 	return &pb.UnregisterNodeResponse{Ok: true}, nil
 }
 
+// fakeVersion answers the version check the agent runs before the tunnel.
+const fakeVersion = `[ "$1" = --version ] && { echo "cloudflared version 2026.10.4 (built 2026-10-26)"; exit 0; }`
+
 // fakeCloudflared prints a different address on each launch; the first run
 // exits after a moment, like a dropped tunnel.
 func fakeCloudflared(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	script := `#!/bin/sh
+` + fakeVersion + `
 n=$(cat "` + dir + `/runs" 2>/dev/null || echo 0)
 n=$((n+1))
 echo $n > "` + dir + `/runs"
@@ -149,7 +153,7 @@ func TestExposeUnknownModeAndMissingBinary(t *testing.T) {
 func writeScript(t *testing.T, body string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "cloudflared")
-	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+fakeVersion+"\n"+body), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return path

@@ -42,6 +42,11 @@ func (a *Agent) startExposure(ctx context.Context) (urls <-chan string, stopped 
 		}
 		bin = p
 	}
+	if out, err := runCloudflaredVersion(ctx, bin); err == nil {
+		if v := cloudflaredVersion(out); cloudflaredTooOld(v) {
+			log.Warn().Str("cloudflared", v).Str("min", MinCloudflared).Msg("cloudflared trusts the leaked eMudhra certificates: update it (re-run install-node.sh or brew upgrade cloudflared)")
+		}
+	}
 
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {

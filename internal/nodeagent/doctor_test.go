@@ -321,7 +321,9 @@ func TestDoctorTunnel(t *testing.T) {
 	mk := func() *Doctor {
 		d := newDoctor(AgentConfig{Expose: ExposeCloudflared})
 		d.LookPath = func(string) (string, error) { return "/usr/local/bin/cloudflared", nil }
-		d.RunCmd = func(context.Context, string, ...string) error { return nil }
+		d.RunCmd = func(context.Context, string, ...string) (string, error) {
+			return "cloudflared version 2026.10.4 (built 2026-10-26)", nil
+		}
 		d.DialTCP = func(context.Context, string) error { return nil }
 		return d
 	}
@@ -336,7 +338,7 @@ func TestDoctorTunnel(t *testing.T) {
 	}
 
 	d = mk()
-	d.RunCmd = func(context.Context, string, ...string) error { return errors.New("killed: 9") }
+	d.RunCmd = func(context.Context, string, ...string) (string, error) { return "", errors.New("killed: 9") }
 	if f := one(t, d.checkTunnel(ctx), "Tunnel"); f.Level != LevelProblem || !strings.Contains(f.Fix, "Gatekeeper") {
 		t.Fatalf("blocked binary: %+v", f)
 	}
@@ -350,6 +352,34 @@ func TestDoctorTunnel(t *testing.T) {
 	}
 	if f := one(t, d.checkTunnel(ctx), "Tunnel"); f.Level != LevelProblem || !strings.Contains(f.Message, "7844") {
 		t.Fatalf("blocked port: %+v", f)
+	}
+
+	d = mk()
+	d.RunCmd = func(context.Context, string, ...string) (string, error) {
+		return "cloudflared version 2026.10.1 (built 2026-10-15-17:08 UTC)", nil
+	}
+	if f := one(t, d.checkTunnel(ctx), "Tunnel"); f.Level != LevelProblem || !strings.Contains(f.Message, "eMudhra") || !strings.Contains(f.Fix, "install-node.sh") {
+		t.Fatalf("old cloudflared: %+v", f)
+	}
+
+	d = mk()
+	d.RunCmd = func(context.Context, string, ...string) (string, error) { return "cloudflared version DEV", nil }
+	if f := one(t, d.checkTunnel(ctx), "Tunnel"); f.Level != LevelOK {
+		t.Fatalf("a build without a version is not flagged: %+v", f)
+	}
+}
+
+func TestCloudflaredTooOld(t *testing.T) {
+	for v, want := range map[string]bool{
+		"2026.10.1": true, "2026.10.2": true, "2026.9.12": true, "2025.12.0": true,
+		"2026.10.3": false, "2026.10.4": false, "2026.11.0": false, "2027.1.0": false, "": false,
+	} {
+		if got := cloudflaredTooOld(v); got != want {
+			t.Errorf("cloudflaredTooOld(%q) = %v, want %v", v, got, want)
+		}
+	}
+	if v := cloudflaredVersion("cloudflared version 2026.10.4 (built 2026-10-26-11:13 UTC)\n"); v != "2026.10.4" {
+		t.Errorf("version = %q", v)
 	}
 }
 

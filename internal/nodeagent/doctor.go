@@ -54,7 +54,7 @@ type Doctor struct {
 	DialTCP    func(ctx context.Context, addr string) error
 	UsesProxy  func(addr string) bool // true when HTTPS_PROXY or similar routes addr; gRPC honors it, a raw dial does not
 	LookPath   func(name string) (string, error)
-	RunCmd     func(ctx context.Context, name string, args ...string) error
+	RunCmd     func(ctx context.Context, name string, args ...string) (string, error) // combined output
 	MachOArchs func(path string) ([]string, error)
 	Now        func() time.Time
 	GOOS       string
@@ -86,10 +86,11 @@ func (d *Doctor) defaults() {
 		d.LookPath = exec.LookPath
 	}
 	if d.RunCmd == nil {
-		d.RunCmd = func(ctx context.Context, name string, args ...string) error {
+		d.RunCmd = func(ctx context.Context, name string, args ...string) (string, error) {
 			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
-			return exec.CommandContext(ctx, name, args...).Run()
+			out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+			return string(out), err
 		}
 	}
 	if d.MachOArchs == nil {
@@ -505,11 +506,19 @@ func (d *Doctor) checkTunnel(ctx context.Context) []Finding {
 		}
 		bin = p
 	}
-	if err := d.RunCmd(ctx, bin, "--version"); err != nil {
+	out, err := d.RunCmd(ctx, bin, "--version")
+	if err != nil {
 		return []Finding{{"Tunnel", LevelProblem, fmt.Sprintf("cloudflared (%s) is there but does not start (%s).", bin, shortErr(err)), "On macOS it may be blocked by Gatekeeper: re-download it with curl or brew instead of a browser."}}
 	}
+	var findings []Finding
+	if v := cloudflaredVersion(out); cloudflaredTooOld(v) {
+		findings = append(findings, Finding{"Tunnel", LevelProblem, fmt.Sprintf("cloudflared %s (%s) still trusts the leaked eMudhra certificates; %s or newer is needed.", v, bin, MinCloudflared), "Re-run install-node.sh (it updates cloudflared and restarts the node), or brew upgrade cloudflared."})
+	}
 	if err := d.DialTCP(ctx, "region1.v2.argotunnel.com:7844"); err != nil {
-		return []Finding{{"Tunnel", LevelProblem, "The tunnel cannot come up: this network blocks outbound port 7844 to Cloudflare.", "Try another network, or ask IT to allow outbound TCP/UDP 7844. (" + shortErr(err) + ")"}}
+		return append(findings, Finding{"Tunnel", LevelProblem, "The tunnel cannot come up: this network blocks outbound port 7844 to Cloudflare.", "Try another network, or ask IT to allow outbound TCP/UDP 7844. (" + shortErr(err) + ")"})
+	}
+	if findings != nil {
+		return findings
 	}
 	return []Finding{{"Tunnel", LevelOK, "cloudflared starts and Cloudflare is reachable.", ""}}
 }

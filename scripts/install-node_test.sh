@@ -211,8 +211,8 @@ fake_ollama_bin() {
 	printf '#!/bin/sh\ncase "$1" in\nserve) exec sleep 300;;\npull) echo "$2" >> "$FAKE_STATE/models";;\n--version) echo 0.0.0;;\nesac\n' >"$1"
 	chmod +x "$1"
 }
-fake_cloudflared_bin() {
-	printf '#!/bin/sh\n[ "$1" = --version ] && echo cloudflared\nexit 0\n' >"$1"
+fake_cloudflared_bin() { # path [version]
+	printf '#!/bin/sh\n[ "$1" = --version ] && echo "cloudflared version %s (built 2099-01-01)"\nexit 0\n' "${2:-2099.1.0}" >"$1"
 	chmod +x "$1"
 }
 
@@ -358,6 +358,20 @@ RC=$?
 eq "linux: re-run exits 0" 0 "$RC"
 eq "linux: re-run touches no running service" "$BEFORE" "$(count_calls 'restart|stop')"
 has "linux: re-run says agent up to date" "already installed" "$OUT"
+
+fake_cloudflared_bin "$BASE/bin/cloudflared" 2026.10.1
+NODE_BEFORE=$(count_calls 'restart ktms-node')
+OUT=$(run_install $ARGS --max-concurrency 2 --context 4096)
+RC=$?
+eq "linux: re-run with an old cloudflared exits 0" 0 "$RC"
+has "linux: old cloudflared explained" "older than 2026.10.3" "$OUT"
+has "linux: old cloudflared replaced without --upgrade-deps" "version 2099.1.0" "$("$BASE/bin/cloudflared" --version)"
+eq "linux: node restarted onto the new cloudflared" "$((NODE_BEFORE + 1))" "$(count_calls 'restart ktms-node')"
+fake_cloudflared_bin "$BASE/bin/cloudflared" 2026.10.3
+NODE_BEFORE=$(count_calls 'restart ktms-node')
+OUT=$(run_install $ARGS --max-concurrency 2 --context 4096)
+hasnt "linux: cloudflared at the minimum is kept" "older than" "$OUT"
+eq "linux: kept cloudflared restarts nothing" "$NODE_BEFORE" "$(count_calls 'restart ktms-node')"
 
 CALLS=$(count_calls 'restart|stop')
 OUT=$(run_install $ARGS --max-concurrency 2 --context 4096 --doctor)

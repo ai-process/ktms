@@ -7,6 +7,16 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Security
+- cloudflared 2026.10.3 or newer for the node's built-in tunnel: older releases trust the eMudhra
+  intermediates whose keys leaked in October 2026. `install-node.sh` replaces an older one on a
+  re-run, without `--upgrade-deps`, and restarts the node onto it; `ktms-node doctor` reports it
+  as a problem and the agent warns about it at start.
+
+### Fixed
+- `install-node.sh --upgrade-deps` restarts the node after updating cloudflared. The running tunnel
+  kept the old binary until the next restart.
+
 ## [1.3.4] - 2026-10-26
 
 ### Fixed
