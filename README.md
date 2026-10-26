@@ -124,8 +124,9 @@ The response includes canonical observability headers (`X-KTMS-Vendor`, `X-KTMS-
 ### With an AI assistant
 
 In Claude Code, the [plugin](#claude-code-plugin-and-skills) deploys and configures the stack for
-you: install it, then run `/ktms:deploy` for Compose or Helm with Keystone, light-tokenmeter and
-ktms-admin, and `/ktms:integrate` to connect a service.
+you: install it, run `/ktms:assess` to see where Keystone fits your system and what to do first,
+`/ktms:deploy` for Compose or Helm with Keystone, light-tokenmeter and ktms-admin, and
+`/ktms:integrate` to connect a service.
 
 ```bash
 claude plugin marketplace add ai-process/ktms && claude plugin install ktms@ai-process
@@ -1052,8 +1053,9 @@ Add `"--allow-write"` to `args` to let the assistant plan and apply changes. Ove
 ### Claude Code plugin and skills
 
 [`plugin/`](plugin) is a Claude Code plugin with both MCP servers (`ktms mcp`, `tokenmeter mcp`,
-read-only) and skills for the usual tasks: connecting a service, configuring routing, deploying,
-adding a local node, migrating from LiteLLM, usage reports and a production review.
+read-only) and skills for the usual tasks: seeing how Keystone fits a system, connecting a
+service, configuring routing, deploying, adding a local node, migrating from LiteLLM, usage
+reports and a production review.
 
 ```bash
 claude plugin marketplace add ai-process/ktms && claude plugin install ktms@ai-process
