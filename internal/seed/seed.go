@@ -407,6 +407,13 @@ func DefaultRules(models []*proxydb.Model, activeVendors []string) []*proxydb.Ru
 				fallback = append(fallback, m.ID)
 			}
 		}
+		// The model made for this effort comes first: on high a model that
+		// serves only high is tried before one that also serves low.
+		byFit := func(ids []string) {
+			slices.SortStableFunc(ids, func(a, b string) int { return lowestEffort(models, b) - lowestEffort(models, a) })
+		}
+		byFit(active)
+		byFit(fallback)
 		if len(active) > 0 {
 			return append(active, fallback...)
 		}
@@ -464,6 +471,23 @@ func DefaultRules(models []*proxydb.Model, activeVendors []string) []*proxydb.Ru
 			Use:        allChain,
 		},
 	}
+}
+
+// lowestEffort ranks a model by the lowest effort it serves: 0 low, 1 medium, 2 high.
+func lowestEffort(models []*proxydb.Model, id string) int {
+	rank := map[string]int{registry.EffortLow: 0, registry.EffortMedium: 1, registry.EffortHigh: 2}
+	lowest := 2
+	for _, m := range models {
+		if m.ID != id {
+			continue
+		}
+		for _, e := range m.Efforts {
+			if r, ok := rank[e]; ok && r < lowest {
+				lowest = r
+			}
+		}
+	}
+	return lowest
 }
 
 func serves(m *proxydb.Model, effort string) bool {
