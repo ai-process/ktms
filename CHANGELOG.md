@@ -7,6 +7,8 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.3.6] - 2026-10-26
+
 ### Added
 - The `/ktms:assess` skill: it surveys the system the assistant runs in (services and their LLM
   calls, deployment, data stores, secrets, observability, GPUs) and explains, without changing
@@ -321,7 +323,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v1.3.5...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.3.6...HEAD
+[1.3.6]: https://github.com/ai-process/ktms/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/ai-process/ktms/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/ai-process/ktms/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/ai-process/ktms/compare/v1.3.2...v1.3.3
