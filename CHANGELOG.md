@@ -7,7 +7,7 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
-## [1.3.6] - 2026-10-26
+## [1.3.6] - 2026-10-27
 
 ### Added
 - The `/ktms:assess` skill: it surveys the system the assistant runs in (services and their LLM
