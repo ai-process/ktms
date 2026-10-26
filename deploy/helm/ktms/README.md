@@ -25,7 +25,7 @@ kubectl create secret generic ktms-secrets \
 ### 2. Install
 
 ```bash
-helm install ktms oci://ghcr.io/ai-process/charts/ktms --version 1.3.3 \
+helm install ktms oci://ghcr.io/ai-process/charts/ktms --version 1.3.4 \
   --set secrets.existingSecret=ktms-secrets
 ```
 
