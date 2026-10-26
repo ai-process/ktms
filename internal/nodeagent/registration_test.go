@@ -175,7 +175,7 @@ func TestRunStartsNoTunnelWhileRefused(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "started")
 	bin := filepath.Join(dir, "cloudflared")
-	if err := os.WriteFile(bin, []byte("#!/bin/sh\ntouch "+marker+"\nsleep 30\n"), 0o755); err != nil {
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"+fakeVersion+"\ntouch "+marker+"\nsleep 30\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	f := &scriptedRegistry{alwaysRefuse: denied()} // never runs out, so timing cannot let it through

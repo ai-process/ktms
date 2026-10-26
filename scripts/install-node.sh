@@ -585,10 +585,23 @@ ensure_ollama() {
 	OLLAMA_CHANGED=1
 }
 
+# Older cloudflared trusts the eMudhra intermediates whose keys leaked in October 2026.
+CF_MIN=2026.10.3
+
+# cf_older BIN: true when BIN reports a version below $CF_MIN; an unknown version is not.
+cf_older() {
+	v=$("$1" --version 2>/dev/null | sed -n 's/.*version \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -n 1)
+	[ -n "$v" ] || return 1
+	[ "$(printf '%s\n%s\n' "$v" "$CF_MIN" | sort -t. -k1,1n -k2,2n -k3,3n | head -n 1)" != "$CF_MIN" ]
+}
+
 ensure_cloudflared() {
 	[ -z "$ENDPOINT" ] || return 0
 	CF_BIN="$BASE/bin/cloudflared"
-	if [ -x "$CF_BIN" ] && [ "$UPGRADE" = 0 ]; then return 0; fi
+	if [ -x "$CF_BIN" ] && [ "$UPGRADE" = 0 ]; then
+		cf_older "$CF_BIN" || return 0
+		say "cloudflared is older than $CF_MIN and trusts leaked eMudhra certificates: updating it."
+	fi
 	tag=$(latest_tag cloudflare/cloudflared)
 	if [ "$OS" = darwin ]; then asset="cloudflared-darwin-$ARCH.tgz"; else asset="cloudflared-linux-$ARCH"; fi
 	step "Installing cloudflared $tag"
@@ -600,6 +613,7 @@ ensure_cloudflared() {
 	"$CF_BIN.new" --version >/dev/null 2>&1 || die "the downloaded cloudflared does not run on this machine"
 	mv "$CF_BIN.new" "$CF_BIN"
 	rm -rf "$tmp"
+	CF_CHANGED=1 # the running tunnel still uses the old binary until the node restarts
 }
 
 # stage_agent downloads, verifies and smoke-tests the agent, leaving it in $BASE/bin/ktms-node.new.
@@ -899,7 +913,7 @@ main() {
 		systemctl --user show-environment >/dev/null 2>&1 || die "systemd user services are not available in this session; log in normally (not via su) and retry"
 		loginctl enable-linger "$(id -un)" 2>/dev/null || warn "could not enable lingering: the node will stop when you log out (run: sudo loginctl enable-linger $(id -un))"
 	fi
-	OLLAMA_CHANGED=0 AGENT_STAGED=0 SCHEDULE_REPLACED=0
+	OLLAMA_CHANGED=0 CF_CHANGED=0 AGENT_STAGED=0 SCHEDULE_REPLACED=0
 	import_legacy_key
 	store_key
 	stage_agent
@@ -918,7 +932,7 @@ main() {
 	ensure_model
 
 	step "Starting the node"
-	node_changed=0
+	node_changed=$CF_CHANGED
 	if [ "$AGENT_STAGED" = 1 ]; then
 		svc_stop node
 		[ -x "$BASE/bin/ktms-node" ] && cp -p "$BASE/bin/ktms-node" "$BASE/bin/ktms-node.prev"
