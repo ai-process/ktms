@@ -7,6 +7,12 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- The default rules of the auto-seed and `ktms init` try the model made for the effort first: on
+  high, `gemini-2.5-pro` and `claude-sonnet-5-5` before `gpt-4o`, and `gpt-4o` before
+  `gpt-4o-mini`; on medium, `gpt-4o` before the low models. They tried the models in list order,
+  so high went to `gpt-4o-mini` first. A Keystone seeded already keeps its rules.
+
 ## [1.3.3] - 2026-10-26
 
 ### Added

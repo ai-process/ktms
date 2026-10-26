@@ -1,6 +1,7 @@
 package seed
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/ai-process/ktms/internal/registry"
@@ -75,6 +76,30 @@ func TestDefaultRulesChainOrder(t *testing.T) {
 			if r.Use[0] != "gemini-2.5-flash" {
 				t.Errorf("expected gemini-2.5-flash to be first in low chain, got %s", r.Use[0])
 			}
+		}
+	}
+}
+
+func TestDefaultRulesPutTheModelMadeForTheEffortFirst(t *testing.T) {
+	chains := map[string][]string{}
+	for _, r := range DefaultRules(DefaultModels(), []string{registry.VendorOpenAI}) {
+		chains[r.Name] = r.Use
+	}
+	want := map[string][]string{
+		"default-low":    {"gpt-4o-mini"},
+		"default-medium": {"gpt-4o", "gpt-4o-mini"},
+		"default-high":   {"gpt-4o", "gpt-4o-mini"},
+	}
+	for name, w := range want {
+		if got := chains[name]; !slices.Equal(got[:len(w)], w) {
+			t.Errorf("%s starts with %v, want %v", name, got, w)
+		}
+	}
+
+	// With every vendor, high tries the high-only models before the rest.
+	for _, r := range DefaultRules(DefaultModels(), []string{registry.VendorOpenAI, registry.VendorGoogle, registry.VendorAnthropic}) {
+		if r.Name == "default-high" && !slices.Equal(r.Use[:3], []string{"gemini-2.5-pro", "claude-sonnet-5-5", "gpt-4o"}) {
+			t.Errorf("default-high = %v", r.Use)
 		}
 	}
 }
