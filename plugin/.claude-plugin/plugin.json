@@ -1,7 +1,7 @@
 {
   "name": "ktms",
   "displayName": "Keystone (KTMS)",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "Skills for Keystone (KTMS) and light-tokenmeter, with their MCP servers: connect a service, configure routing, deploy, add a local node, migrate, report on usage, review for production",
   "author": { "name": "ai-process", "url": "https://ai-process.dev" },
   "homepage": "https://ai-process.dev/docs/ktms/",
