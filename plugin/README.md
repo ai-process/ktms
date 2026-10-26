@@ -9,6 +9,7 @@ claude plugin marketplace add ai-process/ktms && claude plugin install ktms@ai-p
 
 | Skill | For |
 | --- | --- |
+| `/ktms:assess` | Where Keystone fits the system you run in, and the plan to get there |
 | `/ktms:integrate` | Moving a service's LLM calls onto Keystone |
 | `/ktms:configure` | Routing, keys and limits as a ktms config file, planned and applied |
 | `/ktms:deploy` | Compose or Helm for the stack, and the first-start runbook |

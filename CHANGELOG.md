@@ -7,6 +7,12 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- The `/ktms:assess` skill: it surveys the system the assistant runs in (services and their LLM
+  calls, deployment, data stores, secrets, observability, GPUs) and explains, without changing
+  anything, where Keystone goes, what each service changes, what it brings and costs there, and
+  which skill to run next.
+
 ## [1.3.5] - 2026-10-26
 
 ### Security
