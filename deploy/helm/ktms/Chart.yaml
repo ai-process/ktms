@@ -2,8 +2,8 @@ apiVersion: v2
 name: ktms
 description: "Official Helm chart for KTMS (Keystone: The Model Switchboard) — high-performance, self-hosted LLM gateway with intelligent routing, circuit breaking, and centralized encryption."
 type: application
-version: 1.3.3
-appVersion: "1.3.3"
+version: 1.3.4
+appVersion: "1.3.4"
 kubeVersion: ">=1.26.0-0"
 keywords:
   - llm

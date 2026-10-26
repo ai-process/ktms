@@ -7,6 +7,8 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-10-26
+
 ### Fixed
 - The default rules of the auto-seed and `ktms init` try the model made for the effort first: on
   high, `gemini-2.5-pro` and `claude-sonnet-5-5` before `gpt-4o`, and `gpt-4o` before
@@ -301,7 +303,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v1.3.3...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.3.4...HEAD
+[1.3.4]: https://github.com/ai-process/ktms/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/ai-process/ktms/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/ai-process/ktms/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/ai-process/ktms/compare/v1.3.0...v1.3.1
