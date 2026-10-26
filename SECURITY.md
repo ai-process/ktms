@@ -21,7 +21,7 @@ build does not pass. Docker images (signature, SBOM and SLSA provenance are atta
 image; each platform manifest is signed too):
 
 ```bash
-V=v1.3.5
+V=v1.3.6
 cosign verify coyl/ktms:${V#v} \
   --certificate-identity "https://github.com/ai-process/ktms/.github/workflows/docker-publish.yml@refs/tags/$V" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
