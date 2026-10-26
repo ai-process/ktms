@@ -7,6 +7,8 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.3.5] - 2026-10-26
+
 ### Security
 - cloudflared 2026.10.3 or newer for the node's built-in tunnel: older releases trust the eMudhra
   intermediates whose keys leaked in October 2026. `install-node.sh` replaces an older one on a
@@ -313,7 +315,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v1.3.4...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.3.5...HEAD
+[1.3.5]: https://github.com/ai-process/ktms/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/ai-process/ktms/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/ai-process/ktms/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/ai-process/ktms/compare/v1.3.1...v1.3.2
