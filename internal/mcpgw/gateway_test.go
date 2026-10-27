@@ -78,6 +78,9 @@ func upstreamServer(t *testing.T, sse bool, tools ...string) (url string, seen *
 		mcp.AddTool(s, &mcp.Tool{Name: name, Description: "the " + name + " tool"},
 			func(_ context.Context, _ *mcp.CallToolRequest, in echoArgs) (*mcp.CallToolResult, any, error) {
 				calls.Add(1)
+				if in.Text == "huge" {
+					return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: strings.Repeat("x", envelope+8192)}}}, nil, nil
+				}
 				if in.Text == "big" {
 					return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: strings.Repeat("x", 4096)}}}, nil, nil
 				}
@@ -359,5 +362,61 @@ func TestReconnectsWhenTheCredentialChanges(t *testing.T) {
 	call()
 	if v, _ := f.seen.Load().(string); v != "rotated" {
 		t.Fatalf("upstream saw %q after rotation", v)
+	}
+}
+
+// A redirect must not carry the upstream credential to another host.
+func TestRedirectsAreNotFollowed(t *testing.T) {
+	var leaked atomic.Value
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked.Store(r.Header.Get("X-Upstream-Token"))
+	}))
+	defer evil.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, evil.URL+"/steal", http.StatusTemporaryRedirect)
+	}))
+	defer redirect.Close()
+	g := New(&snaps{}, verifier{}, nil, nil, "test")
+	defer g.Close()
+	srv := &registry.MCPServer{MCPServer: proxydb.MCPServer{Name: "r", URL: redirect.URL, Transport: registry.MCPStreamableHTTP, Enabled: true, AllowPrivate: true, TimeoutMs: 2000},
+		Header: "X-Upstream-Token", Value: "upstream-secret"}
+	if _, err := g.pool.get(srv).listTools(context.Background(), "test"); err == nil {
+		t.Fatal("a redirecting server listed tools")
+	}
+	if v, _ := leaked.Load().(string); v != "" {
+		t.Fatalf("credential sent to the redirect target: %q", v)
+	}
+}
+
+func TestUnknownToolsAndEmptyServers(t *testing.T) {
+	f := newFixture(t, nil)
+	s := f.connect(t, "all", "/mcp")
+	_, err := s.CallTool(context.Background(), &mcp.CallToolParams{Name: "github__no_such_tool", Arguments: map[string]any{}})
+	if err == nil || !strings.Contains(err.Error(), "unknown tool") {
+		t.Fatalf("unknown tool: %v", err)
+	}
+	if f.githubN.Load() != 0 || len(f.rec.all()) != 0 {
+		t.Fatal("an unknown tool reached the upstream or the accounting")
+	}
+
+	emptyURL, _, _ := upstreamServer(t, false)
+	snap := f.snaps.Snapshot()
+	snap.MCPServers["empty"] = &registry.MCPServer{MCPServer: proxydb.MCPServer{Name: "empty", URL: emptyURL, Transport: registry.MCPStreamableHTTP, Enabled: true, AllowPrivate: true}}
+	if got := toolNames(t, f.connect(t, "all", "/mcp/empty")); len(got) != 0 {
+		t.Fatalf("empty server lists %v", got)
+	}
+}
+
+// A body past max_response_bytes and the envelope is cut off while read; the
+// call is still a too_large tool error, not an unavailable server.
+func TestOversizedBodyIsTooLarge(t *testing.T) {
+	f := newFixture(t, nil)
+	s := f.connect(t, "all", "/mcp")
+	res, err := s.CallTool(context.Background(), &mcp.CallToolParams{Name: "github__create_issue", Arguments: map[string]any{"text": "huge"}})
+	if err != nil || !res.IsError || !strings.Contains(text(t, res), "max_response_bytes") {
+		t.Fatalf("huge: %v %v", err, res)
+	}
+	if calls := f.rec.all(); len(calls) != 1 || calls[0].ErrorClass != "too_large" {
+		t.Fatalf("accounted %+v", calls)
 	}
 }

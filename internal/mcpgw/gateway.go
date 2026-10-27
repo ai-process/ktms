@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -236,6 +237,10 @@ func (g *Gateway) callTool(ctx context.Context, c *caller, p *mcp.CallToolParams
 	if srv == nil {
 		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q: no mcp server %s", p.Name, server)}
 	}
+	// Only the server's own tool names become metric labels and rate keys.
+	if known, err := g.pool.get(srv).listTools(ctx, g.version); err == nil && !slices.ContainsFunc(known, func(t *mcp.Tool) bool { return t.Name == tool }) {
+		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q", p.Name)}
+	}
 	if !c.id.CanUseTool(server, tool) {
 		observability.MCPToolCallsTotal.WithLabelValues(server, tool, "denied").Inc()
 		return nil, &jsonrpc.Error{Code: CodeForbidden, Message: fmt.Sprintf("permission_denied: tool %s of mcp server %s is not in the %s's allowed_mcp", tool, server, c.id.MCPDeniedBy(server, tool))}
@@ -251,6 +256,7 @@ func (g *Gateway) callTool(ctx context.Context, c *caller, p *mcp.CallToolParams
 	start := time.Now()
 	cctx, cancel := context.WithTimeout(ctx, srv.Timeout())
 	defer cancel()
+	cctx, cut := withCutMark(cctx)
 	res, err := g.pool.get(srv).call(cctx, g.version, &mcp.CallToolParams{Name: tool, Arguments: p.Arguments})
 	elapsed := time.Since(start)
 
@@ -270,7 +276,7 @@ func (g *Gateway) callTool(ctx context.Context, c *caller, p *mcp.CallToolParams
 		}
 	case errors.As(err, &rpcErr):
 		st, class = usagev1.Status_STATUS_ERROR, "tool_error"
-	case errors.Is(err, errTooLarge):
+	case cut.Load() || errors.Is(err, errTooLarge):
 		st, class = usagev1.Status_STATUS_ERROR, "too_large"
 		res, err = toolError(fmt.Sprintf("the result of %s exceeds max_response_bytes (%d)", p.Name, srv.MaxResponse())), nil
 	case ctx.Err() != nil:

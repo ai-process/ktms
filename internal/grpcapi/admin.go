@@ -575,7 +575,7 @@ func (s *AdminServer) RotateEncryption(ctx context.Context, _ *pb.RotateEncrypti
 		for _, vk := range keys {
 			plain, err := s.keyring.Decrypt(vk.KeyCiphertext, int(vk.KeyVersion))
 			if err != nil {
-				return &unreadableKeyError{id: vk.ID, version: vk.KeyVersion}
+				return &unreadableKeyError{what: "vendor key " + vk.ID, version: vk.KeyVersion, fix: "SetVendorKey"}
 			}
 			ciphertext, version, err := s.keyring.Encrypt(plain)
 			if err != nil {
@@ -609,12 +609,13 @@ func (s *AdminServer) RotateEncryption(ctx context.Context, _ *pb.RotateEncrypti
 // unreadableKeyError stops a rotation that would otherwise report success
 // while a key still needs a version the operator is about to drop.
 type unreadableKeyError struct {
-	id      string
+	what    string // "vendor key <id>" or "mcp credential of <server>"
 	version int32
+	fix     string // the RPC that sets it again
 }
 
 func (e *unreadableKeyError) Error() string {
-	return fmt.Sprintf("vendor key %s is encrypted with version %d, which KTMS_ENCRYPTION_KEYS lacks: add that version back, or set the key again with SetVendorKey", e.id, e.version)
+	return fmt.Sprintf("%s is encrypted with version %d, which KTMS_ENCRYPTION_KEYS lacks: add that version back, or set it again with %s", e.what, e.version, e.fix)
 }
 
 // rotateNodeTokens re-encrypts the node auth tokens kept in Redis with the

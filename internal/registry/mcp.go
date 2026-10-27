@@ -57,6 +57,9 @@ func (m *MCPServer) Fingerprint() string {
 		m.URL, m.Transport, m.AllowPrivate, m.TimeoutMs, m.MaxResponseBytes, m.Header, m.Value))
 }
 
+// ValidMCPName reports whether name may name an MCP server.
+func ValidMCPName(name string) bool { return mcpName.MatchString(name) }
+
 // ValidateMCPServer checks a spec on its own; whether its host resolves to a
 // private address is checked where the network is (the Admin API).
 func ValidateMCPServer(m *proxydb.MCPServer) error {

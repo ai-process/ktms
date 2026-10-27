@@ -141,7 +141,7 @@ func (s *AdminServer) rotateMCPCredentials(ctx context.Context, tx pgx.Tx, activ
 	for _, c := range creds {
 		plain, err := s.keyring.Decrypt(c.ValueCiphertext, int(c.ValueVersion))
 		if err != nil {
-			return n, &unreadableKeyError{id: "mcp:" + c.Server, version: c.ValueVersion}
+			return n, &unreadableKeyError{what: "mcp credential of " + c.Server, version: c.ValueVersion, fix: "SetMCPCredential"}
 		}
 		ciphertext, version, err := s.keyring.Encrypt(plain)
 		if err != nil {
@@ -204,7 +204,7 @@ func normalizeAllowedMCP(in []string) ([]string, error) {
 	for _, e := range in {
 		e = strings.TrimSpace(e)
 		server, tool, hasTool := strings.Cut(e, "/")
-		if registry.ValidateMCPServer(&proxydb.MCPServer{Name: server, URL: "https://x", Transport: registry.MCPStreamableHTTP}) != nil || (hasTool && tool == "") {
+		if !registry.ValidMCPName(server) || (hasTool && tool == "") {
 			return nil, status.Errorf(codes.InvalidArgument, "allowed_mcp entry %q: want server or server/tool", e)
 		}
 		if !slices.Contains(out, e) {

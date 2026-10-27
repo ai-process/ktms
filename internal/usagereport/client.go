@@ -432,6 +432,14 @@ func (c *UsageCollectorClient) RecordToolCall(t ToolCall) error {
 	if len(model) > maxModelLength {
 		model = model[:maxModelLength]
 	}
+	// light-tokenmeter refuses longer names, and the event with them.
+	server, tool := t.Server, t.Tool
+	if len(server) > maxVendorLength {
+		server = server[:maxVendorLength]
+	}
+	if len(tool) > maxModelLength {
+		tool = tool[:maxModelLength]
+	}
 	if t.UserID == "" || t.ActionID == "" || projectID == "" {
 		return fmt.Errorf("tool call %s needs user, action and project ids", model)
 	}
@@ -450,7 +458,7 @@ func (c *UsageCollectorClient) RecordToolCall(t ToolCall) error {
 		DurationMs: t.DurationMs,
 		ErrorClass: t.ErrorClass,
 		Meta:       fitMeta(t.Meta, t.ActionID),
-		ToolCall:   &usagev1.ToolCall{Server: t.Server, Tool: t.Tool, ResponseBytes: t.ResponseBytes},
+		ToolCall:   &usagev1.ToolCall{Server: server, Tool: tool, ResponseBytes: t.ResponseBytes},
 	}
 	c.enqueue(event)
 	return nil

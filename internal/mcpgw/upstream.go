@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
@@ -27,7 +28,19 @@ const toolsTTL = time.Minute
 // envelope is room for the JSON-RPC wrapping around a result of max size.
 const envelope = 64 << 10
 
-var errTooLarge = errors.New("mcp server response exceeds max_response_bytes")
+var (
+	errTooLarge = errors.New("mcp server response exceeds max_response_bytes")
+	errRedirect = errors.New("mcp server redirects are not followed")
+)
+
+// cutKey marks a call's context: a reply body cut at the size cap sets it. The
+// SDK reports a body read error without wrapping it, so only the mark tells.
+type cutKey struct{}
+
+func withCutMark(ctx context.Context) (context.Context, *atomic.Bool) {
+	cut := &atomic.Bool{}
+	return context.WithValue(ctx, cutKey{}, cut), cut
+}
 
 // upstream is one shared client session to a server, made with the spec and
 // credential its fingerprint names. Sessions are reconnected on demand.
@@ -39,8 +52,11 @@ type upstream struct {
 	session *mcp.ClientSession
 	cancel  context.CancelFunc // ends the session's streams
 	tools   []*mcp.Tool
-	toolsAt time.Time
+	toolsAt time.Time // zero: no list cached
+	retired bool      // replaced or removed: never connects again
 }
+
+var errRetired = errors.New("mcp server was reconfigured or removed during the call")
 
 // connect returns the live session, making one if there is none. The session
 // outlives the request that made it: an SSE stream is bound to the context
@@ -48,11 +64,16 @@ type upstream struct {
 func (u *upstream) connect(version string) (*mcp.ClientSession, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	if u.retired {
+		return nil, errRetired
+	}
 	if u.session != nil {
 		return u.session, nil
 	}
 	client := mcp.NewClient(&mcp.Implementation{Name: "ktms-mcp-gateway", Version: version}, nil)
-	hc := &http.Client{Transport: &credentialTransport{srv: u.srv, base: transport(u.srv)}}
+	// A redirect would carry the credential to whatever host it names.
+	hc := &http.Client{Transport: &credentialTransport{srv: u.srv, base: transport(u.srv)},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return errRedirect }}
 	var t mcp.Transport
 	if u.srv.Transport == registry.MCPSSE {
 		t = &mcp.SSEClientTransport{Endpoint: u.srv.URL, HTTPClient: hc, MaxEventSize: int(u.srv.MaxResponse() + envelope)}
@@ -84,6 +105,19 @@ func (u *upstream) drop(s *mcp.ClientSession) {
 		u.mu.Unlock()
 		return
 	}
+	cancel := u.cancel
+	u.session, u.cancel, u.tools, u.toolsAt = nil, nil, nil, time.Time{}
+	u.mu.Unlock()
+	_ = s.Close() // the session is unusable either way
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// retire closes the upstream for good, when the pool replaces or drops it.
+func (u *upstream) retire() {
+	u.mu.Lock()
+	u.retired = true
 	u.mu.Unlock()
 	u.close()
 }
@@ -91,7 +125,7 @@ func (u *upstream) drop(s *mcp.ClientSession) {
 func (u *upstream) close() {
 	u.mu.Lock()
 	s, cancel := u.session, u.cancel
-	u.session, u.cancel, u.tools = nil, nil, nil
+	u.session, u.cancel, u.tools, u.toolsAt = nil, nil, nil, time.Time{}
 	u.mu.Unlock()
 	if s != nil {
 		_ = s.Close() // the session is unusable either way
@@ -104,7 +138,7 @@ func (u *upstream) close() {
 // listTools returns the server's tools, from the cache while it is fresh.
 func (u *upstream) listTools(ctx context.Context, version string) ([]*mcp.Tool, error) {
 	u.mu.Lock()
-	if u.tools != nil && time.Since(u.toolsAt) < toolsTTL {
+	if !u.toolsAt.IsZero() && time.Since(u.toolsAt) < toolsTTL {
 		t := u.tools
 		u.mu.Unlock()
 		return t, nil
@@ -118,7 +152,7 @@ func (u *upstream) listTools(ctx context.Context, version string) ([]*mcp.Tool, 
 		if s, err = u.connect(version); err != nil {
 			return nil, err
 		}
-		var tools []*mcp.Tool
+		tools := []*mcp.Tool{}
 		lctx, cancel := context.WithTimeout(ctx, u.srv.Timeout())
 		for t, lerr := range s.Tools(lctx, nil) {
 			if lerr != nil {
@@ -144,8 +178,9 @@ func (u *upstream) listTools(ctx context.Context, version string) ([]*mcp.Tool, 
 	return nil, err
 }
 
-// call forwards one tools/call. Only a call the session refused to send is
-// retried: a tool may not be safe to run twice.
+// call forwards one tools/call. Only a call the server refused for an unknown
+// session is retried: a tool may not be safe to run twice, and a closed
+// connection does not say whether the call ran.
 func (u *upstream) call(ctx context.Context, version string, p *mcp.CallToolParams) (*mcp.CallToolResult, error) {
 	for attempt := 0; ; attempt++ {
 		s, err := u.connect(version)
@@ -158,7 +193,7 @@ func (u *upstream) call(ctx context.Context, version string, p *mcp.CallToolPara
 		}
 		if transportError(err) {
 			u.drop(s)
-			if attempt == 0 && (errors.Is(err, mcp.ErrConnectionClosed) || errors.Is(err, mcp.ErrSessionMissing)) {
+			if attempt == 0 && errors.Is(err, mcp.ErrSessionMissing) {
 				continue
 			}
 		}
@@ -208,7 +243,8 @@ func (t *credentialTransport) RoundTrip(r *http.Request) (*http.Response, error)
 	}
 	// An SSE transport's event stream is long-lived; its events are capped by MaxEventSize.
 	if r.Method == http.MethodPost {
-		resp.Body = &limitedBody{rc: resp.Body, left: t.srv.MaxResponse() + envelope}
+		cut, _ := r.Context().Value(cutKey{}).(*atomic.Bool)
+		resp.Body = &limitedBody{rc: resp.Body, left: t.srv.MaxResponse() + envelope, cut: cut}
 	}
 	return resp, nil
 }
@@ -216,10 +252,14 @@ func (t *credentialTransport) RoundTrip(r *http.Request) (*http.Response, error)
 type limitedBody struct {
 	rc   io.ReadCloser
 	left int64
+	cut  *atomic.Bool
 }
 
 func (b *limitedBody) Read(p []byte) (int, error) {
 	if b.left <= 0 {
+		if b.cut != nil {
+			b.cut.Store(true)
+		}
 		return 0, errTooLarge
 	}
 	if int64(len(p)) > b.left {
@@ -251,7 +291,7 @@ func (p *pool) get(srv *registry.MCPServer) *upstream {
 		return u
 	}
 	if u != nil {
-		go u.close()
+		go u.retire()
 	}
 	u = &upstream{srv: srv, fp: fp}
 	p.m[srv.Name] = u
@@ -265,7 +305,7 @@ func (p *pool) prune(servers map[string]*registry.MCPServer) {
 	for name, u := range p.m {
 		if servers[name] == nil {
 			delete(p.m, name)
-			go u.close()
+			go u.retire()
 		}
 	}
 }
@@ -275,6 +315,6 @@ func (p *pool) closeAll() {
 	defer p.mu.Unlock()
 	for name, u := range p.m {
 		delete(p.m, name)
-		u.close()
+		u.retire()
 	}
 }
