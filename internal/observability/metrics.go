@@ -38,6 +38,39 @@ var (
 		[]string{"vendor", "model"},
 	)
 
+	// MCPToolCallsTotal counts tool calls through the MCP gateway by outcome:
+	// success | tool_error | denied | throttled | timeout | too_large | upstream_error.
+	MCPToolCallsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "ktms",
+			Name:      "mcp_tool_calls_total",
+			Help:      "Tool calls through the MCP gateway by server, tool and status.",
+		},
+		[]string{"server", "tool", "status"},
+	)
+
+	// MCPToolCallDuration measures a tool call from the gateway to the server and back.
+	MCPToolCallDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "ktms",
+			Name:      "mcp_tool_call_duration_seconds",
+			Help:      "Latency of tool calls through the MCP gateway in seconds.",
+			Buckets:   []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
+		},
+		[]string{"server"},
+	)
+
+	// MCPResponseBytes is the size of tool results, as JSON.
+	MCPResponseBytes = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "ktms",
+			Name:      "mcp_response_bytes",
+			Help:      "Size of tool results through the MCP gateway in bytes.",
+			Buckets:   prometheus.ExponentialBuckets(256, 4, 9),
+		},
+		[]string{"server"},
+	)
+
 	// TokensTotal tracks billed input and output tokens.
 	TokensTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{

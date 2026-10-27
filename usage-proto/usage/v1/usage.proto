@@ -73,6 +73,22 @@ message UsageEvent {
   // Input tokens written to the vendor's prompt cache (optional, >= 0). Part of
   // tokens_input; cache_read_tokens + cache_write_tokens must not exceed it.
   int64 cache_write_tokens = 18;
+
+  // Set on a tool call through an MCP gateway. vendor is then "mcp", model is
+  // server__tool (cut to fit) and the token counts are 0.
+  ToolCall tool_call = 19;
+}
+
+// ToolCall is one MCP tools/call an MCP gateway forwarded.
+message ToolCall {
+  // MCP server name, as the gateway registered it (max 64 chars)
+  string server = 1;
+
+  // Tool name, as the server names it (max 128 chars)
+  string tool = 2;
+
+  // Size of the tool result in bytes, as JSON
+  int64 response_bytes = 3;
 }
 
 // RecordUsageEventRequest is the request for recording a single usage event

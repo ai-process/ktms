@@ -35,6 +35,8 @@ type Config struct {
 	VendorKeys     []VendorKey
 	SpendLimits    []SpendLimit
 	UserRateLimits []*pb.UserRateLimitSpec
+	MCPServers     []*pb.MCPServerSpec
+	MCPCredentials []MCPCredential
 
 	// Which sections the file has, since an empty list differs from a missing one.
 	managed map[string]bool
@@ -51,6 +53,7 @@ type Team struct {
 	Name             string   `json:"name"`
 	MonthlyBudgetUSD float64  `json:"monthly_budget_usd,omitempty"`
 	AllowedModels    []string `json:"allowed_models,omitempty"`
+	AllowedMCP       []string `json:"allowed_mcp,omitempty"`
 }
 
 // APIKey is a client key, matched by name. Its secret exists only in the
@@ -69,6 +72,14 @@ type VendorKey struct {
 	APIKeyName  string `json:"api_key_name"`
 	Vendor      string `json:"vendor"`
 	PlainKeyEnv string `json:"plain_key_env"`
+}
+
+// MCPCredential is the header the MCP gateway adds to a server's requests.
+// The value is read from an environment variable, never from the file.
+type MCPCredential struct {
+	Server   string `json:"server"`
+	Header   string `json:"header,omitempty"`
+	ValueEnv string `json:"value_env"`
 }
 
 // SpendLimit caps a key's or a user's spend per UTC day or month. Team caps
@@ -90,10 +101,11 @@ func (l SpendLimit) Nano() int64 {
 }
 
 // Manages reports whether the file has the section (models, rules,
-// organizations, api_keys, vendor_keys, spend_limits, user_rate_limits).
+// organizations, api_keys, vendor_keys, spend_limits, user_rate_limits,
+// mcp_servers, mcp_credentials).
 func (c *Config) Manages(section string) bool { return c.managed[section] }
 
-var sections = []string{"models", "rules", "organizations", "api_keys", "vendor_keys", "spend_limits", "user_rate_limits"}
+var sections = []string{"models", "rules", "organizations", "api_keys", "vendor_keys", "spend_limits", "user_rate_limits", "mcp_servers", "mcp_credentials"}
 
 // Load reads and parses a configuration file.
 func Load(path string) (*Config, error) {
@@ -143,6 +155,12 @@ func Parse(b []byte) (*Config, error) {
 		return nil, err
 	}
 	if cfg.UserRateLimits, err = protoList(doc, "user_rate_limits", func() *pb.UserRateLimitSpec { return &pb.UserRateLimitSpec{} }); err != nil {
+		return nil, err
+	}
+	if cfg.MCPServers, err = protoList(doc, "mcp_servers", func() *pb.MCPServerSpec { return &pb.MCPServerSpec{} }); err != nil {
+		return nil, err
+	}
+	if err := jsonList(doc, "mcp_credentials", &cfg.MCPCredentials); err != nil {
 		return nil, err
 	}
 	if err := jsonList(doc, "organizations", &cfg.Organizations); err != nil {

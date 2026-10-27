@@ -154,6 +154,8 @@ secrets:
 
 config:
   httpApiEnabled: true
+  # MCP gateway (/mcp) on the HTTP port for keys with the mcp scope.
+  mcpGatewayEnabled: true
   logLevel: "info"
   autoMigrate: true
   autoSeed: false

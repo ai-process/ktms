@@ -15,7 +15,8 @@ import (
 )
 
 // Export writes the live configuration in the file format. Secrets are not
-// exported: each vendor key becomes a plain_key_env reference to fill in, and
+// exported: each vendor key and MCP credential becomes a reference to an
+// environment variable to fill in, and
 // client keys are listed without theirs. Revoked keys are left out.
 func Export(live *State, w io.Writer) error {
 	doc, err := exportDoc(live)
@@ -87,6 +88,9 @@ func exportDoc(live *State) (*yaml.Node, error) {
 			}
 			if len(t.GetAllowedModels()) > 0 {
 				add(tn, "allowed_models", stringSeq(t.GetAllowedModels()))
+			}
+			if len(t.GetAllowedMcp()) > 0 {
+				add(tn, "allowed_mcp", stringSeq(t.GetAllowedMcp()))
 			}
 			teams.Content = append(teams.Content, tn)
 		}
@@ -160,6 +164,26 @@ func exportDoc(live *State) (*yaml.Node, error) {
 	}
 	add(doc, "user_rate_limits", urls)
 
+	servers := seq()
+	for _, m := range live.Config.GetMcpServers() {
+		n, err := messageNode(m, true)
+		if err != nil {
+			return nil, err
+		}
+		servers.Content = append(servers.Content, n)
+	}
+	add(doc, "mcp_servers", servers)
+
+	creds := seq()
+	for _, mc := range live.Config.GetMcpCredentials() {
+		cn := mapping()
+		add(cn, "server", scalarNode(mc.GetServer()))
+		add(cn, "header", scalarNode(mc.GetHeader()))
+		add(cn, "value_env", scalarNode(mcpEnvName(mc.GetServer())))
+		creds.Content = append(creds.Content, cn)
+	}
+	add(doc, "mcp_credentials", creds)
+
 	return doc, nil
 }
 
@@ -170,6 +194,12 @@ func encode(doc *yaml.Node, w io.Writer) error {
 		return err
 	}
 	return enc.Close()
+}
+
+// mcpEnvName is the variable an exported MCP credential points at, e.g.
+// KTMS_MCP_CREDENTIAL_GITHUB.
+func mcpEnvName(server string) string {
+	return "KTMS_MCP_CREDENTIAL_" + strings.ToUpper(strings.ReplaceAll(server, "-", "_"))
 }
 
 // envName is the variable an exported vendor key points at, e.g.

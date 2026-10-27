@@ -551,12 +551,13 @@ func (a *app) addWriteTools(srv *mcp.Server, tool func(name, title, desc string,
 
 	type mintIn struct {
 		Name          string   `json:"name" jsonschema:"key name, unique"`
-		Scopes        []string `json:"scopes,omitempty" jsonschema:"generate (default), admin or admin:read"`
+		Scopes        []string `json:"scopes,omitempty" jsonschema:"generate (default), mcp, admin or admin:read"`
 		Organization  string   `json:"organization,omitempty" jsonschema:"organization name"`
 		Team          string   `json:"team,omitempty" jsonschema:"team as org/team"`
 		AllowedModels []string `json:"allowed_models,omitempty" jsonschema:"model ids the key may call; empty means any"`
 		RPMLimit      int32    `json:"rpm_limit,omitempty" jsonschema:"calls per minute, 0 unlimited"`
 		TPMLimit      int64    `json:"tpm_limit,omitempty" jsonschema:"tokens per minute, 0 unlimited"`
+		AllowedMCP    []string `json:"allowed_mcp,omitempty" jsonschema:"MCP servers (server) and tools (server/tool) a key with the mcp scope may use; empty means any"`
 	}
 	mcp.AddTool(srv, tool("mint_key", "Mint a client key", "Mint a client API key. The key is returned once, for the user: do not repeat it later.", change),
 		func(ctx context.Context, _ *mcp.CallToolRequest, in mintIn) (*mcp.CallToolResult, any, error) {
@@ -566,7 +567,7 @@ func (a *app) addWriteTools(srv *mcp.Server, tool func(name, title, desc string,
 			}
 			var plain string
 			err := a.callCtx(ctx, func(ctx context.Context, c pb.AdminServiceClient) error {
-				req, err := mintRequest(ctx, c, in.Name, scopes, in.Organization, in.Team, policy(in.AllowedModels, in.RPMLimit, in.TPMLimit))
+				req, err := mintRequest(ctx, c, in.Name, scopes, in.Organization, in.Team, policy(in.AllowedModels, in.RPMLimit, in.TPMLimit, in.AllowedMCP))
 				if err != nil {
 					return err
 				}
@@ -594,8 +595,9 @@ func (a *app) addWriteTools(srv *mcp.Server, tool func(name, title, desc string,
 			AllowedModels []string `json:"allowed_models,omitempty" jsonschema:"model ids the key may call; empty means any"`
 			RPMLimit      int32    `json:"rpm_limit,omitempty" jsonschema:"calls per minute, 0 unlimited"`
 			TPMLimit      int64    `json:"tpm_limit,omitempty" jsonschema:"tokens per minute, 0 unlimited"`
+			AllowedMCP    []string `json:"allowed_mcp,omitempty" jsonschema:"MCP servers (server) and tools (server/tool) a key with the mcp scope may use; empty means any"`
 		}) (string, error) {
-			_, err := c.SetAPIKeyPolicy(ctx, &pb.SetAPIKeyPolicyRequest{Name: in.Name, Policy: policy(in.AllowedModels, in.RPMLimit, in.TPMLimit)})
+			_, err := c.SetAPIKeyPolicy(ctx, &pb.SetAPIKeyPolicyRequest{Name: in.Name, Policy: policy(in.AllowedModels, in.RPMLimit, in.TPMLimit, in.AllowedMCP)})
 			return "Policy of " + in.Name + " replaced.", err
 		}))
 

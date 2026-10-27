@@ -106,11 +106,13 @@ message GetConfigResponse {
   int64 version = 4;
   repeated UserRateLimitSpec user_rate_limits = 5;
   repeated SpendLimitSpec spend_limits = 6;
+  repeated MCPServerSpec mcp_servers = 7;
+  repeated MCPCredentialInfo mcp_credentials = 8; // metadata only, never the value
 }
 
 message MintAPIKeyRequest {
   string name = 1;
-  repeated string scopes = 2; // "generate" | "admin" | "admin:read"
+  repeated string scopes = 2; // "generate" | "mcp" | "admin" | "admin:read"
   string org_id = 3;
   string team_id = 4;
   APIKeyPolicy policy = 5;
@@ -125,6 +127,9 @@ message APIKeyPolicy {
   // Tokens per minute over all models, 0 = unlimited. A call books its input
   // estimate when admitted and its real input + output when it ends.
   int64 tpm_limit = 3;
+  // MCP servers ("github") and single tools ("github/create_issue") a key with
+  // the mcp scope may use; empty = any. Others are hidden and refused.
+  repeated string allowed_mcp = 4;
 }
 
 // SetAPIKeyPolicy replaces a key's policy; it applies from the key's next call.
@@ -327,6 +332,7 @@ message Team {
   double monthly_budget_usd = 4;
   repeated string allowed_models = 5;
   google.protobuf.Timestamp created_at = 6;
+  repeated string allowed_mcp = 7; // as APIKeyPolicy.allowed_mcp, for every key of the team
 }
 
 message CreateOrganizationRequest {
@@ -354,6 +360,7 @@ message CreateTeamRequest {
   string name = 2;
   double monthly_budget_usd = 3;
   repeated string allowed_models = 4;
+  repeated string allowed_mcp = 5;
 }
 
 message CreateTeamResponse {
@@ -377,12 +384,13 @@ message ListTeamsResponse {
 }
 
 // Replaces the team: an omitted budget removes the cap and omitted
-// allowed_models lifts the restriction, so send every field.
+// allowed_models or allowed_mcp lifts the restriction, so send every field.
 message UpdateTeamRequest {
   string id = 1;
   string name = 2;
   double monthly_budget_usd = 3;
   repeated string allowed_models = 4;
+  repeated string allowed_mcp = 5;
 }
 
 message UpdateTeamResponse {
@@ -429,6 +437,76 @@ message GetSpendResponse {
   repeated SpendWindow windows = 1;
 }
 
+// MCPServerSpec is an upstream MCP server, proxied at /mcp/{name} and, with
+// its tools named name__tool, at /mcp. Its credential is not part of the spec:
+// SetMCPCredential stores it. Experimental: the MCP gateway may change in a 1.x minor release.
+message MCPServerSpec {
+  string name = 1; // 1-32 of a-z, 0-9 and "-", starting with a letter
+  string url = 2; // https; http only with allow_private
+  string transport = 3; // "streamable_http" (default) | "sse"
+  bool enabled = 4;
+  // Permit a private, loopback or link-local address, such as a server in the
+  // same cluster. Without it such an address is refused at registration and
+  // at every connection.
+  bool allow_private = 5;
+  int32 timeout_ms = 6; // one tool call, 0 = 60000
+  int64 max_response_bytes = 7; // one tool result, 0 = 4 MiB
+  int32 tool_rpm = 8; // calls per minute per client key and tool, 0 = unlimited; needs Redis
+}
+
+message UpsertMCPServerRequest {
+  MCPServerSpec server = 1;
+}
+
+message UpsertMCPServerResponse {}
+
+// DeleteMCPServer removes the server and its credential.
+message DeleteMCPServerRequest {
+  string name = 1;
+}
+
+message DeleteMCPServerResponse {}
+
+// SetMCPCredential stores the header the gateway adds to every request it
+// sends the server, such as Authorization: Bearer <token>. Encrypted at rest
+// with the vendor keys' keyring; never returned, logged or passed to clients.
+message SetMCPCredentialRequest {
+  string server = 1;
+  string header = 2; // "" = Authorization
+  string plain_value = 3;
+}
+
+message SetMCPCredentialResponse {}
+
+message DeleteMCPCredentialRequest {
+  string server = 1;
+}
+
+message DeleteMCPCredentialResponse {}
+
+message MCPCredentialInfo {
+  string server = 1;
+  string header = 2;
+  int32 key_version = 3;
+  google.protobuf.Timestamp created_at = 4;
+  string fingerprint = 5; // as VendorKeyInfo.fingerprint
+}
+
+// ListMCPTools asks the server for its tools through the gateway, with its
+// credential, so an operator can write allowed_mcp.
+message ListMCPToolsRequest {
+  string server = 1;
+}
+
+message MCPToolInfo {
+  string name = 1; // as the server names it; /mcp shows server__name
+  string description = 2;
+}
+
+message ListMCPToolsResponse {
+  repeated MCPToolInfo tools = 1;
+}
+
 // Admin RPCs require the "admin" scope; the Get* and List* reads and
 // ExplainRoute also accept "admin:read". Every config mutation validates the
 // resulting full config in one transaction and bumps the config version.
@@ -471,6 +549,12 @@ service AdminService {
   // and every model of its chain, kept or dropped with the reason. No vendor
   // or judge is called and nothing is spent; rate limits are not checked.
   rpc ExplainRoute(ExplainRouteRequest) returns (ExplainRouteResponse);
+
+  rpc UpsertMCPServer(UpsertMCPServerRequest) returns (UpsertMCPServerResponse);
+  rpc DeleteMCPServer(DeleteMCPServerRequest) returns (DeleteMCPServerResponse);
+  rpc SetMCPCredential(SetMCPCredentialRequest) returns (SetMCPCredentialResponse);
+  rpc DeleteMCPCredential(DeleteMCPCredentialRequest) returns (DeleteMCPCredentialResponse);
+  rpc ListMCPTools(ListMCPToolsRequest) returns (ListMCPToolsResponse);
 }
 
 message ExplainRouteRequest {

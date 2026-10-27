@@ -25,6 +25,7 @@ type Team struct {
 	Name             string
 	MonthlyBudgetUSD float64
 	AllowedModels    []string
+	AllowedMCP       []string
 	CreatedAt        time.Time
 }
 
@@ -43,6 +44,9 @@ type APIKey struct {
 	AllowedModels []string
 	RPMLimit      int32
 	TPMLimit      int64
+	// MCP servers and tools the key, and its team, may use; empty = any.
+	AllowedMCP     []string
+	TeamAllowedMCP []string
 }
 
 func (k *APIKey) Active() bool { return k.DisabledAt == nil }

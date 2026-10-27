@@ -90,3 +90,18 @@ func TestValidateMediaMimeType(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckHostAndGuardedDial(t *testing.T) {
+	for _, host := range []string{"127.0.0.1", "10.1.2.3", "169.254.169.254", "::1"} {
+		if err := CheckHost(context.Background(), host); !errors.Is(err, ErrProhibitedIP) {
+			t.Errorf("CheckHost(%s) = %v, want ErrProhibitedIP", host, err)
+		}
+	}
+	if err := CheckHost(context.Background(), "93.184.215.14"); err != nil {
+		t.Errorf("public address refused: %v", err)
+	}
+	dial := GuardedDial(&net.Dialer{})
+	if _, err := dial(context.Background(), "tcp", "127.0.0.1:80"); !errors.Is(err, ErrProhibitedIP) {
+		t.Errorf("GuardedDial to loopback = %v, want ErrProhibitedIP", err)
+	}
+}

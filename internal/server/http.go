@@ -18,6 +18,11 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
+// Registrar mounts more handlers on the HTTP server, such as the MCP gateway.
+type Registrar interface {
+	Register(mux *http.ServeMux)
+}
+
 // HTTPServer serves the health endpoints and, when configured, the OpenAI-compatible API.
 type HTTPServer struct {
 	degradedFor time.Duration // how long after the last good ping a down database still reads as degraded
@@ -29,7 +34,7 @@ type HTTPServer struct {
 
 // NewHTTPServer creates the HTTP server. api may be nil (health only);
 // requestTimeout bounds one API call, which waits on an upstream model.
-func NewHTTPServer(pinger Pinger, addr string, api *OpenAIAPI, requestTimeout time.Duration) *HTTPServer {
+func NewHTTPServer(pinger Pinger, addr string, api *OpenAIAPI, requestTimeout time.Duration, more ...Registrar) *HTTPServer {
 	s := &HTTPServer{pinger: pinger, addr: addr}
 
 	mux := http.NewServeMux()
@@ -37,6 +42,9 @@ func NewHTTPServer(pinger Pinger, addr string, api *OpenAIAPI, requestTimeout ti
 	mux.HandleFunc("GET /readyz", s.handleReadyz)
 	if api != nil {
 		api.Register(mux)
+	}
+	for _, r := range more {
+		r.Register(mux)
 	}
 
 	s.server = &http.Server{

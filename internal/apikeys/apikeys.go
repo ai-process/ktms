@@ -29,7 +29,9 @@ import (
 const (
 	// ScopeGenerate allows the data-plane RPCs (GenerateText, ListModels).
 	ScopeGenerate = "generate"
-	ScopeAdmin    = "admin"
+	// ScopeMCP allows the MCP gateway at /mcp.
+	ScopeMCP   = "mcp"
+	ScopeAdmin = "admin"
 	// ScopeAdminRead allows the Admin API reads and nothing that changes state.
 	ScopeAdminRead = "admin:read"
 	ScopeNode      = "node"
@@ -49,7 +51,7 @@ var (
 )
 
 // ValidScopes is the closed set the admin endpoint accepts.
-var ValidScopes = []string{ScopeGenerate, ScopeAdmin, ScopeAdminRead, ScopeNode}
+var ValidScopes = []string{ScopeGenerate, ScopeMCP, ScopeAdmin, ScopeAdminRead, ScopeNode}
 
 // Store is the slice of proxydb the verifier needs, so tests can fake it.
 type Store interface {
@@ -74,6 +76,9 @@ type Identity struct {
 	KeyAllowedModels []string
 	RPMLimit         int32
 	TPMLimit         int64
+	// MCP servers ("server") and tools ("server/tool") allowed; empty = any.
+	KeyAllowedMCP  []string
+	TeamAllowedMCP []string
 }
 
 // HasScope reports whether the caller may perform an action needing want.
@@ -108,6 +113,33 @@ func (i *Identity) DeniedBy(modelID string) string {
 // RestrictsModels reports whether an allowlist narrows the models it may call.
 func (i *Identity) RestrictsModels() bool {
 	return i != nil && (len(i.TeamAllowedModels) > 0 || len(i.KeyAllowedModels) > 0)
+}
+
+// CanUseTool reports whether both the key's and its team's allowed_mcp permit
+// the server's tool; tool "" asks whether any tool of the server may be.
+func (i *Identity) CanUseTool(server, tool string) bool {
+	return i != nil && mcpAllows(i.TeamAllowedMCP, server, tool) && mcpAllows(i.KeyAllowedMCP, server, tool)
+}
+
+// MCPDeniedBy names the allowlist that refuses the tool, as DeniedBy does.
+func (i *Identity) MCPDeniedBy(server, tool string) string {
+	if i != nil && !mcpAllows(i.TeamAllowedMCP, server, tool) {
+		return "team"
+	}
+	return "key"
+}
+
+func mcpAllows(list []string, server, tool string) bool {
+	if len(list) == 0 {
+		return true
+	}
+	for _, e := range list {
+		s, t, one := strings.Cut(e, "/")
+		if s == server && (!one || tool == "" || t == tool) {
+			return true
+		}
+	}
+	return false
 }
 
 // LookupHash is the indexed sha256 hex of a plain key.
@@ -343,6 +375,8 @@ func IdentityFor(row *proxydb.APIKey) *Identity {
 		KeyAllowedModels:  row.AllowedModels,
 		RPMLimit:          row.RPMLimit,
 		TPMLimit:          row.TPMLimit,
+		KeyAllowedMCP:     row.AllowedMCP,
+		TeamAllowedMCP:    row.TeamAllowedMCP,
 	}
 }
 

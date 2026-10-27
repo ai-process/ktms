@@ -387,21 +387,80 @@ func (c *UsageCollectorClient) RecordUsage(
 	// light-tokenmeter refuses cache counts beyond tokens_input, and the batch with them.
 	clamped := usage.Clamped()
 	event.CacheReadTokens, event.CacheWriteTokens = int64(clamped.CacheRead), int64(clamped.CacheWrite)
-	// Never block a request on accounting: a full queue means the collector has
-	// been down long enough to fill it, and the loss is counted, not hidden.
+	c.enqueue(event)
+	return nil
+}
+
+// enqueue never blocks a request on accounting: a full queue means the
+// collector has been down long enough to fill it, and the loss is counted.
+func (c *UsageCollectorClient) enqueue(event *usagev1.UsageEvent) {
 	c.closeMu.RLock()
 	defer c.closeMu.RUnlock()
 	if c.closed {
 		observability.UsageEventsDroppedTotal.WithLabelValues("closed").Inc()
-		return nil
+		return
 	}
 	select {
 	case c.queue <- event:
 	default:
 		observability.UsageEventsDroppedTotal.WithLabelValues("queue_full").Inc()
-		log.Warn().Str("actionID", actionID).Str("model", model).Msg("usage event queue full, event dropped")
+		log.Warn().Str("actionID", event.GetActionId()).Str("model", event.GetModel()).Msg("usage event queue full, event dropped")
 	}
+}
 
+// ToolCall is one MCP tool call to account for.
+type ToolCall struct {
+	UserID, ActionID, Server, Tool, ErrorClass string
+	DurationMs, ResponseBytes                  int64
+	Status                                     usagev1.Status
+	Meta                                       map[string]string
+}
+
+// RecordToolCall queues a tool call through the MCP gateway: vendor "mcp",
+// model server__tool and no tokens, so summaries by model count the calls.
+func (c *UsageCollectorClient) RecordToolCall(t ToolCall) error {
+	if c == nil {
+		return errors.New("usage collector client is nil")
+	}
+	projectID := c.projectID
+	if c.projectFor != nil {
+		if p := c.projectFor(t.Meta); p != "" {
+			projectID = p
+		}
+	}
+	model := t.Server + "__" + t.Tool
+	if len(model) > maxModelLength {
+		model = model[:maxModelLength]
+	}
+	// light-tokenmeter refuses longer names, and the event with them.
+	server, tool := t.Server, t.Tool
+	if len(server) > maxVendorLength {
+		server = server[:maxVendorLength]
+	}
+	if len(tool) > maxModelLength {
+		tool = tool[:maxModelLength]
+	}
+	if t.UserID == "" || t.ActionID == "" || projectID == "" {
+		return fmt.Errorf("tool call %s needs user, action and project ids", model)
+	}
+	if err := validateLimits(t.UserID, projectID, t.ActionID, "mcp", model, 0, t.Status); err != nil {
+		return err
+	}
+	event := &usagev1.UsageEvent{
+		EventId:    uuid.Must(uuid.NewV7()).String(),
+		OccurredAt: timestamppb.Now(),
+		UserId:     t.UserID,
+		ProjectId:  projectID,
+		ActionId:   t.ActionID,
+		Vendor:     "mcp",
+		Model:      model,
+		Status:     t.Status,
+		DurationMs: t.DurationMs,
+		ErrorClass: t.ErrorClass,
+		Meta:       fitMeta(t.Meta, t.ActionID),
+		ToolCall:   &usagev1.ToolCall{Server: server, Tool: tool, ResponseBytes: t.ResponseBytes},
+	}
+	c.enqueue(event)
 	return nil
 }
 

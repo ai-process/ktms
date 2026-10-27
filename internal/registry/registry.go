@@ -24,6 +24,8 @@ type Snapshot struct {
 	UserRateLimits map[string]map[string]*proxydb.UserRateLimit
 	// SpendLimits[subjectType+"\x00"+subjectID][period] = cap in nano-USD.
 	SpendLimits map[string]map[string]int64
+	// MCPServers[name] = enabled MCP server with its credential.
+	MCPServers map[string]*MCPServer
 	// adapters caches built vendor adapters per (apiKeyID, modelID) for this
 	// snapshot's lifetime; dropped wholesale on config change.
 	adapters sync.Map

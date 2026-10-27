@@ -46,6 +46,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 - [Command-line tool](#command-line-tool)
 - [Calling Keystone](#calling-keystone)
 - [OpenAI-compatible HTTP API](#openai-compatible-http-api)
+- [MCP gateway](#mcp-gateway)
 - [Concepts](#concepts)
 - [Error contract](#error-contract)
 - [API stability](#api-stability)
@@ -453,6 +454,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `GRPC_MAX_RECV_MSG_SIZE` | `16777216` | Maximum gRPC message receive size in bytes (16MB). |
 | `HTTP_ADDR` | `:8080` | HTTP listen address (health probes and the OpenAI-compatible API). |
 | `HTTP_API_ENABLED` | `true` | Serve the `/v1` API on `HTTP_ADDR`; `false` leaves only the health probes. |
+| `MCP_GATEWAY_ENABLED` | `true` | Serve the [MCP gateway](#mcp-gateway) (`/mcp`, `/mcp/{server}`) on `HTTP_ADDR`. |
 | `HTTP_API_TIMEOUT` | `5m` | Read/write timeout for one HTTP API call (it waits on an upstream model). |
 | `METRICS_ADDR` | `:9091` | Internal HTTP listen address for Prometheus `/metrics` and `/healthz`. Empty disables the metrics server. |
 | `LOG_LEVEL` | `info` | zerolog level. |
@@ -573,7 +575,8 @@ user_rate_limits:
 - Secrets never go in the file. A vendor key is read from the variable named in
   `plain_key_env` and compared with the stored one by fingerprint (`VendorKeyInfo.fingerprint`);
   a new client key is printed once, after apply. Exported vendor keys point at
-  `KTMS_VENDOR_KEY_<KEY>_<VENDOR>`.
+  `KTMS_VENDOR_KEY_<KEY>_<VENDOR>`. MCP credentials (`mcp_credentials`) work the same way with
+  `value_env`, exported as `KTMS_MCP_CREDENTIAL_<SERVER>`.
 - What the Admin API cannot change is refused before anything is applied: a key's scopes or
   team, or a revoked key named again. Mint a key under another name instead.
 - A team's cap is its `monthly_budget_usd`; `spend_limits` holds key and user caps.
@@ -589,9 +592,9 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
 ```
 
 Keys look like `ktms_<hex>` (keys minted before the rename start with `llm_` and keep working). Only a hash is stored, and the plaintext is returned once.
-Scopes: `generate` (data plane), `admin` (implies everything) and `admin:read` (the Admin API
-reads: `GetConfig`, `GetSpend`, `GetTeam`, `GetTeamSpend`, `ExplainRoute` and every `List*`; nothing that changes
-state). A read key sees every tenant, so it cannot be bound to an organization or team. `GetConfig`
+Scopes: `generate` (data plane), `mcp` (the [MCP gateway](#mcp-gateway)), `admin` (implies
+everything) and `admin:read` (the Admin API reads: `GetConfig`, `GetSpend`, `GetTeam`,
+`GetTeamSpend`, `ExplainRoute` and every `List*`; nothing that changes state). A read key sees every tenant, so it cannot be bound to an organization or team. `GetConfig`
 never returns a vendor key itself, only its fingerprint.
 `ListAPIKeys` and `RevokeAPIKey` do what they say.
 
@@ -605,6 +608,8 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
   localhost:9090 ktms.v1.AdminService/SetAPIKeyPolicy
 ```
 
+- `allowed_mcp`: the MCP servers and tools a key with the `mcp` scope may use; see
+  [MCP gateway](#mcp-gateway).
 - `allowed_models`: the models the key may call; empty allows any. A chain keeps only the models
   both the key's and its team's lists allow; an override outside them, or a chain with none left,
   is `PERMISSION_DENIED` (the message names `key` or `team`).
@@ -986,6 +991,7 @@ ktms nodes list; ktms nodes drain gpu-1
 ktms node-keys mint gpu-1 --node-id gpu-1 --allowed-cidrs 10.0.0.0/8
 ktms keys revoke billing                      # asks first; --yes for scripts
 ktms rotate-encryption
+ktms mcp-servers list                         # the MCP gateway's servers, see MCP gateway
 ktms completion zsh > "${fpath[1]}/_ktms"     # also bash and fish
 ktms mcp                                      # tools for AI assistants, see below
 ```
@@ -1393,6 +1399,62 @@ Errors use OpenAI's shape, `{"error": {"message", "type", "param", "code"}}`, an
 OpenAI SDKs retry 429 and 5xx automatically; for `throttled:*` and `vendor_error` you may want to
 disable that (`max_retries=0`) and handle them yourself.
 
+## MCP gateway
+
+Keystone is also a gateway for MCP servers. Claude Code, Cursor and other MCP clients reach the
+servers you register through Keystone, with a KTMS key: the gateway holds each server's
+credential, shows a key only the servers and tools it may use, limits calls per tool and
+accounts for every call in light-tokenmeter and Prometheus. The MCP gateway is
+[experimental](#experimental) in 1.x.
+
+- `/mcp` aggregates every server the key may use; tools are named `server__tool`.
+- `/mcp/{server}` is one server, with its tools named as the server names them.
+
+Both are Streamable HTTP on `HTTP_ADDR`, stateless, so any replica answers any request. Set
+`MCP_GATEWAY_ENABLED=false` to turn them off. Upstream servers may speak Streamable HTTP or SSE.
+Only tools are proxied; resources and prompts are not.
+
+```bash
+# register a server and give it the header the gateway sends it
+ktms mcp-servers set github --url https://api.githubcopilot.com/mcp/ --tool-rpm 60
+echo "Bearer $GITHUB_TOKEN" | ktms mcp-servers credential set github
+ktms mcp-servers tools github          # what it offers, as allowed_mcp entries
+
+# a key for the agent: the mcp scope, two tools of github and all of docs
+ktms keys mint coding-agent --scopes mcp --allowed-mcp github/create_issue,github/search_code,docs
+
+# Claude Code
+claude mcp add --transport http ktms https://ktms.example.com/mcp --header "Authorization: Bearer ktms_<key>"
+```
+
+- **Servers** are `MCPServerSpec`: `name` (1-32 of `a-z`, `0-9`, `-`), `url`, `transport`
+  (`streamable_http` or `sse`), `enabled`, `allow_private`, `timeout_ms` (one call, default
+  60 s), `max_response_bytes` (one result, default 4 MiB) and `tool_rpm`. Manage them with
+  `UpsertMCPServer` and `DeleteMCPServer`, `ktms mcp-servers`, the `mcp_servers` section of a
+  [configuration file](#configuration-as-a-file) or the console. `GetConfig` lists them.
+- **Credentials**: `SetMCPCredential` stores a header and its value (`Authorization: Bearer ...`
+  by default), encrypted with the vendor keys' keyring and re-encrypted by `RotateEncryption`.
+  The gateway adds it to every request it sends the server. It is never returned, logged, put in
+  usage events or passed to clients; `GetConfig` shows its header and fingerprint. In a file it is
+  `mcp_credentials` with `value_env`.
+- **Access**: a key needs the `mcp` scope. `allowed_mcp` on the key's policy and on its team lists
+  servers (`github`) and single tools (`github/create_issue`); empty allows any, and a tool must
+  pass both lists. Others are not listed, and calling one is the JSON-RPC error `-32003`
+  `permission_denied` (`/mcp/{server}` for a server outside the lists is HTTP 403); the upstream
+  is not called.
+- **Addresses**: a server whose host is or resolves to a loopback, private, link-local or
+  metadata address is refused at registration and at every connection, unless `allow_private` is
+  set for a server on your own network. `http://` is allowed only then. The gateway ignores
+  `HTTPS_PROXY` for these connections.
+- **Limits and failures**: above `tool_rpm` (per client key and tool, needs Redis), past the
+  timeout, with a result over `max_response_bytes` or with the server down, the call returns a
+  tool error (`isError`) that says so, for the model to act on. A server that cannot list its
+  tools is left out of `/mcp`, not the others.
+- **Accounting**: each forwarded call is a usage event with vendor `mcp`, model `server__tool`,
+  no tokens, its duration, status and `tool_call` (server, tool, result size); `user_id` comes
+  from the `X-KTMS-User` header, or is `svc:<key name>`. Metrics: `ktms_mcp_tool_calls_total`,
+  `ktms_mcp_tool_call_duration_seconds`, `ktms_mcp_response_bytes`.
+
 ## Concepts
 
 **Effort** is the only routing field the proxy understands; everything else about a request's
@@ -1537,6 +1599,8 @@ These work and are supported, but may change in a minor release. The change is t
   (`GUARDRAILS_LATENT_*`), the encoder settings (`LATENT_*`), and embeddings in judge state
   (`EmbeddingPart`, `input_embedding` over HTTP).
 - **`JudgeStream` and `EvaluateRollouts`**, and `POST /v1/decisions/rollouts` over HTTP.
+- **The MCP gateway:** `/mcp`, the `MCPServerSpec` RPCs, `allowed_mcp`, the `mcp_servers` and
+  `mcp_credentials` file sections, the `ktms_mcp_*` metrics and `ToolCall` in usage events.
 
 ### Compatibility with ktms-admin and light-tokenmeter
 
@@ -1642,17 +1706,20 @@ metrics are served next to them.
 | `ktms_tokens_total` | `vendor`, `model`, `type` (`input`, `output`) | Tokens consumed. |
 | `ktms_cache_tokens_total` | `vendor`, `model`, `type` (`read`, `write`) | The part of input read from or written to the prompt cache. |
 | `ktms_active_requests` | `vendor`, `model` | Upstream calls in flight. |
-| `ktms_throttled_total` | `reason` (`rpm`, `key_rpm`, `key_tpm`, `budget_key`, `budget_user`, `spend_key_daily`, `spend_key_monthly`, `spend_user_daily`, `spend_user_monthly`, `spend_team_monthly`, `spend_unavailable`) | Calls refused by a limit; `spend_unavailable` is Redis down with `SPEND_LIMITS_FAIL_MODE=closed`. |
+| `ktms_throttled_total` | `reason` (`rpm`, `key_rpm`, `key_tpm`, `mcp_tool_rpm`, `budget_key`, `budget_user`, `spend_key_daily`, `spend_key_monthly`, `spend_user_daily`, `spend_user_monthly`, `spend_team_monthly`, `spend_unavailable`) | Calls refused by a limit; `spend_unavailable` is Redis down with `SPEND_LIMITS_FAIL_MODE=closed`. |
 | `ktms_fallbacks_total` | `from_model`, `to_model`, `reason` | Moves down a fallback chain. |
 | `ktms_circuit_breaker_state` | `vendor`, `model` | `0` closed, `1` open, `2` half-open. |
 | `ktms_circuit_breaker_transitions_total`, `ktms_circuit_breaker_rejections_total` | `vendor`, `model` (+ `from`, `to`) | Breaker flaps and the calls it refused. |
 | `ktms_vendor_cooldowns_total` | `vendor`, `model` | Pauses started from a vendor `Retry-After`. |
-| `ktms_dependency_errors_total` | `dependency` (`redis`, `postgres`, `usage_collector`, `keyring`), `operation` | Failed calls to a dependency; `keyring` is a stored vendor key that no keyring version decrypts. |
+| `ktms_dependency_errors_total` | `dependency` (`redis`, `postgres`, `usage_collector`, `keyring`, `mcp`), `operation` | Failed calls to a dependency; `keyring` is a stored vendor key that no keyring version decrypts. |
 | `ktms_usage_events_dropped_total` | `reason` (`queue_full`, `rejected`, `shutdown`, `closed`) | Usage events that never reached light-tokenmeter. |
 | `ktms_batch_jobs_total`, `ktms_batch_items_total` | `vendor`, `state` | Batch progress. |
 | `ktms_batch_poll_duration_seconds` | `vendor` | Vendor batch polling, histogram. |
 | `ktms_shadow_requests_total`, `ktms_shadow_judge_evaluations_total`, `ktms_shadow_judge_scores` | | Shadow traffic and its judged quality. |
 | `ktms_legacy_headers_requests_total` | `header` | Clients still sending `X-LLM-Proxy-*` headers. |
+| `ktms_mcp_tool_calls_total` | `server`, `tool`, `status` (`success`, `tool_error`, `denied`, `throttled`, `timeout`, `too_large`, `upstream_error`, `cancelled`) | Tool calls through the [MCP gateway](#mcp-gateway). |
+| `ktms_mcp_tool_call_duration_seconds` | `server` | Tool call duration, histogram. |
+| `ktms_mcp_response_bytes` | `server` | Tool result size, histogram. |
 
 The `throttled` and `usage_events_dropped` reasons are exported at 0 from startup, so `increase()`
 catches the first event after a restart. Suggested alerts (tune thresholds to your traffic; `job`

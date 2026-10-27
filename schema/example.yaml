@@ -28,6 +28,7 @@ organizations:
       - name: search
         monthly_budget_usd: 100
         allowed_models: [gpt-4o-mini]
+        allowed_mcp: [github]
 api_keys:
   - name: billing
     scopes: [generate]
@@ -37,6 +38,10 @@ api_keys:
   - name: search-bot
     organization: acme
     team: search
+  - name: coding-agent
+    scopes: [mcp]
+    policy:
+      allowed_mcp: [github/create_issue, github/search_code]
 vendor_keys:
   - api_key_name: billing
     vendor: openai
@@ -50,3 +55,11 @@ user_rate_limits:
   - user_id: "*"
     model_id: gpt-4o
     rpm: 30
+mcp_servers:
+  - name: github
+    url: http://github-mcp.tools.svc:8080/mcp
+    allow_private: true
+    tool_rpm: 60
+mcp_credentials:
+  - server: github
+    value_env: TEST_MCP_TOKEN

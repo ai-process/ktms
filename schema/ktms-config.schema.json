@@ -16,6 +16,12 @@
           "policy": {
             "additionalProperties": false,
             "properties": {
+              "allowed_mcp": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
               "allowed_models": {
                 "items": {
                   "type": "string"
@@ -38,6 +44,7 @@
             "items": {
               "enum": [
                 "generate",
+                "mcp",
                 "admin",
                 "admin:read"
               ]
@@ -57,6 +64,70 @@
     },
     "api_version": {
       "const": "ktms.ai-process.dev/v1alpha1"
+    },
+    "mcp_credentials": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "header": {
+            "description": "HTTP header the gateway sends the server; Authorization when left out.",
+            "type": "string"
+          },
+          "server": {
+            "type": "string"
+          },
+          "value_env": {
+            "description": "Environment variable holding the header's value, such as Bearer \u003ctoken\u003e; the value itself never goes in the file.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "server",
+          "value_env"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "mcp_servers": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_private": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "max_response_bytes": {
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer"
+          },
+          "tool_rpm": {
+            "type": "integer"
+          },
+          "transport": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url"
+        ],
+        "type": "object"
+      },
+      "type": "array"
     },
     "models": {
       "items": {
@@ -159,6 +230,13 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "allowed_mcp": {
+                  "description": "MCP servers (server) and tools (server/tool) the team's keys may use; empty means any.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "allowed_models": {
                   "items": {
                     "type": "string"

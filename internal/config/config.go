@@ -25,6 +25,8 @@ type Config struct {
 	HTTPAddr           string
 	// HTTPAPIEnabled mounts the OpenAI-compatible API on HTTPAddr; off leaves health only.
 	HTTPAPIEnabled bool
+	// MCPGatewayEnabled mounts the MCP gateway (/mcp) on HTTPAddr.
+	MCPGatewayEnabled bool
 	// HTTPAPITimeout bounds one HTTP API call, which waits on an upstream model.
 	HTTPAPITimeout  time.Duration
 	LogLevel        string
@@ -155,6 +157,7 @@ func Load() *Config {
 		GRPCMaxRecvMsgSize: getIntEnv("GRPC_MAX_RECV_MSG_SIZE", 16*1024*1024),
 		HTTPAddr:           getEnv("HTTP_ADDR", ":8080"),
 		HTTPAPIEnabled:     getBoolEnv("HTTP_API_ENABLED", true),
+		MCPGatewayEnabled:  getBoolEnv("MCP_GATEWAY_ENABLED", true),
 		HTTPAPITimeout:     getDurationEnv("HTTP_API_TIMEOUT", 5*time.Minute),
 		LogLevel:           getEnv("LOG_LEVEL", "info"),
 		ShutdownTimeout:    getDurationEnv("SHUTDOWN_TIMEOUT", 30*time.Second),
