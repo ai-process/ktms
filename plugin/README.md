@@ -23,9 +23,11 @@ The assistant picks a skill by itself when the task fits; the slash command star
 ## Requirements
 
 Keystone 1.2 or later with its `ktms` CLI, and light-tokenmeter 1.1 or later with its `tokenmeter`
-CLI, for the skills' commands and the MCP servers. Until those releases are out, build both CLIs
-from `main` (`go install github.com/ai-process/ktms/cmd/ktms@main`,
-`go install github.com/ai-process/light-tokenmeter/cmd/tokenmeter@main`).
+CLI, for the skills' commands and the MCP servers. Both CLIs ship as signed archives on the
+[Keystone](https://github.com/ai-process/ktms/releases) and
+[light-tokenmeter](https://github.com/ai-process/light-tokenmeter/releases) releases, or install
+them with `go install github.com/ai-process/ktms/cmd/ktms@latest` and
+`go install github.com/ai-process/light-tokenmeter/cmd/tokenmeter@latest`.
 
 ## MCP servers
 
