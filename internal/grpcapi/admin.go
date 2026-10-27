@@ -35,10 +35,11 @@ type AdminServer struct {
 	spendReader SpendReader
 	spendLimits func(subjectType, subjectID, period string) int64
 	pb.UnimplementedAdminServiceServer
-	db      *proxydb.DB
-	keyring *crypto.Keyring
-	nodeMgr *nodes.Manager
-	explain RouteExplainer
+	db       *proxydb.DB
+	keyring  *crypto.Keyring
+	nodeMgr  *nodes.Manager
+	explain  RouteExplainer
+	mcpTools MCPToolLister
 	// onChange is called after a successful config mutation so this replica
 	// picks the change up immediately instead of waiting for the poll.
 	onChange func()
@@ -153,12 +154,26 @@ func (s *AdminServer) GetConfig(ctx context.Context, _ *pb.GetConfigRequest) (*p
 	if err != nil {
 		return nil, dbStatus(err)
 	}
+	mcpServers, err := s.db.LoadMCPServers(ctx)
+	if err != nil {
+		return nil, dbStatus(err)
+	}
+	mcpCreds, err := s.db.LoadMCPCredentials(ctx)
+	if err != nil {
+		return nil, dbStatus(err)
+	}
 	version, err := s.db.ConfigVersion(ctx)
 	if err != nil {
 		return nil, dbStatus(err)
 	}
 
 	resp := &pb.GetConfigResponse{Version: version}
+	for _, m := range mcpServers {
+		resp.McpServers = append(resp.McpServers, mcpServerToProto(m))
+	}
+	for _, c := range mcpCreds {
+		resp.McpCredentials = append(resp.McpCredentials, s.mcpCredentialInfo(c))
+	}
 	for _, m := range models {
 		resp.Models = append(resp.Models, modelToProto(m))
 	}
@@ -368,11 +383,15 @@ func (s *AdminServer) MintAPIKey(ctx context.Context, req *pb.MintAPIKeyRequest)
 	if err != nil {
 		return nil, err
 	}
+	allowedMCP, err := normalizeAllowedMCP(req.GetPolicy().GetAllowedMcp())
+	if err != nil {
+		return nil, err
+	}
 	plain, row, err := apikeys.Generate(req.GetName(), scopes)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "key generation failed")
 	}
-	row.AllowedModels, row.RPMLimit, row.TPMLimit = allowed, rpm, tpm
+	row.AllowedModels, row.RPMLimit, row.TPMLimit, row.AllowedMCP = allowed, rpm, tpm, allowedMCP
 
 	var orgID, teamID *string
 	if req.GetOrgId() != "" {
@@ -452,8 +471,8 @@ func (s *AdminServer) ListAPIKeys(ctx context.Context, _ *pb.ListAPIKeysRequest)
 		if k.TeamID != nil {
 			info.TeamId = *k.TeamID
 		}
-		if len(k.AllowedModels) > 0 || k.RPMLimit > 0 || k.TPMLimit > 0 {
-			info.Policy = &pb.APIKeyPolicy{AllowedModels: k.AllowedModels, RpmLimit: k.RPMLimit, TpmLimit: k.TPMLimit}
+		if len(k.AllowedModels) > 0 || k.RPMLimit > 0 || k.TPMLimit > 0 || len(k.AllowedMCP) > 0 {
+			info.Policy = &pb.APIKeyPolicy{AllowedModels: k.AllowedModels, RpmLimit: k.RPMLimit, TpmLimit: k.TPMLimit, AllowedMcp: k.AllowedMCP}
 		}
 		out = append(out, info)
 	}
@@ -468,7 +487,11 @@ func (s *AdminServer) SetAPIKeyPolicy(ctx context.Context, req *pb.SetAPIKeyPoli
 	if err != nil {
 		return nil, err
 	}
-	if err := s.db.SetAPIKeyPolicy(ctx, req.GetName(), allowed, rpm, tpm); err != nil {
+	allowedMCP, err := normalizeAllowedMCP(req.GetPolicy().GetAllowedMcp())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.db.SetAPIKeyPolicy(ctx, req.GetName(), allowed, rpm, tpm, allowedMCP); err != nil {
 		return nil, dbStatus(err)
 	}
 	return &pb.SetAPIKeyPolicyResponse{}, nil
@@ -563,7 +586,9 @@ func (s *AdminServer) RotateEncryption(ctx context.Context, _ *pb.RotateEncrypti
 			}
 			count++
 		}
-		return nil
+		n, err := s.rotateMCPCredentials(ctx, tx, active)
+		count += n
+		return err
 	}, nil)
 	var unreadable *unreadableKeyError
 	if errors.As(err, &unreadable) {
@@ -726,12 +751,17 @@ func (s *AdminServer) CreateTeam(ctx context.Context, req *pb.CreateTeamRequest)
 	if allowed == nil {
 		allowed = []string{}
 	}
+	allowedMCP, err := normalizeAllowedMCP(req.GetAllowedMcp())
+	if err != nil {
+		return nil, err
+	}
 	team := &proxydb.Team{
 		ID:               uuid.NewString(),
 		OrgID:            req.GetOrgId(),
 		Name:             req.GetName(),
 		MonthlyBudgetUSD: req.GetMonthlyBudgetUsd(),
 		AllowedModels:    allowed,
+		AllowedMCP:       allowedMCP,
 		CreatedAt:        time.Now().UTC(),
 	}
 	_, err = s.db.Mutate(ctx, func(tx pgx.Tx) error {
@@ -796,11 +826,16 @@ func (s *AdminServer) UpdateTeam(ctx context.Context, req *pb.UpdateTeamRequest)
 	if allowed == nil {
 		allowed = []string{}
 	}
+	allowedMCP, err := normalizeAllowedMCP(req.GetAllowedMcp())
+	if err != nil {
+		return nil, err
+	}
 	t := &proxydb.Team{
 		ID:               req.GetId(),
 		Name:             req.GetName(),
 		MonthlyBudgetUSD: req.GetMonthlyBudgetUsd(),
 		AllowedModels:    allowed,
+		AllowedMCP:       allowedMCP,
 	}
 	_, err = s.db.Mutate(ctx, func(tx pgx.Tx) error {
 		if err := proxydb.UpdateTeamTx(ctx, tx, t); err != nil {
@@ -928,5 +963,6 @@ func teamToProto(t *proxydb.Team) *pb.Team {
 		MonthlyBudgetUsd: t.MonthlyBudgetUSD,
 		AllowedModels:    t.AllowedModels,
 		CreatedAt:        timestamppb.New(t.CreatedAt),
+		AllowedMcp:       t.AllowedMCP,
 	}
 }

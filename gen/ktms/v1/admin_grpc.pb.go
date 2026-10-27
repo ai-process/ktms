@@ -52,6 +52,11 @@ const (
 	AdminService_GetTeamSpend_FullMethodName        = "/ktms.v1.AdminService/GetTeamSpend"
 	AdminService_GetSpend_FullMethodName            = "/ktms.v1.AdminService/GetSpend"
 	AdminService_ExplainRoute_FullMethodName        = "/ktms.v1.AdminService/ExplainRoute"
+	AdminService_UpsertMCPServer_FullMethodName     = "/ktms.v1.AdminService/UpsertMCPServer"
+	AdminService_DeleteMCPServer_FullMethodName     = "/ktms.v1.AdminService/DeleteMCPServer"
+	AdminService_SetMCPCredential_FullMethodName    = "/ktms.v1.AdminService/SetMCPCredential"
+	AdminService_DeleteMCPCredential_FullMethodName = "/ktms.v1.AdminService/DeleteMCPCredential"
+	AdminService_ListMCPTools_FullMethodName        = "/ktms.v1.AdminService/ListMCPTools"
 )
 
 // AdminServiceClient is the client API for AdminService service.
@@ -98,6 +103,11 @@ type AdminServiceClient interface {
 	// and every model of its chain, kept or dropped with the reason. No vendor
 	// or judge is called and nothing is spent; rate limits are not checked.
 	ExplainRoute(ctx context.Context, in *ExplainRouteRequest, opts ...grpc.CallOption) (*ExplainRouteResponse, error)
+	UpsertMCPServer(ctx context.Context, in *UpsertMCPServerRequest, opts ...grpc.CallOption) (*UpsertMCPServerResponse, error)
+	DeleteMCPServer(ctx context.Context, in *DeleteMCPServerRequest, opts ...grpc.CallOption) (*DeleteMCPServerResponse, error)
+	SetMCPCredential(ctx context.Context, in *SetMCPCredentialRequest, opts ...grpc.CallOption) (*SetMCPCredentialResponse, error)
+	DeleteMCPCredential(ctx context.Context, in *DeleteMCPCredentialRequest, opts ...grpc.CallOption) (*DeleteMCPCredentialResponse, error)
+	ListMCPTools(ctx context.Context, in *ListMCPToolsRequest, opts ...grpc.CallOption) (*ListMCPToolsResponse, error)
 }
 
 type adminServiceClient struct {
@@ -438,6 +448,56 @@ func (c *adminServiceClient) ExplainRoute(ctx context.Context, in *ExplainRouteR
 	return out, nil
 }
 
+func (c *adminServiceClient) UpsertMCPServer(ctx context.Context, in *UpsertMCPServerRequest, opts ...grpc.CallOption) (*UpsertMCPServerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpsertMCPServerResponse)
+	err := c.cc.Invoke(ctx, AdminService_UpsertMCPServer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) DeleteMCPServer(ctx context.Context, in *DeleteMCPServerRequest, opts ...grpc.CallOption) (*DeleteMCPServerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteMCPServerResponse)
+	err := c.cc.Invoke(ctx, AdminService_DeleteMCPServer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) SetMCPCredential(ctx context.Context, in *SetMCPCredentialRequest, opts ...grpc.CallOption) (*SetMCPCredentialResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetMCPCredentialResponse)
+	err := c.cc.Invoke(ctx, AdminService_SetMCPCredential_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) DeleteMCPCredential(ctx context.Context, in *DeleteMCPCredentialRequest, opts ...grpc.CallOption) (*DeleteMCPCredentialResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteMCPCredentialResponse)
+	err := c.cc.Invoke(ctx, AdminService_DeleteMCPCredential_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) ListMCPTools(ctx context.Context, in *ListMCPToolsRequest, opts ...grpc.CallOption) (*ListMCPToolsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMCPToolsResponse)
+	err := c.cc.Invoke(ctx, AdminService_ListMCPTools_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AdminServiceServer is the server API for AdminService service.
 // All implementations must embed UnimplementedAdminServiceServer
 // for forward compatibility.
@@ -482,6 +542,11 @@ type AdminServiceServer interface {
 	// and every model of its chain, kept or dropped with the reason. No vendor
 	// or judge is called and nothing is spent; rate limits are not checked.
 	ExplainRoute(context.Context, *ExplainRouteRequest) (*ExplainRouteResponse, error)
+	UpsertMCPServer(context.Context, *UpsertMCPServerRequest) (*UpsertMCPServerResponse, error)
+	DeleteMCPServer(context.Context, *DeleteMCPServerRequest) (*DeleteMCPServerResponse, error)
+	SetMCPCredential(context.Context, *SetMCPCredentialRequest) (*SetMCPCredentialResponse, error)
+	DeleteMCPCredential(context.Context, *DeleteMCPCredentialRequest) (*DeleteMCPCredentialResponse, error)
+	ListMCPTools(context.Context, *ListMCPToolsRequest) (*ListMCPToolsResponse, error)
 	mustEmbedUnimplementedAdminServiceServer()
 }
 
@@ -590,6 +655,21 @@ func (UnimplementedAdminServiceServer) GetSpend(context.Context, *GetSpendReques
 }
 func (UnimplementedAdminServiceServer) ExplainRoute(context.Context, *ExplainRouteRequest) (*ExplainRouteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ExplainRoute not implemented")
+}
+func (UnimplementedAdminServiceServer) UpsertMCPServer(context.Context, *UpsertMCPServerRequest) (*UpsertMCPServerResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpsertMCPServer not implemented")
+}
+func (UnimplementedAdminServiceServer) DeleteMCPServer(context.Context, *DeleteMCPServerRequest) (*DeleteMCPServerResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteMCPServer not implemented")
+}
+func (UnimplementedAdminServiceServer) SetMCPCredential(context.Context, *SetMCPCredentialRequest) (*SetMCPCredentialResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetMCPCredential not implemented")
+}
+func (UnimplementedAdminServiceServer) DeleteMCPCredential(context.Context, *DeleteMCPCredentialRequest) (*DeleteMCPCredentialResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteMCPCredential not implemented")
+}
+func (UnimplementedAdminServiceServer) ListMCPTools(context.Context, *ListMCPToolsRequest) (*ListMCPToolsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListMCPTools not implemented")
 }
 func (UnimplementedAdminServiceServer) mustEmbedUnimplementedAdminServiceServer() {}
 func (UnimplementedAdminServiceServer) testEmbeddedByValue()                      {}
@@ -1206,6 +1286,96 @@ func _AdminService_ExplainRoute_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AdminService_UpsertMCPServer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpsertMCPServerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).UpsertMCPServer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_UpsertMCPServer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).UpsertMCPServer(ctx, req.(*UpsertMCPServerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_DeleteMCPServer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteMCPServerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).DeleteMCPServer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_DeleteMCPServer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).DeleteMCPServer(ctx, req.(*DeleteMCPServerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_SetMCPCredential_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetMCPCredentialRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).SetMCPCredential(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_SetMCPCredential_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).SetMCPCredential(ctx, req.(*SetMCPCredentialRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_DeleteMCPCredential_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteMCPCredentialRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).DeleteMCPCredential(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_DeleteMCPCredential_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).DeleteMCPCredential(ctx, req.(*DeleteMCPCredentialRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_ListMCPTools_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListMCPToolsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).ListMCPTools(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_ListMCPTools_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).ListMCPTools(ctx, req.(*ListMCPToolsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AdminService_ServiceDesc is the grpc.ServiceDesc for AdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1344,6 +1514,26 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ExplainRoute",
 			Handler:    _AdminService_ExplainRoute_Handler,
+		},
+		{
+			MethodName: "UpsertMCPServer",
+			Handler:    _AdminService_UpsertMCPServer_Handler,
+		},
+		{
+			MethodName: "DeleteMCPServer",
+			Handler:    _AdminService_DeleteMCPServer_Handler,
+		},
+		{
+			MethodName: "SetMCPCredential",
+			Handler:    _AdminService_SetMCPCredential_Handler,
+		},
+		{
+			MethodName: "DeleteMCPCredential",
+			Handler:    _AdminService_DeleteMCPCredential_Handler,
+		},
+		{
+			MethodName: "ListMCPTools",
+			Handler:    _AdminService_ListMCPTools_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -145,6 +145,14 @@ func (l *Loader) build(ctx context.Context, version int64) (*Snapshot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load spend limits: %w", err)
 	}
+	mcpServers, err := l.db.LoadMCPServers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load mcp servers: %w", err)
+	}
+	mcpCreds, err := l.db.LoadMCPCredentials(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load mcp credentials: %w", err)
+	}
 
 	snap := &Snapshot{
 		Version:        version,
@@ -205,9 +213,44 @@ func (l *Loader) build(ctx context.Context, version int64) (*Snapshot, error) {
 		}
 		snap.vendorKeys[vk.APIKeyID][vk.Vendor] = vc
 	}
+	snap.MCPServers = l.mcpServers(mcpServers, mcpCreds, prev)
 	// Not one readable key means a wrong keyring, not a rotation in progress.
 	if len(vendorKeys) > 0 && unreadable == len(vendorKeys) {
 		return nil, fmt.Errorf("no vendor key can be decrypted with KTMS_ENCRYPTION_KEYS (%d keys): wrong keyring?", unreadable)
 	}
 	return snap, nil
+}
+
+// mcpServers joins the enabled servers with their credentials. One that cannot
+// be decrypted keeps the previous snapshot's, as a vendor key does; without
+// one the server is left out rather than called unauthenticated.
+func (l *Loader) mcpServers(servers []*proxydb.MCPServer, creds []*proxydb.MCPCredential, prev *Snapshot) map[string]*MCPServer {
+	byServer := make(map[string]*proxydb.MCPCredential, len(creds))
+	for _, c := range creds {
+		byServer[c.Server] = c
+	}
+	out := make(map[string]*MCPServer, len(servers))
+	for _, s := range servers {
+		if !s.Enabled {
+			continue
+		}
+		m := &MCPServer{MCPServer: *s}
+		if c := byServer[s.Name]; c != nil {
+			plain, err := l.keyring.Decrypt(c.ValueCiphertext, int(c.ValueVersion))
+			if err != nil {
+				observability.DependencyErrorsTotal.WithLabelValues("keyring", "decrypt").Inc()
+				old := prev.MCPServers[s.Name]
+				log.Error().Err(err).Str("mcp_server", s.Name).Int32("key_version", c.ValueVersion).Bool("kept_previous", old != nil && old.Header != "").
+					Msg("mcp credential cannot be decrypted with KTMS_ENCRYPTION_KEYS")
+				if old == nil || old.Header == "" {
+					continue
+				}
+				m.Header, m.Value = old.Header, old.Value
+			} else {
+				m.Header, m.Value = c.Header, plain
+			}
+		}
+		out[s.Name] = m
+	}
+	return out
 }

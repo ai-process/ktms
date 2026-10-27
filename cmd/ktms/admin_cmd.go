@@ -228,16 +228,16 @@ func (a *app) keysCmd() *cobra.Command {
 					}
 					pol := k.GetPolicy()
 					rows = append(rows, []string{k.GetName(), list(k.GetScopes()), tenant, list(pol.GetAllowedModels()),
-						limit(int64(pol.GetRpmLimit())), limit(pol.GetTpmLimit()), when(k.GetCreatedAt()), yesNo(k.GetDisabled())})
+						limit(int64(pol.GetRpmLimit())), limit(pol.GetTpmLimit()), list(pol.GetAllowedMcp()), when(k.GetCreatedAt()), yesNo(k.GetDisabled())})
 				}
-				return p.rows([]string{"NAME", "SCOPES", "TENANT", "MODELS", "RPM", "TPM", "CREATED", "REVOKED"}, rows)
+				return p.rows([]string{"NAME", "SCOPES", "TENANT", "MODELS", "RPM", "TPM", "MCP", "CREATED", "REVOKED"}, rows)
 			})
 		},
 	}
 	outputFlag(ls, &format)
 	ls.Flags().BoolVar(&all, "all", false, "include revoked keys")
 
-	var scopes, models []string
+	var scopes, models, mcpAllow []string
 	var org, team string
 	var rpm int32
 	var tpm int64
@@ -251,7 +251,7 @@ func (a *app) keysCmd() *cobra.Command {
 				return err
 			}
 			return a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
-				req, err := mintRequest(ctx, c, args[0], scopes, org, team, policy(models, rpm, tpm))
+				req, err := mintRequest(ctx, c, args[0], scopes, org, team, policy(models, rpm, tpm, mcpAllow))
 				if err != nil {
 					return err
 				}
@@ -269,10 +269,10 @@ func (a *app) keysCmd() *cobra.Command {
 		},
 	}
 	outputFlag(mint, &format)
-	mint.Flags().StringSliceVar(&scopes, "scopes", []string{"generate"}, "generate, admin or admin:read")
+	mint.Flags().StringSliceVar(&scopes, "scopes", []string{"generate"}, "generate, mcp, admin or admin:read")
 	mint.Flags().StringVar(&org, "org", "", "organization name")
 	mint.Flags().StringVar(&team, "team", "", "team as org/team")
-	policyFlags(mint, &models, &rpm, &tpm)
+	policyFlags(mint, &models, &rpm, &tpm, &mcpAllow)
 
 	var yes bool
 	revoke := &cobra.Command{
@@ -294,7 +294,7 @@ func (a *app) keysCmd() *cobra.Command {
 	}
 	revoke.Flags().BoolVar(&yes, "yes", false, "revoke without asking")
 
-	var pModels []string
+	var pModels, pMCP []string
 	var pRPM int32
 	var pTPM int64
 	set := &cobra.Command{
@@ -303,7 +303,7 @@ func (a *app) keysCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
-				if _, err := c.SetAPIKeyPolicy(ctx, &pb.SetAPIKeyPolicyRequest{Name: args[0], Policy: policy(pModels, pRPM, pTPM)}); err != nil {
+				if _, err := c.SetAPIKeyPolicy(ctx, &pb.SetAPIKeyPolicyRequest{Name: args[0], Policy: policy(pModels, pRPM, pTPM, pMCP)}); err != nil {
 					return err
 				}
 				fmt.Fprintf(a.stdout, "Policy of %s replaced.\n", args[0])
@@ -311,7 +311,7 @@ func (a *app) keysCmd() *cobra.Command {
 			})
 		},
 	}
-	policyFlags(set, &pModels, &pRPM, &pTPM)
+	policyFlags(set, &pModels, &pRPM, &pTPM, &pMCP)
 	pol := &cobra.Command{Use: "policy", Short: "A key's own limits"}
 	pol.AddCommand(set)
 
@@ -319,17 +319,18 @@ func (a *app) keysCmd() *cobra.Command {
 	return cmd
 }
 
-func policyFlags(cmd *cobra.Command, models *[]string, rpm *int32, tpm *int64) {
+func policyFlags(cmd *cobra.Command, models *[]string, rpm *int32, tpm *int64, mcpAllow *[]string) {
 	cmd.Flags().StringSliceVar(models, "allowed-models", nil, "model ids the key may call (default any)")
+	cmd.Flags().StringSliceVar(mcpAllow, "allowed-mcp", nil, "MCP servers (server) and tools (server/tool) the key may use (default any)")
 	cmd.Flags().Int32Var(rpm, "rpm", 0, "calls per minute (default unlimited)")
 	cmd.Flags().Int64Var(tpm, "tpm", 0, "tokens per minute (default unlimited)")
 }
 
-func policy(models []string, rpm int32, tpm int64) *pb.APIKeyPolicy {
-	if len(models) == 0 && rpm == 0 && tpm == 0 {
+func policy(models []string, rpm int32, tpm int64, mcpAllow []string) *pb.APIKeyPolicy {
+	if len(models) == 0 && rpm == 0 && tpm == 0 && len(mcpAllow) == 0 {
 		return nil
 	}
-	return &pb.APIKeyPolicy{AllowedModels: models, RpmLimit: rpm, TpmLimit: tpm}
+	return &pb.APIKeyPolicy{AllowedModels: models, RpmLimit: rpm, TpmLimit: tpm, AllowedMcp: mcpAllow}
 }
 
 func limit(n int64) string {

@@ -43,6 +43,7 @@ func Schema() []byte {
 					"name":               str,
 					"monthly_budget_usd": map[string]any{"type": "number", "minimum": 0},
 					"allowed_models":     strs,
+					"allowed_mcp":        map[string]any{"type": "array", "items": str, "description": "MCP servers (server) and tools (server/tool) the team's keys may use; empty means any."},
 				}, "name")),
 			}, "name")),
 			"api_keys": list(obj(map[string]any{
@@ -57,6 +58,12 @@ func Schema() []byte {
 				"vendor":        str,
 				"plain_key_env": map[string]any{"type": "string", "description": "Environment variable holding the vendor key; the key itself never goes in the file."},
 			}, "api_key_name", "vendor", "plain_key_env")),
+			"mcp_servers": list(messageSchema((&pb.MCPServerSpec{}).ProtoReflect().Descriptor(), "name", "url")),
+			"mcp_credentials": list(obj(map[string]any{
+				"server":    str,
+				"header":    map[string]any{"type": "string", "description": "HTTP header the gateway sends the server; Authorization when left out."},
+				"value_env": map[string]any{"type": "string", "description": "Environment variable holding the header's value, such as Bearer <token>; the value itself never goes in the file."},
+			}, "server", "value_env")),
 			"spend_limits": list(obj(map[string]any{
 				"subject_type":  map[string]any{"enum": []string{"key", "user"}},
 				"subject_id":    map[string]any{"type": "string", "description": "Key name or user id, * for every subject of that type."},

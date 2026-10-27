@@ -198,3 +198,61 @@ func FetchURL(ctx context.Context, rawURL string, maxBytes int64) ([]byte, strin
 
 	return data, mimeType, nil
 }
+
+// CheckHost fails with ErrProhibitedIP when host is, or resolves to, an
+// address IsProhibitedIP refuses.
+func CheckHost(ctx context.Context, host string) error {
+	ips, err := lookup(ctx, host)
+	if err != nil {
+		return err
+	}
+	for _, ip := range ips {
+		if IsProhibitedIP(ip) {
+			return fmt.Errorf("%w: %s resolves to %s", ErrProhibitedIP, host, ip)
+		}
+	}
+	return nil
+}
+
+// GuardedDial dials like d but refuses a prohibited address. It connects to
+// the address it checked, so a DNS answer cannot change in between.
+func GuardedDial(d *net.Dialer) func(ctx context.Context, network, addr string) (net.Conn, error) {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		ips, err := lookup(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		for _, ip := range ips {
+			if IsProhibitedIP(ip) {
+				return nil, fmt.Errorf("%w: %s resolves to %s", ErrProhibitedIP, host, ip)
+			}
+		}
+		var lastErr error
+		for _, ip := range ips {
+			conn, err := d.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+			if err == nil {
+				return conn, nil
+			}
+			lastErr = err
+		}
+		return nil, lastErr
+	}
+}
+
+func lookup(ctx context.Context, host string) ([]net.IP, error) {
+	if ip := net.ParseIP(host); ip != nil {
+		return []net.IP{ip}, nil
+	}
+	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+	if err != nil {
+		return nil, fmt.Errorf("DNS resolution failed for %s: %w", host, err)
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("DNS resolution failed for %s: no addresses", host)
+	}
+	return ips, nil
+}

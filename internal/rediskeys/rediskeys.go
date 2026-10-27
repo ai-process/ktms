@@ -40,6 +40,11 @@ func (k Keys) KeyTPM(keyName string) string {
 	return fmt.Sprintf("%sllmproxy:gcra:ktpm:%s", k.prefix, keyName)
 }
 
+// ToolRPM is the GCRA arrival time of a client key's calls to one MCP tool.
+func (k Keys) ToolRPM(keyName, server, tool string) string {
+	return fmt.Sprintf("%sllmproxy:gcra:mcp:%s:%s:%s", k.prefix, keyName, server, tool)
+}
+
 // BudgetKey is the daily token budget per client key and model (UTC day).
 func (k Keys) BudgetKey(keyName, modelID, day string) string {
 	return fmt.Sprintf("%sllmproxy:bud:k:%s:%s:%s", k.prefix, keyName, modelID, day)

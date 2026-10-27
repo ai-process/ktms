@@ -120,8 +120,11 @@ type UsageEvent struct {
 	// Input tokens written to the vendor's prompt cache (optional, >= 0). Part of
 	// tokens_input; cache_read_tokens + cache_write_tokens must not exceed it.
 	CacheWriteTokens int64 `protobuf:"varint,18,opt,name=cache_write_tokens,json=cacheWriteTokens,proto3" json:"cache_write_tokens,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Set on a tool call through an MCP gateway. vendor is then "mcp", model is
+	// server__tool (cut to fit) and the token counts are 0.
+	ToolCall      *ToolCall `protobuf:"bytes,19,opt,name=tool_call,json=toolCall,proto3" json:"tool_call,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UsageEvent) Reset() {
@@ -280,6 +283,77 @@ func (x *UsageEvent) GetCacheWriteTokens() int64 {
 	return 0
 }
 
+func (x *UsageEvent) GetToolCall() *ToolCall {
+	if x != nil {
+		return x.ToolCall
+	}
+	return nil
+}
+
+// ToolCall is one MCP tools/call an MCP gateway forwarded.
+type ToolCall struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// MCP server name, as the gateway registered it (max 64 chars)
+	Server string `protobuf:"bytes,1,opt,name=server,proto3" json:"server,omitempty"`
+	// Tool name, as the server names it (max 128 chars)
+	Tool string `protobuf:"bytes,2,opt,name=tool,proto3" json:"tool,omitempty"`
+	// Size of the tool result in bytes, as JSON
+	ResponseBytes int64 `protobuf:"varint,3,opt,name=response_bytes,json=responseBytes,proto3" json:"response_bytes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ToolCall) Reset() {
+	*x = ToolCall{}
+	mi := &file_usage_v1_usage_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ToolCall) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ToolCall) ProtoMessage() {}
+
+func (x *ToolCall) ProtoReflect() protoreflect.Message {
+	mi := &file_usage_v1_usage_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ToolCall.ProtoReflect.Descriptor instead.
+func (*ToolCall) Descriptor() ([]byte, []int) {
+	return file_usage_v1_usage_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ToolCall) GetServer() string {
+	if x != nil {
+		return x.Server
+	}
+	return ""
+}
+
+func (x *ToolCall) GetTool() string {
+	if x != nil {
+		return x.Tool
+	}
+	return ""
+}
+
+func (x *ToolCall) GetResponseBytes() int64 {
+	if x != nil {
+		return x.ResponseBytes
+	}
+	return 0
+}
+
 // RecordUsageEventRequest is the request for recording a single usage event
 type RecordUsageEventRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -290,7 +364,7 @@ type RecordUsageEventRequest struct {
 
 func (x *RecordUsageEventRequest) Reset() {
 	*x = RecordUsageEventRequest{}
-	mi := &file_usage_v1_usage_proto_msgTypes[1]
+	mi := &file_usage_v1_usage_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -302,7 +376,7 @@ func (x *RecordUsageEventRequest) String() string {
 func (*RecordUsageEventRequest) ProtoMessage() {}
 
 func (x *RecordUsageEventRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_usage_v1_usage_proto_msgTypes[1]
+	mi := &file_usage_v1_usage_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -315,7 +389,7 @@ func (x *RecordUsageEventRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecordUsageEventRequest.ProtoReflect.Descriptor instead.
 func (*RecordUsageEventRequest) Descriptor() ([]byte, []int) {
-	return file_usage_v1_usage_proto_rawDescGZIP(), []int{1}
+	return file_usage_v1_usage_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *RecordUsageEventRequest) GetEvent() *UsageEvent {
@@ -336,7 +410,7 @@ type RecordUsageEventResponse struct {
 
 func (x *RecordUsageEventResponse) Reset() {
 	*x = RecordUsageEventResponse{}
-	mi := &file_usage_v1_usage_proto_msgTypes[2]
+	mi := &file_usage_v1_usage_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -348,7 +422,7 @@ func (x *RecordUsageEventResponse) String() string {
 func (*RecordUsageEventResponse) ProtoMessage() {}
 
 func (x *RecordUsageEventResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_usage_v1_usage_proto_msgTypes[2]
+	mi := &file_usage_v1_usage_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -361,7 +435,7 @@ func (x *RecordUsageEventResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecordUsageEventResponse.ProtoReflect.Descriptor instead.
 func (*RecordUsageEventResponse) Descriptor() ([]byte, []int) {
-	return file_usage_v1_usage_proto_rawDescGZIP(), []int{2}
+	return file_usage_v1_usage_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *RecordUsageEventResponse) GetCreated() bool {
@@ -382,7 +456,7 @@ type RecordUsageEventsRequest struct {
 
 func (x *RecordUsageEventsRequest) Reset() {
 	*x = RecordUsageEventsRequest{}
-	mi := &file_usage_v1_usage_proto_msgTypes[3]
+	mi := &file_usage_v1_usage_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -394,7 +468,7 @@ func (x *RecordUsageEventsRequest) String() string {
 func (*RecordUsageEventsRequest) ProtoMessage() {}
 
 func (x *RecordUsageEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_usage_v1_usage_proto_msgTypes[3]
+	mi := &file_usage_v1_usage_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -407,7 +481,7 @@ func (x *RecordUsageEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecordUsageEventsRequest.ProtoReflect.Descriptor instead.
 func (*RecordUsageEventsRequest) Descriptor() ([]byte, []int) {
-	return file_usage_v1_usage_proto_rawDescGZIP(), []int{3}
+	return file_usage_v1_usage_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *RecordUsageEventsRequest) GetEvents() []*UsageEvent {
@@ -430,7 +504,7 @@ type RecordUsageEventsResponse struct {
 
 func (x *RecordUsageEventsResponse) Reset() {
 	*x = RecordUsageEventsResponse{}
-	mi := &file_usage_v1_usage_proto_msgTypes[4]
+	mi := &file_usage_v1_usage_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -442,7 +516,7 @@ func (x *RecordUsageEventsResponse) String() string {
 func (*RecordUsageEventsResponse) ProtoMessage() {}
 
 func (x *RecordUsageEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_usage_v1_usage_proto_msgTypes[4]
+	mi := &file_usage_v1_usage_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -455,7 +529,7 @@ func (x *RecordUsageEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecordUsageEventsResponse.ProtoReflect.Descriptor instead.
 func (*RecordUsageEventsResponse) Descriptor() ([]byte, []int) {
-	return file_usage_v1_usage_proto_rawDescGZIP(), []int{4}
+	return file_usage_v1_usage_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *RecordUsageEventsResponse) GetCreatedCount() int32 {
@@ -499,7 +573,7 @@ type GetUsageSummaryRequest struct {
 
 func (x *GetUsageSummaryRequest) Reset() {
 	*x = GetUsageSummaryRequest{}
-	mi := &file_usage_v1_usage_proto_msgTypes[5]
+	mi := &file_usage_v1_usage_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -511,7 +585,7 @@ func (x *GetUsageSummaryRequest) String() string {
 func (*GetUsageSummaryRequest) ProtoMessage() {}
 
 func (x *GetUsageSummaryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_usage_v1_usage_proto_msgTypes[5]
+	mi := &file_usage_v1_usage_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -524,7 +598,7 @@ func (x *GetUsageSummaryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUsageSummaryRequest.ProtoReflect.Descriptor instead.
 func (*GetUsageSummaryRequest) Descriptor() ([]byte, []int) {
-	return file_usage_v1_usage_proto_rawDescGZIP(), []int{5}
+	return file_usage_v1_usage_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GetUsageSummaryRequest) GetFrom() *timestamppb.Timestamp {
@@ -654,7 +728,7 @@ type UsageSummaryRow struct {
 
 func (x *UsageSummaryRow) Reset() {
 	*x = UsageSummaryRow{}
-	mi := &file_usage_v1_usage_proto_msgTypes[6]
+	mi := &file_usage_v1_usage_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -666,7 +740,7 @@ func (x *UsageSummaryRow) String() string {
 func (*UsageSummaryRow) ProtoMessage() {}
 
 func (x *UsageSummaryRow) ProtoReflect() protoreflect.Message {
-	mi := &file_usage_v1_usage_proto_msgTypes[6]
+	mi := &file_usage_v1_usage_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -679,7 +753,7 @@ func (x *UsageSummaryRow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsageSummaryRow.ProtoReflect.Descriptor instead.
 func (*UsageSummaryRow) Descriptor() ([]byte, []int) {
-	return file_usage_v1_usage_proto_rawDescGZIP(), []int{6}
+	return file_usage_v1_usage_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *UsageSummaryRow) GetBucket() *timestamppb.Timestamp {
@@ -798,7 +872,7 @@ type GetUsageSummaryResponse struct {
 
 func (x *GetUsageSummaryResponse) Reset() {
 	*x = GetUsageSummaryResponse{}
-	mi := &file_usage_v1_usage_proto_msgTypes[7]
+	mi := &file_usage_v1_usage_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -810,7 +884,7 @@ func (x *GetUsageSummaryResponse) String() string {
 func (*GetUsageSummaryResponse) ProtoMessage() {}
 
 func (x *GetUsageSummaryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_usage_v1_usage_proto_msgTypes[7]
+	mi := &file_usage_v1_usage_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -823,7 +897,7 @@ func (x *GetUsageSummaryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUsageSummaryResponse.ProtoReflect.Descriptor instead.
 func (*GetUsageSummaryResponse) Descriptor() ([]byte, []int) {
-	return file_usage_v1_usage_proto_rawDescGZIP(), []int{7}
+	return file_usage_v1_usage_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetUsageSummaryResponse) GetRows() []*UsageSummaryRow {
@@ -859,7 +933,7 @@ type GetUsageByMetaRequest struct {
 
 func (x *GetUsageByMetaRequest) Reset() {
 	*x = GetUsageByMetaRequest{}
-	mi := &file_usage_v1_usage_proto_msgTypes[8]
+	mi := &file_usage_v1_usage_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -871,7 +945,7 @@ func (x *GetUsageByMetaRequest) String() string {
 func (*GetUsageByMetaRequest) ProtoMessage() {}
 
 func (x *GetUsageByMetaRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_usage_v1_usage_proto_msgTypes[8]
+	mi := &file_usage_v1_usage_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -884,7 +958,7 @@ func (x *GetUsageByMetaRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUsageByMetaRequest.ProtoReflect.Descriptor instead.
 func (*GetUsageByMetaRequest) Descriptor() ([]byte, []int) {
-	return file_usage_v1_usage_proto_rawDescGZIP(), []int{8}
+	return file_usage_v1_usage_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetUsageByMetaRequest) GetMetaKey() string {
@@ -937,7 +1011,7 @@ type UsageByMetaRow struct {
 
 func (x *UsageByMetaRow) Reset() {
 	*x = UsageByMetaRow{}
-	mi := &file_usage_v1_usage_proto_msgTypes[9]
+	mi := &file_usage_v1_usage_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -949,7 +1023,7 @@ func (x *UsageByMetaRow) String() string {
 func (*UsageByMetaRow) ProtoMessage() {}
 
 func (x *UsageByMetaRow) ProtoReflect() protoreflect.Message {
-	mi := &file_usage_v1_usage_proto_msgTypes[9]
+	mi := &file_usage_v1_usage_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -962,7 +1036,7 @@ func (x *UsageByMetaRow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsageByMetaRow.ProtoReflect.Descriptor instead.
 func (*UsageByMetaRow) Descriptor() ([]byte, []int) {
-	return file_usage_v1_usage_proto_rawDescGZIP(), []int{9}
+	return file_usage_v1_usage_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *UsageByMetaRow) GetGroupValue() string {
@@ -1046,7 +1120,7 @@ type GetUsageByMetaResponse struct {
 
 func (x *GetUsageByMetaResponse) Reset() {
 	*x = GetUsageByMetaResponse{}
-	mi := &file_usage_v1_usage_proto_msgTypes[10]
+	mi := &file_usage_v1_usage_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1058,7 +1132,7 @@ func (x *GetUsageByMetaResponse) String() string {
 func (*GetUsageByMetaResponse) ProtoMessage() {}
 
 func (x *GetUsageByMetaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_usage_v1_usage_proto_msgTypes[10]
+	mi := &file_usage_v1_usage_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1071,7 +1145,7 @@ func (x *GetUsageByMetaResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUsageByMetaResponse.ProtoReflect.Descriptor instead.
 func (*GetUsageByMetaResponse) Descriptor() ([]byte, []int) {
-	return file_usage_v1_usage_proto_rawDescGZIP(), []int{10}
+	return file_usage_v1_usage_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetUsageByMetaResponse) GetRows() []*UsageByMetaRow {
@@ -1092,7 +1166,7 @@ var File_usage_v1_usage_proto protoreflect.FileDescriptor
 
 const file_usage_v1_usage_proto_rawDesc = "" +
 	"\n" +
-	"\x14usage/v1/usage.proto\x12\busage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd6\x05\n" +
+	"\x14usage/v1/usage.proto\x12\busage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x87\x06\n" +
 	"\n" +
 	"UsageEvent\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12;\n" +
@@ -1117,10 +1191,15 @@ const file_usage_v1_usage_proto_rawDesc = "" +
 	"\x04meta\x18\x0f \x03(\v2\x1e.usage.v1.UsageEvent.MetaEntryR\x04meta\x12!\n" +
 	"\fcost_nanousd\x18\x10 \x01(\x03R\vcostNanousd\x12*\n" +
 	"\x11cache_read_tokens\x18\x11 \x01(\x03R\x0fcacheReadTokens\x12,\n" +
-	"\x12cache_write_tokens\x18\x12 \x01(\x03R\x10cacheWriteTokens\x1a7\n" +
+	"\x12cache_write_tokens\x18\x12 \x01(\x03R\x10cacheWriteTokens\x12/\n" +
+	"\ttool_call\x18\x13 \x01(\v2\x12.usage.v1.ToolCallR\btoolCall\x1a7\n" +
 	"\tMetaEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"E\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"]\n" +
+	"\bToolCall\x12\x16\n" +
+	"\x06server\x18\x01 \x01(\tR\x06server\x12\x12\n" +
+	"\x04tool\x18\x02 \x01(\tR\x04tool\x12%\n" +
+	"\x0eresponse_bytes\x18\x03 \x01(\x03R\rresponseBytes\"E\n" +
 	"\x17RecordUsageEventRequest\x12*\n" +
 	"\x05event\x18\x01 \x01(\v2\x14.usage.v1.UsageEventR\x05event\"4\n" +
 	"\x18RecordUsageEventResponse\x12\x18\n" +
@@ -1218,49 +1297,51 @@ func file_usage_v1_usage_proto_rawDescGZIP() []byte {
 }
 
 var file_usage_v1_usage_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_usage_v1_usage_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_usage_v1_usage_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_usage_v1_usage_proto_goTypes = []any{
 	(Status)(0),                       // 0: usage.v1.Status
 	(*UsageEvent)(nil),                // 1: usage.v1.UsageEvent
-	(*RecordUsageEventRequest)(nil),   // 2: usage.v1.RecordUsageEventRequest
-	(*RecordUsageEventResponse)(nil),  // 3: usage.v1.RecordUsageEventResponse
-	(*RecordUsageEventsRequest)(nil),  // 4: usage.v1.RecordUsageEventsRequest
-	(*RecordUsageEventsResponse)(nil), // 5: usage.v1.RecordUsageEventsResponse
-	(*GetUsageSummaryRequest)(nil),    // 6: usage.v1.GetUsageSummaryRequest
-	(*UsageSummaryRow)(nil),           // 7: usage.v1.UsageSummaryRow
-	(*GetUsageSummaryResponse)(nil),   // 8: usage.v1.GetUsageSummaryResponse
-	(*GetUsageByMetaRequest)(nil),     // 9: usage.v1.GetUsageByMetaRequest
-	(*UsageByMetaRow)(nil),            // 10: usage.v1.UsageByMetaRow
-	(*GetUsageByMetaResponse)(nil),    // 11: usage.v1.GetUsageByMetaResponse
-	nil,                               // 12: usage.v1.UsageEvent.MetaEntry
-	(*timestamppb.Timestamp)(nil),     // 13: google.protobuf.Timestamp
+	(*ToolCall)(nil),                  // 2: usage.v1.ToolCall
+	(*RecordUsageEventRequest)(nil),   // 3: usage.v1.RecordUsageEventRequest
+	(*RecordUsageEventResponse)(nil),  // 4: usage.v1.RecordUsageEventResponse
+	(*RecordUsageEventsRequest)(nil),  // 5: usage.v1.RecordUsageEventsRequest
+	(*RecordUsageEventsResponse)(nil), // 6: usage.v1.RecordUsageEventsResponse
+	(*GetUsageSummaryRequest)(nil),    // 7: usage.v1.GetUsageSummaryRequest
+	(*UsageSummaryRow)(nil),           // 8: usage.v1.UsageSummaryRow
+	(*GetUsageSummaryResponse)(nil),   // 9: usage.v1.GetUsageSummaryResponse
+	(*GetUsageByMetaRequest)(nil),     // 10: usage.v1.GetUsageByMetaRequest
+	(*UsageByMetaRow)(nil),            // 11: usage.v1.UsageByMetaRow
+	(*GetUsageByMetaResponse)(nil),    // 12: usage.v1.GetUsageByMetaResponse
+	nil,                               // 13: usage.v1.UsageEvent.MetaEntry
+	(*timestamppb.Timestamp)(nil),     // 14: google.protobuf.Timestamp
 }
 var file_usage_v1_usage_proto_depIdxs = []int32{
-	13, // 0: usage.v1.UsageEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	14, // 0: usage.v1.UsageEvent.occurred_at:type_name -> google.protobuf.Timestamp
 	0,  // 1: usage.v1.UsageEvent.status:type_name -> usage.v1.Status
-	12, // 2: usage.v1.UsageEvent.meta:type_name -> usage.v1.UsageEvent.MetaEntry
-	1,  // 3: usage.v1.RecordUsageEventRequest.event:type_name -> usage.v1.UsageEvent
-	1,  // 4: usage.v1.RecordUsageEventsRequest.events:type_name -> usage.v1.UsageEvent
-	13, // 5: usage.v1.GetUsageSummaryRequest.from:type_name -> google.protobuf.Timestamp
-	13, // 6: usage.v1.GetUsageSummaryRequest.to:type_name -> google.protobuf.Timestamp
-	0,  // 7: usage.v1.GetUsageSummaryRequest.status:type_name -> usage.v1.Status
-	13, // 8: usage.v1.UsageSummaryRow.bucket:type_name -> google.protobuf.Timestamp
-	0,  // 9: usage.v1.UsageSummaryRow.status:type_name -> usage.v1.Status
-	7,  // 10: usage.v1.GetUsageSummaryResponse.rows:type_name -> usage.v1.UsageSummaryRow
-	10, // 11: usage.v1.GetUsageByMetaResponse.rows:type_name -> usage.v1.UsageByMetaRow
-	2,  // 12: usage.v1.UsageService.RecordUsageEvent:input_type -> usage.v1.RecordUsageEventRequest
-	4,  // 13: usage.v1.UsageService.RecordUsageEvents:input_type -> usage.v1.RecordUsageEventsRequest
-	6,  // 14: usage.v1.UsageService.GetUsageSummary:input_type -> usage.v1.GetUsageSummaryRequest
-	9,  // 15: usage.v1.UsageService.GetUsageByMeta:input_type -> usage.v1.GetUsageByMetaRequest
-	3,  // 16: usage.v1.UsageService.RecordUsageEvent:output_type -> usage.v1.RecordUsageEventResponse
-	5,  // 17: usage.v1.UsageService.RecordUsageEvents:output_type -> usage.v1.RecordUsageEventsResponse
-	8,  // 18: usage.v1.UsageService.GetUsageSummary:output_type -> usage.v1.GetUsageSummaryResponse
-	11, // 19: usage.v1.UsageService.GetUsageByMeta:output_type -> usage.v1.GetUsageByMetaResponse
-	16, // [16:20] is the sub-list for method output_type
-	12, // [12:16] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	13, // 2: usage.v1.UsageEvent.meta:type_name -> usage.v1.UsageEvent.MetaEntry
+	2,  // 3: usage.v1.UsageEvent.tool_call:type_name -> usage.v1.ToolCall
+	1,  // 4: usage.v1.RecordUsageEventRequest.event:type_name -> usage.v1.UsageEvent
+	1,  // 5: usage.v1.RecordUsageEventsRequest.events:type_name -> usage.v1.UsageEvent
+	14, // 6: usage.v1.GetUsageSummaryRequest.from:type_name -> google.protobuf.Timestamp
+	14, // 7: usage.v1.GetUsageSummaryRequest.to:type_name -> google.protobuf.Timestamp
+	0,  // 8: usage.v1.GetUsageSummaryRequest.status:type_name -> usage.v1.Status
+	14, // 9: usage.v1.UsageSummaryRow.bucket:type_name -> google.protobuf.Timestamp
+	0,  // 10: usage.v1.UsageSummaryRow.status:type_name -> usage.v1.Status
+	8,  // 11: usage.v1.GetUsageSummaryResponse.rows:type_name -> usage.v1.UsageSummaryRow
+	11, // 12: usage.v1.GetUsageByMetaResponse.rows:type_name -> usage.v1.UsageByMetaRow
+	3,  // 13: usage.v1.UsageService.RecordUsageEvent:input_type -> usage.v1.RecordUsageEventRequest
+	5,  // 14: usage.v1.UsageService.RecordUsageEvents:input_type -> usage.v1.RecordUsageEventsRequest
+	7,  // 15: usage.v1.UsageService.GetUsageSummary:input_type -> usage.v1.GetUsageSummaryRequest
+	10, // 16: usage.v1.UsageService.GetUsageByMeta:input_type -> usage.v1.GetUsageByMetaRequest
+	4,  // 17: usage.v1.UsageService.RecordUsageEvent:output_type -> usage.v1.RecordUsageEventResponse
+	6,  // 18: usage.v1.UsageService.RecordUsageEvents:output_type -> usage.v1.RecordUsageEventsResponse
+	9,  // 19: usage.v1.UsageService.GetUsageSummary:output_type -> usage.v1.GetUsageSummaryResponse
+	12, // 20: usage.v1.UsageService.GetUsageByMeta:output_type -> usage.v1.GetUsageByMetaResponse
+	17, // [17:21] is the sub-list for method output_type
+	13, // [13:17] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_usage_v1_usage_proto_init() }
@@ -1274,7 +1355,7 @@ func file_usage_v1_usage_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_usage_v1_usage_proto_rawDesc), len(file_usage_v1_usage_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   12,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

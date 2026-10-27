@@ -26,6 +26,7 @@ import (
 	"github.com/ai-process/ktms/internal/latent"
 	"github.com/ai-process/ktms/internal/llm"
 	"github.com/ai-process/ktms/internal/logger"
+	"github.com/ai-process/ktms/internal/mcpgw"
 	"github.com/ai-process/ktms/internal/nodes"
 	"github.com/ai-process/ktms/internal/observability"
 	"github.com/ai-process/ktms/internal/proxydb"
@@ -295,7 +296,22 @@ func main() {
 	if cfg.HTTPAPIEnabled {
 		openaiAPI = server.NewOpenAIAPI(proxySrv, verifier)
 	}
-	httpSrv := server.NewHTTPServer(pool, cfg.HTTPAddr, openaiAPI, cfg.HTTPAPITimeout).
+	var extra []server.Registrar
+	if cfg.MCPGatewayEnabled {
+		var toolLimiter mcpgw.ToolLimiter
+		if rl, ok := limiter.(*throttle.Redis); ok {
+			toolLimiter = rl
+		}
+		var recorder mcpgw.Recorder
+		if usageClient != nil {
+			recorder = usageClient
+		}
+		gw := mcpgw.New(loader, verifier, toolLimiter, recorder, server.Version)
+		defer gw.Close()
+		adminSrv.SetMCPToolLister(gw)
+		extra = append(extra, gw)
+	}
+	httpSrv := server.NewHTTPServer(pool, cfg.HTTPAddr, openaiAPI, cfg.HTTPAPITimeout, extra...).
 		WithDegradedReadiness(cfg.AuthStaleIfError)
 
 	grpcErrCh := make(chan error, 1)

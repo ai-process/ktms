@@ -7,6 +7,18 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- MCP gateway (experimental): MCP clients such as Claude Code reach registered MCP servers through
+  Keystone at `/mcp` (every allowed server, tools named `server__tool`) and `/mcp/{server}`, with
+  a KTMS key of the new `mcp` scope. Servers (Streamable HTTP or SSE) are managed with the
+  `UpsertMCPServer`, `DeleteMCPServer`, `SetMCPCredential`, `DeleteMCPCredential` and
+  `ListMCPTools` RPCs, `ktms mcp-servers`, and the `mcp_servers` and `mcp_credentials` file
+  sections. Each server's credential is encrypted with the vendor keys' keyring and never handed
+  to clients. `allowed_mcp` on a key's policy and on a team limits servers and tools, `tool_rpm`
+  limits calls per key and tool, private addresses are refused unless `allow_private` is set, and
+  every call is a usage event with `tool_call` and counted in `ktms_mcp_*` metrics.
+  `MCP_GATEWAY_ENABLED=false` turns it off.
+
 ## [1.3.6] - 2026-10-27
 
 ### Added

@@ -135,3 +135,28 @@ func (t *Redis) AdmitKey(ctx context.Context, keyName string, rpm int32, tpm, es
 		}
 	}, "", 0
 }
+
+// KindToolRPM refuses a call above an MCP server's tool_rpm.
+const KindToolRPM = "mcp_tool_rpm"
+
+// AdmitTool books one call of a key to an MCP tool under rpm calls a minute,
+// or says how long until one fits. Fails open, like AdmitKey.
+func (t *Redis) AdmitTool(ctx context.Context, keyName, server, tool string, rpm int32) (bool, time.Duration) {
+	if t.client == nil || rpm <= 0 {
+		return true, 0
+	}
+	var nowMs int64
+	if t.now != nil {
+		nowMs = t.now().UTC().UnixMilli()
+	}
+	out, err := keyAdmitScript.Run(ctx, t.client, []string{t.keys.ToolRPM(keyName, server, tool), ""}, nowMs, rpm, 0, 0).Int64Slice()
+	if err != nil || len(out) != 2 {
+		observability.DependencyErrorsTotal.WithLabelValues("redis", "mcp_tool_rate").Inc()
+		redisguard.Log(err).Err(err).Str("key", keyName).Str("mcp_server", server).Msg("throttle: tool rate check failed, allowing (fail-open)")
+		return true, 0
+	}
+	if out[0] != 0 {
+		return false, time.Duration(out[1]) * time.Millisecond
+	}
+	return true, 0
+}

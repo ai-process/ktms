@@ -112,6 +112,7 @@ func TestAgainstKeystone(t *testing.T) {
 	t.Setenv("KTMS_ADDR", addr)
 	t.Setenv("KTMS_ADMIN_KEY", bootstrapKey)
 	t.Setenv("TEST_OPENAI_KEY", "sk-test")
+	t.Setenv("TEST_MCP_TOKEN", "Bearer ghp-test")
 	must := func(want int, stdin string, args ...string) string {
 		t.Helper()
 		code, out, errs := callIn(stdin, args...)

@@ -144,7 +144,7 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 				if lt == nil {
 					p.add(Change{Op: Create, Kind: "team", Name: name, Details: teamDetails(nil, t)}, func(ctx context.Context, c pb.AdminServiceClient, a *applied) error {
 						r, err := c.CreateTeam(ctx, &pb.CreateTeamRequest{OrgId: a.orgIDs[o.Name], Name: t.Name,
-							MonthlyBudgetUsd: t.MonthlyBudgetUSD, AllowedModels: t.AllowedModels})
+							MonthlyBudgetUsd: t.MonthlyBudgetUSD, AllowedModels: t.AllowedModels, AllowedMcp: t.AllowedMCP})
 						if err != nil {
 							return err
 						}
@@ -156,7 +156,7 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 				if d := teamDetails(lt, t); len(d) > 0 {
 					p.add(Change{Op: Update, Kind: "team", Name: name, Details: d}, func(ctx context.Context, c pb.AdminServiceClient, _ *applied) error {
 						_, err := c.UpdateTeam(ctx, &pb.UpdateTeamRequest{Id: lt.GetId(), Name: t.Name,
-							MonthlyBudgetUsd: t.MonthlyBudgetUSD, AllowedModels: t.AllowedModels})
+							MonthlyBudgetUsd: t.MonthlyBudgetUSD, AllowedModels: t.AllowedModels, AllowedMcp: t.AllowedMCP})
 						return err
 					})
 				}
@@ -207,6 +207,92 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 			}
 			if d := fieldDiff(normModel(lm), normModel(m)); len(d) > 0 {
 				p.add(Change{Op: Update, Kind: "model", Name: m.GetId(), Details: d}, upsertModel(m))
+			}
+		}
+	}
+
+	// MCP servers before their credentials.
+	liveMCP := map[string]*pb.MCPServerSpec{}
+	for _, m := range live.Config.GetMcpServers() {
+		liveMCP[m.GetName()] = m
+	}
+	if cfg.Manages("mcp_servers") {
+		for _, m := range cfg.MCPServers {
+			m := m
+			upsert := func(ctx context.Context, c pb.AdminServiceClient, _ *applied) error {
+				_, err := c.UpsertMCPServer(ctx, &pb.UpsertMCPServerRequest{Server: m})
+				return err
+			}
+			lm := liveMCP[m.GetName()]
+			if lm == nil {
+				p.add(Change{Op: Create, Kind: "mcp server", Name: m.GetName(), Details: []string{m.GetUrl()}}, upsert)
+			} else if d := fieldDiff(normMCP(lm), normMCP(m)); len(d) > 0 {
+				p.add(Change{Op: Update, Kind: "mcp server", Name: m.GetName(), Details: d}, upsert)
+			}
+		}
+		if opt.Prune {
+			for name := range liveMCP {
+				name := name
+				if slices.ContainsFunc(cfg.MCPServers, func(m *pb.MCPServerSpec) bool { return m.GetName() == name }) {
+					continue
+				}
+				deletes = append(deletes, func() {
+					p.add(Change{Op: Delete, Kind: "mcp server", Name: name, Details: []string{"its credential goes with it"}}, func(ctx context.Context, c pb.AdminServiceClient, _ *applied) error {
+						_, err := c.DeleteMCPServer(ctx, &pb.DeleteMCPServerRequest{Name: name})
+						return err
+					})
+				})
+			}
+		}
+	}
+	if cfg.Manages("mcp_credentials") {
+		liveCred := map[string]*pb.MCPCredentialInfo{}
+		for _, mc := range live.Config.GetMcpCredentials() {
+			liveCred[mc.GetServer()] = mc
+		}
+		for _, mc := range cfg.MCPCredentials {
+			mc := mc
+			plain, ok := opt.Env(mc.ValueEnv)
+			if !ok || plain == "" {
+				conflict("mcp credential %s: environment variable %s is not set", mc.Server, mc.ValueEnv)
+				continue
+			}
+			if liveMCP[mc.Server] == nil && !slices.ContainsFunc(cfg.MCPServers, func(m *pb.MCPServerSpec) bool { return m.GetName() == mc.Server }) {
+				conflict("mcp credential %s: the server exists neither in Keystone nor in mcp_servers", mc.Server)
+				continue
+			}
+			header := mc.Header
+			if header == "" {
+				header = "Authorization"
+			}
+			set := func(ctx context.Context, c pb.AdminServiceClient, _ *applied) error {
+				_, err := c.SetMCPCredential(ctx, &pb.SetMCPCredentialRequest{Server: mc.Server, Header: header, PlainValue: plain})
+				return err
+			}
+			lc := liveCred[mc.Server]
+			switch {
+			case lc == nil:
+				p.add(Change{Op: Create, Kind: "mcp credential", Name: mc.Server, Details: []string{header + " from $" + mc.ValueEnv}}, set)
+			case !strings.EqualFold(lc.GetHeader(), header):
+				p.add(Change{Op: Update, Kind: "mcp credential", Name: mc.Server, Details: []string{"header " + lc.GetHeader() + " → " + header}}, set)
+			case lc.GetFingerprint() == "":
+				p.add(Change{Op: Update, Kind: "mcp credential", Name: mc.Server, Details: []string{"set again from $" + mc.ValueEnv + ": Keystone cannot tell whether it changed"}}, set)
+			case lc.GetFingerprint() != crypto.Fingerprint(plain):
+				p.add(Change{Op: Update, Kind: "mcp credential", Name: mc.Server, Details: []string{"changed in $" + mc.ValueEnv}}, set)
+			}
+		}
+		if opt.Prune {
+			for _, lc := range live.Config.GetMcpCredentials() {
+				lc := lc
+				if slices.ContainsFunc(cfg.MCPCredentials, func(mc MCPCredential) bool { return mc.Server == lc.GetServer() }) {
+					continue
+				}
+				deletes = append(deletes, func() {
+					p.add(Change{Op: Delete, Kind: "mcp credential", Name: lc.GetServer()}, func(ctx context.Context, c pb.AdminServiceClient, _ *applied) error {
+						_, err := c.DeleteMCPCredential(ctx, &pb.DeleteMCPCredentialRequest{Server: lc.GetServer()})
+						return err
+					})
+				})
 			}
 		}
 	}
@@ -458,7 +544,7 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 // refers to it: limits and keys, then models (the new rules no longer name
 // them), then teams, then organizations.
 func sortDeletes(p *Plan) {
-	order := map[string]int{"user rate limit": 1, "spend limit": 1, "vendor key": 2, "api key": 3, "model": 4, "team": 5, "organization": 6}
+	order := map[string]int{"user rate limit": 1, "spend limit": 1, "vendor key": 2, "mcp credential": 2, "api key": 3, "model": 4, "mcp server": 4, "team": 5, "organization": 6}
 	rank := func(s step) int {
 		if s.change.Op != Delete {
 			return 0
@@ -576,6 +662,9 @@ func teamDetails(live *pb.Team, t Team) []string {
 		if len(t.AllowedModels) > 0 {
 			d = append(d, "allowed models "+strings.Join(t.AllowedModels, ", "))
 		}
+		if len(t.AllowedMCP) > 0 {
+			d = append(d, "allowed mcp "+strings.Join(t.AllowedMCP, ", "))
+		}
 		return d
 	}
 	if live.GetMonthlyBudgetUsd() != t.MonthlyBudgetUSD {
@@ -583,6 +672,9 @@ func teamDetails(live *pb.Team, t Team) []string {
 	}
 	if !sameSet(live.GetAllowedModels(), t.AllowedModels) {
 		d = append(d, fmt.Sprintf("allowed models %v → %v", live.GetAllowedModels(), t.AllowedModels))
+	}
+	if !sameSet(live.GetAllowedMcp(), t.AllowedMCP) {
+		d = append(d, fmt.Sprintf("allowed mcp %v → %v", live.GetAllowedMcp(), t.AllowedMCP))
 	}
 	return d
 }
@@ -597,6 +689,9 @@ func policyDiff(live, want *pb.APIKeyPolicy) []string {
 	}
 	if live.GetTpmLimit() != want.GetTpmLimit() {
 		d = append(d, fmt.Sprintf("tpm_limit %d → %d", live.GetTpmLimit(), want.GetTpmLimit()))
+	}
+	if !sameSet(live.GetAllowedMcp(), want.GetAllowedMcp()) {
+		d = append(d, fmt.Sprintf("allowed mcp %v → %v", live.GetAllowedMcp(), want.GetAllowedMcp()))
 	}
 	return d
 }
@@ -635,6 +730,15 @@ func normModel(m *pb.ModelSpec) *pb.ModelSpec {
 	n := proto.Clone(m).(*pb.ModelSpec)
 	slices.Sort(n.Capabilities)
 	slices.Sort(n.Efforts)
+	return n
+}
+
+// normMCP spells out the default transport, so leaving it out is no difference.
+func normMCP(m *pb.MCPServerSpec) *pb.MCPServerSpec {
+	n := proto.Clone(m).(*pb.MCPServerSpec)
+	if n.Transport == "" {
+		n.Transport = "streamable_http"
+	}
 	return n
 }
 

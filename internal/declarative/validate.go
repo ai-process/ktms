@@ -11,7 +11,7 @@ import (
 )
 
 // KeyScopes are the scopes a client key in the file may carry.
-var KeyScopes = []string{apikeys.ScopeGenerate, apikeys.ScopeAdmin, apikeys.ScopeAdminRead}
+var KeyScopes = []string{apikeys.ScopeGenerate, apikeys.ScopeMCP, apikeys.ScopeAdmin, apikeys.ScopeAdminRead}
 
 var efforts = []pb.Effort{pb.Effort_EFFORT_LOW, pb.Effort_EFFORT_MEDIUM, pb.Effort_EFFORT_HIGH}
 
@@ -180,6 +180,29 @@ func (c *Config) Validate() error {
 			bad("spend_limits[%d]: duplicate %s", i, id)
 		}
 		sl[id] = true
+	}
+
+	servers := map[string]bool{}
+	for i, m := range c.MCPServers {
+		switch {
+		case m.GetName() == "" || m.GetUrl() == "":
+			bad("mcp_servers[%d]: name and url are required", i)
+		case servers[m.GetName()]:
+			bad("mcp_servers[%d]: duplicate name %q", i, m.GetName())
+		}
+		servers[m.GetName()] = true
+	}
+	creds := map[string]bool{}
+	for i, mc := range c.MCPCredentials {
+		switch {
+		case mc.Server == "" || mc.ValueEnv == "":
+			bad("mcp_credentials[%d]: server and value_env are required", i)
+		case creds[mc.Server]:
+			bad("mcp_credentials[%d]: duplicate server %q", i, mc.Server)
+		case c.Manages("mcp_servers") && !servers[mc.Server]:
+			bad("mcp_credentials[%d]: server %q is not in mcp_servers", i, mc.Server)
+		}
+		creds[mc.Server] = true
 	}
 
 	ur := map[string]bool{}

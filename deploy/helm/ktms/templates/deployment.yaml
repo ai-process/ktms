@@ -103,6 +103,8 @@ spec:
             {{- end }}
             - name: HTTP_API_ENABLED
               value: {{ .Values.config.httpApiEnabled | quote }}
+            - name: MCP_GATEWAY_ENABLED
+              value: {{ .Values.config.mcpGatewayEnabled | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.config.logLevel | quote }}
             - name: AUTO_MIGRATE

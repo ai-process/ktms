@@ -586,7 +586,7 @@ func (t *Redis) ChargeDailyBudget(ctx context.Context, m *proxydb.Model, keyName
 // Every refusal reason is exported at 0 from the start, so an alert on
 // increase() also catches the first refusal after a restart.
 func init() {
-	reasons := []string{"rpm", "budget_key", "budget_user", KindKeyRPM, KindKeyTPM, spendlimit.ReasonUnavailable}
+	reasons := []string{"rpm", "budget_key", "budget_user", KindKeyRPM, KindKeyTPM, KindToolRPM, spendlimit.ReasonUnavailable}
 	for _, e := range spendlimit.Enforced {
 		reasons = append(reasons, spendlimit.Reason(e.Subject, e.Period))
 	}
