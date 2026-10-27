@@ -7,6 +7,8 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-27
+
 ### Added
 - MCP gateway (experimental): MCP clients such as Claude Code reach registered MCP servers through
   Keystone at `/mcp` (every allowed server, tools named `server__tool`) and `/mcp/{server}`, with
@@ -17,7 +19,7 @@ All notable changes to KTMS are listed here. The format follows
   to clients. `allowed_mcp` on a key's policy and on a team limits servers and tools, `tool_rpm`
   limits calls per key and tool, private addresses are refused unless `allow_private` is set, and
   every call is a usage event with `tool_call` and counted in `ktms_mcp_*` metrics.
-  `MCP_GATEWAY_ENABLED=false` turns it off.
+  `MCP_GATEWAY_ENABLED=false` turns it off. light-tokenmeter stores `tool_call` from 1.2.0.
 
 ## [1.3.6] - 2026-10-27
 
@@ -335,7 +337,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v1.3.6...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/ai-process/ktms/compare/v1.3.6...v1.4.0
 [1.3.6]: https://github.com/ai-process/ktms/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/ai-process/ktms/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/ai-process/ktms/compare/v1.3.3...v1.3.4
