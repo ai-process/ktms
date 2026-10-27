@@ -51,6 +51,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 - [API stability](#api-stability)
 - [Operations](#operations)
 - [Development](#development)
+- [Roadmap](#roadmap)
 - [License](#license)
 
 ## How it works
@@ -1733,6 +1734,11 @@ adapters), `internal/throttle` (Redis limits), `internal/grpcapi` (RPC handlers)
 
 Pull requests are welcome; read [`CONTRIBUTING.md`](CONTRIBUTING.md) first. Maintainers release
 as described in [`RELEASING.md`](RELEASING.md).
+
+## Roadmap
+
+What we build now, next and later, and what is not planned, is in [`ROADMAP.md`](ROADMAP.md).
+Requests and ideas are welcome as [issues](https://github.com/ai-process/ktms/issues).
 
 ## License
 
