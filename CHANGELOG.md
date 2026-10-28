@@ -7,6 +7,15 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Anthropic Messages API (experimental): `POST /v1/messages`, so Claude Code
+  (`ANTHROPIC_BASE_URL`) and the Anthropic SDKs run through Keystone with a KTMS key in
+  `x-api-key` or `Authorization`, `model: "auto"` or a registry model id. It shares routing,
+  fallback, limits, guardrails, cache, `X-KTMS-*` headers and usage events with chat completions,
+  answers in the Messages format whichever vendor's model serves it, streams the Messages SSE
+  events, and returns errors in the Messages shape. `POST /v1/messages/count_tokens` returns an
+  estimate.
+
 ## [1.4.0] - 2026-10-27
 
 ### Added

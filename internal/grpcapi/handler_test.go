@@ -548,7 +548,7 @@ func TestEstimateTokens(t *testing.T) {
 		BaseSystemInstruction: "abcd",                                // 4 runes
 		Messages:              []*pb.ChatMessage{{Text: "abcdefgh"}}, // 8 runes
 	}
-	if got := estimateTokens(req); got != 4 { // 12/4 + 1
+	if got := EstimateTokens(req); got != 4 { // 12/4 + 1
 		t.Fatalf("estimate = %d, want 4", got)
 	}
 }

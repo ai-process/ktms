@@ -154,7 +154,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 	if plan.shadowEval {
 		shadowEvaluator = s.makeShadowEvaluator(id, chat, req.GetAttributes())
 	}
-	estimate := estimateTokens(req)
+	estimate := EstimateTokens(req)
 	settleKey, err := s.admitKey(ctx, id, estimate)
 	if err != nil {
 		return nil, err
@@ -297,7 +297,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 	if plan.shadowEval {
 		shadowEvaluator = s.makeShadowEvaluator(id, chat, inner.GetAttributes())
 	}
-	estimate := estimateTokens(inner)
+	estimate := EstimateTokens(inner)
 	settleKey, err := s.admitKey(stream.Context(), id, estimate)
 	if err != nil {
 		return err
@@ -662,9 +662,9 @@ func buildChat(req *pb.GenerateTextRequest, id *apikeys.Identity, ruleName, effo
 	return chat
 }
 
-// estimateTokens is the budget reservation guess: total runes / 4 plus heuristic
+// EstimateTokens is the budget reservation guess: total runes / 4 plus heuristic
 // allowances for media parts. Settled against vendor-reported actuals after the call.
-func estimateTokens(req *pb.GenerateTextRequest) int64 {
+func EstimateTokens(req *pb.GenerateTextRequest) int64 {
 	runes := utf8.RuneCountInString(req.GetBaseSystemInstruction()) +
 		utf8.RuneCountInString(req.GetRequestInstruction())
 	var extraTokens int64
