@@ -991,6 +991,16 @@ func setResolvedHeaders(w http.ResponseWriter, vendor, rule string) {
 	}
 }
 
+// dataClassification is the stricter of the body's data_classification and
+// the X-KTMS-Data-Classification header: a gateway in front can only restrict.
+func dataClassification(r *http.Request, body string) string {
+	h := strings.TrimSpace(r.Header.Get("X-KTMS-Data-Classification"))
+	if h == "" || body == apikeys.DataRestricted {
+		return body
+	}
+	return h
+}
+
 func getPlacementHeader(r *http.Request) string {
 	if v := r.Header.Get("X-KTMS-Placement"); v != "" {
 		return v
@@ -1000,16 +1010,6 @@ func getPlacementHeader(r *http.Request) string {
 		return v
 	}
 	return ""
-}
-
-// dataClassification is the stricter of the body's data_classification and
-// the X-KTMS-Data-Classification header: a gateway in front can only restrict.
-func dataClassification(r *http.Request, body string) string {
-	h := strings.TrimSpace(r.Header.Get("X-KTMS-Data-Classification"))
-	if h == "" || body == apikeys.DataRestricted {
-		return body
-	}
-	return h
 }
 
 func getCacheHeader(r *http.Request) string {
