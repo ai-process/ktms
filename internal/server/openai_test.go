@@ -35,7 +35,6 @@ type fakeProxy struct {
 	respJudgeScore float64
 	respJudgeModel string
 	streamChunks   []*pb.GenerateTextChunk
-	restricted     bool // the last call's context was restricted
 	emptyStream    bool
 	media          map[string]string
 	speechErr      error
@@ -44,6 +43,7 @@ type fakeProxy struct {
 	embedResp      *pb.GetEmbeddingsResponse
 	embedErr       error
 	rolloutReq     *pb.EvaluateRolloutsRequest
+	restricted     bool // the last call's context was restricted
 }
 
 func (f *fakeProxy) GenerateText(ctx context.Context, r *pb.GenerateTextRequest) (*pb.GenerateTextResponse, error) {
