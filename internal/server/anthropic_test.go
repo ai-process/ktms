@@ -47,7 +47,7 @@ func TestMessagesMapsRequest(t *testing.T) {
 	rec := messagesCall(h, "/v1/messages?beta=true", key, `{
 	  "model":"auto:high","max_tokens":32000,
 	  "system":[{"type":"text","text":"You are Claude Code."},{"type":"text","text":"Be brief.","cache_control":{"type":"ephemeral"}}],
-	  "metadata":{"user_id":"user_abc_session_1"},
+	  "metadata":{"user_id":"u-42"},
 	  "temperature":1,"thinking":{"type":"enabled","budget_tokens":1024},
 	  "tools":[{"name":"Read","description":"Read a file","input_schema":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}],
 	  "tool_choice":{"type":"any"},
@@ -68,7 +68,7 @@ func TestMessagesMapsRequest(t *testing.T) {
 	if r.Effort != pb.Effort_EFFORT_HIGH || !r.AutoRoute || r.MaxOutputTokens != 32000 {
 		t.Errorf("routing: %+v", r)
 	}
-	if r.BaseSystemInstruction != "You are Claude Code.\n\nBe brief." || r.Attributes["user_id"] != "user_abc_session_1" {
+	if r.BaseSystemInstruction != "You are Claude Code.\n\nBe brief." || r.Attributes["user_id"] != "u-42" {
 		t.Errorf("system %q attrs %v", r.BaseSystemInstruction, r.Attributes)
 	}
 	if len(r.Tools) != 1 || r.Tools[0].Function.Name != "Read" || r.Tools[0].Function.Parameters.Properties["path"].Type != "string" ||
@@ -267,19 +267,79 @@ func TestMessagesErrors(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeUser(t *testing.T) {
+	for _, c := range []struct{ in, user, session string }{
+		{`{"device_id":"dev1","account_uuid":"","session_id":"s1"}`, "dev1", "s1"},
+		{`{"device_id":"dev1","account_uuid":"acc1","session_id":"s2"}`, "acc1", "s2"},
+		{"user_abc_account_acc1_session_s3", "user_abc_account_acc1", "s3"},
+		{"u-42", "", ""},
+		{"{not json", "", ""},
+	} {
+		if u, s := claudeCodeUser(c.in); u != c.user || s != c.session {
+			t.Errorf("%s: %q %q", c.in, u, s)
+		}
+	}
+	fp, h, key := newTestAPI(t)
+	messagesCall(h, "/v1/messages", key, `{"max_tokens":1,"metadata":{"user_id":"{\"device_id\":\"dev1\",\"account_uuid\":\"\",\"session_id\":\"s1\"}"},"messages":[{"role":"user","content":"x"}]}`)
+	if fp.text.Attributes["user_id"] != "dev1" || fp.text.Attributes["session_id"] != "s1" {
+		t.Errorf("attributes %v", fp.text.Attributes)
+	}
+}
+
+func TestMessagesStreamToolDeltas(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	fp.streamChunks = []*pb.GenerateTextChunk{
+		{ToolCallChunks: []*pb.ToolCallChunk{{Index: 0, Id: "a", Name: "Re"}}},
+		{ToolCallChunks: []*pb.ToolCallChunk{{Index: 0, Name: "ad"}}},
+		{ToolCallChunks: []*pb.ToolCallChunk{{Index: 0, ArgumentsDelta: `{"path":"a.go"}`}}},
+		{ToolCallChunks: []*pb.ToolCallChunk{{Index: 1, Id: "b", Name: "Glob", ArgumentsDelta: "null"}}},
+		{ToolCallChunks: []*pb.ToolCallChunk{{Index: 2, Id: "c", Name: "Ls"}}},
+		{FinishReason: "tool_calls"},
+	}
+	rec := messagesCall(h, "/v1/messages", key, `{"max_tokens":10,"stream":true,"messages":[{"role":"user","content":"x"}]}`)
+	b := rec.Body.String()
+	for _, s := range []string{
+		`"content_block":{"id":"a","input":{},"name":"Read","type":"tool_use"},"index":0`,
+		`"content_block":{"id":"b","input":{},"name":"Glob","type":"tool_use"},"index":1`,
+		`"content_block":{"id":"c","input":{},"name":"Ls","type":"tool_use"},"index":2`,
+		`{"index":2,"type":"content_block_stop"}`,
+	} {
+		if !strings.Contains(b, s) {
+			t.Errorf("stream missing %s:\n%s", s, b)
+		}
+	}
+	if strings.Contains(b, `"partial_json":"null"`) {
+		t.Errorf("null arguments were streamed:\n%s", b)
+	}
+}
+
+func TestMessagesStreamErrorEvent(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	fp.streamChunks = []*pb.GenerateTextChunk{{Delta: "part"}}
+	fp.streamErr = status.Error(codes.Unavailable, "vendor_error")
+	rec := messagesCall(h, "/v1/messages", key, `{"max_tokens":10,"stream":true,"messages":[{"role":"user","content":"x"}]}`)
+	b := rec.Body.String()
+	if ev := sseEvents(b); ev[len(ev)-1] != "error" ||
+		!strings.Contains(b, `"error":{"message":"vendor_error","type":"api_error"}`) {
+		t.Errorf("stream error, as the non-stream 502:\n%s", b)
+	}
+}
+
 func TestCountTokens(t *testing.T) {
 	_, h, key := newTestAPI(t)
 	rec := messagesCall(h, "/v1/messages/count_tokens", key, `{"model":"auto",
 	  "system":"`+strings.Repeat("s", 400)+`",
 	  "tools":[{"name":"Read","input_schema":{"type":"object"}}],
-	  "messages":[{"role":"user","content":"`+strings.Repeat("u", 400)+`"}]}`)
+	  "messages":[{"role":"user","content":[{"type":"text","text":"`+strings.Repeat("u", 400)+`"},
+	    {"type":"image","source":{"type":"url","url":"https://127.0.0.1:1/never-fetched.png"}}]}]}`)
 	var out struct {
 		InputTokens int64 `json:"input_tokens"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != 200 {
 		t.Fatalf("%d %s", rec.Code, rec.Body)
 	}
-	if out.InputTokens < 200 || out.InputTokens > 220 || rec.Header().Get("X-KTMS-Token-Count") != "estimate" {
+	// 800 runes, the tool, and the image's 1000.
+	if out.InputTokens < 1200 || out.InputTokens > 1220 || rec.Header().Get("X-KTMS-Token-Count") != "estimate" {
 		t.Errorf("count %d headers %v", out.InputTokens, rec.Header())
 	}
 }

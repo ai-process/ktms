@@ -1441,7 +1441,7 @@ print(reply.content[0].text, reply.model)   # `model` is the one that answered
 | `tools`, `tool_choice` | Client tools with `input_schema` (the same JSON Schema subset as `response_format`); `tool_choice` `auto`, `any`, `tool` and `none`. Server tools such as `web_search` are rejected with `400`. |
 | `max_tokens` | Required, the output ceiling. |
 | `stream` | SSE events `message_start`, `ping`, `content_block_start`, `content_block_delta` (`text_delta`, `input_json_delta`), `content_block_stop`, `message_delta` and `message_stop`. `message_start` carries an input token estimate; `message_delta` carries the vendor's counts. |
-| `metadata.user_id` | `attributes["user_id"]`, as `user` on chat completions; other `metadata` keys are attributes, and `action_id` is the usage action label. |
+| `metadata.user_id` | `attributes["user_id"]`, as `user` on chat completions; other `metadata` keys are attributes, and `action_id` is the usage action label. Claude Code's `user_id` names a session: Keystone keeps its account (or, without one, its device) as the user and puts the session in `attributes["session_id"]`, so per-user limits and reports span sessions. |
 | `enable_cache`, `placement` | Extensions, as on chat completions; so are the `X-KTMS-Cache` and `X-KTMS-Placement` request headers (set them in Claude Code with `ANTHROPIC_CUSTOM_HEADERS`). |
 | `temperature`, `top_p`, `top_k`, `stop_sequences`, `thinking`, `service_tier` | Accepted and ignored. |
 
@@ -1450,8 +1450,10 @@ The key goes in `x-api-key` or `Authorization: Bearer`. The response's `stop_rea
 `cache_creation_input_tokens` out of `input_tokens`. Tool call ids are the vendor's, or `toolu_…`
 when the vendor gives none.
 
-`POST /v1/messages/count_tokens` answers with an estimate, not a tokenizer's count: about four
-characters per token, tool definitions included, with the `X-KTMS-Token-Count: estimate` header.
+`POST /v1/messages/count_tokens` answers with the estimate the token budgets reserve, not a
+tokenizer's count: about four characters per token, tool definitions included, a flat allowance
+per image or document (`url` sources are not fetched), and the `X-KTMS-Token-Count: estimate`
+header.
 
 Errors use the Messages shape, `{"type": "error", "error": {"type", "message"}}`, with the HTTP
 statuses of [the table above](#errors): `invalid_request_error` (400), `authentication_error`

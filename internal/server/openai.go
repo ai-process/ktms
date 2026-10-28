@@ -690,13 +690,7 @@ func (a *OpenAIAPI) chatCompletions(ctx context.Context, w http.ResponseWriter, 
 	if err != nil {
 		return err
 	}
-	var enableCache bool
-	if req.EnableCache != nil {
-		enableCache = *req.EnableCache
-	} else if h := getCacheHeader(r); h != "" {
-		enableCache = h == "true" || h == "1"
-	}
-	preq.EnableCache = enableCache
+	preq.EnableCache = cacheEnabled(r, req.EnableCache)
 
 	id, created := "chatcmpl-"+randomID(), time.Now().Unix()
 	if req.Stream {
@@ -1004,6 +998,15 @@ func getPlacementHeader(r *http.Request) string {
 		return v
 	}
 	return ""
+}
+
+// cacheEnabled is the body's enable_cache, else the X-KTMS-Cache header.
+func cacheEnabled(r *http.Request, body *bool) bool {
+	if body != nil {
+		return *body
+	}
+	h := getCacheHeader(r)
+	return h == "true" || h == "1"
 }
 
 func getCacheHeader(r *http.Request) string {

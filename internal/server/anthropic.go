@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
@@ -98,7 +97,9 @@ var skippedBlocks = map[string]bool{
 	"thinking": true, "redacted_thinking": true, "server_tool_use": true, "web_search_tool_result": true,
 }
 
-func (req *messagesRequest) toProto(ctx context.Context, headerPlacement string) (*pb.GenerateTextRequest, error) {
+// toProto converts the request. Without fetch, url sources are not downloaded
+// and stand in as empty parts, which is all a token estimate needs.
+func (req *messagesRequest) toProto(ctx context.Context, headerPlacement string, fetch bool) (*pb.GenerateTextRequest, error) {
 	if len(req.Messages) == 0 {
 		return nil, invalid("messages: at least one message is required")
 	}
@@ -119,6 +120,12 @@ func (req *messagesRequest) toProto(ctx context.Context, headerPlacement string)
 		EffortSpecified: dec.EffortSpecified,
 	}
 	out.Attributes, out.ActionId = attributes(req.Metadata, "")
+	if user, session := claudeCodeUser(out.Attributes["user_id"]); user != "" {
+		out.Attributes["user_id"] = user
+		if out.Attributes["session_id"] == "" {
+			out.Attributes["session_id"] = session
+		}
+	}
 
 	system, err := anthropicBlocks(req.System, "system")
 	if err != nil {
@@ -174,7 +181,7 @@ func (req *messagesRequest) toProto(ctx context.Context, headerPlacement string)
 		var msgs []*pb.ChatMessage
 		switch m.Role {
 		case "user":
-			msgs, err = userMessages(ctx, blocks)
+			msgs, err = userMessages(ctx, blocks, fetch)
 		case "assistant":
 			msgs, err = assistantMessage(blocks)
 		default:
@@ -188,6 +195,30 @@ func (req *messagesRequest) toProto(ctx context.Context, headerPlacement string)
 	return out, nil
 }
 
+// claudeCodeUser reads the metadata.user_id Claude Code sends, a JSON object
+// or "user_<hash>_account_<uuid>_session_<uuid>", whose session part would
+// otherwise make every session its own user for limits and reports.
+func claudeCodeUser(id string) (user, session string) {
+	if strings.HasPrefix(id, "{") {
+		var cc struct {
+			DeviceID    string `json:"device_id"`
+			AccountUUID string `json:"account_uuid"`
+			SessionID   string `json:"session_id"`
+		}
+		if json.Unmarshal([]byte(id), &cc) != nil {
+			return "", ""
+		}
+		if cc.AccountUUID != "" {
+			return cc.AccountUUID, cc.SessionID
+		}
+		return cc.DeviceID, cc.SessionID
+	}
+	if before, after, ok := strings.Cut(id, "_session_"); ok && strings.HasPrefix(id, "user_") {
+		return before, after
+	}
+	return "", ""
+}
+
 func prefixInvalid(prefix string, err error) error {
 	if st, ok := status.FromError(err); ok && st.Code() == codes.InvalidArgument {
 		return invalid("%s: %s", prefix, st.Message())
@@ -198,7 +229,7 @@ func prefixInvalid(prefix string, err error) error {
 // userMessages turns a user turn into its tool results, each a tool message,
 // then one user message with the rest. Images in tool results join that user
 // message: tool messages carry text only.
-func userMessages(ctx context.Context, blocks []anthropicBlock) ([]*pb.ChatMessage, error) {
+func userMessages(ctx context.Context, blocks []anthropicBlock, fetch bool) ([]*pb.ChatMessage, error) {
 	var out []*pb.ChatMessage
 	var texts []string
 	var parts []*pb.ContentPart
@@ -211,13 +242,13 @@ func userMessages(ctx context.Context, blocks []anthropicBlock) ([]*pb.ChatMessa
 		case "text":
 			addText(b.Text)
 		case "image":
-			p, err := imagePart(ctx, b.Source)
+			p, err := imagePart(ctx, b.Source, fetch)
 			if err != nil {
 				return nil, err
 			}
 			parts = append(parts, p)
 		case "document":
-			p, text, err := documentPart(ctx, b)
+			p, text, err := documentPart(ctx, b, fetch)
 			if err != nil {
 				return nil, err
 			}
@@ -237,7 +268,7 @@ func userMessages(ctx context.Context, blocks []anthropicBlock) ([]*pb.ChatMessa
 				case "text":
 					result = append(result, ib.Text)
 				case "image":
-					p, err := imagePart(ctx, ib.Source)
+					p, err := imagePart(ctx, ib.Source, fetch)
 					if err != nil {
 						return nil, err
 					}
@@ -290,7 +321,7 @@ func assistantMessage(blocks []anthropicBlock) ([]*pb.ChatMessage, error) {
 
 // mediaBytes reads a base64 or https source; url sources go through safefetch
 // like image_url on chat completions.
-func mediaBytes(ctx context.Context, src *anthropicSource, what string) (mime string, data []byte, err error) {
+func mediaBytes(ctx context.Context, src *anthropicSource, what string, fetch bool) (mime string, data []byte, err error) {
 	if src == nil {
 		return "", nil, invalid("%s: source is required", what)
 	}
@@ -304,20 +335,23 @@ func mediaBytes(ctx context.Context, src *anthropicSource, what string) (mime st
 		if !strings.HasPrefix(src.URL, "https://") {
 			return "", nil, invalid("%s: url %q must be https", what, src.URL)
 		}
+		if !fetch {
+			return "", nil, nil
+		}
 		if data, mime, err = safefetch.FetchURL(ctx, src.URL, maxRequestBytes); err != nil {
 			return "", nil, invalid("%s: failed to fetch %s: %v", what, src.URL, err)
 		}
 	default:
 		return "", nil, invalid("%s: source type %q is not supported, use base64 or url", what, src.Type)
 	}
-	if err := safefetch.ValidateMediaMimeType(mime); err != nil {
+	if err := safefetch.ValidateMediaMimeType(mime); err != nil && (fetch || src.Type != "url") {
 		return "", nil, invalid("%s: %v", what, err)
 	}
 	return mime, data, nil
 }
 
-func imagePart(ctx context.Context, src *anthropicSource) (*pb.ContentPart, error) {
-	mime, data, err := mediaBytes(ctx, src, "image")
+func imagePart(ctx context.Context, src *anthropicSource, fetch bool) (*pb.ContentPart, error) {
+	mime, data, err := mediaBytes(ctx, src, "image", fetch)
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +362,7 @@ func imagePart(ctx context.Context, src *anthropicSource) (*pb.ContentPart, erro
 
 // documentPart returns a document part, or the text of a plain-text or
 // content-block document.
-func documentPart(ctx context.Context, b anthropicBlock) (*pb.ContentPart, string, error) {
+func documentPart(ctx context.Context, b anthropicBlock, fetch bool) (*pb.ContentPart, string, error) {
 	if b.Source != nil {
 		switch b.Source.Type {
 		case "text":
@@ -348,7 +382,7 @@ func documentPart(ctx context.Context, b anthropicBlock) (*pb.ContentPart, strin
 			return nil, strings.Join(texts, "\n\n"), nil
 		}
 	}
-	mime, data, err := mediaBytes(ctx, b.Source, "document")
+	mime, data, err := mediaBytes(ctx, b.Source, "document", fetch)
 	if err != nil {
 		return nil, "", err
 	}
@@ -365,15 +399,11 @@ func (a *OpenAIAPI) messages(ctx context.Context, w http.ResponseWriter, r *http
 	if req.MaxTokens < 1 {
 		return invalid("max_tokens: must be at least 1")
 	}
-	preq, err := req.toProto(ctx, getPlacementHeader(r))
+	preq, err := req.toProto(ctx, getPlacementHeader(r), true)
 	if err != nil {
 		return err
 	}
-	if req.EnableCache != nil {
-		preq.EnableCache = *req.EnableCache
-	} else if h := getCacheHeader(r); h != "" {
-		preq.EnableCache = h == "true" || h == "1"
-	}
+	preq.EnableCache = cacheEnabled(r, req.EnableCache)
 
 	id := "msg_" + randomID()
 	if req.Stream {
@@ -476,23 +506,25 @@ func (a *OpenAIAPI) streamMessages(ctx context.Context, w http.ResponseWriter, p
 		return err
 	}
 	if err == nil {
-		s.start(nil)
-		s.finish()
+		if err = s.start(nil); err == nil {
+			err = s.finish()
+		}
+		if err != nil {
+			log.Debug().Err(err).Msg("messages: the client left before the stream ended")
+		}
 		return nil
 	}
 	// Headers are out: the error goes in the stream, as the Messages API sends it.
-	st, _ := status.FromError(err)
-	code, _ := httpStatus(st.Code())
-	msg := st.Message()
-	if st.Code() == codes.Internal {
-		msg = "internal error"
+	code, _, msg, _ := apiError(w, err)
+	if werr := s.event("error", map[string]any{"type": "error", "error": map[string]any{"type": anthropicErrorType(code), "message": msg}}); werr != nil {
+		log.Debug().Err(werr).Msg("messages: the client left before the stream error")
 	}
-	s.event("error", map[string]any{"type": "error", "error": map[string]any{"type": anthropicErrorType(code), "message": msg}})
 	return nil
 }
 
 // messagesStream renders GenerateText chunks as Messages SSE events. Text
-// and each tool call are content blocks, opened and closed in order.
+// and each tool call are content blocks, opened and closed in order; a tool
+// block opens once its name is complete, at its first argument delta.
 type messagesStream struct {
 	grpc.ServerStream
 	ctx         context.Context
@@ -507,7 +539,8 @@ type messagesStream struct {
 	block       int  // index of the last block opened
 	open        bool // whether that block is still open
 	blockTool   bool
-	tool        int32 // vendor index of the open tool call
+	tool        int32 // vendor index of the open or pending tool call
+	pending     *pb.ToolCallChunk
 	toolBlocks  map[int32]bool
 	toolCalls   bool
 	finishedAs  string
@@ -516,15 +549,23 @@ type messagesStream struct {
 
 func (s *messagesStream) Context() context.Context { return s.ctx }
 
-func (s *messagesStream) event(name string, data any) {
-	b, _ := json.Marshal(data)
-	_, _ = fmt.Fprintf(s.w, "event: %s\ndata: %s\n\n", name, b)
+// event writes one SSE event; its error stops the vendor stream once the
+// client is gone.
+func (s *messagesStream) event(name string, data any) error {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(s.w, "event: %s\ndata: %s\n\n", name, b); err != nil {
+		return err
+	}
 	s.flusher.Flush()
+	return nil
 }
 
-func (s *messagesStream) start(chunk *pb.GenerateTextChunk) {
+func (s *messagesStream) start(chunk *pb.GenerateTextChunk) error {
 	if s.started {
-		return
+		return nil
 	}
 	if chunk != nil {
 		setRouteHeaders(s.w, chunk)
@@ -533,54 +574,70 @@ func (s *messagesStream) start(chunk *pb.GenerateTextChunk) {
 	setCacheHeader(s.w, s.enableCache, s.cacheHit)
 	startEventStream(s.w, s.flusher)
 	s.started = true
-	s.event("message_start", map[string]any{"type": "message_start", "message": map[string]any{
+	if err := s.event("message_start", map[string]any{"type": "message_start", "message": map[string]any{
 		"id": s.id, "type": "message", "role": "assistant", "model": s.model, "content": []any{},
 		"stop_reason": nil, "stop_sequence": nil, "usage": anthropicUsage(nil, s.estimate),
-	}})
-	s.event("ping", map[string]any{"type": "ping"})
-}
-
-func (s *messagesStream) openBlock(block map[string]any, tool bool, index int32) {
-	s.closeBlock()
-	s.block++
-	s.open, s.blockTool, s.tool = true, tool, index
-	s.event("content_block_start", map[string]any{"type": "content_block_start", "index": s.block, "content_block": block})
-}
-
-func (s *messagesStream) closeBlock() {
-	if !s.open {
-		return
+	}}); err != nil {
+		return err
 	}
-	s.event("content_block_stop", map[string]any{"type": "content_block_stop", "index": s.block})
-	s.open = false
+	return s.event("ping", map[string]any{"type": "ping"})
 }
 
-func (s *messagesStream) delta(delta map[string]any) {
-	s.event("content_block_delta", map[string]any{"type": "content_block_delta", "index": s.block, "delta": delta})
+func (s *messagesStream) openBlock(block map[string]any, tool bool) error {
+	if err := s.closeBlock(); err != nil {
+		return err
+	}
+	s.block++
+	s.open, s.blockTool = true, tool
+	return s.event("content_block_start", map[string]any{"type": "content_block_start", "index": s.block, "content_block": block})
+}
+
+// closeBlock ends the open block, opening a pending tool call first so a
+// call without arguments still reaches the client.
+func (s *messagesStream) closeBlock() error {
+	if err := s.flushPending(); err != nil {
+		return err
+	}
+	if !s.open {
+		return nil
+	}
+	s.open = false
+	return s.event("content_block_stop", map[string]any{"type": "content_block_stop", "index": s.block})
+}
+
+func (s *messagesStream) flushPending() error {
+	p := s.pending
+	if p == nil {
+		return nil
+	}
+	s.pending = nil
+	return s.openBlock(map[string]any{"type": "tool_use", "id": toolUseID(p.Id), "name": p.Name, "input": map[string]any{}}, true)
+}
+
+func (s *messagesStream) delta(delta map[string]any) error {
+	return s.event("content_block_delta", map[string]any{"type": "content_block_delta", "index": s.block, "delta": delta})
 }
 
 func (s *messagesStream) Send(chunk *pb.GenerateTextChunk) error {
 	if chunk.Cached {
 		s.cacheHit = true
 	}
-	s.start(chunk)
+	if err := s.start(chunk); err != nil {
+		return err
+	}
 	if chunk.Delta != "" {
-		if !s.open || s.blockTool {
-			s.openBlock(map[string]any{"type": "text", "text": ""}, false, -1)
+		if !s.open || s.blockTool || s.pending != nil {
+			if err := s.openBlock(map[string]any{"type": "text", "text": ""}, false); err != nil {
+				return err
+			}
 		}
-		s.delta(map[string]any{"type": "text_delta", "text": chunk.Delta})
+		if err := s.delta(map[string]any{"type": "text_delta", "text": chunk.Delta}); err != nil {
+			return err
+		}
 	}
 	for _, tc := range chunk.ToolCallChunks {
-		if !s.open || !s.blockTool || s.tool != tc.Index {
-			if s.toolBlocks[tc.Index] {
-				return status.Errorf(codes.Internal, "tool call %d continued after the next content block began", tc.Index)
-			}
-			s.toolBlocks[tc.Index] = true
-			s.toolCalls = true
-			s.openBlock(map[string]any{"type": "tool_use", "id": toolUseID(tc.Id), "name": tc.Name, "input": map[string]any{}}, true, tc.Index)
-		}
-		if tc.ArgumentsDelta != "" {
-			s.delta(map[string]any{"type": "input_json_delta", "partial_json": tc.ArgumentsDelta})
+		if err := s.toolChunk(tc); err != nil {
+			return err
 		}
 	}
 	if chunk.FinishReason != "" {
@@ -592,13 +649,48 @@ func (s *messagesStream) Send(chunk *pb.GenerateTextChunk) error {
 	return nil
 }
 
-func (s *messagesStream) finish() {
-	s.closeBlock()
+func (s *messagesStream) toolChunk(tc *pb.ToolCallChunk) error {
+	current := s.pending != nil || s.open && s.blockTool
+	if !current || s.tool != tc.Index {
+		if s.toolBlocks[tc.Index] {
+			return status.Errorf(codes.Internal, "tool call %d continued after the next content block began", tc.Index)
+		}
+		if err := s.closeBlock(); err != nil {
+			return err
+		}
+		s.toolBlocks[tc.Index] = true
+		s.toolCalls = true
+		s.tool = tc.Index
+		s.pending = &pb.ToolCallChunk{Index: tc.Index}
+	}
+	if p := s.pending; p != nil {
+		// Names arrive as deltas, like arguments.
+		p.Name += tc.Name
+		if p.Id == "" {
+			p.Id = tc.Id
+		}
+	}
+	// "null" is how a vendor spells no arguments; the block starts with {}.
+	if tc.ArgumentsDelta == "" || tc.ArgumentsDelta == "null" && s.pending != nil {
+		return nil
+	}
+	if err := s.flushPending(); err != nil {
+		return err
+	}
+	return s.delta(map[string]any{"type": "input_json_delta", "partial_json": tc.ArgumentsDelta})
+}
+
+func (s *messagesStream) finish() error {
+	if err := s.closeBlock(); err != nil {
+		return err
+	}
 	usage := anthropicUsage(s.usage, s.estimate)
-	s.event("message_delta", map[string]any{"type": "message_delta",
+	if err := s.event("message_delta", map[string]any{"type": "message_delta",
 		"delta": map[string]any{"stop_reason": stopReason(s.finishedAs, s.toolCalls), "stop_sequence": nil},
-		"usage": usage})
-	s.event("message_stop", map[string]any{"type": "message_stop"})
+		"usage": usage}); err != nil {
+		return err
+	}
+	return s.event("message_stop", map[string]any{"type": "message_stop"})
 }
 
 func writeAnthropicError(w http.ResponseWriter, err error) {
@@ -620,8 +712,6 @@ func anthropicErrorType(code int) string {
 		return "permission_error"
 	case http.StatusNotFound:
 		return "not_found_error"
-	case http.StatusRequestEntityTooLarge:
-		return "request_too_large"
 	case http.StatusTooManyRequests:
 		return "rate_limit_error"
 	case http.StatusServiceUnavailable:
@@ -633,28 +723,17 @@ func anthropicErrorType(code int) string {
 	}
 }
 
-// countTokens estimates like the token budgets do (a rune count), adding the
-// tool definitions and tool calls the estimate leaves out.
+// countTokens answers with the estimate the token budgets reserve.
 func (a *OpenAIAPI) countTokens(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
 	var req messagesRequest
 	if err := decodeBody(r, &req); err != nil {
 		return err
 	}
-	preq, err := req.toProto(ctx, "")
+	preq, err := req.toProto(ctx, "", false)
 	if err != nil {
 		return err
 	}
-	n := grpcapi.EstimateTokens(preq)
-	extra := 0
-	for _, t := range req.Tools {
-		extra += utf8.RuneCountInString(t.Name) + utf8.RuneCountInString(t.Description) + utf8.RuneCount(t.InputSchema)
-	}
-	for _, m := range preq.Messages {
-		for _, tc := range m.ToolCalls {
-			extra += utf8.RuneCountInString(tc.GetFunction().GetName()) + utf8.RuneCountInString(tc.GetFunction().GetArguments())
-		}
-	}
 	setObservabilityHeader(w, "Token-Count", "estimate")
-	writeJSON(w, http.StatusOK, map[string]any{"input_tokens": n + int64(extra/4)})
+	writeJSON(w, http.StatusOK, map[string]any{"input_tokens": grpcapi.EstimateTokens(preq)})
 	return nil
 }

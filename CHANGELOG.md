@@ -14,7 +14,11 @@ All notable changes to KTMS are listed here. The format follows
   fallback, limits, guardrails, cache, `X-KTMS-*` headers and usage events with chat completions,
   answers in the Messages format whichever vendor's model serves it, streams the Messages SSE
   events, and returns errors in the Messages shape. `POST /v1/messages/count_tokens` returns an
-  estimate.
+  estimate. Claude Code's session-scoped `metadata.user_id` becomes its account or device as the
+  user, with the session in `attributes["session_id"]`.
+
+### Changed
+- Token budget reservations count tool definitions and the tool calls in the conversation.
 
 ## [1.4.0] - 2026-10-27
 
