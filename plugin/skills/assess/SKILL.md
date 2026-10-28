@@ -39,7 +39,10 @@ holds it.
    reachable by them and nothing public unless clients live outside. Postgres: a database and
    user on an existing server, or a new one. Redis for limits. light-tokenmeter when spend per
    project, user or call site matters; ktms-admin for the people who run it. Size it from
-   [Sizing](https://github.com/ai-process/ktms/blob/main/README.md#sizing).
+   [Sizing](https://github.com/ai-process/ktms/blob/main/README.md#sizing), a `###` section under
+   Operations: 1 vCPU per 1,000 RPS, memory by bodies in flight (256 MiB request, 512 MiB limit),
+   and at least two replicas behind a load balancer even at low load, so one can restart while the
+   other serves. Recommend one replica only for a trial.
 3. **Per service**: the smallest path. A service on the OpenAI SDK moves to the
    [OpenAI-compatible HTTP API](https://github.com/ai-process/ktms/blob/main/README.md#openai-compatible-http-api)
    by changing the base URL, the key and the model value (`auto:low|medium|high`); a service on
