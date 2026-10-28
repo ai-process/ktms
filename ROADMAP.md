@@ -16,19 +16,8 @@ Every 1.x release is additive: new RPCs, fields, endpoints and settings. Anythin
 
 ## Now
 
-### Agent tools: MCP gateway
-
-- A registry of MCP servers (Streamable HTTP and SSE), proxied through Keystone at `/mcp`.
-- One endpoint that aggregates several servers, with tools namespaced per server.
-- Access to servers and individual tools per client key and team, like `allowed_models` today.
-- Upstream credentials stored encrypted and injected by the gateway, never handed to clients.
-- Tool calls in light-tokenmeter and Prometheus, and limits per tool.
-- Managed the same way as models: declarative YAML, Admin API, CLI and the console.
-
 ### Coding agents and API
 
-- Anthropic Messages API at `/v1/messages`, so Claude Code runs through KTMS with
-  `ANTHROPIC_BASE_URL` and `model: "auto"`.
 - OpenAI Responses API at `/v1/responses` for Codex CLI and the Agents SDK.
 - `temperature`, `top_p`, `stop` and `seed` passed through to the chosen model.
 

@@ -17,6 +17,17 @@ All notable changes to KTMS are listed here. The format follows
   `SetAPIKeyPolicy` and `UpdateTeam` an empty value keeps the current one and `unrestricted` lifts
   it. `ktms keys mint`, `ktms keys policy set` and `ktms route explain` take
   `--data-classification`, and teams take it in the configuration file.
+- Anthropic Messages API (experimental): `POST /v1/messages`, so Claude Code
+  (`ANTHROPIC_BASE_URL`) and the Anthropic SDKs run through Keystone with a KTMS key in
+  `x-api-key` or `Authorization`, `model: "auto"` or a registry model id. It shares routing,
+  fallback, limits, guardrails, cache, `X-KTMS-*` headers and usage events with chat completions,
+  answers in the Messages format whichever vendor's model serves it, streams the Messages SSE
+  events, and returns errors in the Messages shape. `POST /v1/messages/count_tokens` returns an
+  estimate. Claude Code's session-scoped `metadata.user_id` becomes its account or device as the
+  user, with the session in `attributes["session_id"]`.
+
+### Changed
+- Token budget reservations count tool definitions and the tool calls in the conversation.
 
 ## [1.4.0] - 2026-10-27
 

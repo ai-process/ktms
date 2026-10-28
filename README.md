@@ -46,6 +46,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 - [Command-line tool](#command-line-tool)
 - [Calling Keystone](#calling-keystone)
 - [OpenAI-compatible HTTP API](#openai-compatible-http-api)
+- [Anthropic Messages API](#anthropic-messages-api)
 - [MCP gateway](#mcp-gateway)
 - [Concepts](#concepts)
 - [Error contract](#error-contract)
@@ -1404,6 +1405,68 @@ Errors use OpenAI's shape, `{"error": {"message", "type", "param", "code"}}`, an
 OpenAI SDKs retry 429 and 5xx automatically; for `throttled:*` and `vendor_error` you may want to
 disable that (`max_retries=0`) and handle them yourself.
 
+## Anthropic Messages API
+
+`POST /v1/messages` serves the [Anthropic Messages API](https://docs.anthropic.com/en/api/messages)
+on `HTTP_ADDR`, so Claude Code and the Anthropic SDKs run through Keystone. It is the same pipeline
+as `/v1/chat/completions`: the same keys (scope `generate`), rules, fallback, limits, guardrails,
+cache, `X-KTMS-*` headers and usage events. The model that answers may be any vendor's, and the
+answer is still a Messages response. The Messages API is [experimental](#experimental) in 1.x.
+
+Claude Code, with a KTMS key:
+
+```bash
+export ANTHROPIC_BASE_URL=http://localhost:8080
+export ANTHROPIC_AUTH_TOKEN=ktms_<your key>        # or ANTHROPIC_API_KEY
+export ANTHROPIC_MODEL=auto                        # or a registry model id
+export ANTHROPIC_DEFAULT_HAIKU_MODEL=auto:low      # Claude Code's background calls
+claude
+```
+
+Claude Code warns once that it does not recognize the model `auto`; that is expected. It asks for
+up to 32,000-64,000 output tokens, which Keystone passes on as `max_tokens`; if a model your rules
+pick caps output lower, set `CLAUDE_CODE_MAX_OUTPUT_TOKENS` to fit it.
+
+The Anthropic SDKs need only the base URL and the key:
+
+```python
+import anthropic
+
+client = anthropic.Anthropic(base_url="http://localhost:8080", api_key="ktms_<your key>")
+reply = client.messages.create(model="auto", max_tokens=1024,
+                               messages=[{"role": "user", "content": "Say hi in three words."}])
+print(reply.content[0].text, reply.model)   # `model` is the one that answered
+```
+
+| Request field | Support |
+| --- | --- |
+| `model` | As on chat completions: `auto`, `auto:<effort>`, `auto:<placement>`, or a registry model id. |
+| `system` | A string or `text` blocks, joined into the system instruction. |
+| `messages` | `user` and `assistant` turns with `text`, `image` and `document` blocks (`base64` or `https` `url` sources; `text` and `content` documents become text), `tool_use` and `tool_result` (text and images). `thinking`, `redacted_thinking` and server-tool blocks in assistant turns are dropped: another model cannot continue them. |
+| `tools`, `tool_choice` | Client tools with `input_schema` (the same JSON Schema subset as `response_format`); `tool_choice` `auto`, `any`, `tool` and `none`. Server tools such as `web_search` are rejected with `400`. |
+| `max_tokens` | Required, the output ceiling. |
+| `stream` | SSE events `message_start`, `ping`, `content_block_start`, `content_block_delta` (`text_delta`, `input_json_delta`), `content_block_stop`, `message_delta` and `message_stop`. `message_start` carries an input token estimate; `message_delta` carries the vendor's counts. |
+| `metadata.user_id` | `attributes["user_id"]`, as `user` on chat completions; other `metadata` keys are attributes, and `action_id` is the usage action label. Claude Code's `user_id` names a session: Keystone keeps its account (or, without one, its device) as the user and puts the session in `attributes["session_id"]`, so per-user limits and reports span sessions. |
+| `enable_cache`, `placement` | Extensions, as on chat completions; so are the `X-KTMS-Cache` and `X-KTMS-Placement` request headers (set them in Claude Code with `ANTHROPIC_CUSTOM_HEADERS`). |
+| `temperature`, `top_p`, `top_k`, `stop_sequences`, `thinking`, `service_tier` | Accepted and ignored. |
+
+The key goes in `x-api-key` or `Authorization: Bearer`. The response's `stop_reason` is `end_turn`,
+`tool_use`, `max_tokens` or `refusal`, and `usage` splits `cache_read_input_tokens` and
+`cache_creation_input_tokens` out of `input_tokens`. Tool call ids are the vendor's, or `toolu_…`
+when the vendor gives none.
+
+`POST /v1/messages/count_tokens` answers with the estimate the token budgets reserve, not a
+tokenizer's count: about four characters per token, tool definitions included, a flat allowance
+per image or document (`url` sources are not fetched), and the `X-KTMS-Token-Count: estimate`
+header.
+
+Errors use the Messages shape, `{"type": "error", "error": {"type", "message"}}`, with the HTTP
+statuses of [the table above](#errors): `invalid_request_error` (400), `authentication_error`
+(401), `permission_error` (403), `not_found_error` (404), `rate_limit_error` (429, with
+`Retry-After`), `overloaded_error` (503), `timeout_error` (504) and `api_error` for the rest. The
+machine-readable reason, such as `throttled:rpm`, is the `message`. An error after the stream has
+started arrives as an `error` event.
+
 ## MCP gateway
 
 Keystone is also a gateway for MCP servers. Claude Code, Cursor and other MCP clients reach the
@@ -1655,6 +1718,8 @@ These work and are supported, but may change in a minor release. The change is t
 - **`JudgeStream` and `EvaluateRollouts`**, and `POST /v1/decisions/rollouts` over HTTP.
 - **The MCP gateway:** `/mcp`, the `MCPServerSpec` RPCs, `allowed_mcp`, the `mcp_servers` and
   `mcp_credentials` file sections, the `ktms_mcp_*` metrics and `ToolCall` in usage events.
+- **The Anthropic Messages API:** `POST /v1/messages`, `POST /v1/messages/count_tokens` and the
+  `X-KTMS-Token-Count` header.
 
 ### Compatibility with ktms-admin and light-tokenmeter
 

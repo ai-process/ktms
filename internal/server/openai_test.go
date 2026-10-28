@@ -35,6 +35,7 @@ type fakeProxy struct {
 	respJudgeScore float64
 	respJudgeModel string
 	streamChunks   []*pb.GenerateTextChunk
+	streamErr      error // returned after streamChunks
 	emptyStream    bool
 	media          map[string]string
 	speechErr      error
@@ -80,7 +81,7 @@ func (f *fakeProxy) GenerateTextStream(r *pb.GenerateTextStreamRequest, s pb.Gat
 				return err
 			}
 		}
-		return nil
+		return f.streamErr
 	}
 	if err := s.Send(&pb.GenerateTextChunk{
 		Delta:          "hello",
@@ -1525,6 +1526,8 @@ func TestDataClassificationOverHTTP(t *testing.T) {
 		{"/v1/chat/completions", `{"messages":[{"role":"user","content":"x"}]}`, "public", 400, "", false},
 		// Media endpoints have no field; the header reaches them through the context.
 		{"/v1/embeddings", `{"model":"e","input":"x"}`, "restricted", 200, "", true},
+		{"/v1/messages", `{"max_tokens":8,"messages":[{"role":"user","content":"x"}]}`, "restricted", 200, "", true},
+		{"/v1/messages", `{"max_tokens":8,"messages":[{"role":"user","content":"x"}]}`, "public", 400, "", false},
 	} {
 		fp.restricted, fp.text = false, nil
 		req := httptest.NewRequest("POST", c.path, strings.NewReader(c.body))
@@ -1536,6 +1539,10 @@ func TestDataClassificationOverHTTP(t *testing.T) {
 		h.ServeHTTP(rec, req)
 		if rec.Code != c.code || fp.text.GetDataClassification() != c.field || fp.restricted != c.restricted {
 			t.Errorf("%s %s header %q: %d field %q restricted %v", c.path, c.body, c.header, rec.Code, fp.text.GetDataClassification(), fp.restricted)
+		}
+		// Messages clients parse only the Messages error shape.
+		if c.path == "/v1/messages" && c.code == 400 && !strings.Contains(rec.Body.String(), `"type":"error"`) {
+			t.Errorf("messages error body: %s", rec.Body)
 		}
 	}
 }

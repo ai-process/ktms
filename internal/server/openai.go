@@ -66,6 +66,8 @@ func (a *OpenAIAPI) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/decisions/rollouts", a.wrap(judge, a.decisionsRollouts))
 	mux.HandleFunc("GET /v1/models", a.wrap(models, a.listModels))
 	mux.HandleFunc("GET /v1/models/{id...}", a.wrap(models, a.getModel))
+	mux.HandleFunc("POST /v1/messages", a.serve(chat, a.messages, writeAnthropicError, true))
+	mux.HandleFunc("POST /v1/messages/count_tokens", a.serve(chat, a.countTokens, writeAnthropicError, true))
 }
 
 type apiHandler func(ctx context.Context, w http.ResponseWriter, r *http.Request) error
@@ -73,6 +75,12 @@ type apiHandler func(ctx context.Context, w http.ResponseWriter, r *http.Request
 // wrap authenticates, recovers panics and turns returned errors into
 // OpenAI-style error bodies.
 func (a *OpenAIAPI) wrap(fullMethod string, h apiHandler) http.HandlerFunc {
+	return a.serve(fullMethod, h, writeAPIError, false)
+}
+
+// serve is wrap with the error body format and, for Anthropic clients, the
+// key in x-api-key when there is no Authorization header.
+func (a *OpenAIAPI) serve(fullMethod string, h apiHandler, writeErr func(http.ResponseWriter, error), apiKeyHeader bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		var err error
@@ -80,7 +88,7 @@ func (a *OpenAIAPI) wrap(fullMethod string, h apiHandler) http.HandlerFunc {
 			if rec := recover(); rec != nil {
 				panicsafe.Report("http handler "+fullMethod, rec)
 				err = status.Error(codes.Internal, "internal error")
-				writeAPIError(w, err)
+				writeErr(w, err)
 			}
 			rpcLogEvent(err).Str("method", fullMethod).Str("transport", "http").
 				Dur("duration", time.Since(start)).Msg("http request")
@@ -89,6 +97,8 @@ func (a *OpenAIAPI) wrap(fullMethod string, h apiHandler) http.HandlerFunc {
 		md := metadata.MD{}
 		if auth := r.Header.Get("Authorization"); auth != "" {
 			md.Set(metadataKeyAuthorization, auth)
+		} else if key := r.Header.Get("X-Api-Key"); apiKeyHeader && key != "" {
+			md.Set(metadataKeyAuthorization, "Bearer "+key)
 		}
 		if v := r.Header.Get("X-KTMS-Data-Classification"); v != "" {
 			md.Set(metadataKeyDataClassification, v)
@@ -97,16 +107,16 @@ func (a *OpenAIAPI) wrap(fullMethod string, h apiHandler) http.HandlerFunc {
 		id, aerr := authorize(ctx, a.verifier, fullMethod)
 		if aerr != nil {
 			err = aerr
-			writeAPIError(w, err)
+			writeErr(w, err)
 			return
 		}
 		// A gateway in front can restrict any call; it cannot lift a key's restriction.
 		if ctx, err = restrictCall(ctx); err != nil {
-			writeAPIError(w, err)
+			writeErr(w, err)
 			return
 		}
 		if err = h(apikeys.WithIdentity(ctx, id), w, r); err != nil {
-			writeAPIError(w, err)
+			writeErr(w, err)
 		}
 	}
 }
@@ -691,13 +701,7 @@ func (a *OpenAIAPI) chatCompletions(ctx context.Context, w http.ResponseWriter, 
 	if err != nil {
 		return err
 	}
-	var enableCache bool
-	if req.EnableCache != nil {
-		enableCache = *req.EnableCache
-	} else if h := getCacheHeader(r); h != "" {
-		enableCache = h == "true" || h == "1"
-	}
-	preq.EnableCache = enableCache
+	preq.EnableCache = cacheEnabled(r, req.EnableCache)
 
 	id, created := "chatcmpl-"+randomID(), time.Now().Unix()
 	if req.Stream {
@@ -709,26 +713,8 @@ func (a *OpenAIAPI) chatCompletions(ctx context.Context, w http.ResponseWriter, 
 	if err != nil {
 		return err
 	}
-	setResolvedHeaders(w, resp.ResolvedVendor, resp.MatchedRule)
-	if resp.Placement != "" {
-		setObservabilityHeader(w, "Placement", resp.Placement)
-	}
-	if resp.RouteMode != "" {
-		setObservabilityHeader(w, "Route-Mode", resp.RouteMode)
-	}
-	if resp.JudgeScore > 0 {
-		setObservabilityHeader(w, "Judge-Score", fmt.Sprintf("%.2f", resp.JudgeScore))
-	}
-	if resp.JudgeModel != "" {
-		setObservabilityHeader(w, "Judge-Model", resp.JudgeModel)
-	}
-	if preq.EnableCache {
-		if resp.Cached {
-			setObservabilityHeader(w, "Cache", "HIT")
-		} else {
-			setObservabilityHeader(w, "Cache", "MISS")
-		}
-	}
+	setRouteHeaders(w, resp)
+	setCacheHeader(w, preq.EnableCache, resp.Cached)
 
 	usage := usageJSON(resp.GetUsage())
 	choices := make([]map[string]any, 0, len(resp.Choices))
@@ -859,34 +845,20 @@ func (s *httpStreamAdapter) ensureHeaders(chunk *pb.GenerateTextChunk) {
 		return
 	}
 	if chunk != nil {
-		setResolvedHeaders(s.w, chunk.ResolvedVendor, chunk.MatchedRule)
-		if chunk.Placement != "" {
-			setObservabilityHeader(s.w, "Placement", chunk.Placement)
-		}
-		if chunk.RouteMode != "" {
-			setObservabilityHeader(s.w, "Route-Mode", chunk.RouteMode)
-		}
-		if chunk.JudgeScore > 0 {
-			setObservabilityHeader(s.w, "Judge-Score", fmt.Sprintf("%.2f", chunk.JudgeScore))
-		}
-		if chunk.JudgeModel != "" {
-			setObservabilityHeader(s.w, "Judge-Model", chunk.JudgeModel)
-		}
+		setRouteHeaders(s.w, chunk)
 	}
-	if s.enableCache {
-		if s.cacheHit {
-			setObservabilityHeader(s.w, "Cache", "HIT")
-		} else {
-			setObservabilityHeader(s.w, "Cache", "MISS")
-		}
-	}
-	s.w.Header().Set("Content-Type", "text/event-stream")
-	s.w.Header().Set("Cache-Control", "no-cache")
-	s.w.Header().Set("Connection", "keep-alive")
-	s.w.Header().Set("X-Accel-Buffering", "no")
-	s.w.WriteHeader(http.StatusOK)
-	s.flusher.Flush()
+	setCacheHeader(s.w, s.enableCache, s.cacheHit)
+	startEventStream(s.w, s.flusher)
 	s.headersSent = true
+}
+
+func startEventStream(w http.ResponseWriter, flusher http.Flusher) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
 }
 
 func (s *httpStreamAdapter) Send(chunk *pb.GenerateTextChunk) error {
@@ -989,6 +961,36 @@ func setObservabilityHeader(w http.ResponseWriter, suffix, value string) {
 	w.Header().Set(headerWarning, deprecationWarn)
 }
 
+// routeInfo is how a text response or stream chunk says where it was routed.
+type routeInfo interface {
+	GetResolvedVendor() string
+	GetMatchedRule() string
+	GetPlacement() string
+	GetRouteMode() string
+	GetJudgeScore() float64
+	GetJudgeModel() string
+}
+
+func setRouteHeaders(w http.ResponseWriter, r routeInfo) {
+	setResolvedHeaders(w, r.GetResolvedVendor(), r.GetMatchedRule())
+	setObservabilityHeader(w, "Placement", r.GetPlacement())
+	setObservabilityHeader(w, "Route-Mode", r.GetRouteMode())
+	if r.GetJudgeScore() > 0 {
+		setObservabilityHeader(w, "Judge-Score", fmt.Sprintf("%.2f", r.GetJudgeScore()))
+	}
+	setObservabilityHeader(w, "Judge-Model", r.GetJudgeModel())
+}
+
+func setCacheHeader(w http.ResponseWriter, enabled, hit bool) {
+	switch {
+	case !enabled:
+	case hit:
+		setObservabilityHeader(w, "Cache", "HIT")
+	default:
+		setObservabilityHeader(w, "Cache", "MISS")
+	}
+}
+
 func setResolvedHeaders(w http.ResponseWriter, vendor, rule string) {
 	if vendor != "" {
 		setObservabilityHeader(w, "Vendor", vendor)
@@ -1007,6 +1009,15 @@ func getPlacementHeader(r *http.Request) string {
 		return v
 	}
 	return ""
+}
+
+// cacheEnabled is the body's enable_cache, else the X-KTMS-Cache header.
+func cacheEnabled(r *http.Request, body *bool) bool {
+	if body != nil {
+		return *body
+	}
+	h := getCacheHeader(r)
+	return h == "true" || h == "1"
 }
 
 func getCacheHeader(r *http.Request) string {
@@ -1964,11 +1975,19 @@ func httpStatus(c codes.Code) (int, string) {
 }
 
 func writeAPIError(w http.ResponseWriter, err error) {
+	code, typ, msg, errCode := apiError(w, err)
+	writeJSON(w, code, map[string]any{"error": map[string]any{
+		"message": msg, "type": typ, "param": nil, "code": errCode,
+	}})
+}
+
+// apiError resolves err into the HTTP status, OpenAI error type, message and
+// machine-readable code, setting Retry-After when the client should wait.
+func apiError(w http.ResponseWriter, err error) (code int, typ, msg string, errCode any) {
 	st, _ := status.FromError(err)
-	code, typ := httpStatus(st.Code())
-	msg := st.Message()
+	code, typ = httpStatus(st.Code())
+	msg = st.Message()
 	// Machine-readable reasons ("throttled:rpm", "no_capable_model") become the code.
-	var errCode any
 	if reasonRe.MatchString(msg) {
 		errCode = msg
 	} else if strings.HasPrefix(msg, "guardrail_violation") {
@@ -1996,9 +2015,7 @@ func writeAPIError(w http.ResponseWriter, err error) {
 	if msg == "vendor_error" {
 		code = http.StatusBadGateway
 	}
-	writeJSON(w, code, map[string]any{"error": map[string]any{
-		"message": msg, "type": typ, "param": nil, "code": errCode,
-	}})
+	return code, typ, msg, errCode
 }
 
 // retryAfterSeconds reads a RetryInfo on the status: spend limits wait for

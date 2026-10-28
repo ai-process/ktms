@@ -8,6 +8,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 	"github.com/ai-process/ktms/internal/apikeys"
@@ -157,7 +158,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 	if plan.shadowEval {
 		shadowEvaluator = s.makeShadowEvaluator(id, chat, req.GetAttributes(), plan.restricted)
 	}
-	estimate := estimateTokens(req)
+	estimate := EstimateTokens(req)
 	settleKey, err := s.admitKey(ctx, id, estimate)
 	if err != nil {
 		return nil, err
@@ -303,7 +304,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 	if plan.shadowEval {
 		shadowEvaluator = s.makeShadowEvaluator(id, chat, inner.GetAttributes(), plan.restricted)
 	}
-	estimate := estimateTokens(inner)
+	estimate := EstimateTokens(inner)
 	settleKey, err := s.admitKey(stream.Context(), id, estimate)
 	if err != nil {
 		return err
@@ -671,14 +672,21 @@ func buildChat(req *pb.GenerateTextRequest, id *apikeys.Identity, ruleName, effo
 	return chat
 }
 
-// estimateTokens is the budget reservation guess: total runes / 4 plus heuristic
+// EstimateTokens is the budget reservation guess: total runes / 4 plus heuristic
 // allowances for media parts. Settled against vendor-reported actuals after the call.
-func estimateTokens(req *pb.GenerateTextRequest) int64 {
+// Tool definitions count by their encoded size: coding agents send thousands of tokens of them.
+func EstimateTokens(req *pb.GenerateTextRequest) int64 {
 	runes := utf8.RuneCountInString(req.GetBaseSystemInstruction()) +
 		utf8.RuneCountInString(req.GetRequestInstruction())
+	for _, t := range req.GetTools() {
+		runes += proto.Size(t)
+	}
 	var extraTokens int64
 	for _, m := range req.GetMessages() {
 		runes += utf8.RuneCountInString(m.GetText())
+		for _, tc := range m.GetToolCalls() {
+			runes += utf8.RuneCountInString(tc.GetFunction().GetName()) + utf8.RuneCountInString(tc.GetFunction().GetArguments())
+		}
 		for _, p := range m.GetParts() {
 			switch part := p.GetPart().(type) {
 			case *pb.ContentPart_Text:
