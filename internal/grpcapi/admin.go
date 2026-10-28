@@ -387,11 +387,16 @@ func (s *AdminServer) MintAPIKey(ctx context.Context, req *pb.MintAPIKeyRequest)
 	if err != nil {
 		return nil, err
 	}
+	dataClass, err := dataClassification(req.GetPolicy().GetDataClassification())
+	if err != nil {
+		return nil, err
+	}
 	plain, row, err := apikeys.Generate(req.GetName(), scopes)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "key generation failed")
 	}
 	row.AllowedModels, row.RPMLimit, row.TPMLimit, row.AllowedMCP = allowed, rpm, tpm, allowedMCP
+	row.DataClassification = dataClass
 
 	var orgID, teamID *string
 	if req.GetOrgId() != "" {
@@ -471,8 +476,9 @@ func (s *AdminServer) ListAPIKeys(ctx context.Context, _ *pb.ListAPIKeysRequest)
 		if k.TeamID != nil {
 			info.TeamId = *k.TeamID
 		}
-		if len(k.AllowedModels) > 0 || k.RPMLimit > 0 || k.TPMLimit > 0 || len(k.AllowedMCP) > 0 {
-			info.Policy = &pb.APIKeyPolicy{AllowedModels: k.AllowedModels, RpmLimit: k.RPMLimit, TpmLimit: k.TPMLimit, AllowedMcp: k.AllowedMCP}
+		if len(k.AllowedModels) > 0 || k.RPMLimit > 0 || k.TPMLimit > 0 || len(k.AllowedMCP) > 0 || k.DataClassification != "" {
+			info.Policy = &pb.APIKeyPolicy{AllowedModels: k.AllowedModels, RpmLimit: k.RPMLimit, TpmLimit: k.TPMLimit, AllowedMcp: k.AllowedMCP,
+				DataClassification: k.DataClassification}
 		}
 		out = append(out, info)
 	}
@@ -491,7 +497,11 @@ func (s *AdminServer) SetAPIKeyPolicy(ctx context.Context, req *pb.SetAPIKeyPoli
 	if err != nil {
 		return nil, err
 	}
-	if err := s.db.SetAPIKeyPolicy(ctx, req.GetName(), allowed, rpm, tpm, allowedMCP); err != nil {
+	dataClass, err := dataClassification(req.GetPolicy().GetDataClassification())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.db.SetAPIKeyPolicy(ctx, req.GetName(), allowed, rpm, tpm, allowedMCP, dataClass); err != nil {
 		return nil, dbStatus(err)
 	}
 	return &pb.SetAPIKeyPolicyResponse{}, nil
@@ -756,6 +766,10 @@ func (s *AdminServer) CreateTeam(ctx context.Context, req *pb.CreateTeamRequest)
 	if err != nil {
 		return nil, err
 	}
+	dataClass, err := dataClassification(req.GetDataClassification())
+	if err != nil {
+		return nil, err
+	}
 	team := &proxydb.Team{
 		ID:               uuid.NewString(),
 		OrgID:            req.GetOrgId(),
@@ -764,6 +778,8 @@ func (s *AdminServer) CreateTeam(ctx context.Context, req *pb.CreateTeamRequest)
 		AllowedModels:    allowed,
 		AllowedMCP:       allowedMCP,
 		CreatedAt:        time.Now().UTC(),
+
+		DataClassification: dataClass,
 	}
 	_, err = s.db.Mutate(ctx, func(tx pgx.Tx) error {
 		if err := proxydb.CreateTeamTx(ctx, tx, team); err != nil {
@@ -831,12 +847,18 @@ func (s *AdminServer) UpdateTeam(ctx context.Context, req *pb.UpdateTeamRequest)
 	if err != nil {
 		return nil, err
 	}
+	dataClass, err := dataClassification(req.GetDataClassification())
+	if err != nil {
+		return nil, err
+	}
 	t := &proxydb.Team{
 		ID:               req.GetId(),
 		Name:             req.GetName(),
 		MonthlyBudgetUSD: req.GetMonthlyBudgetUsd(),
 		AllowedModels:    allowed,
 		AllowedMCP:       allowedMCP,
+
+		DataClassification: dataClass,
 	}
 	_, err = s.db.Mutate(ctx, func(tx pgx.Tx) error {
 		if err := proxydb.UpdateTeamTx(ctx, tx, t); err != nil {
@@ -965,5 +987,16 @@ func teamToProto(t *proxydb.Team) *pb.Team {
 		AllowedModels:    t.AllowedModels,
 		CreatedAt:        timestamppb.New(t.CreatedAt),
 		AllowedMcp:       t.AllowedMCP,
+
+		DataClassification: t.DataClassification,
 	}
+}
+
+// dataClassification accepts "" and "restricted", the values routing knows.
+func dataClassification(v string) (string, error) {
+	v = strings.TrimSpace(v)
+	if v != "" && v != apikeys.DataRestricted {
+		return "", status.Errorf(codes.InvalidArgument, "data_classification %q: want %q or empty", v, apikeys.DataRestricted)
+	}
+	return v, nil
 }

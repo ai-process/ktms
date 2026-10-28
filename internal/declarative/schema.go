@@ -6,6 +6,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/apikeys"
 )
 
 // SchemaURL is where the published schema lives, for editors' $schema hints.
@@ -40,10 +41,11 @@ func Schema() []byte {
 			"organizations": list(obj(map[string]any{
 				"name": str,
 				"teams": list(obj(map[string]any{
-					"name":               str,
-					"monthly_budget_usd": map[string]any{"type": "number", "minimum": 0},
-					"allowed_models":     strs,
-					"allowed_mcp":        map[string]any{"type": "array", "items": str, "description": "MCP servers (server) and tools (server/tool) the team's keys may use; empty means any."},
+					"name":                str,
+					"monthly_budget_usd":  map[string]any{"type": "number", "minimum": 0},
+					"allowed_models":      strs,
+					"allowed_mcp":         map[string]any{"type": "array", "items": str, "description": "MCP servers (server) and tools (server/tool) the team's keys may use; empty means any."},
+					"data_classification": map[string]any{"enum": []string{"", apikeys.DataRestricted}, "description": "restricted keeps every call of the team's keys on self-hosted nodes, with no cloud fallback."},
 				}, "name")),
 			}, "name")),
 			"api_keys": list(obj(map[string]any{

@@ -164,6 +164,10 @@ message GenerateTextRequest {
   // choice is experimental; with it true the routing is stable.
   bool auto_route = 15;
   bool effort_specified = 16; // true when effort was explicitly pinned by caller
+  // "restricted" keeps the request, and the judge calls it makes, on self-hosted
+  // nodes: no cloud vendor sees it and there is no cloud fallback. "" is
+  // unrestricted unless the key or its team is restricted.
+  string data_classification = 17;
 }
 
 message TokensUsage {

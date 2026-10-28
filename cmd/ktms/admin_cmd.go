@@ -228,9 +228,10 @@ func (a *app) keysCmd() *cobra.Command {
 					}
 					pol := k.GetPolicy()
 					rows = append(rows, []string{k.GetName(), list(k.GetScopes()), tenant, list(pol.GetAllowedModels()),
-						limit(int64(pol.GetRpmLimit())), limit(pol.GetTpmLimit()), list(pol.GetAllowedMcp()), when(k.GetCreatedAt()), yesNo(k.GetDisabled())})
+						limit(int64(pol.GetRpmLimit())), limit(pol.GetTpmLimit()), list(pol.GetAllowedMcp()), orDash(pol.GetDataClassification()),
+						when(k.GetCreatedAt()), yesNo(k.GetDisabled())})
 				}
-				return p.rows([]string{"NAME", "SCOPES", "TENANT", "MODELS", "RPM", "TPM", "MCP", "CREATED", "REVOKED"}, rows)
+				return p.rows([]string{"NAME", "SCOPES", "TENANT", "MODELS", "RPM", "TPM", "MCP", "DATA", "CREATED", "REVOKED"}, rows)
 			})
 		},
 	}
@@ -238,7 +239,7 @@ func (a *app) keysCmd() *cobra.Command {
 	ls.Flags().BoolVar(&all, "all", false, "include revoked keys")
 
 	var scopes, models, mcpAllow []string
-	var org, team string
+	var org, team, dataClass string
 	var rpm int32
 	var tpm int64
 	mint := &cobra.Command{
@@ -251,7 +252,7 @@ func (a *app) keysCmd() *cobra.Command {
 				return err
 			}
 			return a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
-				req, err := mintRequest(ctx, c, args[0], scopes, org, team, policy(models, rpm, tpm, mcpAllow))
+				req, err := mintRequest(ctx, c, args[0], scopes, org, team, policy(models, rpm, tpm, mcpAllow, dataClass))
 				if err != nil {
 					return err
 				}
@@ -272,7 +273,7 @@ func (a *app) keysCmd() *cobra.Command {
 	mint.Flags().StringSliceVar(&scopes, "scopes", []string{"generate"}, "generate, mcp, admin or admin:read")
 	mint.Flags().StringVar(&org, "org", "", "organization name")
 	mint.Flags().StringVar(&team, "team", "", "team as org/team")
-	policyFlags(mint, &models, &rpm, &tpm, &mcpAllow)
+	policyFlags(mint, &models, &rpm, &tpm, &mcpAllow, &dataClass)
 
 	var yes bool
 	revoke := &cobra.Command{
@@ -295,6 +296,7 @@ func (a *app) keysCmd() *cobra.Command {
 	revoke.Flags().BoolVar(&yes, "yes", false, "revoke without asking")
 
 	var pModels, pMCP []string
+	var pData string
 	var pRPM int32
 	var pTPM int64
 	set := &cobra.Command{
@@ -303,7 +305,7 @@ func (a *app) keysCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			return a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
-				if _, err := c.SetAPIKeyPolicy(ctx, &pb.SetAPIKeyPolicyRequest{Name: args[0], Policy: policy(pModels, pRPM, pTPM, pMCP)}); err != nil {
+				if _, err := c.SetAPIKeyPolicy(ctx, &pb.SetAPIKeyPolicyRequest{Name: args[0], Policy: policy(pModels, pRPM, pTPM, pMCP, pData)}); err != nil {
 					return err
 				}
 				fmt.Fprintf(a.stdout, "Policy of %s replaced.\n", args[0])
@@ -311,7 +313,7 @@ func (a *app) keysCmd() *cobra.Command {
 			})
 		},
 	}
-	policyFlags(set, &pModels, &pRPM, &pTPM, &pMCP)
+	policyFlags(set, &pModels, &pRPM, &pTPM, &pMCP, &pData)
 	pol := &cobra.Command{Use: "policy", Short: "A key's own limits"}
 	pol.AddCommand(set)
 
@@ -319,18 +321,19 @@ func (a *app) keysCmd() *cobra.Command {
 	return cmd
 }
 
-func policyFlags(cmd *cobra.Command, models *[]string, rpm *int32, tpm *int64, mcpAllow *[]string) {
+func policyFlags(cmd *cobra.Command, models *[]string, rpm *int32, tpm *int64, mcpAllow *[]string, dataClass *string) {
 	cmd.Flags().StringSliceVar(models, "allowed-models", nil, "model ids the key may call (default any)")
 	cmd.Flags().StringSliceVar(mcpAllow, "allowed-mcp", nil, "MCP servers (server) and tools (server/tool) the key may use (default any)")
 	cmd.Flags().Int32Var(rpm, "rpm", 0, "calls per minute (default unlimited)")
 	cmd.Flags().Int64Var(tpm, "tpm", 0, "tokens per minute (default unlimited)")
+	cmd.Flags().StringVar(dataClass, "data-classification", "", "restricted keeps every call of the key on self-hosted nodes")
 }
 
-func policy(models []string, rpm int32, tpm int64, mcpAllow []string) *pb.APIKeyPolicy {
-	if len(models) == 0 && rpm == 0 && tpm == 0 && len(mcpAllow) == 0 {
+func policy(models []string, rpm int32, tpm int64, mcpAllow []string, dataClass string) *pb.APIKeyPolicy {
+	if len(models) == 0 && rpm == 0 && tpm == 0 && len(mcpAllow) == 0 && dataClass == "" {
 		return nil
 	}
-	return &pb.APIKeyPolicy{AllowedModels: models, RpmLimit: rpm, TpmLimit: tpm, AllowedMcp: mcpAllow}
+	return &pb.APIKeyPolicy{AllowedModels: models, RpmLimit: rpm, TpmLimit: tpm, AllowedMcp: mcpAllow, DataClassification: dataClass}
 }
 
 func limit(n int64) string {
@@ -800,8 +803,9 @@ func (a *app) vendorKeysCmd() *cobra.Command {
 var efforts = map[string]pb.Effort{"low": pb.Effort_EFFORT_LOW, "medium": pb.Effort_EFFORT_MEDIUM, "high": pb.Effort_EFFORT_HIGH}
 
 // explainRequest builds ExplainRoute's request from names a person types.
-func explainRequest(key, effort string, auto bool, attrs map[string]string, placement, model string, caps []string) (*pb.ExplainRouteRequest, error) {
-	req := &pb.ExplainRouteRequest{ApiKeyName: key, AutoRoute: auto, Attributes: attrs, Placement: placement, ModelOverride: model, Capabilities: caps}
+func explainRequest(key, effort string, auto bool, attrs map[string]string, placement, model string, caps []string, dataClass string) (*pb.ExplainRouteRequest, error) {
+	req := &pb.ExplainRouteRequest{ApiKeyName: key, AutoRoute: auto, Attributes: attrs, Placement: placement, ModelOverride: model, Capabilities: caps,
+		DataClassification: dataClass}
 	if effort != "" {
 		e, ok := efforts[effort]
 		if !ok {
@@ -813,7 +817,7 @@ func explainRequest(key, effort string, auto bool, attrs map[string]string, plac
 }
 
 func (a *app) routeCmd() *cobra.Command {
-	var effort, placement, model, format string
+	var effort, placement, model, dataClass, format string
 	var auto bool
 	var attrs map[string]string
 	var caps []string
@@ -830,7 +834,7 @@ paused, no node). It calls no vendor or judge and spends no limit.`,
 			if err != nil {
 				return err
 			}
-			req, err := explainRequest(args[0], effort, auto, attrs, placement, model, caps)
+			req, err := explainRequest(args[0], effort, auto, attrs, placement, model, caps, dataClass)
 			if err != nil {
 				return err
 			}
@@ -879,6 +883,7 @@ paused, no node). It calls no vendor or judge and spends no limit.`,
 	f.StringVar(&placement, "placement", "", "nodes_first, nodes_only, cloud_first or cloud_only")
 	f.StringVar(&model, "model", "", "a model override instead of the rules")
 	f.StringSliceVar(&caps, "capability", nil, "capabilities the request needs, e.g. google_search")
+	f.StringVar(&dataClass, "data-classification", "", "restricted: the request stays on self-hosted nodes")
 	_ = explain.RegisterFlagCompletionFunc("effort", cobra.FixedCompletions([]string{"low", "medium", "high"}, cobra.ShellCompDirectiveNoFileComp))
 	outputFlag(explain, &format)
 	cmd := &cobra.Command{Use: "route", Short: "Routing"}

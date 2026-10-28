@@ -7,6 +7,16 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `data_classification: restricted` on a request (`GenerateTextRequest`, `ExplainRouteRequest`, the
+  `data_classification` field and `X-KTMS-Data-Classification` header on `/v1/chat/completions`),
+  a key's policy or a team keeps calls on self-hosted nodes with no cloud fallback: the chain keeps
+  only node models, the auto-effort and shadow judges run only on nodes, the response cache is
+  skipped, and on a restricted key or team embeddings, judgments, speech and images need a node
+  model and batches are refused. Usage events carry it in meta. `ktms keys mint` and
+  `ktms keys policy set` take `--data-classification`, `ktms route explain` too, and teams take
+  it in the configuration file.
+
 ## [1.4.0] - 2026-10-27
 
 ### Added

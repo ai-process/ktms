@@ -62,6 +62,7 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 
 	// Validate custom_id uniqueness and item contents
 	seenCustomIDs := make(map[string]struct{}, len(items))
+	restricted := id.Restricted()
 	for _, it := range items {
 		cid := it.GetCustomId()
 		if cid == "" {
@@ -76,6 +77,10 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 		if itemReq == nil || (len(itemReq.GetMessages()) == 0 && itemReq.GetBaseSystemInstruction() == "" && itemReq.GetRequestInstruction() == "") {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q has no messages or instructions", cid)
 		}
+		if err := classify(id, itemReq); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q: %s", cid, status.Convert(err).Message())
+		}
+		restricted = restricted || isRestricted(itemReq)
 		for _, msg := range itemReq.GetMessages() {
 			if len(msg.GetParts()) > 0 {
 				return nil, status.Error(codes.InvalidArgument, "bad_request: multimodal batch not supported yet")
@@ -142,7 +147,17 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 
 	canaryKey := router.CanaryKey(cleanAttrs)
 	userID := router.UserID(cleanAttrs, id.Name)
-	model, err := router.ResolveBatchModel(ctx, snap, s.throttle, router.ResolveChain(rule, canaryKey), id.KeyID, id.Name, userID, id.TeamID, id.CanAccessModel)
+	allowed := id.CanAccessModel
+	if restricted {
+		// Batch APIs are cloud vendors'; a restricted batch takes a node model or none.
+		allowed = func(modelID string) bool {
+			return id.CanAccessModel(modelID) && router.IsNodeModel(snap.Models[modelID])
+		}
+	}
+	model, err := router.ResolveBatchModel(ctx, snap, s.throttle, router.ResolveChain(rule, canaryKey), id.KeyID, id.Name, userID, id.TeamID, allowed)
+	if restricted && (errors.Is(err, router.ErrModelAccessDenied) || errors.Is(err, router.ErrNoCapableModel)) {
+		return nil, noNodeModel("batches")
+	}
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}

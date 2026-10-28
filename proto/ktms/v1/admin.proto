@@ -130,6 +130,9 @@ message APIKeyPolicy {
   // MCP servers ("github") and single tools ("github/create_issue") a key with
   // the mcp scope may use; empty = any. Others are hidden and refused.
   repeated string allowed_mcp = 4;
+  // "restricted": every call of the key stays on self-hosted nodes, whatever the
+  // request says (see GenerateTextRequest.data_classification). "" = unrestricted.
+  string data_classification = 5;
 }
 
 // SetAPIKeyPolicy replaces a key's policy; it applies from the key's next call.
@@ -333,6 +336,7 @@ message Team {
   repeated string allowed_models = 5;
   google.protobuf.Timestamp created_at = 6;
   repeated string allowed_mcp = 7; // as APIKeyPolicy.allowed_mcp, for every key of the team
+  string data_classification = 8; // as APIKeyPolicy.data_classification, for every key of the team
 }
 
 message CreateOrganizationRequest {
@@ -361,6 +365,7 @@ message CreateTeamRequest {
   double monthly_budget_usd = 3;
   repeated string allowed_models = 4;
   repeated string allowed_mcp = 5;
+  string data_classification = 6;
 }
 
 message CreateTeamResponse {
@@ -391,6 +396,7 @@ message UpdateTeamRequest {
   double monthly_budget_usd = 3;
   repeated string allowed_models = 4;
   repeated string allowed_mcp = 5;
+  string data_classification = 6;
 }
 
 message UpdateTeamResponse {
@@ -565,6 +571,7 @@ message ExplainRouteRequest {
   string placement = 5; // nodes_first | nodes_only | cloud_first | cloud_only, empty for the rule's default
   string model_override = 6; // as in GenerateTextRequest
   repeated string capabilities = 7; // capabilities the request needs, e.g. "google_search"
+  string data_classification = 8; // as in GenerateTextRequest
 }
 
 message RouteCandidate {

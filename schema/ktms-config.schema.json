@@ -28,6 +28,9 @@
                 },
                 "type": "array"
               },
+              "data_classification": {
+                "type": "string"
+              },
               "rpm_limit": {
                 "type": "integer"
               },
@@ -242,6 +245,13 @@
                     "type": "string"
                   },
                   "type": "array"
+                },
+                "data_classification": {
+                  "description": "restricted keeps every call of the team's keys on self-hosted nodes, with no cloud fallback.",
+                  "enum": [
+                    "",
+                    "restricted"
+                  ]
                 },
                 "monthly_budget_usd": {
                   "minimum": 0,

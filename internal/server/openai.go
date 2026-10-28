@@ -126,6 +126,8 @@ type chatRequest struct {
 	EnableCache *bool `json:"enable_cache,omitempty"`
 	// Proxy extension: infrastructure locality preference (nodes_first, nodes_only, cloud_first, cloud_only).
 	Placement string `json:"placement,omitempty"`
+	// Proxy extension: "restricted" keeps the request on self-hosted nodes.
+	DataClassification string `json:"data_classification,omitempty"`
 }
 
 type streamOptions struct {
@@ -596,6 +598,7 @@ func (req *chatRequest) toProto(ctx context.Context, headerPlacement string) (*p
 		Placement:          dec.Placement,
 		AutoRoute:          dec.IsAuto,
 		EffortSpecified:    dec.EffortSpecified,
+		DataClassification: req.DataClassification,
 	}
 	if out.MaxOutputTokens == 0 {
 		out.MaxOutputTokens = req.MaxTokens
@@ -676,6 +679,7 @@ func (a *OpenAIAPI) chatCompletions(ctx context.Context, w http.ResponseWriter, 
 	if err := decodeBody(r, &req); err != nil {
 		return err
 	}
+	req.DataClassification = dataClassification(r, req.DataClassification)
 	preq, err := req.toProto(ctx, getPlacementHeader(r))
 	if err != nil {
 		return err
@@ -996,6 +1000,16 @@ func getPlacementHeader(r *http.Request) string {
 		return v
 	}
 	return ""
+}
+
+// dataClassification is the stricter of the body's data_classification and
+// the X-KTMS-Data-Classification header: a gateway in front can only restrict.
+func dataClassification(r *http.Request, body string) string {
+	h := strings.TrimSpace(r.Header.Get("X-KTMS-Data-Classification"))
+	if h == "" || body == apikeys.DataRestricted {
+		return body
+	}
+	return h
 }
 
 func getCacheHeader(r *http.Request) string {

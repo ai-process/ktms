@@ -31,7 +31,8 @@ func (d *DB) GetAPIKeyByLookup(ctx context.Context, lookup string) (*APIKey, err
 		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
 		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}'),
 		        k.allowed_models, k.rpm_limit, k.tpm_limit,
-		        COALESCE(t.allowed_mcp, '{}'), k.allowed_mcp
+		        COALESCE(t.allowed_mcp, '{}'), k.allowed_mcp,
+		        COALESCE(t.data_classification, ''), k.data_classification
 		 FROM api_key k
 		 LEFT JOIN team t ON t.id = k.team_id
 		 WHERE k.key_lookup = $1`, lookup))
@@ -42,7 +43,8 @@ func (d *DB) GetAPIKeyByName(ctx context.Context, name string) (*APIKey, error) 
 		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
 		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}'),
 		        k.allowed_models, k.rpm_limit, k.tpm_limit,
-		        COALESCE(t.allowed_mcp, '{}'), k.allowed_mcp
+		        COALESCE(t.allowed_mcp, '{}'), k.allowed_mcp,
+		        COALESCE(t.data_classification, ''), k.data_classification
 		 FROM api_key k
 		 LEFT JOIN team t ON t.id = k.team_id
 		 WHERE k.name = $1`, name))
@@ -52,7 +54,7 @@ func scanAPIKey(row pgx.Row) (*APIKey, error) {
 	var k APIKey
 	err := row.Scan(&k.ID, &k.Name, &k.KeyLookup, &k.KeyHash, &k.Scopes, &k.DisabledAt, &k.CreatedAt,
 		&k.OrgID, &k.TeamID, &k.TeamAllowedModels, &k.AllowedModels, &k.RPMLimit, &k.TPMLimit,
-		&k.TeamAllowedMCP, &k.AllowedMCP)
+		&k.TeamAllowedMCP, &k.AllowedMCP, &k.TeamDataClassification, &k.DataClassification)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -64,17 +66,17 @@ func scanAPIKey(row pgx.Row) (*APIKey, error) {
 
 func (d *DB) InsertAPIKey(ctx context.Context, k *APIKey) error {
 	_, err := d.pool.Exec(ctx,
-		`INSERT INTO api_key (id, name, key_lookup, key_hash, scopes, org_id, team_id, allowed_models, rpm_limit, tpm_limit, allowed_mcp)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		k.ID, k.Name, k.KeyLookup, k.KeyHash, k.Scopes, k.OrgID, k.TeamID, nonNil(k.AllowedModels), k.RPMLimit, k.TPMLimit, nonNil(k.AllowedMCP))
+		`INSERT INTO api_key (id, name, key_lookup, key_hash, scopes, org_id, team_id, allowed_models, rpm_limit, tpm_limit, allowed_mcp, data_classification)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		k.ID, k.Name, k.KeyLookup, k.KeyHash, k.Scopes, k.OrgID, k.TeamID, nonNil(k.AllowedModels), k.RPMLimit, k.TPMLimit, nonNil(k.AllowedMCP), k.DataClassification)
 	return err
 }
 
 // SetAPIKeyPolicy replaces the policy of the key with this name.
-func (d *DB) SetAPIKeyPolicy(ctx context.Context, name string, allowedModels []string, rpm int32, tpm int64, allowedMCP []string) error {
+func (d *DB) SetAPIKeyPolicy(ctx context.Context, name string, allowedModels []string, rpm int32, tpm int64, allowedMCP []string, dataClassification string) error {
 	tag, err := d.pool.Exec(ctx,
-		`UPDATE api_key SET allowed_models = $2, rpm_limit = $3, tpm_limit = $4, allowed_mcp = $5 WHERE name = $1`,
-		name, nonNil(allowedModels), rpm, tpm, nonNil(allowedMCP))
+		`UPDATE api_key SET allowed_models = $2, rpm_limit = $3, tpm_limit = $4, allowed_mcp = $5, data_classification = $6 WHERE name = $1`,
+		name, nonNil(allowedModels), rpm, tpm, nonNil(allowedMCP), dataClassification)
 	if err != nil {
 		return err
 	}
@@ -109,7 +111,8 @@ func (d *DB) ListAPIKeys(ctx context.Context) ([]*APIKey, error) {
 		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
 		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}'),
 		        k.allowed_models, k.rpm_limit, k.tpm_limit,
-		        COALESCE(t.allowed_mcp, '{}'), k.allowed_mcp
+		        COALESCE(t.allowed_mcp, '{}'), k.allowed_mcp,
+		        COALESCE(t.data_classification, ''), k.data_classification
 		 FROM api_key k
 		 LEFT JOIN team t ON t.id = k.team_id
 		 ORDER BY k.created_at`)
@@ -563,18 +566,18 @@ func SetTeamBudgetTx(ctx context.Context, tx pgx.Tx, teamID string, limitNanoUSD
 
 func CreateTeamTx(ctx context.Context, tx pgx.Tx, team *Team) error {
 	_, err := tx.Exec(ctx,
-		`INSERT INTO team (id, org_id, name, monthly_budget_usd, allowed_models, created_at, allowed_mcp)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		team.ID, team.OrgID, team.Name, team.MonthlyBudgetUSD, team.AllowedModels, team.CreatedAt, nonNil(team.AllowedMCP))
+		`INSERT INTO team (id, org_id, name, monthly_budget_usd, allowed_models, created_at, allowed_mcp, data_classification)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		team.ID, team.OrgID, team.Name, team.MonthlyBudgetUSD, team.AllowedModels, team.CreatedAt, nonNil(team.AllowedMCP), team.DataClassification)
 	return err
 }
 
 func (d *DB) GetTeam(ctx context.Context, id string) (*Team, error) {
 	var t Team
 	err := d.pool.QueryRow(ctx,
-		`SELECT id, org_id, name, monthly_budget_usd, allowed_models, created_at, allowed_mcp
+		`SELECT id, org_id, name, monthly_budget_usd, allowed_models, created_at, allowed_mcp, data_classification
 		 FROM team WHERE id = $1`, id).
-		Scan(&t.ID, &t.OrgID, &t.Name, &t.MonthlyBudgetUSD, &t.AllowedModels, &t.CreatedAt, &t.AllowedMCP)
+		Scan(&t.ID, &t.OrgID, &t.Name, &t.MonthlyBudgetUSD, &t.AllowedModels, &t.CreatedAt, &t.AllowedMCP, &t.DataClassification)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -591,11 +594,11 @@ func (d *DB) ListTeams(ctx context.Context, orgID string) ([]*Team, error) {
 	)
 	if orgID != "" {
 		rows, err = d.pool.Query(ctx,
-			`SELECT id, org_id, name, monthly_budget_usd, allowed_models, created_at, allowed_mcp
+			`SELECT id, org_id, name, monthly_budget_usd, allowed_models, created_at, allowed_mcp, data_classification
 			 FROM team WHERE org_id = $1 ORDER BY created_at DESC`, orgID)
 	} else {
 		rows, err = d.pool.Query(ctx,
-			`SELECT id, org_id, name, monthly_budget_usd, allowed_models, created_at, allowed_mcp
+			`SELECT id, org_id, name, monthly_budget_usd, allowed_models, created_at, allowed_mcp, data_classification
 			 FROM team ORDER BY created_at DESC`)
 	}
 	if err != nil {
@@ -605,7 +608,7 @@ func (d *DB) ListTeams(ctx context.Context, orgID string) ([]*Team, error) {
 	var out []*Team
 	for rows.Next() {
 		var t Team
-		if err := rows.Scan(&t.ID, &t.OrgID, &t.Name, &t.MonthlyBudgetUSD, &t.AllowedModels, &t.CreatedAt, &t.AllowedMCP); err != nil {
+		if err := rows.Scan(&t.ID, &t.OrgID, &t.Name, &t.MonthlyBudgetUSD, &t.AllowedModels, &t.CreatedAt, &t.AllowedMCP, &t.DataClassification); err != nil {
 			return nil, err
 		}
 		out = append(out, &t)
@@ -615,9 +618,9 @@ func (d *DB) ListTeams(ctx context.Context, orgID string) ([]*Team, error) {
 
 func UpdateTeamTx(ctx context.Context, tx pgx.Tx, team *Team) error {
 	tag, err := tx.Exec(ctx,
-		`UPDATE team SET name = $2, monthly_budget_usd = $3, allowed_models = $4, allowed_mcp = $5
+		`UPDATE team SET name = $2, monthly_budget_usd = $3, allowed_models = $4, allowed_mcp = $5, data_classification = $6
 		 WHERE id = $1`,
-		team.ID, team.Name, team.MonthlyBudgetUSD, team.AllowedModels, nonNil(team.AllowedMCP))
+		team.ID, team.Name, team.MonthlyBudgetUSD, team.AllowedModels, nonNil(team.AllowedMCP), team.DataClassification)
 	if err != nil {
 		return err
 	}

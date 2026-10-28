@@ -1509,3 +1509,26 @@ func TestHeaderCompatibilityAndDeprecation(t *testing.T) {
 		t.Errorf("expected placement nodes_only, got %s", fp.text.Placement)
 	}
 }
+
+func TestChatDataClassification(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	for _, c := range []struct{ body, header, want string }{
+		{"", "", ""},
+		{`,"data_classification":"restricted"`, "", "restricted"},
+		{"", "restricted", "restricted"},
+		// A header can only restrict: it does not lift the body's restriction.
+		{`,"data_classification":"restricted"`, "public", "restricted"},
+	} {
+		req := httptest.NewRequest("POST", "/v1/chat/completions",
+			strings.NewReader(`{"messages":[{"role":"user","content":"x"}]`+c.body+`}`))
+		req.Header.Set("Authorization", "Bearer "+key)
+		if c.header != "" {
+			req.Header.Set("X-KTMS-Data-Classification", c.header)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != 200 || fp.text.GetDataClassification() != c.want {
+			t.Errorf("body %q header %q: %d %q", c.body, c.header, rec.Code, fp.text.GetDataClassification())
+		}
+	}
+}
