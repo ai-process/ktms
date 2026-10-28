@@ -35,6 +35,7 @@ type fakeProxy struct {
 	respJudgeScore float64
 	respJudgeModel string
 	streamChunks   []*pb.GenerateTextChunk
+	streamErr      error // returned after streamChunks
 	emptyStream    bool
 	media          map[string]string
 	speechErr      error
@@ -79,7 +80,7 @@ func (f *fakeProxy) GenerateTextStream(r *pb.GenerateTextStreamRequest, s pb.Gat
 				return err
 			}
 		}
-		return nil
+		return f.streamErr
 	}
 	if err := s.Send(&pb.GenerateTextChunk{
 		Delta:          "hello",

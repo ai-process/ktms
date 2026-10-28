@@ -5,7 +5,8 @@ description: Move a service's LLM calls onto Keystone (KTMS), the self-hosted LL
 
 # Connect a service to Keystone
 
-Keystone speaks the OpenAI wire format on HTTP `/v1` and its own gRPC API on `:9090`. A service
+Keystone speaks the OpenAI wire format on HTTP `/v1`, the Anthropic Messages API on
+`/v1/messages`, and its own gRPC API on `:9090`. A service
 needs a client key (`ktms_…`, scope `generate`) and the gateway's address; it never names vendor
 models, it asks for an effort and Keystone's rules pick the chain.
 
@@ -24,6 +25,8 @@ models, it asks for an effort and Keystone's rules pick the chain.
 - One small client module owns the base URL, key, timeouts, retries and attribution. Read
   `KTMS_BASE_URL` (or `KTMS_GRPC_ADDR`) and `KTMS_API_KEY` from the environment; add both to the
   example env file and the deployment config.
+- A service on the Anthropic SDK can keep it: its base URL is Keystone without `/v1`, its key
+  the KTMS key, and `metadata.user_id` is the attribution.
 - Model values: `auto` (a judge picks the effort), `auto:low|medium|high`, or
   `auto:<placement>:<effort>` with placement `nodes-first`, `nodes-only`, `cloud-first`,
   `cloud-only`. In gRPC set `effort`. An exact model id bypasses the rules; embeddings always need
@@ -49,4 +52,5 @@ models, it asks for an effort and Keystone's rules pick the chain.
 - `ktms chat --effort low "hello"` with the service's key shows the rule and vendor that served it.
 
 Sources: [OpenAI-compatible HTTP API](https://github.com/ai-process/ktms/blob/main/README.md#openai-compatible-http-api),
+[Anthropic Messages API](https://github.com/ai-process/ktms/blob/main/README.md#anthropic-messages-api),
 [Calling Keystone](https://github.com/ai-process/ktms/blob/main/README.md#calling-keystone), [Error contract](https://github.com/ai-process/ktms/blob/main/README.md#error-contract).

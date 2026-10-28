@@ -20,6 +20,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 	"github.com/ai-process/ktms/internal/apikeys"
@@ -548,8 +549,15 @@ func TestEstimateTokens(t *testing.T) {
 		BaseSystemInstruction: "abcd",                                // 4 runes
 		Messages:              []*pb.ChatMessage{{Text: "abcdefgh"}}, // 8 runes
 	}
-	if got := estimateTokens(req); got != 4 { // 12/4 + 1
+	if got := EstimateTokens(req); got != 4 { // 12/4 + 1
 		t.Fatalf("estimate = %d, want 4", got)
+	}
+	req.Messages = append(req.Messages, &pb.ChatMessage{ToolCalls: []*pb.ToolCall{
+		{Function: &pb.FunctionCall{Name: "Read", Arguments: `{"path":"a.go"}`}}, // 4 + 15 runes
+	}})
+	req.Tools = []*pb.Tool{{Type: "function", Function: &pb.FunctionDefinition{Name: "Read", Description: strings.Repeat("d", 80)}}}
+	if got, want := EstimateTokens(req), int64(12+19+proto.Size(req.Tools[0]))/4+1; got != want {
+		t.Fatalf("estimate with tools = %d, want %d", got, want)
 	}
 }
 
