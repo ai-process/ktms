@@ -29,7 +29,11 @@
                 "type": "array"
               },
               "data_classification": {
-                "type": "string"
+                "description": "restricted keeps the key's calls on self-hosted nodes, with no cloud fallback.",
+                "enum": [
+                  "",
+                  "restricted"
+                ]
               },
               "rpm_limit": {
                 "type": "integer"

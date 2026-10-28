@@ -2,7 +2,6 @@ package grpcapi
 
 import (
 	"context"
-	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -16,29 +15,26 @@ import (
 // DataClassificationAttribute marks a restricted call in its usage event.
 const DataClassificationAttribute = "data_classification"
 
-type restrictedKey struct{}
-
 // withRestricted marks the model calls a restricted request makes for itself
 // (the auto-effort judge, shadow evaluation): they go through planMedia too.
-func withRestricted(ctx context.Context) context.Context {
-	return context.WithValue(ctx, restrictedKey{}, true)
-}
+func withRestricted(ctx context.Context) context.Context { return apikeys.WithRestricted(ctx) }
 
+// restrictedCall reports whether a call must stay on nodes: its key or team
+// is restricted, or the request is (its header, or the request a judge call serves).
 func restrictedCall(ctx context.Context, id *apikeys.Identity) bool {
-	v, _ := ctx.Value(restrictedKey{}).(bool)
-	return v || id.Restricted()
+	return apikeys.RestrictedFrom(ctx) || id.Restricted()
 }
 
 // classify checks the request's data_classification and makes it restricted
-// when the key or its team is, so routing reads one field. A restricted
-// request skips the response cache: an answer stored there could reach
-// another key with a similar prompt.
-func classify(id *apikeys.Identity, req *pb.GenerateTextRequest) error {
-	v := strings.TrimSpace(req.GetDataClassification())
-	if v != "" && v != apikeys.DataRestricted {
-		return status.Errorf(codes.InvalidArgument, "bad_request: data_classification %q: want %q or empty", v, apikeys.DataRestricted)
+// when the key, its team or the call's header is, so routing reads one field.
+// A restricted request skips the response cache: an answer stored there could
+// reach another key with a similar prompt.
+func classify(ctx context.Context, id *apikeys.Identity, req *pb.GenerateTextRequest) error {
+	v, err := apikeys.ParseDataClassification(req.GetDataClassification(), false)
+	if err != nil {
+		return status.Error(codes.InvalidArgument, "bad_request: "+err.Error())
 	}
-	if v == "" && id.Restricted() {
+	if v == "" && restrictedCall(ctx, id) {
 		v = apikeys.DataRestricted
 	}
 	req.DataClassification = v

@@ -90,10 +90,18 @@ func (a *OpenAIAPI) wrap(fullMethod string, h apiHandler) http.HandlerFunc {
 		if auth := r.Header.Get("Authorization"); auth != "" {
 			md.Set(metadataKeyAuthorization, auth)
 		}
+		if v := r.Header.Get("X-KTMS-Data-Classification"); v != "" {
+			md.Set(metadataKeyDataClassification, v)
+		}
 		ctx := metadata.NewIncomingContext(r.Context(), md)
 		id, aerr := authorize(ctx, a.verifier, fullMethod)
 		if aerr != nil {
 			err = aerr
+			writeAPIError(w, err)
+			return
+		}
+		// A gateway in front can restrict any call; it cannot lift a key's restriction.
+		if ctx, err = restrictCall(ctx); err != nil {
 			writeAPIError(w, err)
 			return
 		}
@@ -679,7 +687,6 @@ func (a *OpenAIAPI) chatCompletions(ctx context.Context, w http.ResponseWriter, 
 	if err := decodeBody(r, &req); err != nil {
 		return err
 	}
-	req.DataClassification = dataClassification(r, req.DataClassification)
 	preq, err := req.toProto(ctx, getPlacementHeader(r))
 	if err != nil {
 		return err
@@ -989,16 +996,6 @@ func setResolvedHeaders(w http.ResponseWriter, vendor, rule string) {
 	if rule != "" {
 		setObservabilityHeader(w, "Rule", rule)
 	}
-}
-
-// dataClassification is the stricter of the body's data_classification and
-// the X-KTMS-Data-Classification header: a gateway in front can only restrict.
-func dataClassification(r *http.Request, body string) string {
-	h := strings.TrimSpace(r.Header.Get("X-KTMS-Data-Classification"))
-	if h == "" || body == apikeys.DataRestricted {
-		return body
-	}
-	return h
 }
 
 func getPlacementHeader(r *http.Request) string {

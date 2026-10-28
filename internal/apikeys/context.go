@@ -16,3 +16,17 @@ func IdentityFrom(ctx context.Context) *Identity {
 	id, _ := ctx.Value(identityKey{}).(*Identity)
 	return id
 }
+
+type restrictedKey struct{}
+
+// WithRestricted marks the calls made for a restricted request: from the
+// x-ktms-data-classification header, or the proxy's own judge calls for one.
+func WithRestricted(ctx context.Context) context.Context {
+	return context.WithValue(ctx, restrictedKey{}, true)
+}
+
+// RestrictedFrom reports whether ctx carries WithRestricted.
+func RestrictedFrom(ctx context.Context) bool {
+	v, _ := ctx.Value(restrictedKey{}).(bool)
+	return v
+}

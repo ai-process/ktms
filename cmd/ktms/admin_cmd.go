@@ -89,6 +89,19 @@ func loadTenants(ctx context.Context, c pb.AdminServiceClient) (*tenants, error)
 	return t, nil
 }
 
+// dataClass is the key's data classification, or its team's when only the team sets one.
+func (t *tenants) dataClass(k *pb.APIKeyInfo) string {
+	if v := k.GetPolicy().GetDataClassification(); v != "" {
+		return v
+	}
+	for _, tm := range t.teams {
+		if tm.GetId() == k.GetTeamId() && tm.GetDataClassification() != "" {
+			return tm.GetDataClassification() + " (team)"
+		}
+	}
+	return "-"
+}
+
 func (t *tenants) org(name string) (string, error) {
 	if id, ok := t.orgID[name]; ok {
 		return id, nil
@@ -228,7 +241,7 @@ func (a *app) keysCmd() *cobra.Command {
 					}
 					pol := k.GetPolicy()
 					rows = append(rows, []string{k.GetName(), list(k.GetScopes()), tenant, list(pol.GetAllowedModels()),
-						limit(int64(pol.GetRpmLimit())), limit(pol.GetTpmLimit()), list(pol.GetAllowedMcp()), orDash(pol.GetDataClassification()),
+						limit(int64(pol.GetRpmLimit())), limit(pol.GetTpmLimit()), list(pol.GetAllowedMcp()), t.dataClass(k),
 						when(k.GetCreatedAt()), yesNo(k.GetDisabled())})
 				}
 				return p.rows([]string{"NAME", "SCOPES", "TENANT", "MODELS", "RPM", "TPM", "MCP", "DATA", "CREATED", "REVOKED"}, rows)
@@ -326,7 +339,7 @@ func policyFlags(cmd *cobra.Command, models *[]string, rpm *int32, tpm *int64, m
 	cmd.Flags().StringSliceVar(mcpAllow, "allowed-mcp", nil, "MCP servers (server) and tools (server/tool) the key may use (default any)")
 	cmd.Flags().Int32Var(rpm, "rpm", 0, "calls per minute (default unlimited)")
 	cmd.Flags().Int64Var(tpm, "tpm", 0, "tokens per minute (default unlimited)")
-	cmd.Flags().StringVar(dataClass, "data-classification", "", "restricted keeps every call of the key on self-hosted nodes")
+	cmd.Flags().StringVar(dataClass, "data-classification", "", "restricted keeps every call of the key on self-hosted nodes; on policy set, unrestricted lifts it and leaving it out keeps it")
 }
 
 func policy(models []string, rpm int32, tpm int64, mcpAllow []string, dataClass string) *pb.APIKeyPolicy {

@@ -175,14 +175,39 @@ func TestRestrictedBatchNeedsANode(t *testing.T) {
 }
 
 func TestClassify(t *testing.T) {
+	ctx := context.Background()
 	req := hi("")
-	if err := classify(&apikeys.Identity{KeyDataClassification: apikeys.DataRestricted}, req); err != nil ||
+	if err := classify(ctx, &apikeys.Identity{KeyDataClassification: apikeys.DataRestricted}, req); err != nil ||
 		req.GetDataClassification() != apikeys.DataRestricted || req.GetEnableCache() {
 		t.Fatalf("%v %v", req, err)
 	}
 	req = hi("")
-	if err := classify(&apikeys.Identity{}, req); err != nil || req.GetDataClassification() != "" || !req.GetEnableCache() {
+	if err := classify(apikeys.WithRestricted(ctx), &apikeys.Identity{}, req); err != nil || req.GetDataClassification() != apikeys.DataRestricted {
+		t.Fatalf("header: %v %v", req, err)
+	}
+	req = hi("Restricted")
+	if err := classify(ctx, &apikeys.Identity{}, req); err != nil || req.GetDataClassification() != apikeys.DataRestricted {
+		t.Fatalf("case: %v %v", req, err)
+	}
+	req = hi("")
+	if err := classify(ctx, &apikeys.Identity{}, req); err != nil || req.GetDataClassification() != "" || !req.GetEnableCache() {
 		t.Fatalf("unrestricted: %v %v", req, err)
+	}
+	if err := classify(ctx, &apikeys.Identity{}, hi(apikeys.DataUnrestricted)); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("a request cannot say unrestricted: %v", err)
+	}
+}
+
+// A header-restricted call reaches media RPCs through the context.
+func TestRestrictedHeaderMedia(t *testing.T) {
+	judge, judgeCalls := countingServer(t, false)
+	s, _, _, _ := restrictedServer(t, false, judgeModel("cloud-judge", judge.URL))
+	_, err := s.Judge(apikeys.WithRestricted(testIdentity()), &pb.JudgeRequest{StateJson: `{"a":1}`, Questions: nounQuestion()})
+	if status.Code(err) != codes.FailedPrecondition || judgeCalls.Load() != 0 {
+		t.Fatalf("err %v judge %d", err, judgeCalls.Load())
+	}
+	if _, err := s.Judge(testIdentity(), &pb.JudgeRequest{StateJson: `{"a":1}`, Questions: nounQuestion()}); judgeCalls.Load() != 1 {
+		t.Fatalf("unrestricted judge: %v %d", err, judgeCalls.Load())
 	}
 }
 
@@ -192,5 +217,19 @@ func TestExplainRouteRestricted(t *testing.T) {
 	res := s.ExplainRoute(context.Background(), id, &pb.ExplainRouteRequest{Effort: pb.Effort_EFFORT_MEDIUM, DataClassification: apikeys.DataRestricted})
 	if res.GetError() != "" || strings.Join(res.GetModels(), ",") != "node-m" {
 		t.Fatalf("%v", res)
+	}
+}
+
+// A caller cannot mark its own cloud call restricted in the usage report.
+func TestRestrictedAttributeIsNotTheCallers(t *testing.T) {
+	s, cloudCalls, _, tr := restrictedServer(t, false)
+	req := hi("")
+	req.Placement = router.PlacementCloudFirst
+	req.Attributes = map[string]string{DataClassificationAttribute: apikeys.DataRestricted}
+	if _, err := s.GenerateText(testIdentity(), req); err != nil || cloudCalls.Load() != 1 {
+		t.Fatalf("%v cloud %d", err, cloudCalls.Load())
+	}
+	if ev := tr.list(); len(ev) != 1 || ev[0].meta[DataClassificationAttribute] != "" {
+		t.Fatalf("usage events %+v", ev)
 	}
 }

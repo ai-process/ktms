@@ -497,7 +497,11 @@ func (s *AdminServer) SetAPIKeyPolicy(ctx context.Context, req *pb.SetAPIKeyPoli
 	if err != nil {
 		return nil, err
 	}
-	dataClass, err := dataClassification(req.GetPolicy().GetDataClassification())
+	current, err := s.db.GetAPIKeyByName(ctx, req.GetName())
+	if err != nil {
+		return nil, dbStatus(err)
+	}
+	dataClass, err := updatedClassification(req.GetPolicy().GetDataClassification(), current.DataClassification)
 	if err != nil {
 		return nil, err
 	}
@@ -847,7 +851,11 @@ func (s *AdminServer) UpdateTeam(ctx context.Context, req *pb.UpdateTeamRequest)
 	if err != nil {
 		return nil, err
 	}
-	dataClass, err := dataClassification(req.GetDataClassification())
+	current, err := s.db.GetTeam(ctx, req.GetId())
+	if err != nil {
+		return nil, dbStatus(err)
+	}
+	dataClass, err := updatedClassification(req.GetDataClassification(), current.DataClassification)
 	if err != nil {
 		return nil, err
 	}
@@ -992,11 +1000,27 @@ func teamToProto(t *proxydb.Team) *pb.Team {
 	}
 }
 
-// dataClassification accepts "" and "restricted", the values routing knows.
+// dataClassification checks the value a create RPC stores.
 func dataClassification(v string) (string, error) {
-	v = strings.TrimSpace(v)
-	if v != "" && v != apikeys.DataRestricted {
-		return "", status.Errorf(codes.InvalidArgument, "data_classification %q: want %q or empty", v, apikeys.DataRestricted)
+	v, err := apikeys.ParseDataClassification(v, false)
+	if err != nil {
+		return "", status.Error(codes.InvalidArgument, err.Error())
+	}
+	return v, nil
+}
+
+// updatedClassification is what an update RPC stores: "" keeps the current
+// value, so a client that predates the field cannot lift a restriction by
+// leaving it out; "unrestricted" lifts it.
+func updatedClassification(v, current string) (string, error) {
+	v, err := apikeys.ParseDataClassification(v, true)
+	switch {
+	case err != nil:
+		return "", status.Error(codes.InvalidArgument, err.Error())
+	case v == "":
+		return current, nil
+	case v == apikeys.DataUnrestricted:
+		return "", nil
 	}
 	return v, nil
 }

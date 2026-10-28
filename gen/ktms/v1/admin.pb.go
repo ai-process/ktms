@@ -1074,6 +1074,8 @@ type APIKeyPolicy struct {
 	AllowedMcp []string `protobuf:"bytes,4,rep,name=allowed_mcp,json=allowedMcp,proto3" json:"allowed_mcp,omitempty"`
 	// "restricted": every call of the key stays on self-hosted nodes, whatever the
 	// request says (see GenerateTextRequest.data_classification). "" = unrestricted.
+	// SetAPIKeyPolicy, unlike its other fields, keeps the current value on "" and
+	// lifts a restriction only on "unrestricted", so an older client cannot lift it.
 	DataClassification string `protobuf:"bytes,5,opt,name=data_classification,json=dataClassification,proto3" json:"data_classification,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
@@ -3784,7 +3786,7 @@ type UpdateTeamRequest struct {
 	MonthlyBudgetUsd   float64                `protobuf:"fixed64,3,opt,name=monthly_budget_usd,json=monthlyBudgetUsd,proto3" json:"monthly_budget_usd,omitempty"`
 	AllowedModels      []string               `protobuf:"bytes,4,rep,name=allowed_models,json=allowedModels,proto3" json:"allowed_models,omitempty"`
 	AllowedMcp         []string               `protobuf:"bytes,5,rep,name=allowed_mcp,json=allowedMcp,proto3" json:"allowed_mcp,omitempty"`
-	DataClassification string                 `protobuf:"bytes,6,opt,name=data_classification,json=dataClassification,proto3" json:"data_classification,omitempty"`
+	DataClassification string                 `protobuf:"bytes,6,opt,name=data_classification,json=dataClassification,proto3" json:"data_classification,omitempty"` // "" keeps the current one, "unrestricted" lifts it
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }

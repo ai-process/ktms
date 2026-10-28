@@ -45,7 +45,7 @@ func Schema() []byte {
 					"monthly_budget_usd":  map[string]any{"type": "number", "minimum": 0},
 					"allowed_models":      strs,
 					"allowed_mcp":         map[string]any{"type": "array", "items": str, "description": "MCP servers (server) and tools (server/tool) the team's keys may use; empty means any."},
-					"data_classification": map[string]any{"enum": []string{"", apikeys.DataRestricted}, "description": "restricted keeps every call of the team's keys on self-hosted nodes, with no cloud fallback."},
+					"data_classification": dataClassSchema("every call of the team's keys"),
 				}, "name")),
 			}, "name")),
 			"api_keys": list(obj(map[string]any{
@@ -53,7 +53,7 @@ func Schema() []byte {
 				"scopes":       map[string]any{"type": "array", "items": map[string]any{"enum": KeyScopes}},
 				"organization": str,
 				"team":         str,
-				"policy":       messageSchema((&pb.APIKeyPolicy{}).ProtoReflect().Descriptor()),
+				"policy":       keyPolicySchema(),
 			}, "name")),
 			"vendor_keys": list(obj(map[string]any{
 				"api_key_name":  str,
@@ -81,6 +81,18 @@ func Schema() []byte {
 
 // messageSchema describes a message as protojson reads it: proto field
 // names, enums by name, 64-bit integers as numbers or strings.
+// keyPolicySchema is APIKeyPolicy's, with data_classification as the enum the team's is.
+func keyPolicySchema() map[string]any {
+	s := messageSchema((&pb.APIKeyPolicy{}).ProtoReflect().Descriptor())
+	s["properties"].(map[string]any)["data_classification"] = dataClassSchema("the key's calls")
+	return s
+}
+
+func dataClassSchema(whose string) map[string]any {
+	return map[string]any{"enum": []string{"", apikeys.DataRestricted},
+		"description": "restricted keeps " + whose + " on self-hosted nodes, with no cloud fallback."}
+}
+
 func messageSchema(md protoreflect.MessageDescriptor, required ...string) map[string]any {
 	props := map[string]any{}
 	fields := md.Fields()

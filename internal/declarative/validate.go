@@ -108,8 +108,8 @@ func (c *Config) Validate() error {
 			if t.MonthlyBudgetUSD < 0 {
 				bad("organizations[%d].teams[%d] %s: monthly_budget_usd must be >= 0", i, j, t.Name)
 			}
-			if v := t.DataClassification; v != "" && v != apikeys.DataRestricted {
-				bad("organizations[%d].teams[%d] %s: data_classification %q: want %q or empty", i, j, t.Name, v, apikeys.DataRestricted)
+			if _, err := apikeys.ParseDataClassification(t.DataClassification, false); err != nil {
+				bad("organizations[%d].teams[%d] %s: %v", i, j, t.Name, err)
 			}
 		}
 	}
@@ -144,8 +144,8 @@ func (c *Config) Validate() error {
 		if p := k.Policy; p != nil && (p.GetRpmLimit() < 0 || p.GetTpmLimit() < 0) {
 			bad("api_keys[%d] %s: rpm_limit and tpm_limit must be >= 0", i, k.Name)
 		}
-		if v := k.Policy.GetDataClassification(); v != "" && v != apikeys.DataRestricted {
-			bad("api_keys[%d] %s: data_classification %q: want %q or empty", i, k.Name, v, apikeys.DataRestricted)
+		if _, err := apikeys.ParseDataClassification(k.Policy.GetDataClassification(), false); err != nil {
+			bad("api_keys[%d] %s: %v", i, k.Name, err)
 		}
 	}
 

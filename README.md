@@ -1504,7 +1504,7 @@ or a team, where it holds for every call of the key whatever the request says:
 
 ```bash
 ktms keys mint scribe --team clinic/notes --data-classification restricted
-ktms keys policy set billing --data-classification restricted   # replaces the whole policy
+ktms keys policy set billing --data-classification restricted   # unrestricted lifts it
 ```
 
 ```yaml
@@ -1515,9 +1515,17 @@ organizations:
         data_classification: restricted   # every key of the team
 ```
 
-Over HTTP the request field is `data_classification` on `/v1/chat/completions`, or the
-`X-KTMS-Data-Classification: restricted` header; a header can restrict a request but not lift a
-restriction. A restricted call:
+`SetAPIKeyPolicy` and `UpdateTeam` replace the rest of the policy or team, but keep the current
+`data_classification` when the field is empty: a client that predates it, such as an older
+console, cannot lift a restriction by leaving it out. `unrestricted` lifts it, and the
+configuration file does that when the field is removed. `ktms keys list` shows a key's
+restriction, or its team's as `restricted (team)`.
+
+For a single call, set `data_classification: restricted` in the request (`GenerateTextRequest`,
+`data_classification` on `/v1/chat/completions`), or send the `X-KTMS-Data-Classification:
+restricted` header over HTTP or `x-ktms-data-classification` gRPC metadata, which also covers
+embeddings, judgments, speech and images. A request can restrict a call, not lift its key's or
+team's restriction; a value other than `restricted` or empty is `INVALID_ARGUMENT`. A restricted call:
 
 - routes as `placement: nodes_only`: the chain keeps the node models (`VendorLocal`,
   `VendorOllama`) and is `FAILED_PRECONDITION no_capable_model` without one; when every node fails
@@ -1527,12 +1535,15 @@ restriction. A restricted call:
 - asks the auto-effort judge and the shadow evaluation judge only on nodes, and falls back to the
   default effort, or skips the evaluation, when no node can judge.
 - skips the response cache, so its answer cannot be served to another key.
-- on a restricted key or team, holds for embeddings, judgments, speech and images too, which are
-  `FAILED_PRECONDITION` without a node model; batches go to vendors' batch APIs and are refused.
-- carries `data_classification: restricted` in its usage event's meta.
+- for embeddings, judgments, speech and images is `FAILED_PRECONDITION` without a node model;
+  batches go to vendors' batch APIs and need a node model too, or are refused.
+- carries `data_classification: restricted` in its usage event's meta; callers cannot set that
+  attribute themselves.
 
-It does not cover what you send outside the model chain: `LATENT_ENCODER_URL` (latent guardrails
-and the semantic cache) and MCP servers. Point the encoder at your own infrastructure.
+Nodes are models of vendor `local` (registered `ktms-node`s) and `ollama`, an Ollama endpoint you
+configure: point `ollama` models only at servers you run. Restricted data also does not cover what
+is sent outside the model chain: `LATENT_ENCODER_URL` (latent guardrails and the semantic cache)
+and MCP servers. Point the encoder at your own infrastructure.
 
 ### Semantic cache and latent guardrails
 

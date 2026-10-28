@@ -598,7 +598,7 @@ func (a *app) addWriteTools(srv *mcp.Server, tool func(name, title, desc string,
 			RPMLimit      int32    `json:"rpm_limit,omitempty" jsonschema:"calls per minute, 0 unlimited"`
 			TPMLimit      int64    `json:"tpm_limit,omitempty" jsonschema:"tokens per minute, 0 unlimited"`
 			AllowedMCP    []string `json:"allowed_mcp,omitempty" jsonschema:"MCP servers (server) and tools (server/tool) a key with the mcp scope may use; empty means any"`
-			DataClass     string   `json:"data_classification,omitempty" jsonschema:"restricted keeps every call of the key on self-hosted nodes"`
+			DataClass     string   `json:"data_classification,omitempty" jsonschema:"restricted keeps every call of the key on self-hosted nodes; unrestricted lifts it; left out keeps the current one"`
 		}) (string, error) {
 			_, err := c.SetAPIKeyPolicy(ctx, &pb.SetAPIKeyPolicyRequest{Name: in.Name, Policy: policy(in.AllowedModels, in.RPMLimit, in.TPMLimit, in.AllowedMCP, in.DataClass)})
 			return "Policy of " + in.Name + " replaced.", err

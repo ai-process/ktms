@@ -137,7 +137,7 @@ func (s *ProxyServer) ExplainRoute(ctx context.Context, id *apikeys.Identity, in
 		EnableGoogleSearch: slices.Contains(in.GetCapabilities(), registry.CapabilityGoogleSearch),
 		DataClassification: in.GetDataClassification(),
 	}
-	if err := classify(id, req); err != nil {
+	if err := classify(ctx, id, req); err != nil {
 		out.Error = statusText(err)
 		return out
 	}

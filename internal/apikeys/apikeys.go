@@ -84,9 +84,26 @@ type Identity struct {
 	TeamDataClassification string
 }
 
-// DataRestricted is the data_classification that keeps calls on self-hosted
-// nodes; "" is unrestricted and no other value is accepted.
-const DataRestricted = "restricted"
+// Data classifications. DataUnrestricted exists only to lift a restriction
+// in the update RPCs, where an empty value keeps the current one.
+const (
+	DataRestricted   = "restricted"
+	DataUnrestricted = "unrestricted"
+)
+
+// ParseDataClassification normalises a data_classification: "" or
+// "restricted", and with update also "unrestricted".
+func ParseDataClassification(v string, update bool) (string, error) {
+	v = strings.ToLower(strings.TrimSpace(v))
+	if v == "" || v == DataRestricted || update && v == DataUnrestricted {
+		return v, nil
+	}
+	want := `"restricted" or empty`
+	if update {
+		want = `"restricted", "unrestricted" or empty`
+	}
+	return "", fmt.Errorf("data_classification %q: want %s", v, want)
+}
 
 // Restricted reports whether the key or its team is restricted to nodes.
 func (i *Identity) Restricted() bool {

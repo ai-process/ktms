@@ -122,7 +122,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 	if req.GetAttributes() != nil {
 		req.Attributes = router.SanitizeAttributes(req.GetAttributes())
 	}
-	if err := classify(id, req); err != nil {
+	if err := classify(ctx, id, req); err != nil {
 		return nil, err
 	}
 
@@ -255,7 +255,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 	if inner.GetAttributes() != nil {
 		inner.Attributes = router.SanitizeAttributes(inner.GetAttributes())
 	}
-	if err := classify(id, inner); err != nil {
+	if err := classify(stream.Context(), id, inner); err != nil {
 		return err
 	}
 

@@ -132,6 +132,8 @@ message APIKeyPolicy {
   repeated string allowed_mcp = 4;
   // "restricted": every call of the key stays on self-hosted nodes, whatever the
   // request says (see GenerateTextRequest.data_classification). "" = unrestricted.
+  // SetAPIKeyPolicy, unlike its other fields, keeps the current value on "" and
+  // lifts a restriction only on "unrestricted", so an older client cannot lift it.
   string data_classification = 5;
 }
 
@@ -396,7 +398,7 @@ message UpdateTeamRequest {
   double monthly_budget_usd = 3;
   repeated string allowed_models = 4;
   repeated string allowed_mcp = 5;
-  string data_classification = 6;
+  string data_classification = 6; // "" keeps the current one, "unrestricted" lifts it
 }
 
 message UpdateTeamResponse {

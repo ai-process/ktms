@@ -49,3 +49,11 @@ func TestPlanDataClassification(t *testing.T) {
 		}
 	}
 }
+
+func TestLifted(t *testing.T) {
+	for _, c := range [][3]string{{"", "", ""}, {"restricted", "restricted", "restricted"}, {"restricted", "", "unrestricted"}, {"", "restricted", "restricted"}} {
+		if got := lifted(c[0], c[1]); got != c[2] {
+			t.Errorf("lifted(%q, %q) = %q, want %q", c[0], c[1], got, c[2])
+		}
+	}
+}

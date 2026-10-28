@@ -35,6 +35,7 @@ type fakeProxy struct {
 	respJudgeScore float64
 	respJudgeModel string
 	streamChunks   []*pb.GenerateTextChunk
+	restricted     bool // the last call's context was restricted
 	emptyStream    bool
 	media          map[string]string
 	speechErr      error
@@ -45,8 +46,8 @@ type fakeProxy struct {
 	rolloutReq     *pb.EvaluateRolloutsRequest
 }
 
-func (f *fakeProxy) GenerateText(_ context.Context, r *pb.GenerateTextRequest) (*pb.GenerateTextResponse, error) {
-	f.text = r
+func (f *fakeProxy) GenerateText(ctx context.Context, r *pb.GenerateTextRequest) (*pb.GenerateTextResponse, error) {
+	f.text, f.restricted = r, apikeys.RestrictedFrom(ctx)
 	if f.textErr != nil {
 		return nil, f.textErr
 	}
@@ -153,8 +154,8 @@ func (f *fakeProxy) Judge(_ context.Context, r *pb.JudgeRequest) (*pb.JudgeRespo
 	}, nil
 }
 
-func (f *fakeProxy) GetEmbeddings(_ context.Context, r *pb.GetEmbeddingsRequest) (*pb.GetEmbeddingsResponse, error) {
-	f.embedReq = r
+func (f *fakeProxy) GetEmbeddings(ctx context.Context, r *pb.GetEmbeddingsRequest) (*pb.GetEmbeddingsResponse, error) {
+	f.embedReq, f.restricted = r, apikeys.RestrictedFrom(ctx)
 	if f.embedErr != nil {
 		return nil, f.embedErr
 	}
@@ -1510,25 +1511,31 @@ func TestHeaderCompatibilityAndDeprecation(t *testing.T) {
 	}
 }
 
-func TestChatDataClassification(t *testing.T) {
+func TestDataClassificationOverHTTP(t *testing.T) {
 	fp, h, key := newTestAPI(t)
-	for _, c := range []struct{ body, header, want string }{
-		{"", "", ""},
-		{`,"data_classification":"restricted"`, "", "restricted"},
-		{"", "restricted", "restricted"},
-		// A header can only restrict: it does not lift the body's restriction.
-		{`,"data_classification":"restricted"`, "public", "restricted"},
+	for _, c := range []struct {
+		path, body, header string
+		code               int
+		field              string
+		restricted         bool
+	}{
+		{"/v1/chat/completions", `{"messages":[{"role":"user","content":"x"}]}`, "", 200, "", false},
+		{"/v1/chat/completions", `{"messages":[{"role":"user","content":"x"}],"data_classification":"restricted"}`, "", 200, "restricted", false},
+		{"/v1/chat/completions", `{"messages":[{"role":"user","content":"x"}]}`, "Restricted", 200, "", true},
+		{"/v1/chat/completions", `{"messages":[{"role":"user","content":"x"}]}`, "public", 400, "", false},
+		// Media endpoints have no field; the header reaches them through the context.
+		{"/v1/embeddings", `{"model":"e","input":"x"}`, "restricted", 200, "", true},
 	} {
-		req := httptest.NewRequest("POST", "/v1/chat/completions",
-			strings.NewReader(`{"messages":[{"role":"user","content":"x"}]`+c.body+`}`))
+		fp.restricted, fp.text = false, nil
+		req := httptest.NewRequest("POST", c.path, strings.NewReader(c.body))
 		req.Header.Set("Authorization", "Bearer "+key)
 		if c.header != "" {
 			req.Header.Set("X-KTMS-Data-Classification", c.header)
 		}
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
-		if rec.Code != 200 || fp.text.GetDataClassification() != c.want {
-			t.Errorf("body %q header %q: %d %q", c.body, c.header, rec.Code, fp.text.GetDataClassification())
+		if rec.Code != c.code || fp.text.GetDataClassification() != c.field || fp.restricted != c.restricted {
+			t.Errorf("%s %s header %q: %d field %q restricted %v", c.path, c.body, c.header, rec.Code, fp.text.GetDataClassification(), fp.restricted)
 		}
 	}
 }

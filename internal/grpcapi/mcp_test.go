@@ -171,11 +171,22 @@ func TestKeyAndTeamDataClassification(t *testing.T) {
 		t.Fatalf("team restriction: %+v", id)
 	}
 
+	// An update that leaves the field out, as an older client does, keeps the restriction.
+	if _, err := s.UpdateTeam(ctx, &pb.UpdateTeamRequest{Id: team.GetTeam().GetId(), Name: "t", MonthlyBudgetUsd: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetTeam(ctx, &pb.GetTeamRequest{Id: team.GetTeam().GetId()}); got.GetTeam().GetDataClassification() != apikeys.DataRestricted {
+		t.Fatalf("team lost its restriction: %v", got)
+	}
+
 	// The key's own restriction stays when the team's is lifted.
 	if _, err := s.SetAPIKeyPolicy(ctx, &pb.SetAPIKeyPolicyRequest{Name: name, Policy: &pb.APIKeyPolicy{DataClassification: apikeys.DataRestricted}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.UpdateTeam(ctx, &pb.UpdateTeamRequest{Id: team.GetTeam().GetId(), Name: "t"}); err != nil {
+	if _, err := s.SetAPIKeyPolicy(ctx, &pb.SetAPIKeyPolicyRequest{Name: name, Policy: &pb.APIKeyPolicy{RpmLimit: 60}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpdateTeam(ctx, &pb.UpdateTeamRequest{Id: team.GetTeam().GetId(), Name: "t", DataClassification: apikeys.DataUnrestricted}); err != nil {
 		t.Fatal(err)
 	}
 	row, _ = db.GetAPIKeyByName(ctx, name)

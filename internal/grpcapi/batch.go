@@ -62,7 +62,7 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 
 	// Validate custom_id uniqueness and item contents
 	seenCustomIDs := make(map[string]struct{}, len(items))
-	restricted := id.Restricted()
+	restricted := restrictedCall(ctx, id)
 	for _, it := range items {
 		cid := it.GetCustomId()
 		if cid == "" {
@@ -77,7 +77,7 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 		if itemReq == nil || (len(itemReq.GetMessages()) == 0 && itemReq.GetBaseSystemInstruction() == "" && itemReq.GetRequestInstruction() == "") {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q has no messages or instructions", cid)
 		}
-		if err := classify(id, itemReq); err != nil {
+		if err := classify(ctx, id, itemReq); err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q: %s", cid, status.Convert(err).Message())
 		}
 		restricted = restricted || isRestricted(itemReq)
@@ -85,6 +85,13 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 			if len(msg.GetParts()) > 0 {
 				return nil, status.Error(codes.InvalidArgument, "bad_request: multimodal batch not supported yet")
 			}
+		}
+	}
+
+	if restricted {
+		// One restricted item makes the batch restricted, and its usage says so for every item.
+		for _, it := range items {
+			it.GetRequest().DataClassification = apikeys.DataRestricted
 		}
 	}
 
@@ -156,7 +163,10 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 	}
 	model, err := router.ResolveBatchModel(ctx, snap, s.throttle, router.ResolveChain(rule, canaryKey), id.KeyID, id.Name, userID, id.TeamID, allowed)
 	if restricted && (errors.Is(err, router.ErrModelAccessDenied) || errors.Is(err, router.ErrNoCapableModel)) {
-		return nil, noNodeModel("batches")
+		// Name the restriction only when it is what refused: without it a model would serve.
+		if _, uerr := router.ResolveBatchModel(ctx, snap, nil, router.ResolveChain(rule, canaryKey), id.KeyID, id.Name, userID, id.TeamID, id.CanAccessModel); uerr == nil {
+			return nil, noNodeModel("batches")
+		}
 	}
 	if err != nil {
 		return nil, router.ToStatus(err)
