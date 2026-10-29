@@ -38,9 +38,8 @@ type SamplingSupport struct {
 var AllSampling = SamplingSupport{Temperature: true, TopP: true, Stop: true, Seed: true}
 
 // Apply returns the settings the model gets and the names of those it does
-// not. A temperature above the cap is lowered to it rather than dropped; a
-// stop list cut to the limit, or of blank sequences the API rejects, is
-// reported.
+// not get as sent: a temperature lowered to the cap, a stop list cut to the
+// limit or rid of blank sequences the API rejects, and every field it lacks.
 func (s SamplingSupport) Apply(in Sampling) (Sampling, []string) {
 	var out Sampling
 	var ignored []string
@@ -49,6 +48,7 @@ func (s SamplingSupport) Apply(in Sampling) (Sampling, []string) {
 			t := *in.Temperature
 			if s.MaxTemperature > 0 && t > s.MaxTemperature {
 				t = s.MaxTemperature
+				ignored = append(ignored, ParamTemperature)
 			}
 			out.Temperature = &t
 		} else {

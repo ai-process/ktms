@@ -987,6 +987,14 @@ func setRouteHeaders(w http.ResponseWriter, r routeInfo) {
 // headerIgnoredParams lists the sampling fields the serving model did not take.
 const headerIgnoredParams = "X-KTMS-Ignored-Params"
 
+// addIgnoredParam adds a field the HTTP layer itself drops to the header.
+func addIgnoredParam(w http.ResponseWriter, name string) {
+	if v := w.Header().Get(headerIgnoredParams); v != "" {
+		name = v + "," + name
+	}
+	w.Header().Set(headerIgnoredParams, name)
+}
+
 // stopSequences reads OpenAI's stop: one string, an array of them, or null.
 func stopSequences(raw json.RawMessage) ([]string, error) {
 	if len(raw) == 0 || string(raw) == "null" {

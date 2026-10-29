@@ -18,8 +18,9 @@ All notable changes to KTMS are listed here. The format follows
   user, with the session in `attributes["session_id"]`.
 - Sampling: `temperature`, `top_p`, `stop` and `seed` on `GenerateTextRequest`, chat completions
   and `/v1/messages` (`stop_sequences`) reach the serving model as far as its API takes them. A
-  field the model does not take is left out of its request, and the response names it in
-  `ignored_parameters` and the `X-KTMS-Ignored-Params` header. The new `no_sampling` and
+  field the model does not take is left out of its request, and the response names it, or a value
+  lowered to the vendor's cap, in `ignored_parameters` and the `X-KTMS-Ignored-Params` header;
+  `top_k` on `/v1/messages` is named there too. The new `no_sampling` and
   `sampling` capabilities correct a model whose id misleads the per-vendor table. Sampling is part
   of the response cache key.
 

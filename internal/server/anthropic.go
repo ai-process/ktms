@@ -31,10 +31,11 @@ type messagesRequest struct {
 	Tools      []anthropicTool      `json:"tools"`
 	ToolChoice *anthropicToolChoice `json:"tool_choice"`
 	Metadata   map[string]string    `json:"metadata"`
-	// Sampling, passed on as on chat completions; top_k is not.
+	// Sampling, passed on as on chat completions; top_k is reported as ignored.
 	Temperature   *float64 `json:"temperature"`
 	TopP          *float64 `json:"top_p"`
 	StopSequences []string `json:"stop_sequences"`
+	TopK          *int     `json:"top_k"`
 	// Proxy extensions, as on chat completions.
 	EnableCache *bool  `json:"enable_cache,omitempty"`
 	Placement   string `json:"placement,omitempty"`
@@ -414,13 +415,16 @@ func (a *OpenAIAPI) messages(ctx context.Context, w http.ResponseWriter, r *http
 
 	id := "msg_" + randomID()
 	if req.Stream {
-		return a.streamMessages(ctx, w, preq, id)
+		return a.streamMessages(ctx, w, preq, id, req.TopK != nil)
 	}
 	resp, err := a.proxy.GenerateText(ctx, preq)
 	if err != nil {
 		return err
 	}
 	setRouteHeaders(w, resp)
+	if req.TopK != nil {
+		addIgnoredParam(w, "top_k")
+	}
 	setCacheHeader(w, preq.EnableCache, resp.Cached)
 
 	var text, finish string
@@ -499,7 +503,7 @@ func anthropicUsage(u *pb.TokensUsage, estimate int64) map[string]any {
 	}
 }
 
-func (a *OpenAIAPI) streamMessages(ctx context.Context, w http.ResponseWriter, preq *pb.GenerateTextRequest, id string) error {
+func (a *OpenAIAPI) streamMessages(ctx context.Context, w http.ResponseWriter, preq *pb.GenerateTextRequest, id string, topK bool) error {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		return status.Error(codes.Internal, "streaming unsupported by response writer")
@@ -507,6 +511,7 @@ func (a *OpenAIAPI) streamMessages(ctx context.Context, w http.ResponseWriter, p
 	s := &messagesStream{
 		ctx: ctx, w: w, flusher: flusher, id: id, block: -1,
 		estimate: grpcapi.EstimateTokens(preq), enableCache: preq.EnableCache, toolBlocks: map[int32]bool{},
+		topK: topK,
 	}
 	err := a.proxy.GenerateTextStream(&pb.GenerateTextStreamRequest{Request: preq}, s)
 	if err != nil && !s.started {
@@ -541,6 +546,7 @@ type messagesStream struct {
 	estimate    int64
 	enableCache bool
 	cacheHit    bool
+	topK        bool // the request set top_k, which no model gets
 	started     bool
 	model       string
 	block       int  // index of the last block opened
@@ -577,6 +583,9 @@ func (s *messagesStream) start(chunk *pb.GenerateTextChunk) error {
 	if chunk != nil {
 		setRouteHeaders(s.w, chunk)
 		s.model = chunk.ResolvedModel
+	}
+	if s.topK {
+		addIgnoredParam(s.w, "top_k")
 	}
 	setCacheHeader(s.w, s.enableCache, s.cacheHit)
 	startEventStream(s.w, s.flusher)

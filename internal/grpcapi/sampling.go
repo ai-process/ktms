@@ -39,6 +39,9 @@ func samplingOf(req *pb.GenerateTextRequest) llm.Sampling {
 // ignoredParameters names the caller's sampling the model did not get, by
 // the same table its adapter filters with.
 func ignoredParameters(m *proxydb.Model, s llm.Sampling) []string {
+	if s.Temperature == nil && s.TopP == nil && len(s.Stop) == 0 && s.Seed == nil {
+		return nil
+	}
 	_, ignored := registry.SamplingSupport(m).Apply(s)
 	return ignored
 }

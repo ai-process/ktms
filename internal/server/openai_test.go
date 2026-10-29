@@ -1543,11 +1543,17 @@ func TestSamplingOverHTTP(t *testing.T) {
 		t.Fatalf("stop as a number: %d", rec.Code)
 	}
 
-	rec = post("/v1/messages", `{"max_tokens":8,"messages":[{"role":"user","content":"x"}],"temperature":0.5,"top_p":0.8,"stop_sequences":["Q:"]}`)
+	rec = post("/v1/messages", `{"max_tokens":8,"messages":[{"role":"user","content":"x"}],"temperature":0.5,"top_p":0.8,"stop_sequences":["Q:"],"top_k":5}`)
 	if rec.Code != 200 || fp.text.GetTemperature() != 0.5 || fp.text.GetTopP() != 0.8 || strings.Join(fp.text.GetStop(), ",") != "Q:" {
 		t.Fatalf("messages: %d %v", rec.Code, fp.text)
 	}
-	if got := rec.Header().Get("X-KTMS-Ignored-Params"); got != "seed" {
+	if got := rec.Header().Get("X-KTMS-Ignored-Params"); got != "seed,top_k" {
 		t.Fatalf("messages ignored header %q", got)
+	}
+	// No model gets top_k, so a stream reports it too.
+	fp.respIgnored = nil
+	rec = post("/v1/messages", `{"max_tokens":8,"stream":true,"messages":[{"role":"user","content":"x"}],"top_k":5}`)
+	if got := rec.Header().Get("X-KTMS-Ignored-Params"); rec.Code != 200 || got != "top_k" {
+		t.Fatalf("messages stream: %d ignored header %q", rec.Code, got)
 	}
 }

@@ -1141,7 +1141,7 @@ The response carries `choices`, token `usage`, `resolved_model`, `resolved_vendo
 
 `temperature`, `top_p`, `stop` and `seed` reach the model that serves the call, as far as its API
 takes them. A field the model does not take is left out of its request rather than failing the call,
-and the response names it: `ignored_parameters` in gRPC (on the first chunk of a stream), the
+and the response names it, as it names a value the model got changed: `ignored_parameters` in gRPC (on the first chunk of a stream), the
 `X-KTMS-Ignored-Params` header over HTTP. Fallback models are judged one by one, so the list
 describes the model that answered.
 
@@ -1156,8 +1156,8 @@ describes the model that answered.
 | `anthropic`, Claude on `bedrock` | `stop`, without sequences of whitespace alone. Claude 4.6 and earlier also take `temperature` (capped at 1) and `top_p`; from Claude 4 on, not both: with both set, only `temperature`. Claude 4.7 and later accept only the default sampling, so they get neither. |
 | Other `bedrock` models | `temperature` (capped at 1), `top_p`, up to 4 `stop` sequences. |
 
-A temperature above a vendor's cap is lowered to it, not reported. When a vendor takes fewer stop
-sequences than the call has, it gets the first ones and `stop` is reported. The model is told apart
+A temperature above a vendor's cap is lowered to it and reported as `temperature`. When a vendor
+takes fewer stop sequences than the call has, it gets the first ones and `stop` is reported. The model is told apart
 by its id. When the id misleads, declare a capability: `no_sampling` for a model whose API rejects a
 field this table sends, `sampling` for one that takes what its vendor's table row allows, such as
 an Azure deployment of a chat model named like a reasoning one. Sampling is part of the response
@@ -1477,7 +1477,8 @@ print(reply.content[0].text, reply.model)   # `model` is the one that answered
 | `metadata.user_id` | `attributes["user_id"]`, as `user` on chat completions; other `metadata` keys are attributes, and `action_id` is the usage action label. Claude Code's `user_id` names a session: Keystone keeps its account (or, without one, its device) as the user and puts the session in `attributes["session_id"]`, so per-user limits and reports span sessions. |
 | `enable_cache`, `placement` | Extensions, as on chat completions; so are the `X-KTMS-Cache` and `X-KTMS-Placement` request headers (set them in Claude Code with `ANTHROPIC_CUSTOM_HEADERS`). |
 | `temperature`, `top_p`, `stop_sequences` | Passed to the model as on chat completions (see [Sampling](#sampling)). A stop sequence ends the answer with `stop_reason` `end_turn`. |
-| `top_k`, `thinking`, `service_tier` | Accepted and ignored. |
+| `top_k` | Accepted, sent to no model, and named in `X-KTMS-Ignored-Params`. |
+| `thinking`, `service_tier` | Accepted and ignored. |
 
 The key goes in `x-api-key` or `Authorization: Bearer`. The response's `stop_reason` is `end_turn`,
 `tool_use`, `max_tokens` or `refusal`, and `usage` splits `cache_read_input_tokens` and

@@ -1307,7 +1307,7 @@ type GenerateTextRequest struct {
 	// Sampling, passed to the model that serves the call. Unset leaves the
 	// model's default. A model that does not take one gets the call without it,
 	// and the response names it in ignored_parameters.
-	Temperature   *float64 `protobuf:"fixed64,18,opt,name=temperature,proto3,oneof" json:"temperature,omitempty"` // 0..2; capped at the vendor's maximum
+	Temperature   *float64 `protobuf:"fixed64,18,opt,name=temperature,proto3,oneof" json:"temperature,omitempty"` // 0..2; capped at the vendor's maximum, then reported
 	TopP          *float64 `protobuf:"fixed64,19,opt,name=top_p,json=topP,proto3,oneof" json:"top_p,omitempty"`   // 0..1
 	Stop          []string `protobuf:"bytes,20,rep,name=stop,proto3" json:"stop,omitempty"`                       // up to 16 sequences; vendors with a lower limit get the first ones
 	Seed          *int64   `protobuf:"varint,21,opt,name=seed,proto3,oneof" json:"seed,omitempty"`                // best-effort determinism
@@ -1635,7 +1635,7 @@ type GenerateTextResponse struct {
 	Placement      string                 `protobuf:"bytes,9,opt,name=placement,proto3" json:"placement,omitempty"`                        // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
 	JudgeScore     float64                `protobuf:"fixed64,10,opt,name=judge_score,json=judgeScore,proto3" json:"judge_score,omitempty"` // Experimental: score or confidence from judge evaluation
 	JudgeModel     string                 `protobuf:"bytes,11,opt,name=judge_model,json=judgeModel,proto3" json:"judge_model,omitempty"`   // Experimental: judge model id if judge was invoked
-	// Sampling fields the resolved model did not take: "temperature", "top_p", "stop", "seed".
+	// Sampling fields the resolved model did not get as sent: "temperature", "top_p", "stop", "seed".
 	IgnoredParameters []string `protobuf:"bytes,12,rep,name=ignored_parameters,json=ignoredParameters,proto3" json:"ignored_parameters,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
