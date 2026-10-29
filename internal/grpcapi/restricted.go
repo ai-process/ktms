@@ -25,10 +25,9 @@ func restrictedCall(ctx context.Context, id *apikeys.Identity) bool {
 	return apikeys.RestrictedFrom(ctx) || id.Restricted()
 }
 
-// classify checks the request's data_classification and makes it restricted
-// when the key, its team or the call's header is, so routing reads one field.
-// A restricted request skips the response cache: an answer stored there could
-// reach another key with a similar prompt.
+// classify makes the request restricted when it, the key, its team or the
+// header is, so routing reads one field. A restricted request skips the cache:
+// a stored answer could reach another key with a similar prompt.
 func classify(ctx context.Context, id *apikeys.Identity, req *pb.GenerateTextRequest) error {
 	v, err := apikeys.ParseDataClassification(req.GetDataClassification(), false)
 	if err != nil {

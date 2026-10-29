@@ -73,9 +73,12 @@ func (d *DB) InsertAPIKey(ctx context.Context, k *APIKey) error {
 }
 
 // SetAPIKeyPolicy replaces the policy of the key with this name.
-func (d *DB) SetAPIKeyPolicy(ctx context.Context, name string, allowedModels []string, rpm int32, tpm int64, allowedMCP []string, dataClassification string) error {
+// SetAPIKeyPolicy replaces a key's policy. A nil dataClassification keeps the
+// stored one, decided in the same UPDATE so a concurrent lift is not undone.
+func (d *DB) SetAPIKeyPolicy(ctx context.Context, name string, allowedModels []string, rpm int32, tpm int64, allowedMCP []string, dataClassification *string) error {
 	tag, err := d.pool.Exec(ctx,
-		`UPDATE api_key SET allowed_models = $2, rpm_limit = $3, tpm_limit = $4, allowed_mcp = $5, data_classification = $6 WHERE name = $1`,
+		`UPDATE api_key SET allowed_models = $2, rpm_limit = $3, tpm_limit = $4, allowed_mcp = $5,
+		 data_classification = COALESCE($6, data_classification) WHERE name = $1`,
 		name, nonNil(allowedModels), rpm, tpm, nonNil(allowedMCP), dataClassification)
 	if err != nil {
 		return err
@@ -616,11 +619,13 @@ func (d *DB) ListTeams(ctx context.Context, orgID string) ([]*Team, error) {
 	return out, rows.Err()
 }
 
-func UpdateTeamTx(ctx context.Context, tx pgx.Tx, team *Team) error {
+// UpdateTeamTx replaces a team's settings; a nil dataClassification keeps the
+// stored one, as in SetAPIKeyPolicy.
+func UpdateTeamTx(ctx context.Context, tx pgx.Tx, team *Team, dataClassification *string) error {
 	tag, err := tx.Exec(ctx,
-		`UPDATE team SET name = $2, monthly_budget_usd = $3, allowed_models = $4, allowed_mcp = $5, data_classification = $6
-		 WHERE id = $1`,
-		team.ID, team.Name, team.MonthlyBudgetUSD, team.AllowedModels, nonNil(team.AllowedMCP), team.DataClassification)
+		`UPDATE team SET name = $2, monthly_budget_usd = $3, allowed_models = $4, allowed_mcp = $5,
+		 data_classification = COALESCE($6, data_classification) WHERE id = $1`,
+		team.ID, team.Name, team.MonthlyBudgetUSD, team.AllowedModels, nonNil(team.AllowedMCP), dataClassification)
 	if err != nil {
 		return err
 	}

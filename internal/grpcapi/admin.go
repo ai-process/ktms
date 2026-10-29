@@ -497,11 +497,7 @@ func (s *AdminServer) SetAPIKeyPolicy(ctx context.Context, req *pb.SetAPIKeyPoli
 	if err != nil {
 		return nil, err
 	}
-	current, err := s.db.GetAPIKeyByName(ctx, req.GetName())
-	if err != nil {
-		return nil, dbStatus(err)
-	}
-	dataClass, err := updatedClassification(req.GetPolicy().GetDataClassification(), current.DataClassification)
+	dataClass, err := updatedClassification(req.GetPolicy().GetDataClassification())
 	if err != nil {
 		return nil, err
 	}
@@ -851,11 +847,7 @@ func (s *AdminServer) UpdateTeam(ctx context.Context, req *pb.UpdateTeamRequest)
 	if err != nil {
 		return nil, err
 	}
-	current, err := s.db.GetTeam(ctx, req.GetId())
-	if err != nil {
-		return nil, dbStatus(err)
-	}
-	dataClass, err := updatedClassification(req.GetDataClassification(), current.DataClassification)
+	dataClass, err := updatedClassification(req.GetDataClassification())
 	if err != nil {
 		return nil, err
 	}
@@ -865,11 +857,9 @@ func (s *AdminServer) UpdateTeam(ctx context.Context, req *pb.UpdateTeamRequest)
 		MonthlyBudgetUSD: req.GetMonthlyBudgetUsd(),
 		AllowedModels:    allowed,
 		AllowedMCP:       allowedMCP,
-
-		DataClassification: dataClass,
 	}
 	_, err = s.db.Mutate(ctx, func(tx pgx.Tx) error {
-		if err := proxydb.UpdateTeamTx(ctx, tx, t); err != nil {
+		if err := proxydb.UpdateTeamTx(ctx, tx, t, dataClass); err != nil {
 			return err
 		}
 		return proxydb.SetTeamBudgetTx(ctx, tx, t.ID, budget)
@@ -1009,18 +999,18 @@ func dataClassification(v string) (string, error) {
 	return v, nil
 }
 
-// updatedClassification is what an update RPC stores: "" keeps the current
-// value, so a client that predates the field cannot lift a restriction by
-// leaving it out; "unrestricted" lifts it.
-func updatedClassification(v, current string) (string, error) {
+// updatedClassification is what an update RPC stores: nil for "", which keeps
+// the stored value so a client that predates the field cannot lift a
+// restriction by leaving it out; "unrestricted" lifts it.
+func updatedClassification(v string) (*string, error) {
 	v, err := apikeys.ParseDataClassification(v, true)
 	switch {
 	case err != nil:
-		return "", status.Error(codes.InvalidArgument, err.Error())
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	case v == "":
-		return current, nil
+		return nil, nil
 	case v == apikeys.DataUnrestricted:
-		return "", nil
+		v = ""
 	}
-	return v, nil
+	return &v, nil
 }

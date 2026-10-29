@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofrs/uuid"
@@ -78,7 +79,7 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q has no messages or instructions", cid)
 		}
 		if err := classify(ctx, id, itemReq); err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q: %s", cid, status.Convert(err).Message())
+			return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q: %s", cid, strings.TrimPrefix(status.Convert(err).Message(), "bad_request: "))
 		}
 		restricted = restricted || isRestricted(itemReq)
 		for _, msg := range itemReq.GetMessages() {

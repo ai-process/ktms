@@ -79,8 +79,6 @@ func Schema() []byte {
 	return append(b, '\n')
 }
 
-// messageSchema describes a message as protojson reads it: proto field
-// names, enums by name, 64-bit integers as numbers or strings.
 // keyPolicySchema is APIKeyPolicy's, with data_classification as the enum the team's is.
 func keyPolicySchema() map[string]any {
 	s := messageSchema((&pb.APIKeyPolicy{}).ProtoReflect().Descriptor())
@@ -93,6 +91,8 @@ func dataClassSchema(whose string) map[string]any {
 		"description": "restricted keeps " + whose + " on self-hosted nodes, with no cloud fallback."}
 }
 
+// messageSchema describes a message as protojson reads it: proto field
+// names, enums by name, 64-bit integers as numbers or strings.
 func messageSchema(md protoreflect.MessageDescriptor, required ...string) map[string]any {
 	props := map[string]any{}
 	fields := md.Fields()

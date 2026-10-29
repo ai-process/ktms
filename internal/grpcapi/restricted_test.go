@@ -172,6 +172,11 @@ func TestRestrictedBatchNeedsANode(t *testing.T) {
 	if status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("restricted item: %v", err)
 	}
+	_, err = server.SubmitBatch(authCtx("key-1", "c"), &pb.SubmitBatchRequest{Effort: pb.Effort_EFFORT_MEDIUM,
+		Items: []*pb.BatchItemRequest{{CustomId: "c1", Request: &pb.GenerateTextRequest{Messages: []*pb.ChatMessage{{Text: "x"}}, DataClassification: "secret"}}}})
+	if msg := status.Convert(err).Message(); status.Code(err) != codes.InvalidArgument || strings.Count(msg, "bad_request:") != 1 {
+		t.Fatalf("invalid item: %v", err)
+	}
 }
 
 func TestClassify(t *testing.T) {
