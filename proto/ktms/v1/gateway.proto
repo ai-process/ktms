@@ -164,6 +164,13 @@ message GenerateTextRequest {
   // choice is experimental; with it true the routing is stable.
   bool auto_route = 15;
   bool effort_specified = 16; // true when effort was explicitly pinned by caller
+  // Sampling, passed to the model that serves the call. Unset leaves the
+  // model's default. A model that does not take one gets the call without it,
+  // and the response names it in ignored_parameters.
+  optional double temperature = 18; // 0..2; capped at the vendor's maximum
+  optional double top_p = 19; // 0..1
+  repeated string stop = 20; // up to 16 sequences; vendors with a lower limit get the first ones
+  optional int64 seed = 21; // best-effort determinism
 }
 
 message TokensUsage {
@@ -193,6 +200,8 @@ message GenerateTextResponse {
   string placement = 9; // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
   double judge_score = 10; // Experimental: score or confidence from judge evaluation
   string judge_model = 11; // Experimental: judge model id if judge was invoked
+  // Sampling fields the resolved model did not take: "temperature", "top_p", "stop", "seed".
+  repeated string ignored_parameters = 12;
 }
 
 message GenerateTextChunk {
@@ -208,6 +217,7 @@ message GenerateTextChunk {
   string placement = 10; // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
   double judge_score = 11; // Experimental: score or confidence from judge evaluation
   string judge_model = 12; // Experimental: judge model id if judge was invoked
+  repeated string ignored_parameters = 13; // on the first chunk, as in GenerateTextResponse
 }
 
 message ListModelsRequest {}

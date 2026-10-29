@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofrs/uuid"
@@ -75,6 +76,9 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 		itemReq := it.GetRequest()
 		if itemReq == nil || (len(itemReq.GetMessages()) == 0 && itemReq.GetBaseSystemInstruction() == "" && itemReq.GetRequestInstruction() == "") {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q has no messages or instructions", cid)
+		}
+		if err := validateSampling(itemReq); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q: %s", cid, strings.TrimPrefix(status.Convert(err).Message(), "bad_request: "))
 		}
 		for _, msg := range itemReq.GetMessages() {
 			if len(msg.GetParts()) > 0 {

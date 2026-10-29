@@ -119,6 +119,9 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 	if len(req.GetMessages()) == 0 && req.GetBaseSystemInstruction() == "" && req.GetRequestInstruction() == "" {
 		return nil, status.Error(codes.InvalidArgument, "bad_request: no messages or instructions")
 	}
+	if err := validateSampling(req); err != nil {
+		return nil, err
+	}
 
 	if req.GetAttributes() != nil {
 		req.Attributes = router.SanitizeAttributes(req.GetAttributes())
@@ -192,13 +195,14 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 			CacheRead:  int64(resp.Usage.CacheRead),
 			CacheWrite: int64(resp.Usage.CacheWrite),
 		},
-		ResolvedModel:  model.ID,
-		ResolvedVendor: model.Vendor,
-		MatchedRule:    plan.ruleName,
-		RouteMode:      plan.routeMode,
-		Placement:      plan.placement,
-		JudgeScore:     plan.judgeScore,
-		JudgeModel:     plan.judgeModel,
+		ResolvedModel:     model.ID,
+		ResolvedVendor:    model.Vendor,
+		MatchedRule:       plan.ruleName,
+		RouteMode:         plan.routeMode,
+		Placement:         plan.placement,
+		JudgeScore:        plan.judgeScore,
+		JudgeModel:        plan.judgeModel,
+		IgnoredParameters: ignoredParameters(model, chat.GetSampling()),
 	}
 	for i, choice := range resp.Choices {
 		choiceText := choice.Text
@@ -249,6 +253,9 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 	if len(inner.GetMessages()) == 0 && inner.GetBaseSystemInstruction() == "" && inner.GetRequestInstruction() == "" {
 		return status.Error(codes.InvalidArgument, "bad_request: no messages or instructions")
 	}
+	if err := validateSampling(inner); err != nil {
+		return err
+	}
 
 	if inner.GetAttributes() != nil {
 		inner.Attributes = router.SanitizeAttributes(inner.GetAttributes())
@@ -293,6 +300,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		streamUsage     *pb.TokensUsage
 		streamModel     string
 		streamVendor    string
+		streamIgnored   []string
 	)
 	var shadowEvaluator func(context.Context, *proxydb.Model, *proxydb.Model, *llm.Response, *llm.Response)
 	if plan.shadowEval {
@@ -355,6 +363,8 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 			outChunk.Placement = plan.placement
 			outChunk.JudgeScore = plan.judgeScore
 			outChunk.JudgeModel = plan.judgeModel
+			streamIgnored = ignoredParameters(m, chat.GetSampling())
+			outChunk.IgnoredParameters = streamIgnored
 		}
 		if chunk.Usage != nil {
 			outChunk.Usage = &pb.TokensUsage{
@@ -431,14 +441,15 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 					FinishReason: streamFinish,
 				},
 			},
-			Usage:          streamUsage,
-			ResolvedModel:  streamModel,
-			ResolvedVendor: streamVendor,
-			MatchedRule:    plan.ruleName,
-			RouteMode:      plan.routeMode,
-			Placement:      plan.placement,
-			JudgeScore:     plan.judgeScore,
-			JudgeModel:     plan.judgeModel,
+			Usage:             streamUsage,
+			ResolvedModel:     streamModel,
+			ResolvedVendor:    streamVendor,
+			MatchedRule:       plan.ruleName,
+			RouteMode:         plan.routeMode,
+			Placement:         plan.placement,
+			JudgeScore:        plan.judgeScore,
+			JudgeModel:        plan.judgeModel,
+			IgnoredParameters: streamIgnored,
 		}
 		s.storeCache(stream.Context(), snap, id, inner, cachedResp)
 	}
@@ -450,11 +461,12 @@ func sendCachedStream(stream pb.GatewayService_GenerateTextStreamServer, cached 
 	for _, choice := range cached.Details {
 		if choice.Text != "" {
 			chunk := &pb.GenerateTextChunk{
-				Delta:          choice.Text,
-				ResolvedModel:  cached.ResolvedModel,
-				ResolvedVendor: cached.ResolvedVendor,
-				MatchedRule:    cached.MatchedRule,
-				Cached:         true,
+				Delta:             choice.Text,
+				ResolvedModel:     cached.ResolvedModel,
+				ResolvedVendor:    cached.ResolvedVendor,
+				MatchedRule:       cached.MatchedRule,
+				Cached:            true,
+				IgnoredParameters: cached.IgnoredParameters,
 			}
 			sentFirst = true
 			if err := stream.Send(chunk); err != nil {
@@ -481,6 +493,7 @@ func sendCachedStream(stream pb.GatewayService_GenerateTextStreamServer, cached 
 				chunk.ResolvedModel = cached.ResolvedModel
 				chunk.ResolvedVendor = cached.ResolvedVendor
 				chunk.MatchedRule = cached.MatchedRule
+				chunk.IgnoredParameters = cached.IgnoredParameters
 			}
 			if err := stream.Send(chunk); err != nil {
 				return err
@@ -500,6 +513,7 @@ func sendCachedStream(stream pb.GatewayService_GenerateTextStreamServer, cached 
 			finalChunk.ResolvedModel = cached.ResolvedModel
 			finalChunk.ResolvedVendor = cached.ResolvedVendor
 			finalChunk.MatchedRule = cached.MatchedRule
+			finalChunk.IgnoredParameters = cached.IgnoredParameters
 		}
 		if err := stream.Send(finalChunk); err != nil {
 			return err
@@ -508,11 +522,12 @@ func sendCachedStream(stream pb.GatewayService_GenerateTextStreamServer, cached 
 	if len(cached.Details) == 0 && len(cached.Choices) > 0 {
 		for _, text := range cached.Choices {
 			chunk := &pb.GenerateTextChunk{
-				Delta:          text,
-				ResolvedModel:  cached.ResolvedModel,
-				ResolvedVendor: cached.ResolvedVendor,
-				MatchedRule:    cached.MatchedRule,
-				Cached:         true,
+				Delta:             text,
+				ResolvedModel:     cached.ResolvedModel,
+				ResolvedVendor:    cached.ResolvedVendor,
+				MatchedRule:       cached.MatchedRule,
+				Cached:            true,
+				IgnoredParameters: cached.IgnoredParameters,
 			}
 			if err := stream.Send(chunk); err != nil {
 				return err
@@ -641,6 +656,7 @@ func buildChat(req *pb.GenerateTextRequest, id *apikeys.Identity, ruleName, effo
 	if req.GetEnableGoogleSearch() {
 		chat.SetEnableGoogleSearch()
 	}
+	chat.SetSampling(samplingOf(req))
 
 	actionID := req.GetActionId()
 	if actionID == "" {

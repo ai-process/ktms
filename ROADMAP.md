@@ -19,7 +19,6 @@ Every 1.x release is additive: new RPCs, fields, endpoints and settings. Anythin
 ### Coding agents and API
 
 - OpenAI Responses API at `/v1/responses` for Codex CLI and the Agents SDK.
-- `temperature`, `top_p`, `stop` and `seed` passed through to the chosen model.
 
 ### Routing and providers
 

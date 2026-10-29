@@ -34,6 +34,7 @@ type fakeProxy struct {
 	respRouteMode  string
 	respJudgeScore float64
 	respJudgeModel string
+	respIgnored    []string
 	streamChunks   []*pb.GenerateTextChunk
 	streamErr      error // returned after streamChunks
 	emptyStream    bool
@@ -60,6 +61,7 @@ func (f *fakeProxy) GenerateText(_ context.Context, r *pb.GenerateTextRequest) (
 		JudgeScore: f.respJudgeScore,
 		JudgeModel: f.respJudgeModel,
 	}
+	resp.IgnoredParameters = f.respIgnored
 	if len(f.respDetails) > 0 {
 		resp.Details = f.respDetails
 	}
@@ -1508,5 +1510,41 @@ func TestHeaderCompatibilityAndDeprecation(t *testing.T) {
 	}
 	if fp.text.Placement != "nodes_only" {
 		t.Errorf("expected placement nodes_only, got %s", fp.text.Placement)
+	}
+}
+
+func TestSamplingOverHTTP(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	fp.respIgnored = []string{"seed"}
+	post := func(path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", path, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+key)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := post("/v1/chat/completions", `{"messages":[{"role":"user","content":"x"}],"temperature":0.2,"top_p":0.9,"stop":"END","seed":7}`)
+	if rec.Code != 200 || fp.text.GetTemperature() != 0.2 || fp.text.GetTopP() != 0.9 || fp.text.GetSeed() != 7 ||
+		strings.Join(fp.text.GetStop(), ",") != "END" {
+		t.Fatalf("chat: %d %v", rec.Code, fp.text)
+	}
+	if got := rec.Header().Get("X-KTMS-Ignored-Params"); got != "seed" {
+		t.Fatalf("ignored header %q", got)
+	}
+	if rec := post("/v1/chat/completions", `{"messages":[{"role":"user","content":"x"}],"stop":["A","B"]}`); rec.Code != 200 ||
+		strings.Join(fp.text.GetStop(), ",") != "A,B" || fp.text.Temperature != nil {
+		t.Fatalf("stop array: %d %v", rec.Code, fp.text)
+	}
+	if rec := post("/v1/chat/completions", `{"messages":[{"role":"user","content":"x"}],"stop":3}`); rec.Code != 400 {
+		t.Fatalf("stop as a number: %d", rec.Code)
+	}
+
+	rec = post("/v1/messages", `{"max_tokens":8,"messages":[{"role":"user","content":"x"}],"temperature":0.5,"top_p":0.8,"stop_sequences":["Q:"]}`)
+	if rec.Code != 200 || fp.text.GetTemperature() != 0.5 || fp.text.GetTopP() != 0.8 || strings.Join(fp.text.GetStop(), ",") != "Q:" {
+		t.Fatalf("messages: %d %v", rec.Code, fp.text)
+	}
+	if got := rec.Header().Get("X-KTMS-Ignored-Params"); got != "seed" {
+		t.Fatalf("messages ignored header %q", got)
 	}
 }

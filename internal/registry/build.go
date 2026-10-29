@@ -87,6 +87,7 @@ const (
 // adapter. Pool adapters pass the node's engine; direct vendors pass "".
 func ConfigureOpenAI(a *adapters.OpenAIAdapter, m *proxydb.Model, engine string) {
 	a.SetSoftSchema(SoftSchema(m))
+	a.SetSampling(SamplingSupport(m))
 	if HasCapability(m, CapabilityNoThinking) {
 		a.SetThinkingOff(ThinkingOff(m.Vendor, engine))
 	}
@@ -166,6 +167,7 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		}
 		adapter := adapters.NewGoogleAdapter(client, m.ID, noThrottle)
 		adapter.SetSoftSchema(SoftSchema(m))
+		adapter.SetSampling(SamplingSupport(m))
 		if HasCapability(m, CapabilityTTS) {
 			adapter.SetTTS(m.ID, googleTTSVoice)
 		}
@@ -189,6 +191,7 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		client := anthropic.NewClient(opts...)
 		adapter := adapters.NewAnthropicAdapter(&client, m.ID, noThrottle)
 		adapter.SetSoftSchema(SoftSchema(m))
+		adapter.SetSampling(SamplingSupport(m))
 		adapter.SetPromptCache(HasCapability(m, CapabilityPromptCache))
 		return adapter, nil
 	case VendorBedrock:
@@ -223,6 +226,7 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		client := bedrockruntime.NewFromConfig(cfg, optFns...)
 		adapter := adapters.NewBedrockAdapter(client, m.ID, noThrottle)
 		adapter.SetSoftSchema(SoftSchema(m))
+		adapter.SetSampling(SamplingSupport(m))
 		return adapter, nil
 	default:
 		return nil, fmt.Errorf("unknown vendor %q", m.Vendor)

@@ -31,6 +31,10 @@ type messagesRequest struct {
 	Tools      []anthropicTool      `json:"tools"`
 	ToolChoice *anthropicToolChoice `json:"tool_choice"`
 	Metadata   map[string]string    `json:"metadata"`
+	// Sampling, passed on as on chat completions; top_k is not.
+	Temperature   *float64 `json:"temperature"`
+	TopP          *float64 `json:"top_p"`
+	StopSequences []string `json:"stop_sequences"`
 	// Proxy extensions, as on chat completions.
 	EnableCache *bool  `json:"enable_cache,omitempty"`
 	Placement   string `json:"placement,omitempty"`
@@ -118,6 +122,9 @@ func (req *messagesRequest) toProto(ctx context.Context, headerPlacement string,
 		Placement:       dec.Placement,
 		AutoRoute:       dec.IsAuto,
 		EffortSpecified: dec.EffortSpecified,
+		Temperature:     req.Temperature,
+		TopP:            req.TopP,
+		Stop:            req.StopSequences,
 	}
 	out.Attributes, out.ActionId = attributes(req.Metadata, "")
 	if user, session := claudeCodeUser(out.Attributes["user_id"]); user != "" {

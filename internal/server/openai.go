@@ -124,6 +124,10 @@ type chatRequest struct {
 	MaxCompletionTokens int32             `json:"max_completion_tokens"`
 	ResponseFormat      *responseFormat   `json:"response_format"`
 	ReasoningEffort     string            `json:"reasoning_effort"`
+	Temperature         *float64          `json:"temperature"`
+	TopP                *float64          `json:"top_p"`
+	Stop                json.RawMessage   `json:"stop"` // a string or an array of them
+	Seed                *int64            `json:"seed"`
 	User                string            `json:"user"`
 	Metadata            map[string]string `json:"metadata"`
 	N                   *int              `json:"n"`
@@ -610,6 +614,10 @@ func (req *chatRequest) toProto(ctx context.Context, headerPlacement string) (*p
 	if out.MaxOutputTokens == 0 {
 		out.MaxOutputTokens = req.MaxTokens
 	}
+	out.Temperature, out.TopP, out.Seed = req.Temperature, req.TopP, req.Seed
+	if out.Stop, err = stopSequences(req.Stop); err != nil {
+		return nil, err
+	}
 	if out.MaxOutputTokens < 0 {
 		return nil, invalid("max_tokens must not be negative")
 	}
@@ -958,6 +966,7 @@ type routeInfo interface {
 	GetRouteMode() string
 	GetJudgeScore() float64
 	GetJudgeModel() string
+	GetIgnoredParameters() []string
 }
 
 func setRouteHeaders(w http.ResponseWriter, r routeInfo) {
@@ -968,6 +977,29 @@ func setRouteHeaders(w http.ResponseWriter, r routeInfo) {
 		setObservabilityHeader(w, "Judge-Score", fmt.Sprintf("%.2f", r.GetJudgeScore()))
 	}
 	setObservabilityHeader(w, "Judge-Model", r.GetJudgeModel())
+	// New with no X-LLM-Proxy- twin, so not through setObservabilityHeader.
+	if ignored := r.GetIgnoredParameters(); len(ignored) > 0 {
+		w.Header().Set(headerIgnoredParams, strings.Join(ignored, ","))
+	}
+}
+
+// headerIgnoredParams lists the sampling fields the serving model did not take.
+const headerIgnoredParams = "X-KTMS-Ignored-Params"
+
+// stopSequences reads OpenAI's stop: one string, an array of them, or null.
+func stopSequences(raw json.RawMessage) ([]string, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var one string
+	if err := json.Unmarshal(raw, &one); err == nil {
+		return []string{one}, nil
+	}
+	var many []string
+	if err := json.Unmarshal(raw, &many); err != nil {
+		return nil, invalid("stop must be a string or an array of strings")
+	}
+	return many, nil
 }
 
 func setCacheHeader(w http.ResponseWriter, enabled, hit bool) {

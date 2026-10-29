@@ -696,6 +696,7 @@ Capabilities a model may declare:
 | `batch` | Can serve asynchronous batch text generation requests (`SubmitBatch`). |
 | `google_search` | Can serve requests with `enable_google_search`. |
 | `no_thinking` | The model reasons by default and bills the reasoning as output (DeepSeek V4, Gemma 4 on Ollama). The proxy turns it off: `thinking: {"type": "disabled"}` for DeepSeek, `reasoning_effort: "none"` for Ollama, and for `local` models when the serving node runs Ollama (other engines get no switch). OpenAI-compatible vendors only. |
+| `no_sampling` | The model's API rejects sampling fields Keystone would otherwise send it (see [Sampling](#sampling)): it gets none of `temperature`, `top_p`, `stop` and `seed`, and responses report them as ignored. |
 | `prompt_cache` | Anthropic only: puts `cache_control` breakpoints after the tools, the system prompt and, in a multi-turn conversation, the latest turn, so repeated prefixes are read at 0.1x input. A new prefix is written at 1.25x, so set it on models whose instructions or conversations repeat. |
 | `vision` | Can process image parts in multimodal messages (`ImagePart`). |
 | `audio_input` | Can process audio parts in multimodal messages (`AudioPart`). |
@@ -1122,6 +1123,7 @@ make proto-ts  # TypeScript stubs in gen/ts/
 | `tools`, `tool_choice` | Function/tool declarations with JSON Schema parameters. `tool_choice` specifies auto, required, none, or a specific named function. In non-streaming calls, arguments of `strict` tools are checked against their parameters, since not every vendor enforces strict; a call outside them is retried once and then falls back. Streamed tool calls reach the caller as they arrive and are not checked. |
 | `messages` | Chat history. Supports `MESSAGE_ROLE_USER`, `MESSAGE_ROLE_ASSISTANT`, and `MESSAGE_ROLE_TOOL` (with `tool_call_id`). User messages support multimodal `parts` (`ContentPart`: `text`, `image`, `audio`, `document`). Assistant messages can carry `tool_calls`. |
 | `max_output_tokens` | Ceiling, `0` = none. Output tokens are the expensive ones; set it. |
+| `temperature`, `top_p`, `stop`, `seed` | Sampling, passed to the model that serves the call; unset leaves its default. `temperature` 0..2, `top_p` 0..1, up to 16 non-empty `stop` sequences; other values get `INVALID_ARGUMENT`. See [Sampling](#sampling). |
 | `enable_google_search` | Only Google models declaring `google_search` can serve it. |
 | `action_id` | Free-form label for usage attribution. |
 | `model_override` | Exact model id; bypasses rules but **not** throttles. |
@@ -1131,14 +1133,39 @@ make proto-ts  # TypeScript stubs in gen/ts/
 
 The response carries `choices`, token `usage`, `resolved_model`, `resolved_vendor`,
 `matched_rule` (empty on override), structured `details` (`Choice` objects with text, tool calls, and finish reasons),
-`cached` status, and routing metadata: `route_mode`, `placement`, `judge_score`, and `judge_model`.
+`cached` status, routing metadata: `route_mode`, `placement`, `judge_score`, and `judge_model`, and
+`ignored_parameters`: the sampling fields the resolved model did not get.
+
+### Sampling
+
+`temperature`, `top_p`, `stop` and `seed` reach the model that serves the call, as far as its API
+takes them. A field the model does not take is left out of its request rather than failing the call,
+and the response names it: `ignored_parameters` in gRPC (on the first chunk of a stream), the
+`X-KTMS-Ignored-Params` header over HTTP. Fallback models are judged one by one, so the list
+describes the model that answered.
+
+| Vendor | Takes |
+| --- | --- |
+| `openai`, `azure` | All four, up to 4 `stop` sequences. Reasoning models (`o*`, `gpt-5*` except `gpt-5-chat`) take none. |
+| `groq` | All four, up to 4 `stop` sequences. |
+| `google` | All four, up to 5 `stop` sequences. |
+| `ollama`, `local` | All four. |
+| `deepseek` | `temperature`, `top_p`, `stop` (up to 16). |
+| `mistral` | `temperature` (capped at 1.5), `top_p`, `stop`. |
+| `anthropic`, Claude on `bedrock` | `stop`. Claude 4.6 and earlier also take `temperature` (capped at 1) or `top_p`, and when both are set, only `temperature`. Claude 4.7 and later accept only the default sampling, so they get neither. |
+| Other `bedrock` models | `temperature` (capped at 1), `top_p`, up to 4 `stop` sequences. |
+
+A temperature above a vendor's cap is lowered to it, not reported. When a vendor takes fewer stop
+sequences than the call has, it gets the first ones and `stop` is reported. For a model whose API
+rejects a field this table sends, declare the `no_sampling` capability. Sampling is part of the
+response cache key.
 
 ### GenerateTextStream
 
 Server-streaming RPC `rpc GenerateTextStream(GenerateTextStreamRequest) returns (stream GenerateTextChunk)`.
 
 - Takes a `GenerateTextStreamRequest` containing the standard `GenerateTextRequest`.
-- Streams incremental `GenerateTextChunk` items containing `delta` (token text), `tool_call_chunks`, `resolved_model`, `resolved_vendor`, `matched_rule`, `cached`, `route_mode`, `placement`, `judge_score`, `judge_model`, and final `finish_reason` with token `usage`.
+- Streams incremental `GenerateTextChunk` items containing `delta` (token text), `tool_call_chunks`, `resolved_model`, `resolved_vendor`, `matched_rule`, `cached`, `route_mode`, `placement`, `judge_score`, `judge_model`, `ignored_parameters`, and final `finish_reason` with token `usage`.
 - **Fallback guarantee:** If upstream models fail before the first chunk is sent, the router falls back to the next model in the rule's chain. Once the first chunk is transmitted to the caller, the stream is locked to that model to guarantee integrity.
 - Usage events and daily token budgets are settled on stream completion.
 
@@ -1308,6 +1335,7 @@ Authentication is `Authorization: Bearer ktms_…` (legacy `llm_…` keys are al
 - `X-KTMS-Placement`: infrastructure placement (`nodes_first`, `nodes_only`, `cloud_first`, `cloud_only`).
 - `X-KTMS-Route-Mode`: routing mechanism (`direct`, `override`, `auto-judge`, `auto-default`, `auto-effort`).
 - `X-KTMS-Judge-Score` and `X-KTMS-Judge-Model`: evaluation confidence and judge model ID when judge evaluates task complexity.
+- `X-KTMS-Ignored-Params`: the sampling fields the serving model did not get, comma-separated (see [Sampling](#sampling)). It has no `X-LLM-Proxy-*` twin.
 
 > [!NOTE]
 > **Backwards Compatibility**: All legacy `X-LLM-Proxy-*` response headers are dual-emitted alongside `X-KTMS-*` with standard RFC 8594 `Deprecation: true`, `Sunset`, and `Warning` headers to provide seamless zero-downtime migration for existing clients.
@@ -1367,7 +1395,8 @@ fields: `metadata` is passed through as attributes, `user` becomes `attributes["
 | `tools`, `tool_choice` | Supported. Function declarations with JSON Schema parameters. `tool_choice` supports `"auto"`, `"none"`, `"required"`, or specific function names. |
 | `role: "tool"` | Supported. Tool responses with `tool_call_id`. |
 | Image/audio content parts | Rejected with `400`. |
-| `temperature`, `top_p`, `stop`, `seed`, `logprobs`, penalties… | Accepted and ignored. |
+| `temperature`, `top_p`, `stop`, `seed` | Passed to the model as far as it takes them; the rest is named in `X-KTMS-Ignored-Params` (see [Sampling](#sampling)). `stop` is a string or an array. |
+| `logprobs`, penalties… | Accepted and ignored. |
 
 The response is a standard `chat.completion` with `finish_reason` (`"stop"`, `"tool_calls"`, `"length"`, or `"content_filter"`) and token `usage`.
 
@@ -1443,7 +1472,8 @@ print(reply.content[0].text, reply.model)   # `model` is the one that answered
 | `stream` | SSE events `message_start`, `ping`, `content_block_start`, `content_block_delta` (`text_delta`, `input_json_delta`), `content_block_stop`, `message_delta` and `message_stop`. `message_start` carries an input token estimate; `message_delta` carries the vendor's counts. |
 | `metadata.user_id` | `attributes["user_id"]`, as `user` on chat completions; other `metadata` keys are attributes, and `action_id` is the usage action label. Claude Code's `user_id` names a session: Keystone keeps its account (or, without one, its device) as the user and puts the session in `attributes["session_id"]`, so per-user limits and reports span sessions. |
 | `enable_cache`, `placement` | Extensions, as on chat completions; so are the `X-KTMS-Cache` and `X-KTMS-Placement` request headers (set them in Claude Code with `ANTHROPIC_CUSTOM_HEADERS`). |
-| `temperature`, `top_p`, `top_k`, `stop_sequences`, `thinking`, `service_tier` | Accepted and ignored. |
+| `temperature`, `top_p`, `stop_sequences` | Passed to the model as on chat completions (see [Sampling](#sampling)). A stop sequence ends the answer with `stop_reason` `end_turn`. |
+| `top_k`, `thinking`, `service_tier` | Accepted and ignored. |
 
 The key goes in `x-api-key` or `Authorization: Bearer`. The response's `stop_reason` is `end_turn`,
 `tool_use`, `max_tokens` or `refusal`, and `usage` splits `cache_read_input_tokens` and

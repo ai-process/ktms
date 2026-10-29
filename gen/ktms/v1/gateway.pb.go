@@ -1304,8 +1304,15 @@ type GenerateTextRequest struct {
 	// choice is experimental; with it true the routing is stable.
 	AutoRoute       bool `protobuf:"varint,15,opt,name=auto_route,json=autoRoute,proto3" json:"auto_route,omitempty"`
 	EffortSpecified bool `protobuf:"varint,16,opt,name=effort_specified,json=effortSpecified,proto3" json:"effort_specified,omitempty"` // true when effort was explicitly pinned by caller
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Sampling, passed to the model that serves the call. Unset leaves the
+	// model's default. A model that does not take one gets the call without it,
+	// and the response names it in ignored_parameters.
+	Temperature   *float64 `protobuf:"fixed64,18,opt,name=temperature,proto3,oneof" json:"temperature,omitempty"` // 0..2; capped at the vendor's maximum
+	TopP          *float64 `protobuf:"fixed64,19,opt,name=top_p,json=topP,proto3,oneof" json:"top_p,omitempty"`   // 0..1
+	Stop          []string `protobuf:"bytes,20,rep,name=stop,proto3" json:"stop,omitempty"`                       // up to 16 sequences; vendors with a lower limit get the first ones
+	Seed          *int64   `protobuf:"varint,21,opt,name=seed,proto3,oneof" json:"seed,omitempty"`                // best-effort determinism
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GenerateTextRequest) Reset() {
@@ -1448,6 +1455,34 @@ func (x *GenerateTextRequest) GetEffortSpecified() bool {
 		return x.EffortSpecified
 	}
 	return false
+}
+
+func (x *GenerateTextRequest) GetTemperature() float64 {
+	if x != nil && x.Temperature != nil {
+		return *x.Temperature
+	}
+	return 0
+}
+
+func (x *GenerateTextRequest) GetTopP() float64 {
+	if x != nil && x.TopP != nil {
+		return *x.TopP
+	}
+	return 0
+}
+
+func (x *GenerateTextRequest) GetStop() []string {
+	if x != nil {
+		return x.Stop
+	}
+	return nil
+}
+
+func (x *GenerateTextRequest) GetSeed() int64 {
+	if x != nil && x.Seed != nil {
+		return *x.Seed
+	}
+	return 0
 }
 
 type TokensUsage struct {
@@ -1600,8 +1635,10 @@ type GenerateTextResponse struct {
 	Placement      string                 `protobuf:"bytes,9,opt,name=placement,proto3" json:"placement,omitempty"`                        // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
 	JudgeScore     float64                `protobuf:"fixed64,10,opt,name=judge_score,json=judgeScore,proto3" json:"judge_score,omitempty"` // Experimental: score or confidence from judge evaluation
 	JudgeModel     string                 `protobuf:"bytes,11,opt,name=judge_model,json=judgeModel,proto3" json:"judge_model,omitempty"`   // Experimental: judge model id if judge was invoked
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Sampling fields the resolved model did not take: "temperature", "top_p", "stop", "seed".
+	IgnoredParameters []string `protobuf:"bytes,12,rep,name=ignored_parameters,json=ignoredParameters,proto3" json:"ignored_parameters,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *GenerateTextResponse) Reset() {
@@ -1711,22 +1748,30 @@ func (x *GenerateTextResponse) GetJudgeModel() string {
 	return ""
 }
 
+func (x *GenerateTextResponse) GetIgnoredParameters() []string {
+	if x != nil {
+		return x.IgnoredParameters
+	}
+	return nil
+}
+
 type GenerateTextChunk struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Delta          string                 `protobuf:"bytes,1,opt,name=delta,proto3" json:"delta,omitempty"`
-	FinishReason   string                 `protobuf:"bytes,2,opt,name=finish_reason,json=finishReason,proto3" json:"finish_reason,omitempty"`
-	Usage          *TokensUsage           `protobuf:"bytes,3,opt,name=usage,proto3" json:"usage,omitempty"`
-	ResolvedModel  string                 `protobuf:"bytes,4,opt,name=resolved_model,json=resolvedModel,proto3" json:"resolved_model,omitempty"`
-	ResolvedVendor string                 `protobuf:"bytes,5,opt,name=resolved_vendor,json=resolvedVendor,proto3" json:"resolved_vendor,omitempty"`
-	MatchedRule    string                 `protobuf:"bytes,6,opt,name=matched_rule,json=matchedRule,proto3" json:"matched_rule,omitempty"`
-	ToolCallChunks []*ToolCallChunk       `protobuf:"bytes,7,rep,name=tool_call_chunks,json=toolCallChunks,proto3" json:"tool_call_chunks,omitempty"`
-	Cached         bool                   `protobuf:"varint,8,opt,name=cached,proto3" json:"cached,omitempty"`                             // true when served from cache
-	RouteMode      string                 `protobuf:"bytes,9,opt,name=route_mode,json=routeMode,proto3" json:"route_mode,omitempty"`       // "direct" | "override" | "auto-judge" | "auto-default" | "auto-effort"; "auto-judge" and "auto-default" are experimental
-	Placement      string                 `protobuf:"bytes,10,opt,name=placement,proto3" json:"placement,omitempty"`                       // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
-	JudgeScore     float64                `protobuf:"fixed64,11,opt,name=judge_score,json=judgeScore,proto3" json:"judge_score,omitempty"` // Experimental: score or confidence from judge evaluation
-	JudgeModel     string                 `protobuf:"bytes,12,opt,name=judge_model,json=judgeModel,proto3" json:"judge_model,omitempty"`   // Experimental: judge model id if judge was invoked
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Delta             string                 `protobuf:"bytes,1,opt,name=delta,proto3" json:"delta,omitempty"`
+	FinishReason      string                 `protobuf:"bytes,2,opt,name=finish_reason,json=finishReason,proto3" json:"finish_reason,omitempty"`
+	Usage             *TokensUsage           `protobuf:"bytes,3,opt,name=usage,proto3" json:"usage,omitempty"`
+	ResolvedModel     string                 `protobuf:"bytes,4,opt,name=resolved_model,json=resolvedModel,proto3" json:"resolved_model,omitempty"`
+	ResolvedVendor    string                 `protobuf:"bytes,5,opt,name=resolved_vendor,json=resolvedVendor,proto3" json:"resolved_vendor,omitempty"`
+	MatchedRule       string                 `protobuf:"bytes,6,opt,name=matched_rule,json=matchedRule,proto3" json:"matched_rule,omitempty"`
+	ToolCallChunks    []*ToolCallChunk       `protobuf:"bytes,7,rep,name=tool_call_chunks,json=toolCallChunks,proto3" json:"tool_call_chunks,omitempty"`
+	Cached            bool                   `protobuf:"varint,8,opt,name=cached,proto3" json:"cached,omitempty"`                                                // true when served from cache
+	RouteMode         string                 `protobuf:"bytes,9,opt,name=route_mode,json=routeMode,proto3" json:"route_mode,omitempty"`                          // "direct" | "override" | "auto-judge" | "auto-default" | "auto-effort"; "auto-judge" and "auto-default" are experimental
+	Placement         string                 `protobuf:"bytes,10,opt,name=placement,proto3" json:"placement,omitempty"`                                          // "nodes_first" | "nodes_only" | "cloud_first" | "cloud_only"
+	JudgeScore        float64                `protobuf:"fixed64,11,opt,name=judge_score,json=judgeScore,proto3" json:"judge_score,omitempty"`                    // Experimental: score or confidence from judge evaluation
+	JudgeModel        string                 `protobuf:"bytes,12,opt,name=judge_model,json=judgeModel,proto3" json:"judge_model,omitempty"`                      // Experimental: judge model id if judge was invoked
+	IgnoredParameters []string               `protobuf:"bytes,13,rep,name=ignored_parameters,json=ignoredParameters,proto3" json:"ignored_parameters,omitempty"` // on the first chunk, as in GenerateTextResponse
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *GenerateTextChunk) Reset() {
@@ -1841,6 +1886,13 @@ func (x *GenerateTextChunk) GetJudgeModel() string {
 		return x.JudgeModel
 	}
 	return ""
+}
+
+func (x *GenerateTextChunk) GetIgnoredParameters() []string {
+	if x != nil {
+		return x.IgnoredParameters
+	}
+	return nil
 }
 
 type ListModelsRequest struct {
@@ -4251,7 +4303,7 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\x0fPropertiesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
 	"\x05value\x18\x02 \x01(\v2\x17.ktms.v1.SchemaPropertyR\x05value:\x028\x01B\x18\n" +
-	"\x16_additional_properties\"\xb0\x06\n" +
+	"\x16_additional_properties\"\xc1\a\n" +
 	"\x13GenerateTextRequest\x12'\n" +
 	"\x06effort\x18\x01 \x01(\x0e2\x0f.ktms.v1.EffortR\x06effort\x12L\n" +
 	"\n" +
@@ -4273,10 +4325,17 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\tplacement\x18\x0e \x01(\tR\tplacement\x12\x1d\n" +
 	"\n" +
 	"auto_route\x18\x0f \x01(\bR\tautoRoute\x12)\n" +
-	"\x10effort_specified\x18\x10 \x01(\bR\x0feffortSpecified\x1a=\n" +
+	"\x10effort_specified\x18\x10 \x01(\bR\x0feffortSpecified\x12%\n" +
+	"\vtemperature\x18\x12 \x01(\x01H\x00R\vtemperature\x88\x01\x01\x12\x18\n" +
+	"\x05top_p\x18\x13 \x01(\x01H\x01R\x04topP\x88\x01\x01\x12\x12\n" +
+	"\x04stop\x18\x14 \x03(\tR\x04stop\x12\x17\n" +
+	"\x04seed\x18\x15 \x01(\x03H\x02R\x04seed\x88\x01\x01\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"{\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0e\n" +
+	"\f_temperatureB\b\n" +
+	"\x06_top_pB\a\n" +
+	"\x05_seed\"{\n" +
 	"\vTokensUsage\x12\x14\n" +
 	"\x05input\x18\x01 \x01(\x03R\x05input\x12\x16\n" +
 	"\x06output\x18\x02 \x01(\x03R\x06output\x12\x1d\n" +
@@ -4289,7 +4348,7 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x120\n" +
 	"\n" +
 	"tool_calls\x18\x03 \x03(\v2\x11.ktms.v1.ToolCallR\ttoolCalls\x12#\n" +
-	"\rfinish_reason\x18\x04 \x01(\tR\ffinishReason\"\x91\x03\n" +
+	"\rfinish_reason\x18\x04 \x01(\tR\ffinishReason\"\xc0\x03\n" +
 	"\x14GenerateTextResponse\x12\x18\n" +
 	"\achoices\x18\x01 \x03(\tR\achoices\x12*\n" +
 	"\x05usage\x18\x02 \x01(\v2\x14.ktms.v1.TokensUsageR\x05usage\x12%\n" +
@@ -4305,7 +4364,8 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	" \x01(\x01R\n" +
 	"judgeScore\x12\x1f\n" +
 	"\vjudge_model\x18\v \x01(\tR\n" +
-	"judgeModel\"\xc6\x03\n" +
+	"judgeModel\x12-\n" +
+	"\x12ignored_parameters\x18\f \x03(\tR\x11ignoredParameters\"\xf5\x03\n" +
 	"\x11GenerateTextChunk\x12\x14\n" +
 	"\x05delta\x18\x01 \x01(\tR\x05delta\x12#\n" +
 	"\rfinish_reason\x18\x02 \x01(\tR\ffinishReason\x12*\n" +
@@ -4322,7 +4382,8 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\vjudge_score\x18\v \x01(\x01R\n" +
 	"judgeScore\x12\x1f\n" +
 	"\vjudge_model\x18\f \x01(\tR\n" +
-	"judgeModel\"\x13\n" +
+	"judgeModel\x12-\n" +
+	"\x12ignored_parameters\x18\r \x03(\tR\x11ignoredParameters\"\x13\n" +
 	"\x11ListModelsRequest\"\xd0\x03\n" +
 	"\tModelInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
@@ -4810,6 +4871,7 @@ func file_ktms_v1_gateway_proto_init() {
 	}
 	file_ktms_v1_gateway_proto_msgTypes[12].OneofWrappers = []any{}
 	file_ktms_v1_gateway_proto_msgTypes[13].OneofWrappers = []any{}
+	file_ktms_v1_gateway_proto_msgTypes[14].OneofWrappers = []any{}
 	file_ktms_v1_gateway_proto_msgTypes[30].OneofWrappers = []any{
 		(*MediaPart_Text)(nil),
 		(*MediaPart_Image)(nil),
