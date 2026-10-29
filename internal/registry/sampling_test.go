@@ -8,8 +8,10 @@ import (
 )
 
 func TestSamplingSupport(t *testing.T) {
-	claudeOld := llm.SamplingSupport{Temperature: true, TopP: true, Stop: true, MaxTemperature: 1, OneOfTemperatureTopP: true}
-	claudeNew := llm.SamplingSupport{Stop: true}
+	claudeOld := llm.SamplingSupport{Temperature: true, TopP: true, Stop: true, MaxTemperature: 1, OneOfTemperatureTopP: true, NoBlankStop: true}
+	claude3 := claudeOld
+	claude3.OneOfTemperatureTopP = false
+	claudeNew := llm.SamplingSupport{Stop: true, NoBlankStop: true}
 	openAI := llm.AllSampling
 	openAI.MaxStop = 4
 	cases := []struct {
@@ -22,10 +24,19 @@ func TestSamplingSupport(t *testing.T) {
 		{VendorOpenAI, "o4-mini", nil, llm.SamplingSupport{}},
 		{VendorOpenAI, "gpt-5-chat-latest", nil, openAI},
 		{VendorOpenAI, "gpt-4.1-mini", []string{CapabilityNoSampling}, llm.SamplingSupport{}},
+		{VendorOpenAI, "gpt-5.1", []string{CapabilitySampling}, openAI},
+		{VendorOpenAI, "openai/gpt-5", nil, llm.SamplingSupport{}},
+		{VendorAzure, "prod-o3", nil, llm.SamplingSupport{}},
+		{VendorAzure, "chat-4o", nil, openAI},
 		{VendorAnthropic, "claude-sonnet-4-6", nil, claudeOld},
 		{VendorAnthropic, "claude-haiku-4-5-20251001", nil, claudeOld},
 		{VendorAnthropic, "claude-sonnet-4-20250514", nil, claudeOld},
-		{VendorAnthropic, "claude-3-5-haiku-latest", nil, claudeOld},
+		{VendorAnthropic, "claude-3-5-haiku-latest", nil, claude3},
+		{VendorAnthropic, "claude-3.5-sonnet", nil, claude3},
+		{VendorAnthropic, "claude-sonnet-4-5-latest", nil, claudeOld},
+		{VendorAnthropic, "claude-opus-4.7", nil, claudeNew},
+		{VendorAnthropic, "claude-opus-4.1", nil, claudeOld},
+		{VendorAnthropic, "my-claude-alias", []string{CapabilitySampling}, claudeOld},
 		{VendorAnthropic, "claude-opus-4-7", nil, claudeNew},
 		{VendorAnthropic, "claude-opus-5-5", nil, claudeNew},
 		{VendorAnthropic, "claude-sonnet-4-60", nil, claudeNew},

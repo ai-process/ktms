@@ -19,13 +19,16 @@ All notable changes to KTMS are listed here. The format follows
 - Sampling: `temperature`, `top_p`, `stop` and `seed` on `GenerateTextRequest`, chat completions
   and `/v1/messages` (`stop_sequences`) reach the serving model as far as its API takes them. A
   field the model does not take is left out of its request, and the response names it in
-  `ignored_parameters` and the `X-KTMS-Ignored-Params` header. The new `no_sampling` capability
-  sends a model none of them. Sampling is part of the response cache key.
+  `ignored_parameters` and the `X-KTMS-Ignored-Params` header. The new `no_sampling` and
+  `sampling` capabilities correct a model whose id misleads the per-vendor table. Sampling is part
+  of the response cache key.
 
 ### Changed
 - Token budget reservations count tool definitions and the tool calls in the conversation.
 - Chat completions and `/v1/messages` no longer ignore `temperature`, `top_p` and stop sequences,
-  and chat completions no longer ignore `seed`: a client that sends them changes the answer.
+  and chat completions no longer ignore `seed`: a client that sends them changes the answer. A
+  `temperature` outside 0..2, a `top_p` outside 0..1 or more than 16 stop sequences now gets
+  `400`.
 
 ## [1.4.0] - 2026-10-27
 

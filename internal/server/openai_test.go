@@ -1536,6 +1536,9 @@ func TestSamplingOverHTTP(t *testing.T) {
 		strings.Join(fp.text.GetStop(), ",") != "A,B" || fp.text.Temperature != nil {
 		t.Fatalf("stop array: %d %v", rec.Code, fp.text)
 	}
+	if rec := post("/v1/chat/completions", `{"messages":[{"role":"user","content":"x"}],"stop":""}`); rec.Code != 200 || len(fp.text.GetStop()) != 0 {
+		t.Fatalf("empty stop, ignored while the field was: %d %v", rec.Code, fp.text.GetStop())
+	}
 	if rec := post("/v1/chat/completions", `{"messages":[{"role":"user","content":"x"}],"stop":3}`); rec.Code != 400 {
 		t.Fatalf("stop as a number: %d", rec.Code)
 	}

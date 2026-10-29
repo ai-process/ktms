@@ -697,6 +697,7 @@ Capabilities a model may declare:
 | `google_search` | Can serve requests with `enable_google_search`. |
 | `no_thinking` | The model reasons by default and bills the reasoning as output (DeepSeek V4, Gemma 4 on Ollama). The proxy turns it off: `thinking: {"type": "disabled"}` for DeepSeek, `reasoning_effort: "none"` for Ollama, and for `local` models when the serving node runs Ollama (other engines get no switch). OpenAI-compatible vendors only. |
 | `no_sampling` | The model's API rejects sampling fields Keystone would otherwise send it (see [Sampling](#sampling)): it gets none of `temperature`, `top_p`, `stop` and `seed`, and responses report them as ignored. |
+| `sampling` | The model takes its vendor's sampling fields although its id says otherwise (see [Sampling](#sampling)): an Azure deployment name, a Claude alias, a reasoning model run without reasoning. |
 | `prompt_cache` | Anthropic only: puts `cache_control` breakpoints after the tools, the system prompt and, in a multi-turn conversation, the latest turn, so repeated prefixes are read at 0.1x input. A new prefix is written at 1.25x, so set it on models whose instructions or conversations repeat. |
 | `vision` | Can process image parts in multimodal messages (`ImagePart`). |
 | `audio_input` | Can process audio parts in multimodal messages (`AudioPart`). |
@@ -1146,19 +1147,22 @@ describes the model that answered.
 
 | Vendor | Takes |
 | --- | --- |
-| `openai`, `azure` | All four, up to 4 `stop` sequences. Reasoning models (`o*`, `gpt-5*` except `gpt-5-chat`) take none. |
+| `openai`, `azure` | All four, up to 4 `stop` sequences. Reasoning models (an id with `o<digit>` or `gpt-5`, as a whole or after a `/`, `-` or `_`, except `gpt-5-chat`) take none. |
 | `groq` | All four, up to 4 `stop` sequences. |
 | `google` | All four, up to 5 `stop` sequences. |
 | `ollama`, `local` | All four. |
 | `deepseek` | `temperature`, `top_p`, `stop` (up to 16). |
 | `mistral` | `temperature` (capped at 1.5), `top_p`, `stop`. |
-| `anthropic`, Claude on `bedrock` | `stop`. Claude 4.6 and earlier also take `temperature` (capped at 1) or `top_p`, and when both are set, only `temperature`. Claude 4.7 and later accept only the default sampling, so they get neither. |
+| `anthropic`, Claude on `bedrock` | `stop`, without sequences of whitespace alone. Claude 4.6 and earlier also take `temperature` (capped at 1) and `top_p`; from Claude 4 on, not both: with both set, only `temperature`. Claude 4.7 and later accept only the default sampling, so they get neither. |
 | Other `bedrock` models | `temperature` (capped at 1), `top_p`, up to 4 `stop` sequences. |
 
 A temperature above a vendor's cap is lowered to it, not reported. When a vendor takes fewer stop
-sequences than the call has, it gets the first ones and `stop` is reported. For a model whose API
-rejects a field this table sends, declare the `no_sampling` capability. Sampling is part of the
-response cache key.
+sequences than the call has, it gets the first ones and `stop` is reported. The model is told apart
+by its id. When the id misleads, declare a capability: `no_sampling` for a model whose API rejects a
+field this table sends, `sampling` for one that takes what its vendor's table row allows, such as
+an Azure deployment of a chat model named like a reasoning one. Sampling is part of the response
+cache key. Batch results do not carry `ignored_parameters`. Over HTTP, empty stop sequences are
+dropped before the call.
 
 ### GenerateTextStream
 

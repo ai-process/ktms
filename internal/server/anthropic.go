@@ -124,7 +124,7 @@ func (req *messagesRequest) toProto(ctx context.Context, headerPlacement string,
 		EffortSpecified: dec.EffortSpecified,
 		Temperature:     req.Temperature,
 		TopP:            req.TopP,
-		Stop:            req.StopSequences,
+		Stop:            nonEmpty(req.StopSequences),
 	}
 	out.Attributes, out.ActionId = attributes(req.Metadata, "")
 	if user, session := claudeCodeUser(out.Attributes["user_id"]); user != "" {

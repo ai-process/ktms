@@ -25,6 +25,10 @@ func TestSamplingSupportApply(t *testing.T) {
 			Sampling{Stop: []string{"a", "b", "c"}}, Sampling{Stop: []string{"a", "b"}}, []string{ParamStop}},
 		{"one of temperature and top_p keeps temperature", SamplingSupport{Temperature: true, TopP: true, OneOfTemperatureTopP: true},
 			Sampling{Temperature: ptr(0.2), TopP: ptr(0.9)}, Sampling{Temperature: ptr(0.2)}, []string{ParamTopP}},
+		{"blank stop sequences dropped and reported", SamplingSupport{Stop: true, NoBlankStop: true},
+			Sampling{Stop: []string{"\n", "END"}}, Sampling{Stop: []string{"END"}}, []string{ParamStop}},
+		{"only blank stop sequences", SamplingSupport{Stop: true, NoBlankStop: true},
+			Sampling{Stop: []string{" "}}, Sampling{}, []string{ParamStop}},
 		{"one of, top_p alone passes", SamplingSupport{Temperature: true, TopP: true, OneOfTemperatureTopP: true},
 			Sampling{TopP: ptr(0.9)}, Sampling{TopP: ptr(0.9)}, nil},
 	}

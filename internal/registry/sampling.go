@@ -12,13 +12,19 @@ import (
 // table below would send it: the proxy then sends none of them.
 const CapabilityNoSampling = "no_sampling"
 
+// CapabilitySampling marks a model that takes its vendor's sampling fields
+// although its id looks like one that does not: an Azure deployment name, a
+// Claude alias, a reasoning model run without reasoning.
+const CapabilitySampling = "sampling"
+
 var (
 	// OpenAI reasoning models reject temperature, top_p and stop;
-	// gpt-5-chat is the chat variant that takes them.
-	openAIReasoning = regexp.MustCompile(`^(o\d|gpt-5)`)
+	// gpt-5-chat is the chat variant that takes them. Ids may carry a prefix.
+	openAIReasoning = regexp.MustCompile(`(^|[/_-])(o\d|gpt-5)`)
 	// Claude up to 4.6 takes temperature and top_p on the 2023-06-01 API; 4.7
 	// and later accept only the defaults, so unknown ids get none.
-	claudeWithSampling = regexp.MustCompile(`claude-(3([-.@:]|$)|(opus|sonnet|haiku)-4(-[0-6])?(-\d{8}|-v\d|[.@:]|$))`)
+	claudeWithSampling = regexp.MustCompile(`claude-(3([-.@:]|$)|(opus|sonnet|haiku)-4([-.][0-6])?(-\d{8}|-v\d|-latest|[@:]|$))`)
+	claude3            = regexp.MustCompile(`claude-3([-.@:]|$)`)
 )
 
 // SamplingSupport is the sampling a model's API takes. Adapters send only
@@ -27,10 +33,11 @@ func SamplingSupport(m *proxydb.Model) llm.SamplingSupport {
 	if HasCapability(m, CapabilityNoSampling) {
 		return llm.SamplingSupport{}
 	}
+	declared := HasCapability(m, CapabilitySampling)
 	id := strings.ToLower(m.ID)
 	switch m.Vendor {
 	case VendorOpenAI, VendorAzure:
-		if openAIReasoning.MatchString(id) && !strings.Contains(id, "-chat") {
+		if !declared && openAIReasoning.MatchString(id) && !strings.Contains(id, "-chat") {
 			return llm.SamplingSupport{}
 		}
 		s := llm.AllSampling
@@ -52,10 +59,10 @@ func SamplingSupport(m *proxydb.Model) llm.SamplingSupport {
 		s.MaxStop = 5
 		return s
 	case VendorAnthropic:
-		return claudeSampling(id)
+		return claudeSampling(id, declared)
 	case VendorBedrock:
 		if strings.Contains(id, "claude") {
-			return claudeSampling(id)
+			return claudeSampling(id, declared)
 		}
 		// Converse takes temperature 0..1 and no seed for every model family.
 		return llm.SamplingSupport{Temperature: true, TopP: true, Stop: true, MaxTemperature: 1, MaxStop: 4}
@@ -63,12 +70,13 @@ func SamplingSupport(m *proxydb.Model) llm.SamplingSupport {
 	return llm.SamplingSupport{}
 }
 
-func claudeSampling(id string) llm.SamplingSupport {
-	s := llm.SamplingSupport{Stop: true}
-	if claudeWithSampling.MatchString(id) {
-		// Claude reads temperature 0..1, and its 4.x models reject both
-		// fields together.
-		s.Temperature, s.TopP, s.MaxTemperature, s.OneOfTemperatureTopP = true, true, 1, true
+// claudeSampling: Claude rejects a stop sequence of whitespace alone, reads
+// temperature 0..1, and from 4 on rejects temperature and top_p together.
+func claudeSampling(id string, declared bool) llm.SamplingSupport {
+	s := llm.SamplingSupport{Stop: true, NoBlankStop: true}
+	if declared || claudeWithSampling.MatchString(id) {
+		s.Temperature, s.TopP, s.MaxTemperature = true, true, 1
+		s.OneOfTemperatureTopP = !claude3.MatchString(id)
 	}
 	return s
 }

@@ -1,6 +1,9 @@
 package llm
 
-import "slices"
+import (
+	"slices"
+	"strings"
+)
 
 // Sampling parameter names, as callers send them and responses report them.
 const (
@@ -27,6 +30,8 @@ type SamplingSupport struct {
 	MaxStop                       int     // 0 means no limit
 	// OneOfTemperatureTopP: the API rejects both together, so top_p goes.
 	OneOfTemperatureTopP bool
+	// NoBlankStop: the API rejects a stop sequence of whitespace alone.
+	NoBlankStop bool
 }
 
 // AllSampling is an OpenAI-style API that takes every field.
@@ -34,7 +39,8 @@ var AllSampling = SamplingSupport{Temperature: true, TopP: true, Stop: true, See
 
 // Apply returns the settings the model gets and the names of those it does
 // not. A temperature above the cap is lowered to it rather than dropped; a
-// stop list over the limit keeps its first sequences and is reported.
+// stop list cut to the limit, or of blank sequences the API rejects, is
+// reported.
 func (s SamplingSupport) Apply(in Sampling) (Sampling, []string) {
 	var out Sampling
 	var ignored []string
@@ -57,14 +63,18 @@ func (s SamplingSupport) Apply(in Sampling) (Sampling, []string) {
 		}
 	}
 	if len(in.Stop) > 0 {
-		switch {
-		case !s.Stop:
+		stop := in.Stop
+		if s.NoBlankStop {
+			stop = slices.DeleteFunc(slices.Clone(stop), func(v string) bool { return strings.TrimSpace(v) == "" })
+		}
+		if s.Stop && s.MaxStop > 0 && len(stop) > s.MaxStop {
+			stop = stop[:s.MaxStop]
+		}
+		if s.Stop && len(stop) > 0 {
+			out.Stop = stop
+		}
+		if !s.Stop || len(stop) < len(in.Stop) {
 			ignored = append(ignored, ParamStop)
-		case s.MaxStop > 0 && len(in.Stop) > s.MaxStop:
-			out.Stop = slices.Clone(in.Stop[:s.MaxStop])
-			ignored = append(ignored, ParamStop)
-		default:
-			out.Stop = in.Stop
 		}
 	}
 	if in.Seed != nil {

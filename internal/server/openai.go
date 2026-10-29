@@ -14,6 +14,7 @@ import (
 	"math"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -992,14 +993,20 @@ func stopSequences(raw json.RawMessage) ([]string, error) {
 		return nil, nil
 	}
 	var one string
-	if err := json.Unmarshal(raw, &one); err == nil {
-		return []string{one}, nil
+	if json.Unmarshal(raw, &one) == nil {
+		return nonEmpty([]string{one}), nil
 	}
 	var many []string
 	if err := json.Unmarshal(raw, &many); err != nil {
 		return nil, invalid("stop must be a string or an array of strings")
 	}
-	return many, nil
+	return nonEmpty(many), nil
+}
+
+// nonEmpty drops empty stop sequences: they stop nothing, and HTTP clients
+// sent them while the field was ignored.
+func nonEmpty(stop []string) []string {
+	return slices.DeleteFunc(slices.Clone(stop), func(s string) bool { return s == "" })
 }
 
 func setCacheHeader(w http.ResponseWriter, enabled, hit bool) {
