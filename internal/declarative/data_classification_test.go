@@ -57,3 +57,18 @@ func TestLifted(t *testing.T) {
 		}
 	}
 }
+
+// The file's spelling is normalised on load, so a plan after apply compares
+// "restricted" with what the server stored and stays empty.
+func TestDataClassificationNormalised(t *testing.T) {
+	c := mustParse(t, strings.ReplaceAll(restrictedConfig, "data_classification: restricted", "data_classification: Restricted"))
+	if got := c.Organizations[0].Teams[0].DataClassification; got != "restricted" {
+		t.Fatalf("team %q", got)
+	}
+	if got := c.APIKeys[0].Policy.GetDataClassification(); got != "restricted" {
+		t.Fatalf("key %q", got)
+	}
+	if d := policyDiff(&pb.APIKeyPolicy{DataClassification: "restricted"}, c.APIKeys[0].Policy); len(d) != 0 {
+		t.Fatalf("policy diff %v", d)
+	}
+}

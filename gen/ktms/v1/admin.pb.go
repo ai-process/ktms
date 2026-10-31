@@ -1072,10 +1072,9 @@ type APIKeyPolicy struct {
 	// MCP servers ("github") and single tools ("github/create_issue") a key with
 	// the mcp scope may use; empty = any. Others are hidden and refused.
 	AllowedMcp []string `protobuf:"bytes,4,rep,name=allowed_mcp,json=allowedMcp,proto3" json:"allowed_mcp,omitempty"`
-	// "restricted": every call of the key stays on self-hosted nodes, whatever the
-	// request says (see GenerateTextRequest.data_classification). "" = unrestricted.
-	// SetAPIKeyPolicy, unlike its other fields, keeps the current value on "" and
-	// lifts a restriction only on "unrestricted", so an older client cannot lift it.
+	// "restricted" keeps every call of the key on self-hosted nodes. In
+	// SetAPIKeyPolicy, unlike its other fields, "" keeps the current value and
+	// only "unrestricted" lifts it, so an older client cannot lift a restriction.
 	DataClassification string `protobuf:"bytes,5,opt,name=data_classification,json=dataClassification,proto3" json:"data_classification,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
