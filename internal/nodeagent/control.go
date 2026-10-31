@@ -175,6 +175,8 @@ func (a *Agent) controlHandler() http.Handler {
 	mux.HandleFunc("PUT /v1/schedule", a.handlePutSchedule)
 	mux.HandleFunc("POST /v1/schedule/preview", a.handlePreviewSchedule)
 	mux.HandleFunc("GET /v1/stats", a.handleStats)
+	mux.HandleFunc("GET /v1/settings", a.handleGetSettings)
+	mux.HandleFunc("PUT /v1/settings", a.handlePutSettings)
 	return ownerOnly(mux)
 }
 
@@ -308,6 +310,7 @@ type ScheduleInfo struct {
 	Level    uint32       `json:"level"` // what this text gives now
 	Upcoming []Switch     `json:"upcoming,omitempty"`
 	Editable bool         `json:"editable"`
+	Source   string       `json:"source,omitempty"`    // local | ktms
 	ReadOnly string       `json:"read_only,omitempty"` // why it is not editable
 }
 
@@ -332,6 +335,19 @@ func describeSchedule(text string, now time.Time) ScheduleInfo {
 
 func (a *Agent) handleGetSchedule(w http.ResponseWriter, _ *http.Request) {
 	info := ScheduleInfo{}
+	if a.sourceNow() == ScheduleSourceKTMS {
+		var m managedSchedule
+		if _, err := readJSON(a.stateFile("managed-schedule"), &m); err != nil {
+			writeCtlError(w, err)
+			return
+		}
+		info = describeSchedule(m.Text, a.now())
+		info.Exists = m.Version > 0
+		info.ReadOnly = "the schedule is set in KTMS"
+		info.Source = ScheduleSourceKTMS
+		writeJSON(w, http.StatusOK, info)
+		return
+	}
 	if f := a.cfg.ScheduleFile; f != "" {
 		data, err := os.ReadFile(f)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -344,9 +360,35 @@ func (a *Agent) handleGetSchedule(w http.ResponseWriter, _ *http.Request) {
 		info = describeSchedule("", a.now())
 		info.ReadOnly = "the agent runs without --schedule-file"
 	}
-	info.File = a.cfg.ScheduleFile
+	info.File, info.Source = a.cfg.ScheduleFile, ScheduleSourceLocal
 	info.Editable = info.ReadOnly == ""
 	writeJSON(w, http.StatusOK, info)
+}
+
+// sourceNow is the schedule source as last published, for API goroutines.
+func (a *Agent) sourceNow() string {
+	if s := a.status.get(); s != nil {
+		return s.ScheduleSource
+	}
+	return ScheduleSourceLocal
+}
+
+func (a *Agent) handleGetSettings(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, Settings{ScheduleSource: a.sourceNow()})
+}
+
+// handlePutSettings switches the schedule source without a restart.
+func (a *Agent) handlePutSettings(w http.ResponseWriter, r *http.Request) {
+	var s Settings
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxControlBody)).Decode(&s); err != nil {
+		writeCtlError(w, badRequest("bad JSON: %v", err))
+		return
+	}
+	if _, err := a.do(r.Context(), func() (any, error) { return nil, a.setScheduleSource(s.ScheduleSource) }); err != nil {
+		writeCtlError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, a.status.get())
 }
 
 type scheduleBody struct {
@@ -364,6 +406,10 @@ func readScheduleBody(r *http.Request) (string, error) {
 // handlePutSchedule validates and writes the schedule file; the agent picks
 // it up at once. An invalid text leaves the file untouched.
 func (a *Agent) handlePutSchedule(w http.ResponseWriter, r *http.Request) {
+	if a.sourceNow() == ScheduleSourceKTMS {
+		writeCtlError(w, conflict("the schedule is set in KTMS; change it there, or switch the node back to its own schedule"))
+		return
+	}
 	if a.cfg.ScheduleFile == "" {
 		writeCtlError(w, conflict("the agent runs without --schedule-file, so there is no file to save to"))
 		return

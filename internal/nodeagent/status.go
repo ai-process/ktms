@@ -31,6 +31,7 @@ type Status struct {
 	Models          []StatusModel  `json:"models"`
 	GPU             *StatusGPU     `json:"gpu,omitempty"`
 	Endpoint        string         `json:"endpoint"`
+	ScheduleSource  string         `json:"schedule_source"` // local | ktms
 	ScheduleFile    string         `json:"schedule_file"`
 	ScheduleError   string         `json:"schedule_error"`
 	CanAbort        bool           `json:"can_abort"` // the built-in gateway can cut running requests
@@ -45,10 +46,17 @@ type StatusConn struct {
 
 type StatusLevel struct {
 	Effective uint32      `json:"effective"`
-	Schedule  uint32      `json:"schedule"` // what the schedule alone says now
-	Source    string      `json:"source"`   // schedule | override | default
-	Override  *Override   `json:"override,omitempty"`
+	Schedule  uint32      `json:"schedule"`           // what the schedule alone says now
+	Source    string      `json:"source"`             // schedule | override | ktms_schedule | ktms_override | default
+	Override  *Override   `json:"override,omitempty"` // the owner's, set on this machine
+	KTMS      *StatusKTMS `json:"ktms,omitempty"`     // in ktms mode: what KTMS last sent
 	Next      *StatusNext `json:"next,omitempty"`
+}
+
+type StatusKTMS struct {
+	Version    int64     `json:"version"` // 0: none received, or KTMS keeps none (100%)
+	Override   *Override `json:"override,omitempty"`
+	ReceivedAt time.Time `json:"received_at,omitzero"`
 }
 
 type StatusNext struct {
@@ -149,6 +157,7 @@ func (a *Agent) publish() {
 			EngineWaiting: a.stats.beat.EngineWaiting,
 		},
 		CapacityApplied: a.conn.capacityApplied,
+		ScheduleSource:  a.source,
 		ScheduleFile:    a.cfg.ScheduleFile,
 		ScheduleError:   p.schedErr,
 		CanAbort:        a.gateway != nil,
@@ -157,6 +166,17 @@ func (a *Agent) publish() {
 	if p.override.activeAt(now) {
 		o := *p.override
 		s.Level.Override = &o
+	}
+	if a.source == ScheduleSourceKTMS {
+		k := &StatusKTMS{}
+		if m := p.managed; m != nil {
+			k.Version, k.ReceivedAt = m.Version, m.ReceivedAt
+			if m.Override.activeAt(now) {
+				o := *m.Override
+				k.Override = &o
+			}
+		}
+		s.Level.KTMS = k
 	}
 	if p.nextOK {
 		s.Level.Next = &StatusNext{At: p.nextAt, Level: p.next, Source: p.nextSrc}

@@ -24,9 +24,10 @@ import (
 // NodeRegistryServer implements pb.NodeRegistryServiceServer.
 type NodeRegistryServer struct {
 	pb.UnimplementedNodeRegistryServiceServer
-	mgr     *nodes.Manager
-	keyring *crypto.Keyring
-	warned  sync.Map // node id -> dropped-model list already logged, so heartbeats do not repeat it
+	mgr       *nodes.Manager
+	keyring   *crypto.Keyring
+	warned    sync.Map           // node id -> dropped-model list already logged, so heartbeats do not repeat it
+	schedules NodeScheduleReader // nil: no schedules are sent
 }
 
 func NewNodeRegistryServer(mgr *nodes.Manager, keyring *crypto.Keyring) *NodeRegistryServer {
@@ -218,6 +219,12 @@ func (s *NodeRegistryServer) Heartbeat(ctx context.Context, req *pb.HeartbeatReq
 		WarmModels:      warmModels,
 		ModelSpecs:      models,
 		CapacityPercent: req.CapacityPercent,
+		ScheduleSource:  req.GetScheduleSource(),
+		CapacitySource:  req.GetCapacitySource(),
+	}
+	if req.GetCapacityUntil() != nil {
+		u := req.GetCapacityUntil().AsTime()
+		hb.CapacityUntil = &u
 	}
 
 	drainReq, activeProxy, err := s.mgr.Heartbeat(ctx, hb)
@@ -231,12 +238,16 @@ func (s *NodeRegistryServer) Heartbeat(ctx context.Context, req *pb.HeartbeatReq
 		return nil, status.Errorf(codes.Unavailable, "heartbeat failed: %v", err)
 	}
 
-	return &pb.HeartbeatResponse{
+	resp := &pb.HeartbeatResponse{
 		Ok:                  true,
 		DrainRequested:      drainReq,
 		ActiveProxyRequests: activeProxy,
 		CapacityApplied:     true,
-	}, nil
+	}
+	if req.GetScheduleSource() == ScheduleSourceKTMS {
+		resp.Schedule = s.scheduleFor(ctx, req.GetNodeId())
+	}
+	return resp, nil
 }
 
 func (s *NodeRegistryServer) UnregisterNode(ctx context.Context, req *pb.UnregisterNodeRequest) (*pb.UnregisterNodeResponse, error) {
@@ -402,8 +413,13 @@ func (s *AdminServer) ListNodes(ctx context.Context, _ *pb.ListNodesRequest) (*p
 		var gpuUtil float64
 		var gpuTemp uint32
 		var vramFree, vramTotal uint64
-		var lastHB *timestamppb.Timestamp
+		var lastHB, capUntil *timestamppb.Timestamp
+		var schedSrc, capSrc string
 		if sn.Heartbeat != nil {
+			schedSrc, capSrc = sn.Heartbeat.ScheduleSource, sn.Heartbeat.CapacitySource
+			if u := sn.Heartbeat.CapacityUntil; u != nil {
+				capUntil = timestamppb.New(*u)
+			}
 			warmModels = sn.Heartbeat.WarmModels
 			gpuUtil = sn.Heartbeat.GPUUtilPercent
 			gpuTemp = sn.Heartbeat.GPUTempC
@@ -443,6 +459,9 @@ func (s *AdminServer) ListNodes(ctx context.Context, _ *pb.ListNodesRequest) (*p
 			WarmModels:      warmModels,
 			CapacityPercent: sn.Capacity(),
 			EffectiveSlots:  sn.Slots(),
+			ScheduleSource:  schedSrc,
+			CapacitySource:  capSrc,
+			CapacityUntil:   capUntil,
 		})
 	}
 	return &pb.ListNodesResponse{Nodes: out}, nil

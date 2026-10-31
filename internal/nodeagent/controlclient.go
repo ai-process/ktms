@@ -115,6 +115,17 @@ func (c *ControlClient) PreviewSchedule(ctx context.Context, text string) (*Sche
 	return &s, c.call(ctx, http.MethodPost, "/v1/schedule/preview", scheduleBody{Text: text}, &s)
 }
 
+func (c *ControlClient) Settings(ctx context.Context) (*Settings, error) {
+	var s Settings
+	return &s, c.call(ctx, http.MethodGet, "/v1/settings", nil, &s)
+}
+
+// SetScheduleSource hands the schedule to KTMS ("ktms") or takes it back ("local").
+func (c *ControlClient) SetScheduleSource(ctx context.Context, src string) (*Status, error) {
+	var s Status
+	return &s, c.call(ctx, http.MethodPut, "/v1/settings", Settings{ScheduleSource: src}, &s)
+}
+
 // Stats takes from and to in any form ParseWhen reads; by may be empty.
 func (c *ControlClient) Stats(ctx context.Context, from, to, by string) (*Report, error) {
 	q := url.Values{}

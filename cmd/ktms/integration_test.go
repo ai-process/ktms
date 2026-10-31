@@ -188,6 +188,19 @@ func TestAgainstKeystone(t *testing.T) {
 	}
 	must(0, "", "node-keys", "revoke", "gpu-1", "--yes")
 	must(0, "", "nodes", "list")
+	must(exitRejected, "10:00-11:00 0\n10:30-12:00 0\n", "nodes", "schedule", "set", "gpu-1", "--file", "-")
+	must(0, "mon-fri 09:00-18:00 0\n", "nodes", "schedule", "set", "gpu-1", "--file", "-")
+	must(0, "", "nodes", "schedule", "override", "gpu-1", "--level", "30", "--for", "1h")
+	if out := must(0, "", "nodes", "schedule", "show", "gpu-1"); !strings.Contains(out, "version 2") || !strings.Contains(out, "30% until") || !strings.Contains(out, "mon-fri 09:00-18:00 0") {
+		t.Fatalf("schedule show: %s", out)
+	}
+	must(exitUsage, "", "nodes", "schedule", "override", "gpu-1", "--level", "30")
+	must(0, "", "nodes", "schedule", "override", "gpu-1", "--clear")
+	if out := must(0, "", "nodes", "schedule", "list"); !strings.Contains(out, "gpu-1") {
+		t.Fatalf("schedule list: %s", out)
+	}
+	must(0, "", "nodes", "schedule", "delete", "gpu-1")
+	must(exitNotFound, "", "nodes", "schedule", "delete", "gpu-1")
 
 	// Exit codes by class.
 	must(exitUsage, "", "limits", "set", "key", "bot", "day", "-1")

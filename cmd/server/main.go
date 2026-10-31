@@ -213,6 +213,7 @@ func main() {
 		loader.SetNodePool(poolResolver)
 
 		nodeReg = grpcapi.NewNodeRegistryServer(nodeMgr, keyring)
+		nodeReg.SetSchedules(db)
 	} else {
 		log.Warn().Msg("REDIS_ADDR unset: rpm, token budgets, key rates and spend limits are NOT enforced, local node pool is disabled")
 	}
