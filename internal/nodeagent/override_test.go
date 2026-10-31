@@ -240,3 +240,18 @@ func TestOverrideRefusalsAreBadRequests(t *testing.T) {
 		t.Errorf("an unset until is sent: %s", b)
 	}
 }
+
+func TestUntilNextWindowFollowsTheOverride(t *testing.T) {
+	_, reg, _, c := startControlled(t, "08:00-14:00 50\n", &fakeClock{t: at("13:29")})
+	waitLevel(t, reg, 50, 5*time.Second)
+	ctx := context.Background()
+	res, err := c.SetOverride(ctx, OverrideRequest{Level: 70, For: "1h"})
+	if err != nil || res.Status.Level.Next == nil || !res.Status.Level.Next.At.Equal(at("14:29")) {
+		t.Fatalf("next after the override = %+v, %v", res.Status.Level.Next, err)
+	}
+	// The pause ends where the window said, not at the schedule's masked 14:00 switch.
+	res, err = c.SetOverride(ctx, OverrideRequest{Level: 0, UntilNextWindow: true})
+	if err != nil || !res.Status.Level.Override.Until.Equal(at("14:29")) {
+		t.Fatalf("until next = %+v, %v", res.Status.Level.Override, err)
+	}
+}
