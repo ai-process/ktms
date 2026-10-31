@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,7 +25,29 @@ type NodeScheduleReader interface {
 	GetNodeSchedule(ctx context.Context, nodeID string) (*proxydb.NodeSchedule, error)
 }
 
-const scheduleReadTimeout = time.Second // a slow database must not hold a heartbeat back
+const (
+	scheduleReadTimeout = time.Second      // a slow database must not hold a heartbeat back
+	scheduleMemoTTL     = 10 * time.Second // schedules change rarely; heartbeats come every few seconds
+)
+
+var (
+	scheduleSources = []string{"local", ScheduleSourceKTMS}
+	capacitySources = []string{"schedule", "override", "ktms_schedule", "ktms_override", "default"}
+)
+
+// knownOr keeps a value the agent reports only if it is one of known, so
+// a node cannot store arbitrary text in the pool.
+func knownOr(v string, known []string) string {
+	if slices.Contains(known, v) {
+		return v
+	}
+	return ""
+}
+
+type memoSchedule struct {
+	at time.Time
+	s  *pb.NodeSchedule
+}
 
 // SetSchedules lets heartbeats carry the schedules KTMS keeps for nodes.
 func (s *NodeRegistryServer) SetSchedules(r NodeScheduleReader) { s.schedules = r }
@@ -35,6 +58,17 @@ func (s *NodeRegistryServer) scheduleFor(ctx context.Context, nodeID string) *pb
 	if s.schedules == nil {
 		return nil
 	}
+	if m, ok := s.schedMemo.Load(nodeID); ok && time.Since(m.(memoSchedule).at) < s.schedTTL {
+		return m.(memoSchedule).s
+	}
+	out := s.readSchedule(ctx, nodeID)
+	if out != nil {
+		s.schedMemo.Store(nodeID, memoSchedule{at: time.Now(), s: out})
+	}
+	return out
+}
+
+func (s *NodeRegistryServer) readSchedule(ctx context.Context, nodeID string) *pb.NodeSchedule {
 	ctx, cancel := context.WithTimeout(ctx, scheduleReadTimeout)
 	defer cancel()
 	row, err := s.schedules.GetNodeSchedule(ctx, nodeID)
@@ -125,30 +159,35 @@ func (s *AdminServer) SetNodeCapacityOverride(ctx context.Context, req *pb.SetNo
 	if err := requireNodeID(req.GetNodeId()); err != nil {
 		return nil, err
 	}
-	var level *int32
-	var until *time.Time
-	if !req.GetClear() {
-		if req.GetLevel() > 100 {
-			return nil, status.Errorf(codes.InvalidArgument, "level %d is above 100", req.GetLevel())
+	if req.GetClear() {
+		row, err := s.db.ClearNodeOverride(ctx, req.GetNodeId())
+		if errors.Is(err, proxydb.ErrNotFound) {
+			return &pb.NodeScheduleInfo{NodeId: req.GetNodeId()}, nil // nothing left: the node runs at 100%
 		}
-		if req.GetUntil() == nil {
-			return nil, status.Error(codes.InvalidArgument, "until is required (or clear)")
+		if err != nil {
+			return nil, dbStatus(err)
 		}
-		u := req.GetUntil().AsTime()
-		switch d := time.Until(u); {
-		case d < nodeagent.MinOverride:
-			return nil, status.Errorf(codes.InvalidArgument, "until must be at least %v ahead", nodeagent.MinOverride)
-		case d > nodeagent.MaxOverride:
-			return nil, status.Errorf(codes.InvalidArgument, "until may be at most %v ahead", nodeagent.MaxOverride)
-		}
-		l := int32(req.GetLevel())
-		level, until = &l, &u
+		log.Info().Str("node_id", req.GetNodeId()).Msg("node override cleared")
+		return nodeScheduleInfo(row, time.Now()), nil
 	}
-	row, err := s.db.SetNodeOverride(ctx, req.GetNodeId(), level, until)
+	if req.GetLevel() > 100 {
+		return nil, status.Errorf(codes.InvalidArgument, "level %d is above 100", req.GetLevel())
+	}
+	if req.GetUntil() == nil {
+		return nil, status.Error(codes.InvalidArgument, "until is required (or clear)")
+	}
+	u := req.GetUntil().AsTime()
+	switch d := time.Until(u); {
+	case d < nodeagent.MinOverride:
+		return nil, status.Errorf(codes.InvalidArgument, "until must be at least %v ahead", nodeagent.MinOverride)
+	case d > nodeagent.MaxOverride:
+		return nil, status.Errorf(codes.InvalidArgument, "until may be at most %v ahead", nodeagent.MaxOverride)
+	}
+	row, err := s.db.SetNodeOverride(ctx, req.GetNodeId(), int32(req.GetLevel()), u)
 	if err != nil {
 		return nil, dbStatus(err)
 	}
-	log.Info().Str("node_id", req.GetNodeId()).Bool("clear", req.GetClear()).Uint32("level", req.GetLevel()).Msg("node override set")
+	log.Info().Str("node_id", req.GetNodeId()).Uint32("level", req.GetLevel()).Time("until", u).Msg("node override set")
 	return nodeScheduleInfo(row, time.Now()), nil
 }
 

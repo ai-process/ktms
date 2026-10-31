@@ -83,16 +83,7 @@ func writeJSON0600(path string, v any) error {
 // initSource picks the schedule source: the tray's saved choice, else the
 // flag; in ktms mode it starts from the last schedule KTMS sent.
 func (a *Agent) initSource() {
-	a.source = a.cfg.ScheduleSource
-	if a.source == "" {
-		a.source = ScheduleSourceLocal
-	}
-	var s Settings
-	if ok, err := readJSON(a.stateFile("settings.json"), &s); err != nil {
-		log.Warn().Err(err).Msg("cannot read the node settings; using the flags")
-	} else if ok && validSource(s.ScheduleSource) {
-		a.source = s.ScheduleSource
-	}
+	a.source = sourceSetting(a.cfg)
 	var m managedSchedule
 	if ok, err := readJSON(a.stateFile("managed-schedule"), &m); err != nil {
 		log.Warn().Err(err).Msg("cannot read the schedule last received from KTMS")
@@ -202,16 +193,33 @@ func sameOverride(a, b *Override) bool {
 	return a.Level == b.Level && a.Until.Equal(b.Until)
 }
 
-// capacityUntil is the end of the override behind the level in force, if any.
+// capacityUntil is the end of the override behind the level in force, if any;
+// it asks the layers themselves, not p.source, which lags until the next refresh.
 func (a *Agent) capacityUntil() *time.Time {
 	p := &a.pause
-	switch p.source {
-	case SourceOverride:
+	now := a.now()
+	if p.override.activeAt(now) {
 		return &p.override.Until
-	case SourceKTMSOverride:
-		return &p.managed.Override.Until
+	}
+	if o := p.managed.override(); a.source == ScheduleSourceKTMS && o.activeAt(now) {
+		return &o.Until
 	}
 	return nil
+}
+
+// sourceSetting is the schedule source the agent starts with: the saved
+// choice, else the flag. The doctor reads it without a running agent.
+func sourceSetting(cfg AgentConfig) string {
+	var s Settings
+	if cfg.StateDir != "" {
+		if ok, err := readJSON(filepath.Join(cfg.StateDir, "settings.json"), &s); ok && err == nil && validSource(s.ScheduleSource) {
+			return s.ScheduleSource
+		}
+	}
+	if cfg.ScheduleSource == "" {
+		return ScheduleSourceLocal
+	}
+	return cfg.ScheduleSource
 }
 
 func timestampOrNil(t *time.Time) *timestamppb.Timestamp {

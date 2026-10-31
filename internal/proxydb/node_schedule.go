@@ -62,15 +62,32 @@ func (d *DB) SetNodeScheduleText(ctx context.Context, nodeID, text string) (*Nod
 		 RETURNING `+nodeScheduleCols, nodeID, text))
 }
 
-// SetNodeOverride sets (level and until) or, with both nil, clears the
-// override and bumps the version. A node with no row gets one with no rules.
-func (d *DB) SetNodeOverride(ctx context.Context, nodeID string, level *int32, until *time.Time) (*NodeSchedule, error) {
+// SetNodeOverride sets the override and bumps the version; a node with no
+// row gets one with no rules.
+func (d *DB) SetNodeOverride(ctx context.Context, nodeID string, level int32, until time.Time) (*NodeSchedule, error) {
 	return scanNodeSchedule(d.pool.QueryRow(ctx,
 		`INSERT INTO node_schedule (node_id, override_level, override_until) VALUES ($1, $2, $3)
 		 ON CONFLICT (node_id) DO UPDATE SET override_level = EXCLUDED.override_level,
 		     override_until = EXCLUDED.override_until,
 		     version = node_schedule.version + 1, updated_at = NOW()
 		 RETURNING `+nodeScheduleCols, nodeID, level, until))
+}
+
+// ClearNodeOverride removes the override. A row that held only the override
+// goes with it, so it never reads as a schedule someone set; ErrNotFound when
+// there was no row.
+func (d *DB) ClearNodeOverride(ctx context.Context, nodeID string) (*NodeSchedule, error) {
+	row, err := scanNodeSchedule(d.pool.QueryRow(ctx,
+		`UPDATE node_schedule SET override_level = NULL, override_until = NULL,
+		     version = version + 1, updated_at = NOW()
+		 WHERE node_id = $1 RETURNING `+nodeScheduleCols, nodeID))
+	if err != nil || row.Text != "" {
+		return row, err
+	}
+	if _, err := d.pool.Exec(ctx, `DELETE FROM node_schedule WHERE node_id = $1 AND schedule = ''`, nodeID); err != nil {
+		return nil, err
+	}
+	return nil, ErrNotFound
 }
 
 func (d *DB) DeleteNodeSchedule(ctx context.Context, nodeID string) error {

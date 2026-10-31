@@ -191,7 +191,7 @@ func exportDoc(live *State) (*yaml.Node, error) {
 	if live.NodeSchedulesErr == nil {
 		scheds := seq()
 		for _, ns := range live.NodeSchedules {
-			if ns.GetVersion() == 0 {
+			if ns.GetVersion() == 0 || strings.TrimSpace(ns.GetText()) == "" {
 				continue
 			}
 			n := mapping()
