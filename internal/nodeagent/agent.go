@@ -310,6 +310,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	log.Info().Str("node_id", a.cfg.NodeID).Str("endpoint", a.currentEndpoint()).Dur("interval", interval).Msg("node registered successfully")
 	a.conn.registered = true
+	a.publish()
 
 	// 2. Heartbeat loop
 	ticker := time.NewTicker(interval)

@@ -255,7 +255,8 @@ func (a *Agent) handleSetOverride(w http.ResponseWriter, r *http.Request) {
 	}
 	v, err := a.do(r.Context(), func() (any, error) {
 		now := a.now()
-		next, _, ok := a.pause.sched.Next(now)
+		// The switch the owner was shown: overrides included, not the schedule alone.
+		next, _, ok, _ := a.nextSwitch(now)
 		o, err := req.resolve(now, next, ok)
 		if err != nil {
 			return nil, err
