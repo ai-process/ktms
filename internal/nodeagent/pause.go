@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -21,18 +22,24 @@ const (
 
 // pauseState is the agent's schedule bookkeeping; only Run's goroutine touches it.
 type pauseState struct {
-	sched    *Schedule
-	content  []byte // of the file last read, valid or not; nil when there is none
-	level    uint32
-	nextAt   time.Time // next switch, kept until the level or the file changes
-	next     uint32
-	nextOK   bool
-	started  bool
-	pausedAt time.Time // when the level last fell to 0
+	sched     *Schedule
+	content   []byte // of the file last read, valid or not; nil when there is none
+	schedErr  string // why the file last read was refused; "" when it is in force
+	override  *Override
+	level     uint32
+	source    string    // where level comes from: schedule, override or default
+	nextAt    time.Time // next switch, kept until the level or the file changes
+	next      uint32
+	nextOK    bool
+	nextSrc   string
+	nextDirty bool // the override changed: recompute the next switch
+	started   bool
+	pausedAt  time.Time // when the level last fell to 0
 
 	gateClosed bool
 	unloaded   bool     // the served models were freed in this pause
 	warmed     bool     // the warm-up before the next window was done
+	warmLate   bool     // a pause that skipped its warm-up ended: warm now
 	resident   []string // models freed by the pause, to warm again
 	epoch      int      // bumps on each level change; stale engine results are ignored
 	busy       bool     // an engine call is in flight
@@ -65,7 +72,7 @@ func (a *Agent) reloadSchedule() bool {
 		if changed {
 			log.Info().Str("file", a.cfg.ScheduleFile).Msg("schedule file removed; running at 100%")
 		}
-		p.sched, p.content = nil, nil
+		p.sched, p.content, p.schedErr = nil, nil, ""
 		return changed
 	}
 	if err != nil {
@@ -78,27 +85,33 @@ func (a *Agent) reloadSchedule() bool {
 	p.content = data
 	s, err := ParseSchedule(bytes.NewReader(data))
 	if err != nil {
+		p.schedErr = err.Error()
 		log.Error().Err(err).Str("file", a.cfg.ScheduleFile).Msg("schedule file is invalid; keeping the current schedule")
 		return false
 	}
-	p.sched = s
+	p.sched, p.schedErr = s, ""
 	log.Info().Str("file", a.cfg.ScheduleFile).Str("schedule", s.Status(a.now())).Msg("schedule loaded")
 	return true
 }
 
-// refreshLevel re-reads the schedule and reports whether the level changed.
+// refreshLevel re-reads the schedule, ends an expired override and reports
+// whether the level in force changed.
 func (a *Agent) refreshLevel() bool {
 	p := &a.pause
 	reloaded := a.reloadSchedule()
 	now := a.now()
-	lvl := p.sched.Level(now)
+	a.expireOverride(now)
+	lvl, src := a.effectiveLevel(now)
 	if p.started && lvl == p.level {
-		if reloaded {
-			p.nextAt, p.next, p.nextOK = p.sched.Next(now)
+		if reloaded || p.nextDirty || src != p.source {
+			p.nextAt, p.next, p.nextOK, p.nextSrc = a.nextSwitch(now)
+			p.nextDirty = false
 		}
+		p.source = src
 		return false
 	}
-	p.nextAt, p.next, p.nextOK = p.sched.Next(now)
+	p.nextAt, p.next, p.nextOK, p.nextSrc = a.nextSwitch(now)
+	p.nextDirty = false
 	from := p.level
 	if !p.started {
 		from = 100
@@ -107,13 +120,15 @@ func (a *Agent) refreshLevel() bool {
 			p.pausedAt = time.Time{} // starting inside a pause: no request can be on its way yet
 		}
 	} else {
-		log.Info().Uint32("from", from).Uint32("to", lvl).Str("next", p.sched.describeNext(now)).Msg("schedule level changed")
+		log.Info().Uint32("from", from).Uint32("to", lvl).Str("source", src).Str("next", a.describeNext(now)).Msg("level changed")
 		if lvl == 0 {
 			p.pausedAt = now
 		}
 	}
-	p.level = lvl
+	p.level, p.source = lvl, src
 	if lvl == 0 && from != 0 || lvl != 0 && from == 0 {
+		// A manual pause skips the warm-up so the owner keeps the memory; the models load once it ends.
+		p.warmLate = lvl != 0 && p.unloaded && !p.warmed
 		p.epoch++
 		p.gateClosed, p.unloaded, p.warmed = false, false, false
 		p.retryAt = time.Time{}
@@ -146,6 +161,7 @@ func (a *Agent) afterHeartbeat(resp *pb.HeartbeatResponse, models []*pb.NodeMode
 func (a *Agent) stepPause() {
 	p := &a.pause
 	if p.level != 0 {
+		a.warmAfterPause()
 		return
 	}
 	now := a.now()
@@ -166,7 +182,8 @@ func (a *Agent) stepPause() {
 		}
 		return
 	}
-	if p.nextOK && p.next > 0 && p.nextAt.Sub(now) <= a.cfg.Warmup {
+	coldPause := p.override.activeAt(now) && !p.override.Warm
+	if p.nextOK && p.next > 0 && p.nextAt.Sub(now) <= a.cfg.Warmup && !coldPause {
 		if !p.warmed {
 			a.engineCall(ctl, true, a.warmTargets())
 		}
@@ -175,6 +192,37 @@ func (a *Agent) stepPause() {
 	if p.gateClosed && p.active == 0 && !p.unloaded {
 		a.engineCall(ctl, false, a.unloadTargets())
 	}
+}
+
+// warmAfterPause loads the models a pause freed without warming them back.
+func (a *Agent) warmAfterPause() {
+	p := &a.pause
+	if !p.warmLate || p.busy || a.now().Before(p.retryAt) {
+		return
+	}
+	ctl, ok := a.inspector.(EngineController)
+	if !ok {
+		p.warmLate = false
+		return
+	}
+	a.engineCall(ctl, true, a.warmTargets())
+}
+
+// describeNext renders the next switch of the level in force.
+func (a *Agent) describeNext(now time.Time) string {
+	p := &a.pause
+	if !p.nextOK {
+		return "none"
+	}
+	at, local := p.nextAt.Local(), now.Local()
+	if p.sched != nil {
+		at, local = p.sched.local(p.nextAt), p.sched.local(now)
+	}
+	format := "15:04"
+	if at.YearDay() != local.YearDay() || at.Year() != local.Year() {
+		format = "Mon 15:04"
+	}
+	return fmt.Sprintf("%s %d%%", at.Format(format), p.next)
 }
 
 // unloadTargets are the served models the engine holds in memory now.
@@ -245,7 +293,7 @@ func (a *Agent) finishEngineCall(r engineResult) {
 		return
 	}
 	if r.warm {
-		p.warmed = true
+		p.warmed, p.warmLate = true, false
 	} else {
 		p.unloaded = true
 		if len(r.models) > 0 {

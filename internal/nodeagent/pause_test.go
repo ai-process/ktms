@@ -120,6 +120,13 @@ func (o *residentOllama) log() []string {
 
 func startScheduledAgent(t *testing.T, schedule string, clock *fakeClock) (*levelRegistry, *residentOllama) {
 	t.Helper()
+	_, reg, ollama := startAgent(t, schedule, clock)
+	return reg, ollama
+}
+
+// startAgent runs an agent against a fake proxy and Ollama; opts adjust its config.
+func startAgent(t *testing.T, schedule string, clock *fakeClock, opts ...func(*AgentConfig)) (*Agent, *levelRegistry, *residentOllama) {
+	t.Helper()
 	file := filepath.Join(t.TempDir(), "schedule")
 	if err := os.WriteFile(file, []byte(schedule), 0o644); err != nil {
 		t.Fatal(err)
@@ -138,11 +145,15 @@ func startScheduledAgent(t *testing.T, schedule string, clock *fakeClock) (*leve
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
 
-	a := NewAgent(AgentConfig{
+	cfg := AgentConfig{
 		ProxyAddr: lis.Addr().String(), NodeKey: "k", NodeID: "n1", NodeName: "n1",
 		Engine: "ollama", EngineURL: engine.URL, Endpoint: engine.URL, OnlyModels: []string{"m:1b"},
 		BaseWeight: 100, MaxConcurrent: 1, ScheduleFile: file, Warmup: 5 * time.Minute,
-	})
+	}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	a := NewAgent(cfg)
 	a.now = clock.Now
 	a.levelEvery = 10 * time.Millisecond
 	a.pauseGrace = 0
@@ -158,7 +169,7 @@ func startScheduledAgent(t *testing.T, schedule string, clock *fakeClock) (*leve
 			t.Error("agent did not stop")
 		}
 	})
-	return reg, ollama
+	return a, reg, ollama
 }
 
 func waitLevel(t *testing.T, reg *levelRegistry, want uint32, within time.Duration) {

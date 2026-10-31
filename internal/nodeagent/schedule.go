@@ -172,9 +172,8 @@ func parseLevel(s string) (int, error) {
 }
 
 func minuteName(i int) string {
-	names := [7]string{"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
 	m := i % minutesPerDay
-	return fmt.Sprintf("%s %02d:%02d", names[i/minutesPerDay], m/60, m%60)
+	return fmt.Sprintf("%s %02d:%02d", dayNames[i/minutesPerDay], m/60, m%60)
 }
 
 // weekMinute places t on the schedule by its local wall clock, so DST shifts
