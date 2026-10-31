@@ -27,6 +27,8 @@ type Team struct {
 	AllowedModels    []string
 	AllowedMCP       []string
 	CreatedAt        time.Time
+	// "restricted" keeps every key of the team on self-hosted nodes; "" does not.
+	DataClassification string
 }
 
 type APIKey struct {
@@ -47,6 +49,9 @@ type APIKey struct {
 	// MCP servers and tools the key, and its team, may use; empty = any.
 	AllowedMCP     []string
 	TeamAllowedMCP []string
+	// "restricted" on the key or its team keeps its calls on self-hosted nodes.
+	DataClassification     string
+	TeamDataClassification string
 }
 
 func (k *APIKey) Active() bool { return k.DisabledAt == nil }

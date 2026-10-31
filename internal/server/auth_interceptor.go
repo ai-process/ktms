@@ -14,7 +14,28 @@ import (
 	"github.com/ai-process/ktms/internal/apikeys"
 )
 
-const metadataKeyAuthorization = "authorization"
+const (
+	metadataKeyAuthorization      = "authorization"
+	metadataKeyDataClassification = "x-ktms-data-classification"
+)
+
+// restrictCall marks ctx when the call's x-ktms-data-classification says
+// restricted, so every RPC, media ones included, keeps it on nodes.
+func restrictCall(ctx context.Context) (context.Context, error) {
+	md, _ := metadata.FromIncomingContext(ctx)
+	vals := md.Get(metadataKeyDataClassification)
+	if len(vals) == 0 {
+		return ctx, nil
+	}
+	v, err := apikeys.ParseDataClassification(vals[0], false)
+	if err != nil {
+		return ctx, status.Error(codes.InvalidArgument, "bad_request: "+err.Error())
+	}
+	if v == apikeys.DataRestricted {
+		ctx = apikeys.WithRestricted(ctx)
+	}
+	return ctx, nil
+}
 
 // methodScopes is the scope each RPC needs. A method missing from this map is
 // refused, so adding an RPC without deciding who may call it fails closed
@@ -104,6 +125,9 @@ func authUnaryInterceptor(verifier *apikeys.Verifier) grpclib.UnaryServerInterce
 		if err != nil {
 			return nil, err
 		}
+		if ctx, err = restrictCall(ctx); err != nil {
+			return nil, err
+		}
 		return handler(apikeys.WithIdentity(ctx, id), req)
 	}
 }
@@ -128,9 +152,13 @@ func authStreamInterceptor(verifier *apikeys.Verifier) grpclib.StreamServerInter
 		if err != nil {
 			return err
 		}
+		ctx, err := restrictCall(ss.Context())
+		if err != nil {
+			return err
+		}
 		return handler(srv, &wrappedServerStream{
 			ServerStream: ss,
-			ctx:          apikeys.WithIdentity(ss.Context(), id),
+			ctx:          apikeys.WithIdentity(ctx, id),
 		})
 	}
 }

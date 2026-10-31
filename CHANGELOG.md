@@ -8,6 +8,15 @@ All notable changes to KTMS are listed here. The format follows
 ## [Unreleased]
 
 ### Added
+- `data_classification: restricted` on a key's policy, a team, or a call (`GenerateTextRequest`,
+  `ExplainRouteRequest`, `data_classification` on `/v1/chat/completions`, the
+  `X-KTMS-Data-Classification` header or `x-ktms-data-classification` gRPC metadata) keeps calls on
+  self-hosted nodes with no cloud fallback: chains keep only node models, the auto-effort and
+  shadow judges run only on nodes, the response cache is skipped, and embeddings, judgments,
+  speech, images and batches need a node model. Usage events carry it in meta. In
+  `SetAPIKeyPolicy` and `UpdateTeam` an empty value keeps the current one and `unrestricted` lifts
+  it. `ktms keys mint`, `ktms keys policy set` and `ktms route explain` take
+  `--data-classification`, and teams take it in the configuration file.
 - Anthropic Messages API (experimental): `POST /v1/messages`, so Claude Code
   (`ANTHROPIC_BASE_URL`) and the Anthropic SDKs run through Keystone with a KTMS key in
   `x-api-key` or `Authorization`, `model: "auto"` or a registry model id. It shares routing,

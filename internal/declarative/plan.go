@@ -144,7 +144,7 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 				if lt == nil {
 					p.add(Change{Op: Create, Kind: "team", Name: name, Details: teamDetails(nil, t)}, func(ctx context.Context, c pb.AdminServiceClient, a *applied) error {
 						r, err := c.CreateTeam(ctx, &pb.CreateTeamRequest{OrgId: a.orgIDs[o.Name], Name: t.Name,
-							MonthlyBudgetUsd: t.MonthlyBudgetUSD, AllowedModels: t.AllowedModels, AllowedMcp: t.AllowedMCP})
+							MonthlyBudgetUsd: t.MonthlyBudgetUSD, AllowedModels: t.AllowedModels, AllowedMcp: t.AllowedMCP, DataClassification: t.DataClassification})
 						if err != nil {
 							return err
 						}
@@ -156,7 +156,8 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 				if d := teamDetails(lt, t); len(d) > 0 {
 					p.add(Change{Op: Update, Kind: "team", Name: name, Details: d}, func(ctx context.Context, c pb.AdminServiceClient, _ *applied) error {
 						_, err := c.UpdateTeam(ctx, &pb.UpdateTeamRequest{Id: lt.GetId(), Name: t.Name,
-							MonthlyBudgetUsd: t.MonthlyBudgetUSD, AllowedModels: t.AllowedModels, AllowedMcp: t.AllowedMCP})
+							MonthlyBudgetUsd: t.MonthlyBudgetUSD, AllowedModels: t.AllowedModels, AllowedMcp: t.AllowedMCP,
+							DataClassification: lifted(lt.GetDataClassification(), t.DataClassification)})
 						return err
 					})
 				}
@@ -345,10 +346,11 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 			}
 			if d := policyDiff(lk.GetPolicy(), k.Policy); len(d) > 0 {
 				p.add(Change{Op: Update, Kind: "api key policy", Name: k.Name, Details: d}, func(ctx context.Context, c pb.AdminServiceClient, _ *applied) error {
-					pol := k.Policy
+					pol := proto.Clone(k.Policy).(*pb.APIKeyPolicy)
 					if pol == nil {
 						pol = &pb.APIKeyPolicy{}
 					}
+					pol.DataClassification = lifted(lk.GetPolicy().GetDataClassification(), pol.GetDataClassification())
 					_, err := c.SetAPIKeyPolicy(ctx, &pb.SetAPIKeyPolicyRequest{Name: k.Name, Policy: pol})
 					return err
 				})
@@ -665,6 +667,9 @@ func teamDetails(live *pb.Team, t Team) []string {
 		if len(t.AllowedMCP) > 0 {
 			d = append(d, "allowed mcp "+strings.Join(t.AllowedMCP, ", "))
 		}
+		if t.DataClassification != "" {
+			d = append(d, "data classification "+t.DataClassification)
+		}
 		return d
 	}
 	if live.GetMonthlyBudgetUsd() != t.MonthlyBudgetUSD {
@@ -676,7 +681,19 @@ func teamDetails(live *pb.Team, t Team) []string {
 	if !sameSet(live.GetAllowedMcp(), t.AllowedMCP) {
 		d = append(d, fmt.Sprintf("allowed mcp %v → %v", live.GetAllowedMcp(), t.AllowedMCP))
 	}
+	if live.GetDataClassification() != t.DataClassification {
+		d = append(d, fmt.Sprintf("data classification %q → %q", live.GetDataClassification(), t.DataClassification))
+	}
 	return d
+}
+
+// lifted is the data_classification an update sends: there "" keeps the
+// current value, so the file's "" lifts a live restriction as "unrestricted".
+func lifted(live, want string) string {
+	if want == "" && live != "" {
+		return apikeys.DataUnrestricted
+	}
+	return want
 }
 
 func policyDiff(live, want *pb.APIKeyPolicy) []string {
@@ -692,6 +709,9 @@ func policyDiff(live, want *pb.APIKeyPolicy) []string {
 	}
 	if !sameSet(live.GetAllowedMcp(), want.GetAllowedMcp()) {
 		d = append(d, fmt.Sprintf("allowed mcp %v → %v", live.GetAllowedMcp(), want.GetAllowedMcp()))
+	}
+	if live.GetDataClassification() != want.GetDataClassification() {
+		d = append(d, fmt.Sprintf("data classification %q → %q", live.GetDataClassification(), want.GetDataClassification()))
 	}
 	return d
 }

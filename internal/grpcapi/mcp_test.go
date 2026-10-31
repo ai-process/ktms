@@ -146,3 +146,59 @@ func TestKeyAndTeamAllowedMCP(t *testing.T) {
 		t.Fatalf("team = %v, %v", got, err)
 	}
 }
+
+func TestKeyAndTeamDataClassification(t *testing.T) {
+	db := rotateTestDB(t)
+	ctx := context.Background()
+	s := NewAdminServer(db, keyring(t, 1), nil)
+	org, err := s.CreateOrganization(ctx, &pb.CreateOrganizationRequest{Name: "clinic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateTeam(ctx, &pb.CreateTeamRequest{OrgId: org.GetOrganization().GetId(), Name: "t", DataClassification: "secret"}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("bad class: %v", err)
+	}
+	team, err := s.CreateTeam(ctx, &pb.CreateTeamRequest{OrgId: org.GetOrganization().GetId(), Name: "t", DataClassification: apikeys.DataRestricted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "notes-" + uuid.NewString()[:8]
+	if _, err := s.MintAPIKey(ctx, &pb.MintAPIKeyRequest{Name: name, Scopes: []string{"generate"}, TeamId: team.GetTeam().GetId()}); err != nil {
+		t.Fatal(err)
+	}
+	row, _ := db.GetAPIKeyByName(ctx, name)
+	if id := apikeys.IdentityFor(row); !id.Restricted() || id.KeyDataClassification != "" {
+		t.Fatalf("team restriction: %+v", id)
+	}
+
+	// An update that leaves the field out, as an older client does, keeps the restriction.
+	if _, err := s.UpdateTeam(ctx, &pb.UpdateTeamRequest{Id: team.GetTeam().GetId(), Name: "t", MonthlyBudgetUsd: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetTeam(ctx, &pb.GetTeamRequest{Id: team.GetTeam().GetId()}); got.GetTeam().GetDataClassification() != apikeys.DataRestricted {
+		t.Fatalf("team lost its restriction: %v", got)
+	}
+
+	// The key's own restriction stays when the team's is lifted.
+	if _, err := s.SetAPIKeyPolicy(ctx, &pb.SetAPIKeyPolicyRequest{Name: name, Policy: &pb.APIKeyPolicy{DataClassification: apikeys.DataRestricted}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetAPIKeyPolicy(ctx, &pb.SetAPIKeyPolicyRequest{Name: name, Policy: &pb.APIKeyPolicy{RpmLimit: 60}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.UpdateTeam(ctx, &pb.UpdateTeamRequest{Id: team.GetTeam().GetId(), Name: "t", DataClassification: apikeys.DataUnrestricted}); err != nil {
+		t.Fatal(err)
+	}
+	row, _ = db.GetAPIKeyByName(ctx, name)
+	if id := apikeys.IdentityFor(row); !id.Restricted() || id.TeamDataClassification != "" {
+		t.Fatalf("key restriction: %+v", id)
+	}
+	keys, _ := s.ListAPIKeys(ctx, &pb.ListAPIKeysRequest{})
+	got, _ := s.GetTeam(ctx, &pb.GetTeamRequest{Id: team.GetTeam().GetId()})
+	if len(keys.GetKeys()) != 1 || keys.GetKeys()[0].GetPolicy().GetDataClassification() != apikeys.DataRestricted || got.GetTeam().GetDataClassification() != "" {
+		t.Fatalf("keys %v team %v", keys, got)
+	}
+	if _, err := s.SetAPIKeyPolicy(ctx, &pb.SetAPIKeyPolicyRequest{Name: name, Policy: &pb.APIKeyPolicy{DataClassification: "public"}}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("bad key class: %v", err)
+	}
+}

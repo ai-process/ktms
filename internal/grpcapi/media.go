@@ -235,8 +235,17 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 	if models, err = teamModels(ctx, id, models); err != nil {
 		return nil, err
 	}
+	restricted := restrictedCall(ctx, id)
+	if restricted {
+		if models, err = nodeModels(models, modality); err != nil {
+			return nil, err
+		}
+	}
 
 	meta := usageMeta(routing, id)
+	if restricted {
+		meta[DataClassificationAttribute] = apikeys.DataRestricted
+	}
 	if ruleName != "" {
 		meta["rule"] = ruleName
 	}

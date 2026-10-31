@@ -79,6 +79,35 @@ type Identity struct {
 	// MCP servers ("server") and tools ("server/tool") allowed; empty = any.
 	KeyAllowedMCP  []string
 	TeamAllowedMCP []string
+	// DataRestricted on the key or its team keeps all its calls on nodes.
+	KeyDataClassification  string
+	TeamDataClassification string
+}
+
+// Data classifications. DataUnrestricted exists only to lift a restriction
+// in the update RPCs, where an empty value keeps the current one.
+const (
+	DataRestricted   = "restricted"
+	DataUnrestricted = "unrestricted"
+)
+
+// ParseDataClassification normalises a data_classification: "" or
+// "restricted", and with update also "unrestricted".
+func ParseDataClassification(v string, update bool) (string, error) {
+	v = strings.ToLower(strings.TrimSpace(v))
+	if v == "" || v == DataRestricted || update && v == DataUnrestricted {
+		return v, nil
+	}
+	want := `"restricted" or empty`
+	if update {
+		want = `"restricted", "unrestricted" or empty`
+	}
+	return "", fmt.Errorf("data_classification %q: want %s", v, want)
+}
+
+// Restricted reports whether the key or its team is restricted to nodes.
+func (i *Identity) Restricted() bool {
+	return i != nil && (i.KeyDataClassification == DataRestricted || i.TeamDataClassification == DataRestricted)
 }
 
 // HasScope reports whether the caller may perform an action needing want.
@@ -377,6 +406,9 @@ func IdentityFor(row *proxydb.APIKey) *Identity {
 		TPMLimit:          row.TPMLimit,
 		KeyAllowedMCP:     row.AllowedMCP,
 		TeamAllowedMCP:    row.TeamAllowedMCP,
+
+		KeyDataClassification:  row.DataClassification,
+		TeamDataClassification: row.TeamDataClassification,
 	}
 }
 

@@ -1071,9 +1071,13 @@ type APIKeyPolicy struct {
 	TpmLimit int64 `protobuf:"varint,3,opt,name=tpm_limit,json=tpmLimit,proto3" json:"tpm_limit,omitempty"`
 	// MCP servers ("github") and single tools ("github/create_issue") a key with
 	// the mcp scope may use; empty = any. Others are hidden and refused.
-	AllowedMcp    []string `protobuf:"bytes,4,rep,name=allowed_mcp,json=allowedMcp,proto3" json:"allowed_mcp,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	AllowedMcp []string `protobuf:"bytes,4,rep,name=allowed_mcp,json=allowedMcp,proto3" json:"allowed_mcp,omitempty"`
+	// "restricted" keeps every call of the key on self-hosted nodes. In
+	// SetAPIKeyPolicy, unlike its other fields, "" keeps the current value and
+	// only "unrestricted" lifts it, so an older client cannot lift a restriction.
+	DataClassification string `protobuf:"bytes,5,opt,name=data_classification,json=dataClassification,proto3" json:"data_classification,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *APIKeyPolicy) Reset() {
@@ -1132,6 +1136,13 @@ func (x *APIKeyPolicy) GetAllowedMcp() []string {
 		return x.AllowedMcp
 	}
 	return nil
+}
+
+func (x *APIKeyPolicy) GetDataClassification() string {
+	if x != nil {
+		return x.DataClassification
+	}
+	return ""
 }
 
 // SetAPIKeyPolicy replaces a key's policy; it applies from the key's next call.
@@ -3114,16 +3125,17 @@ func (x *Organization) GetCreatedAt() *timestamppb.Timestamp {
 // monthly_budget_usd per UTC month across all its keys (0 = no cap). Deleting a
 // team or organization detaches revoked keys and is refused while active ones remain.
 type Team struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Id               string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	OrgId            string                 `protobuf:"bytes,2,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
-	Name             string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	MonthlyBudgetUsd float64                `protobuf:"fixed64,4,opt,name=monthly_budget_usd,json=monthlyBudgetUsd,proto3" json:"monthly_budget_usd,omitempty"`
-	AllowedModels    []string               `protobuf:"bytes,5,rep,name=allowed_models,json=allowedModels,proto3" json:"allowed_models,omitempty"`
-	CreatedAt        *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	AllowedMcp       []string               `protobuf:"bytes,7,rep,name=allowed_mcp,json=allowedMcp,proto3" json:"allowed_mcp,omitempty"` // as APIKeyPolicy.allowed_mcp, for every key of the team
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	OrgId              string                 `protobuf:"bytes,2,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	Name               string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	MonthlyBudgetUsd   float64                `protobuf:"fixed64,4,opt,name=monthly_budget_usd,json=monthlyBudgetUsd,proto3" json:"monthly_budget_usd,omitempty"`
+	AllowedModels      []string               `protobuf:"bytes,5,rep,name=allowed_models,json=allowedModels,proto3" json:"allowed_models,omitempty"`
+	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	AllowedMcp         []string               `protobuf:"bytes,7,rep,name=allowed_mcp,json=allowedMcp,proto3" json:"allowed_mcp,omitempty"`                         // as APIKeyPolicy.allowed_mcp, for every key of the team
+	DataClassification string                 `protobuf:"bytes,8,opt,name=data_classification,json=dataClassification,proto3" json:"data_classification,omitempty"` // as APIKeyPolicy.data_classification, for every key of the team
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *Team) Reset() {
@@ -3203,6 +3215,13 @@ func (x *Team) GetAllowedMcp() []string {
 		return x.AllowedMcp
 	}
 	return nil
+}
+
+func (x *Team) GetDataClassification() string {
+	if x != nil {
+		return x.DataClassification
+	}
+	return ""
 }
 
 type CreateOrganizationRequest struct {
@@ -3454,14 +3473,15 @@ func (*DeleteOrganizationResponse) Descriptor() ([]byte, []int) {
 }
 
 type CreateTeamRequest struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	OrgId            string                 `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
-	Name             string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	MonthlyBudgetUsd float64                `protobuf:"fixed64,3,opt,name=monthly_budget_usd,json=monthlyBudgetUsd,proto3" json:"monthly_budget_usd,omitempty"`
-	AllowedModels    []string               `protobuf:"bytes,4,rep,name=allowed_models,json=allowedModels,proto3" json:"allowed_models,omitempty"`
-	AllowedMcp       []string               `protobuf:"bytes,5,rep,name=allowed_mcp,json=allowedMcp,proto3" json:"allowed_mcp,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	OrgId              string                 `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	Name               string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	MonthlyBudgetUsd   float64                `protobuf:"fixed64,3,opt,name=monthly_budget_usd,json=monthlyBudgetUsd,proto3" json:"monthly_budget_usd,omitempty"`
+	AllowedModels      []string               `protobuf:"bytes,4,rep,name=allowed_models,json=allowedModels,proto3" json:"allowed_models,omitempty"`
+	AllowedMcp         []string               `protobuf:"bytes,5,rep,name=allowed_mcp,json=allowedMcp,proto3" json:"allowed_mcp,omitempty"`
+	DataClassification string                 `protobuf:"bytes,6,opt,name=data_classification,json=dataClassification,proto3" json:"data_classification,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *CreateTeamRequest) Reset() {
@@ -3527,6 +3547,13 @@ func (x *CreateTeamRequest) GetAllowedMcp() []string {
 		return x.AllowedMcp
 	}
 	return nil
+}
+
+func (x *CreateTeamRequest) GetDataClassification() string {
+	if x != nil {
+		return x.DataClassification
+	}
+	return ""
 }
 
 type CreateTeamResponse struct {
@@ -3752,14 +3779,15 @@ func (x *ListTeamsResponse) GetTeams() []*Team {
 // Replaces the team: an omitted budget removes the cap and omitted
 // allowed_models or allowed_mcp lifts the restriction, so send every field.
 type UpdateTeamRequest struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Id               string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name             string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	MonthlyBudgetUsd float64                `protobuf:"fixed64,3,opt,name=monthly_budget_usd,json=monthlyBudgetUsd,proto3" json:"monthly_budget_usd,omitempty"`
-	AllowedModels    []string               `protobuf:"bytes,4,rep,name=allowed_models,json=allowedModels,proto3" json:"allowed_models,omitempty"`
-	AllowedMcp       []string               `protobuf:"bytes,5,rep,name=allowed_mcp,json=allowedMcp,proto3" json:"allowed_mcp,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name               string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	MonthlyBudgetUsd   float64                `protobuf:"fixed64,3,opt,name=monthly_budget_usd,json=monthlyBudgetUsd,proto3" json:"monthly_budget_usd,omitempty"`
+	AllowedModels      []string               `protobuf:"bytes,4,rep,name=allowed_models,json=allowedModels,proto3" json:"allowed_models,omitempty"`
+	AllowedMcp         []string               `protobuf:"bytes,5,rep,name=allowed_mcp,json=allowedMcp,proto3" json:"allowed_mcp,omitempty"`
+	DataClassification string                 `protobuf:"bytes,6,opt,name=data_classification,json=dataClassification,proto3" json:"data_classification,omitempty"` // "" keeps the current one, "unrestricted" lifts it
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *UpdateTeamRequest) Reset() {
@@ -3825,6 +3853,13 @@ func (x *UpdateTeamRequest) GetAllowedMcp() []string {
 		return x.AllowedMcp
 	}
 	return nil
+}
+
+func (x *UpdateTeamRequest) GetDataClassification() string {
+	if x != nil {
+		return x.DataClassification
+	}
+	return ""
 }
 
 type UpdateTeamResponse struct {
@@ -4913,16 +4948,17 @@ func (x *ListMCPToolsResponse) GetTools() []*MCPToolInfo {
 }
 
 type ExplainRouteRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ApiKeyName    string                 `protobuf:"bytes,1,opt,name=api_key_name,json=apiKeyName,proto3" json:"api_key_name,omitempty"`                                                       // the client key the request would carry
-	Effort        Effort                 `protobuf:"varint,2,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"`                                                              // as in GenerateTextRequest; with auto_route, the effort the judge would otherwise pick
-	AutoRoute     bool                   `protobuf:"varint,3,opt,name=auto_route,json=autoRoute,proto3" json:"auto_route,omitempty"`                                                           // as in GenerateTextRequest; without an effort the judge is not called (judge_skipped)
-	Attributes    map[string]string      `protobuf:"bytes,4,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // request attributes the rules match on, user_id and canary_key included
-	Placement     string                 `protobuf:"bytes,5,opt,name=placement,proto3" json:"placement,omitempty"`                                                                             // nodes_first | nodes_only | cloud_first | cloud_only, empty for the rule's default
-	ModelOverride string                 `protobuf:"bytes,6,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`                                                // as in GenerateTextRequest
-	Capabilities  []string               `protobuf:"bytes,7,rep,name=capabilities,proto3" json:"capabilities,omitempty"`                                                                       // capabilities the request needs, e.g. "google_search"
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	ApiKeyName         string                 `protobuf:"bytes,1,opt,name=api_key_name,json=apiKeyName,proto3" json:"api_key_name,omitempty"`                                                       // the client key the request would carry
+	Effort             Effort                 `protobuf:"varint,2,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"`                                                              // as in GenerateTextRequest; with auto_route, the effort the judge would otherwise pick
+	AutoRoute          bool                   `protobuf:"varint,3,opt,name=auto_route,json=autoRoute,proto3" json:"auto_route,omitempty"`                                                           // as in GenerateTextRequest; without an effort the judge is not called (judge_skipped)
+	Attributes         map[string]string      `protobuf:"bytes,4,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // request attributes the rules match on, user_id and canary_key included
+	Placement          string                 `protobuf:"bytes,5,opt,name=placement,proto3" json:"placement,omitempty"`                                                                             // nodes_first | nodes_only | cloud_first | cloud_only, empty for the rule's default
+	ModelOverride      string                 `protobuf:"bytes,6,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`                                                // as in GenerateTextRequest
+	Capabilities       []string               `protobuf:"bytes,7,rep,name=capabilities,proto3" json:"capabilities,omitempty"`                                                                       // capabilities the request needs, e.g. "google_search"
+	DataClassification string                 `protobuf:"bytes,8,opt,name=data_classification,json=dataClassification,proto3" json:"data_classification,omitempty"`                                 // as in GenerateTextRequest
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *ExplainRouteRequest) Reset() {
@@ -5002,6 +5038,13 @@ func (x *ExplainRouteRequest) GetCapabilities() []string {
 		return x.Capabilities
 	}
 	return nil
+}
+
+func (x *ExplainRouteRequest) GetDataClassification() string {
+	if x != nil {
+		return x.DataClassification
+	}
+	return ""
 }
 
 type RouteCandidate struct {
@@ -5292,13 +5335,14 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x06scopes\x18\x02 \x03(\tR\x06scopes\x12\x15\n" +
 	"\x06org_id\x18\x03 \x01(\tR\x05orgId\x12\x17\n" +
 	"\ateam_id\x18\x04 \x01(\tR\x06teamId\x12-\n" +
-	"\x06policy\x18\x05 \x01(\v2\x15.ktms.v1.APIKeyPolicyR\x06policy\"\x90\x01\n" +
+	"\x06policy\x18\x05 \x01(\v2\x15.ktms.v1.APIKeyPolicyR\x06policy\"\xc1\x01\n" +
 	"\fAPIKeyPolicy\x12%\n" +
 	"\x0eallowed_models\x18\x01 \x03(\tR\rallowedModels\x12\x1b\n" +
 	"\trpm_limit\x18\x02 \x01(\x05R\brpmLimit\x12\x1b\n" +
 	"\ttpm_limit\x18\x03 \x01(\x03R\btpmLimit\x12\x1f\n" +
 	"\vallowed_mcp\x18\x04 \x03(\tR\n" +
-	"allowedMcp\"[\n" +
+	"allowedMcp\x12/\n" +
+	"\x13data_classification\x18\x05 \x01(\tR\x12dataClassification\"[\n" +
 	"\x16SetAPIKeyPolicyRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12-\n" +
 	"\x06policy\x18\x02 \x01(\v2\x15.ktms.v1.APIKeyPolicyR\x06policy\"\x19\n" +
@@ -5429,7 +5473,7 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x129\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xf2\x01\n" +
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xa3\x02\n" +
 	"\x04Team\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06org_id\x18\x02 \x01(\tR\x05orgId\x12\x12\n" +
@@ -5439,7 +5483,8 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1f\n" +
 	"\vallowed_mcp\x18\a \x03(\tR\n" +
-	"allowedMcp\"/\n" +
+	"allowedMcp\x12/\n" +
+	"\x13data_classification\x18\b \x01(\tR\x12dataClassification\"/\n" +
 	"\x19CreateOrganizationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"W\n" +
 	"\x1aCreateOrganizationResponse\x129\n" +
@@ -5449,14 +5494,15 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\rorganizations\x18\x01 \x03(\v2\x15.ktms.v1.OrganizationR\rorganizations\"+\n" +
 	"\x19DeleteOrganizationRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\x1c\n" +
-	"\x1aDeleteOrganizationResponse\"\xb4\x01\n" +
+	"\x1aDeleteOrganizationResponse\"\xe5\x01\n" +
 	"\x11CreateTeamRequest\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12,\n" +
 	"\x12monthly_budget_usd\x18\x03 \x01(\x01R\x10monthlyBudgetUsd\x12%\n" +
 	"\x0eallowed_models\x18\x04 \x03(\tR\rallowedModels\x12\x1f\n" +
 	"\vallowed_mcp\x18\x05 \x03(\tR\n" +
-	"allowedMcp\"7\n" +
+	"allowedMcp\x12/\n" +
+	"\x13data_classification\x18\x06 \x01(\tR\x12dataClassification\"7\n" +
 	"\x12CreateTeamResponse\x12!\n" +
 	"\x04team\x18\x01 \x01(\v2\r.ktms.v1.TeamR\x04team\" \n" +
 	"\x0eGetTeamRequest\x12\x0e\n" +
@@ -5466,14 +5512,15 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x10ListTeamsRequest\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\"8\n" +
 	"\x11ListTeamsResponse\x12#\n" +
-	"\x05teams\x18\x01 \x03(\v2\r.ktms.v1.TeamR\x05teams\"\xad\x01\n" +
+	"\x05teams\x18\x01 \x03(\v2\r.ktms.v1.TeamR\x05teams\"\xde\x01\n" +
 	"\x11UpdateTeamRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12,\n" +
 	"\x12monthly_budget_usd\x18\x03 \x01(\x01R\x10monthlyBudgetUsd\x12%\n" +
 	"\x0eallowed_models\x18\x04 \x03(\tR\rallowedModels\x12\x1f\n" +
 	"\vallowed_mcp\x18\x05 \x03(\tR\n" +
-	"allowedMcp\"7\n" +
+	"allowedMcp\x12/\n" +
+	"\x13data_classification\x18\x06 \x01(\tR\x12dataClassification\"7\n" +
 	"\x12UpdateTeamResponse\x12!\n" +
 	"\x04team\x18\x01 \x01(\v2\r.ktms.v1.TeamR\x04team\"#\n" +
 	"\x11DeleteTeamRequest\x12\x0e\n" +
@@ -5538,7 +5585,7 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\"B\n" +
 	"\x14ListMCPToolsResponse\x12*\n" +
-	"\x05tools\x18\x01 \x03(\v2\x14.ktms.v1.MCPToolInfoR\x05tools\"\xf5\x02\n" +
+	"\x05tools\x18\x01 \x03(\v2\x14.ktms.v1.MCPToolInfoR\x05tools\"\xa6\x03\n" +
 	"\x13ExplainRouteRequest\x12 \n" +
 	"\fapi_key_name\x18\x01 \x01(\tR\n" +
 	"apiKeyName\x12'\n" +
@@ -5550,7 +5597,8 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"attributes\x12\x1c\n" +
 	"\tplacement\x18\x05 \x01(\tR\tplacement\x12%\n" +
 	"\x0emodel_override\x18\x06 \x01(\tR\rmodelOverride\x12\"\n" +
-	"\fcapabilities\x18\a \x03(\tR\fcapabilities\x1a=\n" +
+	"\fcapabilities\x18\a \x03(\tR\fcapabilities\x12/\n" +
+	"\x13data_classification\x18\b \x01(\tR\x12dataClassification\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x97\x01\n" +

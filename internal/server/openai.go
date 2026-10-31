@@ -100,10 +100,18 @@ func (a *OpenAIAPI) serve(fullMethod string, h apiHandler, writeErr func(http.Re
 		} else if key := r.Header.Get("X-Api-Key"); apiKeyHeader && key != "" {
 			md.Set(metadataKeyAuthorization, "Bearer "+key)
 		}
+		if v := r.Header.Get("X-KTMS-Data-Classification"); v != "" {
+			md.Set(metadataKeyDataClassification, v)
+		}
 		ctx := metadata.NewIncomingContext(r.Context(), md)
 		id, aerr := authorize(ctx, a.verifier, fullMethod)
 		if aerr != nil {
 			err = aerr
+			writeErr(w, err)
+			return
+		}
+		// A gateway in front can restrict any call; it cannot lift a key's restriction.
+		if ctx, err = restrictCall(ctx); err != nil {
 			writeErr(w, err)
 			return
 		}
@@ -136,6 +144,8 @@ type chatRequest struct {
 	EnableCache *bool `json:"enable_cache,omitempty"`
 	// Proxy extension: infrastructure locality preference (nodes_first, nodes_only, cloud_first, cloud_only).
 	Placement string `json:"placement,omitempty"`
+	// Proxy extension: "restricted" keeps the request on self-hosted nodes.
+	DataClassification string `json:"data_classification,omitempty"`
 }
 
 type streamOptions struct {
@@ -606,6 +616,7 @@ func (req *chatRequest) toProto(ctx context.Context, headerPlacement string) (*p
 		Placement:          dec.Placement,
 		AutoRoute:          dec.IsAuto,
 		EffortSpecified:    dec.EffortSpecified,
+		DataClassification: req.DataClassification,
 	}
 	if out.MaxOutputTokens == 0 {
 		out.MaxOutputTokens = req.MaxTokens

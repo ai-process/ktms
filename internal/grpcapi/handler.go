@@ -123,6 +123,9 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 	if req.GetAttributes() != nil {
 		req.Attributes = router.SanitizeAttributes(req.GetAttributes())
 	}
+	if err := classify(ctx, id, req); err != nil {
+		return nil, err
+	}
 
 	snap := s.snapshots.Snapshot()
 	if !snap.Configured() {
@@ -153,7 +156,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 	}
 	var shadowEvaluator func(context.Context, *proxydb.Model, *proxydb.Model, *llm.Response, *llm.Response)
 	if plan.shadowEval {
-		shadowEvaluator = s.makeShadowEvaluator(id, chat, req.GetAttributes())
+		shadowEvaluator = s.makeShadowEvaluator(id, chat, req.GetAttributes(), plan.restricted)
 	}
 	estimate := EstimateTokens(req)
 	settleKey, err := s.admitKey(ctx, id, estimate)
@@ -253,6 +256,9 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 	if inner.GetAttributes() != nil {
 		inner.Attributes = router.SanitizeAttributes(inner.GetAttributes())
 	}
+	if err := classify(stream.Context(), id, inner); err != nil {
+		return err
+	}
 
 	snap := s.snapshots.Snapshot()
 	if !snap.Configured() {
@@ -296,7 +302,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 	)
 	var shadowEvaluator func(context.Context, *proxydb.Model, *proxydb.Model, *llm.Response, *llm.Response)
 	if plan.shadowEval {
-		shadowEvaluator = s.makeShadowEvaluator(id, chat, inner.GetAttributes())
+		shadowEvaluator = s.makeShadowEvaluator(id, chat, inner.GetAttributes(), plan.restricted)
 	}
 	estimate := EstimateTokens(inner)
 	settleKey, err := s.admitKey(stream.Context(), id, estimate)
@@ -658,6 +664,9 @@ func buildChat(req *pb.GenerateTextRequest, id *apikeys.Identity, ruleName, effo
 	meta["effort"] = effort
 	if ruleName != "" {
 		meta["rule"] = ruleName
+	}
+	if isRestricted(req) {
+		meta[DataClassificationAttribute] = apikeys.DataRestricted
 	}
 	chat.SetMeta(meta)
 	return chat

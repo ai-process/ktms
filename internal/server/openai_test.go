@@ -44,10 +44,11 @@ type fakeProxy struct {
 	embedResp      *pb.GetEmbeddingsResponse
 	embedErr       error
 	rolloutReq     *pb.EvaluateRolloutsRequest
+	restricted     bool // the last call's context was restricted
 }
 
-func (f *fakeProxy) GenerateText(_ context.Context, r *pb.GenerateTextRequest) (*pb.GenerateTextResponse, error) {
-	f.text = r
+func (f *fakeProxy) GenerateText(ctx context.Context, r *pb.GenerateTextRequest) (*pb.GenerateTextResponse, error) {
+	f.text, f.restricted = r, apikeys.RestrictedFrom(ctx)
 	if f.textErr != nil {
 		return nil, f.textErr
 	}
@@ -154,8 +155,8 @@ func (f *fakeProxy) Judge(_ context.Context, r *pb.JudgeRequest) (*pb.JudgeRespo
 	}, nil
 }
 
-func (f *fakeProxy) GetEmbeddings(_ context.Context, r *pb.GetEmbeddingsRequest) (*pb.GetEmbeddingsResponse, error) {
-	f.embedReq = r
+func (f *fakeProxy) GetEmbeddings(ctx context.Context, r *pb.GetEmbeddingsRequest) (*pb.GetEmbeddingsResponse, error) {
+	f.embedReq, f.restricted = r, apikeys.RestrictedFrom(ctx)
 	if f.embedErr != nil {
 		return nil, f.embedErr
 	}
@@ -1508,5 +1509,40 @@ func TestHeaderCompatibilityAndDeprecation(t *testing.T) {
 	}
 	if fp.text.Placement != "nodes_only" {
 		t.Errorf("expected placement nodes_only, got %s", fp.text.Placement)
+	}
+}
+
+func TestDataClassificationOverHTTP(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	for _, c := range []struct {
+		path, body, header string
+		code               int
+		field              string
+		restricted         bool
+	}{
+		{"/v1/chat/completions", `{"messages":[{"role":"user","content":"x"}]}`, "", 200, "", false},
+		{"/v1/chat/completions", `{"messages":[{"role":"user","content":"x"}],"data_classification":"restricted"}`, "", 200, "restricted", false},
+		{"/v1/chat/completions", `{"messages":[{"role":"user","content":"x"}]}`, "Restricted", 200, "", true},
+		{"/v1/chat/completions", `{"messages":[{"role":"user","content":"x"}]}`, "public", 400, "", false},
+		// Media endpoints have no field; the header reaches them through the context.
+		{"/v1/embeddings", `{"model":"e","input":"x"}`, "restricted", 200, "", true},
+		{"/v1/messages", `{"max_tokens":8,"messages":[{"role":"user","content":"x"}]}`, "restricted", 200, "", true},
+		{"/v1/messages", `{"max_tokens":8,"messages":[{"role":"user","content":"x"}]}`, "public", 400, "", false},
+	} {
+		fp.restricted, fp.text = false, nil
+		req := httptest.NewRequest("POST", c.path, strings.NewReader(c.body))
+		req.Header.Set("Authorization", "Bearer "+key)
+		if c.header != "" {
+			req.Header.Set("X-KTMS-Data-Classification", c.header)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != c.code || fp.text.GetDataClassification() != c.field || fp.restricted != c.restricted {
+			t.Errorf("%s %s header %q: %d field %q restricted %v", c.path, c.body, c.header, rec.Code, fp.text.GetDataClassification(), fp.restricted)
+		}
+		// Messages clients parse only the Messages error shape.
+		if c.path == "/v1/messages" && c.code == 400 && !strings.Contains(rec.Body.String(), `"type":"error"`) {
+			t.Errorf("messages error body: %s", rec.Body)
+		}
 	}
 }
