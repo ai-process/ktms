@@ -309,6 +309,7 @@ func seq() *yaml.Node     { return &yaml.Node{Kind: yaml.SequenceNode} }
 func scalarNode(v string) *yaml.Node {
 	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}
 }
+
 // literalNode keeps a multi-line string readable as a YAML block.
 func literalNode(v string) *yaml.Node {
 	n := scalarNode(v)
