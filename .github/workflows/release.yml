@@ -20,7 +20,7 @@ jobs:
   # Images go last: an image on Docker Hub then means the whole release went
   # out, which is how the next release finds its predecessor.
   images:
-    needs: release
+    needs: [release, tray-macos]
     permissions:
       contents: read
       id-token: write
@@ -81,6 +81,28 @@ jobs:
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+  # The macOS tray needs cgo and a Mac. The installer checks it against the
+  # asset digest GitHub records on upload.
+  tray-macos:
+    needs: release
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: '1.27.3'
+          cache: true
+      - name: Build and upload Keystone Node.app
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          zip=$(scripts/build-tray-app.sh "${TAG#v}" dist)
+          gh release upload "$TAG" "$zip" --clobber
 
   # The chart's version and appVersion are the tag, so `--version 1.2.3` installs
   # image 1.2.3; it goes after the images, so it never names a missing one.

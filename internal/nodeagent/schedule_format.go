@@ -67,7 +67,7 @@ func (s *Schedule) Upcoming(now time.Time, n int) []Switch {
 }
 
 func dayWindows(week []int8, d int) []Window {
-	var out []Window
+	out := []Window{} // an empty day is [] in JSON, not null
 	base := d * minutesPerDay
 	for m := 0; m < minutesPerDay; {
 		l := week[base+m]

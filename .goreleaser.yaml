@@ -12,6 +12,15 @@ builds:
     goarch: [amd64, arm64]
     flags: [-trimpath]
     ldflags: ["-s -w -X main.version={{ .Version }}"]
+  # The macOS tray needs cgo; release.yml builds it on a Mac (scripts/build-tray-app.sh).
+  - id: tray
+    main: ./cmd/node-tray
+    binary: ktms-node-tray
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
   - id: server
     main: ./cmd/server
     binary: ktms-server
@@ -34,6 +43,11 @@ archives:
     ids: [node]
     formats: [tar.gz]
     name_template: "ktms-node_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: [LICENSE, NOTICE]
+  - id: tray
+    ids: [tray]
+    formats: [tar.gz]
+    name_template: "ktms-node-tray_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files: [LICENSE, NOTICE]
   - id: server
     ids: [server]

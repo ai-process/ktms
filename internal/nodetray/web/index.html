@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keystone node</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #fff; --text: #1d1f23; --muted: #6b7079; --line: #e3e4e0;
+  --accent: #2e7d4f; --warn: #b26b00; --bad: #b3261e; --cell-zero: #d5d7db;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #17181b; --panel: #202226; --text: #e8e9ec; --muted: #9a9ea6; --line: #33363c;
+    --accent: #5cc184; --warn: #e2a33b; --bad: #f2867c; --cell-zero: #3a3d43; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; }
+header { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+nav { display: flex; gap: 4px; }
+nav a { padding: 6px 12px; border-radius: 6px; color: var(--muted); text-decoration: none; }
+nav a.on { background: var(--bg); color: var(--text); font-weight: 600; }
+main { max-width: 980px; margin: 0 auto; padding: 20px; }
+section { display: none; } section.on { display: block; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+.big { font-size: 34px; font-weight: 650; letter-spacing: -0.02em; }
+.muted { color: var(--muted); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button, select, input[type=number] { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+button { cursor: pointer; } button:hover:not(:disabled) { border-color: var(--muted); }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.danger { color: var(--bad); }
+button:disabled { opacity: .45; cursor: default; }
+.notice { padding: 10px 14px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); margin-bottom: 16px; }
+.notice.bad { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; }
+.grid { display: grid; grid-template-columns: 40px repeat(48, minmax(8px, 1fr)); gap: 1px; user-select: none; }
+.grid .h { font-size: 10px; color: var(--muted); grid-column: span 2; }
+.grid .d { font-size: 12px; color: var(--muted); }
+.grid { touch-action: none; }
+.grid .c { height: 22px; border-radius: 2px; cursor: crosshair; }
+.grid.ro .c { cursor: not-allowed; }
+.brush button.on { outline: 2px solid var(--accent); }
+textarea { width: 100%; min-height: 220px; font: 13px/1.5 ui-monospace, Menlo, monospace; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+.bar { height: 8px; background: var(--accent); border-radius: 2px; min-width: 1px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.tile .v { font-size: 20px; font-weight: 600; }
+.tabs button.on { background: var(--bg); font-weight: 600; }
+label.check { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; }
+#toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Keystone node</h1>
+  <nav>
+    <a href="#status">Status</a><a href="#schedule">Schedule</a><a href="#stats">Statistics</a><a href="#settings">Settings</a>
+  </nav>
+</header>
+<main>
+<div id="down" class="notice bad" hidden>The node agent does not answer. Is the node running? <code>ktms-node doctor</code> tells why not.</div>
+
+<section id="status">
+  <div class="card">
+    <div class="big" id="lvl">–</div>
+    <div id="src" class="muted"></div>
+  </div>
+  <div id="notice" class="notice" hidden></div>
+  <div class="card">
+    <div class="row" style="margin-bottom:10px">
+      <button data-pause="5m">Pause 5 min</button>
+      <button data-pause="10m">Pause 10 min</button>
+      <button data-pause="30m">Pause 30 min</button>
+      <button id="untilNext">Pause until next switch</button>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <span class="muted">Limit to</span>
+      <select id="limLevel"><option>10</option><option>30</option><option selected>50</option><option>75</option></select><span>%</span>
+      <span class="muted">for</span>
+      <select id="limFor"><option value="30m">30 min</option><option value="1h" selected>1 hour</option><option value="2h">2 hours</option><option value="4h">4 hours</option><option value="8h">8 hours</option></select>
+      <button id="limit">Apply</button>
+    </div>
+    <div class="row">
+      <button id="resume" class="primary">Resume schedule</button>
+      <button id="stop" class="danger" hidden></button>
+    </div>
+  </div>
+  <div class="card kv" id="facts"></div>
+</section>
+
+<section id="schedule">
+  <div id="schedRO" class="notice" hidden></div>
+  <div class="card">
+    <div class="row tabs" style="margin-bottom:12px; justify-content: space-between"><span class="row"><button data-tab="grid" class="on">Week</button><button data-tab="text">Text</button></span><span class="muted" style="font-size:12px">grey 0% · green 100% (no rule)</span></div>
+    <div id="tabGrid">
+      <div class="row brush" style="margin-bottom:10px">
+        <span class="muted">Paint</span>
+        <button data-b="0">0%</button><button data-b="25">25%</button><button data-b="50">50%</button><button data-b="75">75%</button><button data-b="100" class="on">100%</button>
+        <input type="number" id="bCustom" min="0" max="100" placeholder="other" style="width:80px">
+      </div>
+      <div id="grid" class="grid"></div>
+      <div id="gridWarn" class="notice" style="margin-top:12px" hidden></div>
+    </div>
+    <div id="tabText" hidden>
+      <textarea id="text" spellcheck="false" placeholder="# [days] HH:MM-HH:MM level&#10;mon-fri 09:00-18:00 0"></textarea>
+    </div>
+    <p id="preview" class="muted"></p>
+    <div class="row"><button id="save" class="primary">Save</button><button id="revert">Revert</button><span id="file" class="muted"></span></div>
+  </div>
+</section>
+
+<section id="stats">
+  <div class="row" style="margin-bottom:12px"><button data-p="24h" class="on">24 hours</button><button data-p="7d">7 days</button><button data-p="30d">30 days</button></div>
+  <div class="tiles card" id="tiles"></div>
+  <div class="card"><table id="rows"></table></div>
+</section>
+
+<section id="settings">
+  <div class="card">
+    <label class="check"><input type="checkbox" id="ktms"> <span><b>Schedule set by KTMS</b><br><span class="muted">KTMS sets this node's schedule and load; the schedule on this machine is ignored until you turn this off. Your own pauses still win.</span></span></label>
+    <label class="check"><input type="checkbox" id="notif"> <span><b>Notifications</b><br><span class="muted">When a pause ends, the agent stops answering, or the schedule turns out invalid.</span></span></label>
+  </div>
+</section>
+</main>
+<div id="toast"></div>
+<script>
+"use strict";
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+let st = null, sched = null, brush = 100, week = new Array(336).fill(100), dirty = false;
+
+async function api(method, path, body) {
+  const opt = {method, headers: {}};
+  if (method !== "GET") opt.headers["X-KTMS-Tray"] = "1";
+  if (body !== undefined) { opt.headers["Content-Type"] = "application/json"; opt.body = JSON.stringify(body); }
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j.error || r.statusText); e.line = j.line; throw e; }
+  return j;
+}
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", 3500); }
+const fail = e => toast(e.message);
+const hm = t => new Date(t).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+const when = t => { const d = new Date(t), n = new Date(); return d.toDateString() === n.toDateString() ? hm(t) : d.toLocaleDateString("en-US", {weekday: "short"}) + " " + hm(t); };
+
+// ---- navigation
+function show() {
+  const id = (location.hash || "#status").slice(1);
+  $$("section").forEach(s => s.classList.toggle("on", s.id === id));
+  $$("nav a").forEach(a => a.classList.toggle("on", a.hash === "#" + id));
+  if (id === "schedule" && !dirty) loadSchedule();
+  if (id === "stats") loadStats();
+  if (id === "settings") loadSettings();
+}
+addEventListener("hashchange", show);
+
+// ---- status
+const srcName = {schedule: "schedule", override: "set by hand", ktms_schedule: "KTMS schedule", ktms_override: "set in KTMS", default: "no schedule"};
+function render(s) {
+  st = s;
+  $("#down").hidden = true;
+  $("#title").textContent = "Keystone node · " + s.node_id;
+  const L = s.level, active = s.requests.proxy_active;
+  $("#lvl").textContent = L.effective === 0 ? (active > 0 ? "Pausing" : "Paused") : "Running at " + L.effective + "%";
+  let src = srcName[L.source] || L.source;
+  if (L.override) src += " until " + when(L.override.until);
+  if (L.next) src += " · then " + L.next.level + "% at " + when(L.next.at);
+  $("#src").textContent = src;
+  let note = "";
+  if (!s.connection.registered || s.connection.last_error) note = "No connection to KTMS" + (s.connection.last_error ? ": " + s.connection.last_error : "");
+  else if (s.schedule_error) note = "The schedule is invalid; the previous one holds: " + s.schedule_error;
+  else if (L.effective === 0 && active > 0) note = "Waiting for " + active + " request(s) to finish before the models are unloaded.";
+  $("#notice").hidden = !note; $("#notice").textContent = note;
+  // The agent caps any pause at 24 hours; say so rather than promise a later switch.
+  const cap = Date.now() + 864e5, untilAt = L.next && Math.min(new Date(L.next.at).getTime(), cap);
+  $("#untilNext").disabled = !L.next;
+  $("#untilNext").textContent = !L.next ? "Pause until next switch" : untilAt === cap ? "Pause for 24 hours" : "Pause until " + when(L.next.at);
+  $("#resume").disabled = !L.override;
+  $("#stop").hidden = !(s.can_abort && active > 0);
+  $("#stop").textContent = "Stop now (cuts " + active + " request" + (active === 1 ? "" : "s") + ")";
+  const warm = (s.models || []).filter(m => m.warm).map(m => m.id);
+  const facts = [
+    ["State", s.state], ["Requests", active < 0 ? "–" : active], ["Engine", s.requests.engine_running + " running, " + s.requests.engine_waiting + " waiting"],
+    ["Models", (s.models || []).map(m => m.id + (m.warm ? " (loaded)" : "")).join(", ") || "–"],
+    ["GPU", s.gpu ? Math.round(s.gpu.util_percent) + "%, " + s.gpu.temp_c + "°C, VRAM " + (s.gpu.vram_free_mb / 1024).toFixed(1) + "/" + (s.gpu.vram_total_mb / 1024).toFixed(0) + " GB free" : "–"],
+    ["KTMS", s.proxy + (s.connection.last_heartbeat_at ? " · heartbeat " + hm(s.connection.last_heartbeat_at) : "")],
+    ["Schedule", s.schedule_source === "ktms" ? "set by KTMS" + (L.ktms && L.ktms.version ? " (version " + L.ktms.version + ")" : " (none received yet)") : (s.schedule_file || "none")],
+    ["Agent", s.version],
+  ];
+  $("#facts").replaceChildren(...facts.flatMap(([k, v]) => { const a = document.createElement("span"), b = document.createElement("span"); a.className = "muted"; a.textContent = k; b.textContent = v; return [a, b]; }));
+  $("#ktms").checked = s.schedule_source === "ktms";
+}
+function connect() {
+  const es = new EventSource("/api/v1/events");
+  es.onmessage = e => render(JSON.parse(e.data));
+  es.onerror = () => { $("#down").hidden = false; };
+}
+const override = body => api("POST", "/api/v1/override", body).then(r => { render(r.status); if (r.aborted) toast("Cut " + r.aborted + " request(s)"); }).catch(fail);
+$$("[data-pause]").forEach(b => b.onclick = () => override({level: 0, for: b.dataset.pause}));
+$("#untilNext").onclick = () => override({level: 0, until_next_window: true});
+$("#limit").onclick = () => override({level: +$("#limLevel").value, for: $("#limFor").value});
+$("#stop").onclick = () => { if (confirm("Cut the running requests? Their callers get an error.")) override({level: 0, for: "10m", abort_inflight: true}); };
+$("#resume").onclick = () => api("DELETE", "/api/v1/override").then(render).catch(fail);
+
+// ---- schedule
+// Grey is a pause, full green the whole machine; uncovered time runs at 100%.
+const color = l => `color-mix(in srgb, var(--accent) ${Math.min(l, 100)}%, var(--cell-zero))`;
+const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+function buildGrid() {
+  const g = $("#grid"); g.replaceChildren();
+  g.append(document.createElement("span"));
+  for (let h = 0; h < 24; h++) { const s = document.createElement("span"); s.className = "h"; s.textContent = h % 3 ? "" : String(h).padStart(2, "0"); g.append(s); }
+  for (let d = 0; d < 7; d++) {
+    const l = document.createElement("span"); l.className = "d"; l.textContent = days[d]; g.append(l);
+    for (let i = 0; i < 48; i++) {
+      const c = document.createElement("span"), k = d * 48 + i;
+      c.className = "c"; c.dataset.k = k; c.title = days[d] + " " + String(i >> 1).padStart(2, "0") + (i & 1 ? ":30" : ":00");
+      g.append(c);
+    }
+  }
+  // Pointer events with a hit test: a fast drag or a touch skips no cell under it.
+  let painting = false;
+  const paintAt = e => {
+    const c = document.elementFromPoint(e.clientX, e.clientY);
+    if (!c || !c.dataset || c.dataset.k === undefined || !sched || !sched.editable) return;
+    week[+c.dataset.k] = brush; c.style.background = color(brush); dirty = true; previewGrid();
+  };
+  g.onpointerdown = e => { e.preventDefault(); painting = true; g.setPointerCapture(e.pointerId); paintAt(e); };
+  g.onpointermove = e => painting && paintAt(e);
+  g.onpointerup = g.onpointercancel = () => painting = false;
+}
+function paintGrid() { $$("#grid .c").forEach(c => c.style.background = color(week[+c.dataset.k])); }
+const toMin = s => { const [h, m] = s.split(":").map(Number); return h * 60 + m; };
+function weekFrom(info) {
+  const w = new Array(336).fill(100); let exact = true;
+  (info.days || []).forEach((d, di) => (d.windows || []).forEach(win => {
+    const a = toMin(win.from), b = toMin(win.to);
+    if (a % 30 || b % 30) exact = false;
+    for (let m = a; m < b; m += 30) w[di * 48 + Math.floor(m / 30)] = win.level;
+  }));
+  return {w, exact};
+}
+async function loadSchedule() {
+  try {
+    sched = await api("GET", "/api/v1/schedule");
+    const {w, exact} = weekFrom(sched);
+    week = w; dirty = false; paintGrid();
+    $("#text").value = sched.text;
+    const lossy = !exact || /#/.test(sched.text);
+    $("#gridWarn").hidden = !lossy;
+    $("#gridWarn").textContent = "The file has comments or switches off the half hour, which the week view cannot show. Saving from here rewrites it; use Text to keep them.";
+    $("#schedRO").hidden = sched.editable;
+    $("#schedRO").textContent = sched.source === "ktms" ? "The schedule is set by KTMS. Change it there, or turn off \"Schedule set by KTMS\" in Settings." : "Read-only: " + (sched.read_only || "");
+    $("#text").readOnly = !sched.editable; $("#grid").classList.toggle("ro", !sched.editable);
+    $("#save").disabled = !sched.editable;
+    $("#file").textContent = sched.file || "";
+    describe(sched);
+    if (lossy && sched.editable) tab("text");
+  } catch (e) { fail(e); }
+}
+function describe(p) {
+  if (p.error) { $("#preview").textContent = "Error" + (p.line ? " on line " + p.line : "") + ": " + p.error; return; }
+  const ups = (p.upcoming || []).map(u => when(u.at) + " → " + u.level + "%").join(", ");
+  $("#preview").textContent = "Now " + p.level + "%" + (ups ? ". Next: " + ups : ". No switches.");
+}
+let pv;
+const gridText = () => api("POST", "/api/format", {week}).then(r => r.text);
+function previewGrid() { clearTimeout(pv); pv = setTimeout(async () => { try { describe(await api("POST", "/api/v1/schedule/preview", {text: await gridText()})); } catch (e) { fail(e); } }, 250); }
+$("#text").oninput = () => { dirty = true; clearTimeout(pv); pv = setTimeout(() => api("POST", "/api/v1/schedule/preview", {text: $("#text").value}).then(describe).catch(fail), 250); };
+function tab(name) {
+  $$("[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
+  $("#tabGrid").hidden = name !== "grid"; $("#tabText").hidden = name !== "text";
+}
+$$("[data-tab]").forEach(b => b.onclick = async () => {
+  if (b.dataset.tab === "text" && !$("#tabGrid").hidden && dirty) $("#text").value = await gridText();
+  if (b.dataset.tab === "grid" && !$("#tabText").hidden && dirty) {
+    try { const p = await api("POST", "/api/v1/schedule/preview", {text: $("#text").value}); if (p.error) return describe(p); week = weekFrom(p).w; paintGrid(); } catch (e) { return fail(e); }
+  }
+  tab(b.dataset.tab);
+});
+$$("[data-b]").forEach(b => b.onclick = () => { brush = +b.dataset.b; $$("[data-b]").forEach(x => x.classList.toggle("on", x === b)); $("#bCustom").value = ""; });
+$("#bCustom").oninput = e => { const v = Math.max(0, Math.min(100, +e.target.value)); if (e.target.value !== "") { brush = v; $$("[data-b]").forEach(x => x.classList.remove("on")); } };
+$("#save").onclick = async () => {
+  try {
+    const text = $("#tabText").hidden ? await gridText() : $("#text").value;
+    describe(await api("PUT", "/api/v1/schedule", {text}));
+    dirty = false; toast("Schedule saved"); loadSchedule();
+  } catch (e) { if (e.line) $("#preview").textContent = "Error on line " + e.line + ": " + e.message; else fail(e); }
+};
+$("#revert").onclick = () => { dirty = false; loadSchedule(); };
+
+// ---- stats
+let period = "24h";
+const pct = f => f < 0 ? "–" : Math.round(f * 100) + "%";
+const num = n => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n);
+async function loadStats() {
+  try {
+    const r = await api("GET", "/api/v1/stats?from=" + period + "&by=" + (period === "24h" ? "hour" : "day"));
+    const t = r.total;
+    const tiles = [["Requests", num(t.requests)], ["Errors", num(t.errors)], ["Tokens out", num(t.output_tokens)], ["Busy", pct(t.busy)], ["Paused", pct(t.paused)],
+      ["TTFT p50 / p95", t.ttft_p50_ms ? t.ttft_p50_ms + " / " + t.ttft_p95_ms + " ms" : "–"], ["Tokens/s", t.tps ? t.tps.toFixed(1) : "–"]];
+    $("#tiles").replaceChildren(...tiles.map(([k, v]) => { const d = document.createElement("div"); d.className = "tile"; d.innerHTML = '<div class="muted"></div><div class="v"></div>'; d.children[0].textContent = k; d.children[1].textContent = v; return d; }));
+    const head = "<tr><th>" + (r.by === "hour" ? "Hour" : "Day") + "</th><th>Requests</th><th>Errors</th><th>Tokens out</th><th>Paused</th><th style='width:30%'>Busy</th></tr>";
+    $("#rows").innerHTML = head;
+    (r.rows || []).forEach(x => {
+      const tr = document.createElement("tr");
+      [x.key, num(x.requests), num(x.errors), num(x.output_tokens), pct(x.paused)].forEach(v => { const td = document.createElement("td"); td.textContent = v; tr.append(td); });
+      const td = document.createElement("td"), bar = document.createElement("div"); bar.className = "bar"; bar.style.width = Math.round(x.busy * 100) + "%"; bar.title = pct(x.busy); td.append(bar); tr.append(td);
+      $("#rows").append(tr);
+    });
+  } catch (e) {
+    const d = document.createElement("div"); d.className = "muted"; d.textContent = "No statistics: " + e.message;
+    $("#tiles").replaceChildren(d); $("#rows").replaceChildren();
+  }
+}
+$$("[data-p]").forEach(b => b.onclick = () => { period = b.dataset.p; $$("[data-p]").forEach(x => x.classList.toggle("on", x === b)); loadStats(); });
+
+// ---- settings
+async function loadSettings() {
+  try { $("#notif").checked = (await api("GET", "/api/prefs")).notifications; } catch (e) { fail(e); }
+}
+$("#ktms").onchange = e => api("PUT", "/api/v1/settings", {schedule_source: e.target.checked ? "ktms" : "local"})
+  .then(s => { render(s); toast(e.target.checked ? "KTMS sets the schedule now" : "This machine's schedule is back in force"); dirty = false; })
+  .catch(err => { e.target.checked = !e.target.checked; fail(err); });
+$("#notif").onchange = e => api("PUT", "/api/prefs", {notifications: e.target.checked}).catch(fail);
+
+buildGrid(); connect(); show();
+</script>
+</body>
+</html>

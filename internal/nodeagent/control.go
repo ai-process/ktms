@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -200,7 +201,7 @@ func writeCtlError(w http.ResponseWriter, err error) {
 	case errors.Is(err, errAgentBusy):
 		writeJSON(w, http.StatusServiceUnavailable, ControlError{Error: err.Error()})
 	case errors.Is(err, errConflict):
-		writeJSON(w, http.StatusConflict, ControlError{Error: err.Error()})
+		writeJSON(w, http.StatusConflict, ControlError{Error: strings.TrimPrefix(err.Error(), errConflict.Error()+": ")})
 	default:
 		writeJSON(w, http.StatusInternalServerError, ControlError{Error: err.Error()})
 	}
