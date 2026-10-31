@@ -2,12 +2,15 @@ package nodeagent
 
 import (
 	"bytes"
+	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -32,6 +35,22 @@ type Gateway struct {
 	keepaliveEvery time.Duration
 	client         *http.Client
 	paused         atomic.Bool
+	inflight       sync.Map // id -> context.CancelFunc of each engine request
+	seq            atomic.Uint64
+}
+
+// errAborted is the cause of a request the owner cut with CancelInflight.
+var errAborted = errors.New("request stopped by the node's owner")
+
+// CancelInflight cuts every engine request running now and returns how many.
+func (g *Gateway) CancelInflight() int {
+	n := 0
+	g.inflight.Range(func(_, v any) bool {
+		v.(context.CancelCauseFunc)(errAborted)
+		n++
+		return true
+	})
+	return n
 }
 
 // SetAccepting opens or closes the door to engine routes. Closed, the node
@@ -65,7 +84,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if g.paused.Load() {
-		writeGatewayError(w, http.StatusServiceUnavailable, "node paused by schedule")
+		writeGatewayError(w, http.StatusServiceUnavailable, "node paused by its owner")
 		return
 	}
 
@@ -93,6 +112,16 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeGatewayError(w, http.StatusNotFound, "route not exposed by this node")
 		return
+	}
+	if r.Method == http.MethodPost {
+		ctx, cancel := context.WithCancelCause(r.Context())
+		id := g.seq.Add(1)
+		g.inflight.Store(id, cancel)
+		defer func() {
+			g.inflight.Delete(id)
+			cancel(nil)
+		}()
+		r = r.WithContext(ctx)
 	}
 	g.forward(w, r, body, stream)
 }
@@ -159,6 +188,9 @@ wait:
 					late.resp.Body.Close()
 				}
 			}()
+			if errors.Is(context.Cause(ctx), errAborted) {
+				g.fail(w, committed, stream, http.StatusServiceUnavailable, errAborted.Error())
+			}
 			return
 		case <-timer.C:
 			if !committed {
@@ -174,6 +206,10 @@ wait:
 		}
 	}
 
+	if res.err != nil && errors.Is(context.Cause(ctx), errAborted) {
+		g.fail(w, committed, stream, http.StatusServiceUnavailable, errAborted.Error())
+		return
+	}
 	if res.err != nil {
 		g.fail(w, committed, stream, http.StatusBadGateway, "engine unreachable: "+res.err.Error())
 		return
@@ -205,6 +241,9 @@ wait:
 			flush()
 		}
 		if err != nil {
+			if errors.Is(context.Cause(ctx), errAborted) {
+				g.fail(w, true, stream, http.StatusServiceUnavailable, errAborted.Error())
+			}
 			return
 		}
 	}

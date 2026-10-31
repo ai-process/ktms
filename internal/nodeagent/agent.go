@@ -42,6 +42,9 @@ type AgentConfig struct {
 	Warmup         time.Duration // load the model this long before a paused window ends
 	StatsDir       string        // where the usage log is kept for the owner; "" = none
 	StatsRetention time.Duration // days of usage log kept; 0 = all
+	StateDir       string        // the manual level and other state that outlives a restart; "" = kept in memory only
+	ControlSocket  string        // Unix socket of the owner's control API; "" = none
+	Version        string        // reported by the control API
 }
 
 type Agent struct {
@@ -65,6 +68,11 @@ type Agent struct {
 	now        func() time.Time
 	levelEvery time.Duration
 	pauseGrace time.Duration
+	ovTimer    *time.Timer // ends the override on time; nil without one
+
+	ctl    chan ctlCmd // control API commands, run on Run's goroutine
+	status statusHub
+	conn   connState
 
 	retryInitial, retryMax time.Duration // pause between refused registrations
 }
@@ -104,6 +112,7 @@ func NewAgent(cfg AgentConfig) *Agent {
 		levelEvery: defaultLevelEvery,
 		pauseGrace: defaultPauseGrace,
 		statsEvery: defaultStatsEvery,
+		ctl:        make(chan ctlCmd),
 
 		retryInitial: retryInitial,
 		retryMax:     retryMax,
@@ -245,7 +254,12 @@ func (a *Agent) Run(ctx context.Context) error {
 			return fmt.Errorf("schedule: %w (check it with: ktms-node schedule --file %s)", err, a.cfg.ScheduleFile)
 		}
 	}
+	a.pause.override = loadOverride(a.overrideFile(), a.now())
+	a.setOverride(a.pause.override) // arms the timer that ends it
 	a.refreshLevel()
+	a.publish()
+	stopControl := a.startControl()
+	defer stopControl()
 
 	// Learn about a permanent refusal before any tunnel is started.
 	if err := a.preflight(authCtx); err != nil {
@@ -295,6 +309,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	log.Info().Str("node_id", a.cfg.NodeID).Str("endpoint", a.currentEndpoint()).Dur("interval", interval).Msg("node registered successfully")
+	a.conn.registered = true
 
 	// 2. Heartbeat loop
 	ticker := time.NewTicker(interval)
@@ -343,9 +358,13 @@ func (a *Agent) Run(ctx context.Context) error {
 		})
 		if err != nil {
 			log.Warn().Err(err).Msg("heartbeat failed")
+			a.conn.lastErr = err.Error()
+			a.publish()
 			return
 		}
+		a.conn.lastErr = ""
 		if hbResp.GetOk() {
+			a.conn.lastBeat, a.conn.capacityApplied = a.now(), hbResp.GetCapacityApplied()
 			a.noteBeat(currRes, currModels, active, queued, hbResp.GetActiveProxyRequests())
 		}
 
@@ -368,6 +387,15 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 		}
 		a.afterHeartbeat(hbResp, currModels)
+		a.publish()
+	}
+	onLevel := func() {
+		if a.refreshLevel() {
+			beat() // the proxy learns now, not an interval later
+		} else {
+			a.stepPause()
+		}
+		a.publish()
 	}
 
 	for {
@@ -383,14 +411,15 @@ func (a *Agent) Run(ctx context.Context) error {
 		case <-ticker.C:
 			beat()
 		case <-levelTicker.C:
-			if a.refreshLevel() {
-				beat() // the proxy learns now, not an interval later
-			} else {
-				a.stepPause()
-			}
+			onLevel()
+		case <-a.ovC():
+			onLevel()
+		case c := <-a.ctl:
+			a.runCommand(c, beat)
 		case r := <-a.engineDone:
 			a.finishEngineCall(r)
 			a.stepPause()
+			a.publish()
 		case <-statsTicker.C:
 			a.statsTick(authCtx)
 		}

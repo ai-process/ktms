@@ -404,6 +404,28 @@ routes at 100% (the agent logs a warning). `ktms-node schedule --file FILE` chec
 file and prints the level now and the next switch; `doctor` reports it too. Engines other than
 Ollama only stop being routed to.
 
+The owner can override the schedule for a while from the same machine:
+
+```
+ktms-node status                     # level, where it comes from, requests, models, next switch
+ktms-node pause 10m                  # 0% for 10 minutes (default 10m), then the schedule again
+ktms-node pause --until-next         # until the schedule's next switch (at most 24 h)
+ktms-node pause 10m --now            # also cut the requests running now; their callers get an error
+ktms-node level 30 --for 1h          # 30% for an hour
+ktms-node resume                     # back to the schedule now
+```
+
+A manual level lasts from 1 minute to 24 hours, ends by the wall clock (a Mac that slept past the
+end resumes on waking) and survives an agent restart (`~/.ktms-node/override.json`, see
+`--state-dir`). A manual pause does not warm the models before it ends, so the memory stays free
+for the owner; they load right after it, and the proxy falls back meanwhile (`--warm` keeps the
+schedule's behaviour). These commands, and the desktop tray, talk to the running agent over a Unix
+socket, `--control-socket` (default `~/.ktms-node/control.sock`, empty turns it off). It is
+owner-only: mode 0600, and a caller running as another user is refused. Its HTTP/JSON API
+(`GET /v1/status`, `GET /v1/events` as server-sent events, `POST`/`DELETE /v1/override`,
+`GET`/`PUT /v1/schedule`, `POST /v1/schedule/preview`, `GET /v1/stats`) never returns the node key
+or any token.
+
 While the proxy refuses the node (wrong key, other node id, no allowed model) the agent does not
 exit and does not open a tunnel: it checks with the proxy first, then retries with a pause that
 grows to five minutes and says why in the log, so a supervisor never restarts it into a fresh

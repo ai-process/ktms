@@ -129,7 +129,30 @@ func (d *Doctor) Run(ctx context.Context) []Finding {
 		out = append(out, d.checkEndpoint(ctx)...)
 	}
 	out = append(out, schedFindings...)
+	out = append(out, d.checkControl(ctx)...)
 	return append(out, d.checkStats()...)
+}
+
+// checkControl asks the running agent for its manual level over the control socket.
+func (d *Doctor) checkControl(ctx context.Context) []Finding {
+	if d.Cfg.ControlSocket == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	s, err := NewControlClient(d.Cfg.ControlSocket).Status(ctx)
+	if errors.Is(err, ErrAgentDown) {
+		return []Finding{{"Control", LevelWarn, "No agent answers on " + d.Cfg.ControlSocket + ": the node is not running, or runs an agent older than the control API.",
+			"Start the node service; the tray and `ktms-node status` need it running."}}
+	}
+	if err != nil {
+		return []Finding{{"Control", LevelWarn, "The agent's control socket does not answer properly: " + shortErr(err), ""}}
+	}
+	if o := s.Level.Override; o != nil {
+		return []Finding{{"Control", LevelOK, fmt.Sprintf("Level set by hand: %d%% until %s.", o.Level, o.Until.Local().Format("Mon 15:04")),
+			"`ktms-node resume` returns the node to its schedule."}}
+	}
+	return []Finding{{"Control", LevelOK, fmt.Sprintf("The running agent answers on its control socket: %d%%, %s.", s.Level.Effective, s.State), ""}}
 }
 
 // ---- usage log ------------------------------------------------------------
