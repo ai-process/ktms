@@ -40,10 +40,12 @@ func (c *fakeClock) Set(t time.Time) {
 // count of proxy requests still running on the node.
 type levelRegistry struct {
 	pb.UnimplementedNodeRegistryServiceServer
-	mu     sync.Mutex
-	levels []uint32
-	active int32
-	beats  chan uint32
+	mu       sync.Mutex
+	levels   []uint32
+	active   int32
+	beats    chan uint32
+	schedule *pb.NodeSchedule // sent to ktms-mode agents
+	last     *pb.HeartbeatRequest
 }
 
 func (f *levelRegistry) RegisterNode(_ context.Context, r *pb.RegisterNodeRequest) (*pb.RegisterNodeResponse, error) {
@@ -62,15 +64,32 @@ func (f *levelRegistry) Heartbeat(_ context.Context, r *pb.HeartbeatRequest) (*p
 		lvl = r.GetCapacityPercent()
 	}
 	f.levels = append(f.levels, lvl)
+	f.last = r
 	select {
 	case f.beats <- lvl:
 	default:
 	}
-	return &pb.HeartbeatResponse{Ok: true, CapacityApplied: true, ActiveProxyRequests: f.active}, nil
+	resp := &pb.HeartbeatResponse{Ok: true, CapacityApplied: true, ActiveProxyRequests: f.active}
+	if r.GetScheduleSource() == "ktms" {
+		resp.Schedule = f.schedule
+	}
+	return resp, nil
 }
 
 func (f *levelRegistry) UnregisterNode(context.Context, *pb.UnregisterNodeRequest) (*pb.UnregisterNodeResponse, error) {
 	return &pb.UnregisterNodeResponse{Ok: true}, nil
+}
+
+func (f *levelRegistry) setSchedule(s *pb.NodeSchedule) {
+	f.mu.Lock()
+	f.schedule = s
+	f.mu.Unlock()
+}
+
+func (f *levelRegistry) lastBeat() *pb.HeartbeatRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.last
 }
 
 func (f *levelRegistry) setActive(n int32) {
@@ -127,6 +146,11 @@ func startScheduledAgent(t *testing.T, schedule string, clock *fakeClock) (*leve
 // startAgent runs an agent against a fake proxy and Ollama; opts adjust its config.
 func startAgent(t *testing.T, schedule string, clock *fakeClock, opts ...func(*AgentConfig)) (*Agent, *levelRegistry, *residentOllama) {
 	t.Helper()
+	return startAgentReg(t, schedule, clock, &levelRegistry{beats: make(chan uint32, 64)}, opts...)
+}
+
+func startAgentReg(t *testing.T, schedule string, clock *fakeClock, reg *levelRegistry, opts ...func(*AgentConfig)) (*Agent, *levelRegistry, *residentOllama) {
+	t.Helper()
 	file := filepath.Join(t.TempDir(), "schedule")
 	if err := os.WriteFile(file, []byte(schedule), 0o644); err != nil {
 		t.Fatal(err)
@@ -135,7 +159,6 @@ func startAgent(t *testing.T, schedule string, clock *fakeClock, opts ...func(*A
 	engine := httptest.NewServer(ollama)
 	t.Cleanup(engine.Close)
 
-	reg := &levelRegistry{beats: make(chan uint32, 64)}
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

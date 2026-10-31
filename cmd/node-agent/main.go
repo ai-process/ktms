@@ -58,6 +58,7 @@ type settings struct {
 	baseWeight    *float64
 	maxConcurrent *uint
 	scheduleFile  *string
+	scheduleSrc   *string
 	warmup        *time.Duration
 	stats         *bool
 	statsDir      *string
@@ -99,6 +100,7 @@ func newSettings(name string) *settings {
 		baseWeight:    fs.Float64("base-weight", 100.0, "Base routing weight"),
 		maxConcurrent: fs.Uint("max-concurrent", 16, "Maximum concurrent requests"),
 		scheduleFile:  fs.String("schedule-file", "", "Capacity levels by local time, one \"[days] HH:MM-HH:MM level\" rule per line; re-read when it changes, a missing file means 100%"),
+		scheduleSrc:   fs.String("schedule-source", nodeagent.ScheduleSourceLocal, "Where levels come from: local (--schedule-file) or ktms (the schedule KTMS keeps for this node; the file is then ignored). `ktms-node settings` and the tray change it at run time"),
 		warmup:        fs.Duration("warmup", 5*time.Minute, "Load the model this long before a paused window ends"),
 		stats:         fs.Bool("stats", true, "Keep a local log of the requests the proxy sends here, for `stats`"),
 		statsDir:      fs.String("stats-dir", nodeagent.DefaultStatsDir(), "Where the usage log is kept"),
@@ -138,6 +140,9 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 		name = id
 	}
 	pollURL, reportURL := nodeagent.ResolveURLs(*s.engineURL, *s.endpoint)
+	if *s.scheduleSrc != nodeagent.ScheduleSourceLocal && *s.scheduleSrc != nodeagent.ScheduleSourceKTMS {
+		return nodeagent.AgentConfig{}, fmt.Errorf("--schedule-source must be %s or %s", nodeagent.ScheduleSourceLocal, nodeagent.ScheduleSourceKTMS)
+	}
 	keep, err := nodeagent.ParseRetention(*s.statsKeep)
 	if err != nil {
 		return nodeagent.AgentConfig{}, fmt.Errorf("--stats-retention: %w", err)
@@ -165,6 +170,7 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 		BaseWeight:     *s.baseWeight,
 		MaxConcurrent:  uint32(*s.maxConcurrent),
 		ScheduleFile:   *s.scheduleFile,
+		ScheduleSource: *s.scheduleSrc,
 		Warmup:         *s.warmup,
 		StatsDir:       statsDir,
 		StatsRetention: keep,

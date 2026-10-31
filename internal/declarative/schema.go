@@ -64,6 +64,10 @@ func Schema() []byte {
 				"header":    map[string]any{"type": "string", "description": "HTTP header the gateway sends the server; Authorization when left out."},
 				"value_env": map[string]any{"type": "string", "description": "Environment variable holding the header's value, such as Bearer <token>; the value itself never goes in the file."},
 			}, "server", "value_env")),
+			"node_schedules": list(obj(map[string]any{
+				"node_id":  str,
+				"schedule": map[string]any{"type": "string", "description": "Rules for a node that hands its schedule to KTMS, \"[days] HH:MM-HH:MM level\" per line; empty means 100% all the time."},
+			}, "node_id", "schedule")),
 			"spend_limits": list(obj(map[string]any{
 				"subject_type":  map[string]any{"enum": []string{"key", "user"}},
 				"subject_id":    map[string]any{"type": "string", "description": "Key name or user id, * for every subject of that type."},

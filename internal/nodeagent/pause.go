@@ -26,6 +26,7 @@ type pauseState struct {
 	content   []byte // of the file last read, valid or not; nil when there is none
 	schedErr  string // why the file last read was refused; "" when it is in force
 	override  *Override
+	managed   *managedSchedule // last schedule from KTMS; in force in ktms mode
 	level     uint32
 	source    string    // where level comes from: schedule, override or default
 	nextAt    time.Time // next switch, kept until the level or the file changes
@@ -47,7 +48,9 @@ type pauseState struct {
 	active     int32 // proxy requests still running, from the last heartbeat; -1 unknown
 	models     []*pb.NodeModelSpec
 
-	warnedOldProxy, warnedNoControl bool
+	managedBad int64 // version of a schedule from KTMS that failed to parse
+
+	warnedOldProxy, warnedNoControl, warnedNoManaged bool
 }
 
 type engineResult struct {
@@ -63,7 +66,7 @@ type engineResult struct {
 // schedule in force.
 func (a *Agent) reloadSchedule() bool {
 	p := &a.pause
-	if a.cfg.ScheduleFile == "" {
+	if a.cfg.ScheduleFile == "" || a.source == ScheduleSourceKTMS {
 		return false
 	}
 	data, err := os.ReadFile(a.cfg.ScheduleFile)

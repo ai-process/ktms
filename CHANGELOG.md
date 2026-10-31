@@ -26,6 +26,16 @@ All notable changes to KTMS are listed here. The format follows
   (read, validate, preview, save), the usage report and a server-sent event stream of the
   status. `doctor` shows a manual level.
 
+- "Schedule set by KTMS": a node started with `--schedule-source=ktms` (or switched at run time
+  with `ktms-node settings`) takes its schedule and load from KTMS with each heartbeat and ignores
+  its local file. KTMS keeps one schedule per node in Postgres, validated with the agent's parser,
+  plus an optional override of 1 minute to 24 hours: the `GetNodeSchedule`, `ListNodeSchedules`,
+  `SetNodeSchedule`, `SetNodeCapacityOverride` and `DeleteNodeSchedule` RPCs, `ktms nodes
+  schedule`, and the `node_schedules` file section. The node keeps the last schedule it got
+  across restarts; the owner's pause on the machine still wins. Heartbeats report
+  `schedule_source`, `capacity_source` and `capacity_until`, which `ListNodes` and `ktms nodes
+  list` show.
+
 ### Changed
 - Token budget reservations count tool definitions and the tool calls in the conversation.
 - A node that ends a pause without having warmed its models (no time for `--warmup`) loads them

@@ -8,6 +8,7 @@ import (
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/nodeagent"
 )
 
 // KeyScopes are the scopes a client key in the file may carry.
@@ -203,6 +204,20 @@ func (c *Config) Validate() error {
 			bad("mcp_credentials[%d]: server %q is not in mcp_servers", i, mc.Server)
 		}
 		creds[mc.Server] = true
+	}
+
+	nodes := map[string]bool{}
+	for i, ns := range c.NodeSchedules {
+		switch {
+		case ns.NodeID == "":
+			bad("node_schedules[%d]: node_id is required", i)
+		case nodes[ns.NodeID]:
+			bad("node_schedules[%d]: duplicate node %q", i, ns.NodeID)
+		}
+		if _, err := nodeagent.ParseSchedule(strings.NewReader(ns.Schedule)); err != nil {
+			bad("node_schedules[%d] (%s): %v", i, ns.NodeID, err)
+		}
+		nodes[ns.NodeID] = true
 	}
 
 	ur := map[string]bool{}

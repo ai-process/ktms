@@ -581,10 +581,10 @@ func (a *app) nodesCmd() *cobra.Command {
 				}
 				var rows [][]string
 				for _, n := range res.GetNodes() {
-					rows = append(rows, []string{n.GetNodeId(), orDash(n.GetName()), n.GetState(), orDash(n.GetEngine()), list(n.GetModels()),
+					rows = append(rows, []string{n.GetNodeId(), orDash(n.GetName()), n.GetState(), levelCell(n), orDash(n.GetEngine()), list(n.GetModels()),
 						fmt.Sprintf("%d/%d", n.GetActiveRequests(), n.GetMaxConcurrent()), fmt.Sprintf("%.2f", n.GetEffectiveWeight()), when(n.GetLastHeartbeat())})
 				}
-				return p.rows([]string{"NODE", "NAME", "STATE", "ENGINE", "MODELS", "ACTIVE", "WEIGHT", "HEARTBEAT"}, rows)
+				return p.rows([]string{"NODE", "NAME", "STATE", "LEVEL", "ENGINE", "MODELS", "ACTIVE", "WEIGHT", "HEARTBEAT"}, rows)
 			})
 		},
 	}
@@ -602,7 +602,7 @@ func (a *app) nodesCmd() *cobra.Command {
 		},
 	}
 	cmd := &cobra.Command{Use: "nodes", Short: "Inference nodes"}
-	cmd.AddCommand(ls, drain)
+	cmd.AddCommand(ls, drain, a.nodeScheduleCmd())
 	return cmd
 }
 

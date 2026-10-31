@@ -2066,6 +2066,9 @@ type NodeInfo struct {
 	WarmModels      []string               `protobuf:"bytes,18,rep,name=warm_models,json=warmModels,proto3" json:"warm_models,omitempty"`
 	CapacityPercent uint32                 `protobuf:"varint,19,opt,name=capacity_percent,json=capacityPercent,proto3" json:"capacity_percent,omitempty"` // current level of the node's schedule
 	EffectiveSlots  int32                  `protobuf:"varint,20,opt,name=effective_slots,json=effectiveSlots,proto3" json:"effective_slots,omitempty"`    // concurrent requests allowed at that level
+	ScheduleSource  string                 `protobuf:"bytes,21,opt,name=schedule_source,json=scheduleSource,proto3" json:"schedule_source,omitempty"`     // local | ktms; empty from agents that predate it
+	CapacitySource  string                 `protobuf:"bytes,22,opt,name=capacity_source,json=capacitySource,proto3" json:"capacity_source,omitempty"`     // schedule | override | ktms_schedule | ktms_override | default
+	CapacityUntil   *timestamppb.Timestamp `protobuf:"bytes,23,opt,name=capacity_until,json=capacityUntil,proto3" json:"capacity_until,omitempty"`        // end of the override behind capacity_percent
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -2240,6 +2243,27 @@ func (x *NodeInfo) GetEffectiveSlots() int32 {
 	return 0
 }
 
+func (x *NodeInfo) GetScheduleSource() string {
+	if x != nil {
+		return x.ScheduleSource
+	}
+	return ""
+}
+
+func (x *NodeInfo) GetCapacitySource() string {
+	if x != nil {
+		return x.CapacitySource
+	}
+	return ""
+}
+
+func (x *NodeInfo) GetCapacityUntil() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CapacityUntil
+	}
+	return nil
+}
+
 type ListNodesResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Nodes         []*NodeInfo            `protobuf:"bytes,1,rep,name=nodes,proto3" json:"nodes,omitempty"`
@@ -2364,6 +2388,408 @@ func (*DrainNodeResponse) Descriptor() ([]byte, []int) {
 	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{38}
 }
 
+type GetNodeScheduleRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetNodeScheduleRequest) Reset() {
+	*x = GetNodeScheduleRequest{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetNodeScheduleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetNodeScheduleRequest) ProtoMessage() {}
+
+func (x *GetNodeScheduleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetNodeScheduleRequest.ProtoReflect.Descriptor instead.
+func (*GetNodeScheduleRequest) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *GetNodeScheduleRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+// NodeScheduleInfo is what KTMS keeps for a node: the agent follows it only
+// when it runs with schedule_source "ktms" (NodeInfo.schedule_source).
+type NodeScheduleInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Text          string                 `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`         // "[days] HH:MM-HH:MM level" per line; empty = 100%
+	Version       int64                  `protobuf:"varint,3,opt,name=version,proto3" json:"version,omitempty"`  // 0 = nothing stored
+	Override      *NodeCapacityOverride  `protobuf:"bytes,4,opt,name=override,proto3" json:"override,omitempty"` // unset = none in force
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodeScheduleInfo) Reset() {
+	*x = NodeScheduleInfo{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeScheduleInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeScheduleInfo) ProtoMessage() {}
+
+func (x *NodeScheduleInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeScheduleInfo.ProtoReflect.Descriptor instead.
+func (*NodeScheduleInfo) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *NodeScheduleInfo) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *NodeScheduleInfo) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *NodeScheduleInfo) GetVersion() int64 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *NodeScheduleInfo) GetOverride() *NodeCapacityOverride {
+	if x != nil {
+		return x.Override
+	}
+	return nil
+}
+
+func (x *NodeScheduleInfo) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+type SetNodeScheduleRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Text          string                 `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"` // validated with the agent's parser; empty = 100% all the time
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetNodeScheduleRequest) Reset() {
+	*x = SetNodeScheduleRequest{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetNodeScheduleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetNodeScheduleRequest) ProtoMessage() {}
+
+func (x *SetNodeScheduleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetNodeScheduleRequest.ProtoReflect.Descriptor instead.
+func (*SetNodeScheduleRequest) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *SetNodeScheduleRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *SetNodeScheduleRequest) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+type SetNodeCapacityOverrideRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Level         uint32                 `protobuf:"varint,2,opt,name=level,proto3" json:"level,omitempty"` // 0-100
+	Until         *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=until,proto3" json:"until,omitempty"`  // 1 minute to 24 hours ahead
+	Clear         bool                   `protobuf:"varint,4,opt,name=clear,proto3" json:"clear,omitempty"` // remove the override; level and until are ignored
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetNodeCapacityOverrideRequest) Reset() {
+	*x = SetNodeCapacityOverrideRequest{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetNodeCapacityOverrideRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetNodeCapacityOverrideRequest) ProtoMessage() {}
+
+func (x *SetNodeCapacityOverrideRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetNodeCapacityOverrideRequest.ProtoReflect.Descriptor instead.
+func (*SetNodeCapacityOverrideRequest) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *SetNodeCapacityOverrideRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *SetNodeCapacityOverrideRequest) GetLevel() uint32 {
+	if x != nil {
+		return x.Level
+	}
+	return 0
+}
+
+func (x *SetNodeCapacityOverrideRequest) GetUntil() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Until
+	}
+	return nil
+}
+
+func (x *SetNodeCapacityOverrideRequest) GetClear() bool {
+	if x != nil {
+		return x.Clear
+	}
+	return false
+}
+
+type ListNodeSchedulesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListNodeSchedulesRequest) Reset() {
+	*x = ListNodeSchedulesRequest{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListNodeSchedulesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListNodeSchedulesRequest) ProtoMessage() {}
+
+func (x *ListNodeSchedulesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListNodeSchedulesRequest.ProtoReflect.Descriptor instead.
+func (*ListNodeSchedulesRequest) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{43}
+}
+
+type ListNodeSchedulesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Schedules     []*NodeScheduleInfo    `protobuf:"bytes,1,rep,name=schedules,proto3" json:"schedules,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListNodeSchedulesResponse) Reset() {
+	*x = ListNodeSchedulesResponse{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListNodeSchedulesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListNodeSchedulesResponse) ProtoMessage() {}
+
+func (x *ListNodeSchedulesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListNodeSchedulesResponse.ProtoReflect.Descriptor instead.
+func (*ListNodeSchedulesResponse) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *ListNodeSchedulesResponse) GetSchedules() []*NodeScheduleInfo {
+	if x != nil {
+		return x.Schedules
+	}
+	return nil
+}
+
+type DeleteNodeScheduleRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteNodeScheduleRequest) Reset() {
+	*x = DeleteNodeScheduleRequest{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteNodeScheduleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteNodeScheduleRequest) ProtoMessage() {}
+
+func (x *DeleteNodeScheduleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteNodeScheduleRequest.ProtoReflect.Descriptor instead.
+func (*DeleteNodeScheduleRequest) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *DeleteNodeScheduleRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+type DeleteNodeScheduleResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteNodeScheduleResponse) Reset() {
+	*x = DeleteNodeScheduleResponse{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteNodeScheduleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteNodeScheduleResponse) ProtoMessage() {}
+
+func (x *DeleteNodeScheduleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteNodeScheduleResponse.ProtoReflect.Descriptor instead.
+func (*DeleteNodeScheduleResponse) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{46}
+}
+
 type UserRateLimitSpec struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	UserId         string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`                            // user identity or "*" wildcard for default across users
@@ -2378,7 +2804,7 @@ type UserRateLimitSpec struct {
 
 func (x *UserRateLimitSpec) Reset() {
 	*x = UserRateLimitSpec{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[39]
+	mi := &file_ktms_v1_admin_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2390,7 +2816,7 @@ func (x *UserRateLimitSpec) String() string {
 func (*UserRateLimitSpec) ProtoMessage() {}
 
 func (x *UserRateLimitSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[39]
+	mi := &file_ktms_v1_admin_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2403,7 +2829,7 @@ func (x *UserRateLimitSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserRateLimitSpec.ProtoReflect.Descriptor instead.
 func (*UserRateLimitSpec) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{39}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *UserRateLimitSpec) GetUserId() string {
@@ -2457,7 +2883,7 @@ type SetUserRateLimitRequest struct {
 
 func (x *SetUserRateLimitRequest) Reset() {
 	*x = SetUserRateLimitRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[40]
+	mi := &file_ktms_v1_admin_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2469,7 +2895,7 @@ func (x *SetUserRateLimitRequest) String() string {
 func (*SetUserRateLimitRequest) ProtoMessage() {}
 
 func (x *SetUserRateLimitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[40]
+	mi := &file_ktms_v1_admin_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2482,7 +2908,7 @@ func (x *SetUserRateLimitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetUserRateLimitRequest.ProtoReflect.Descriptor instead.
 func (*SetUserRateLimitRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{40}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *SetUserRateLimitRequest) GetRateLimit() *UserRateLimitSpec {
@@ -2500,7 +2926,7 @@ type SetUserRateLimitResponse struct {
 
 func (x *SetUserRateLimitResponse) Reset() {
 	*x = SetUserRateLimitResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[41]
+	mi := &file_ktms_v1_admin_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2512,7 +2938,7 @@ func (x *SetUserRateLimitResponse) String() string {
 func (*SetUserRateLimitResponse) ProtoMessage() {}
 
 func (x *SetUserRateLimitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[41]
+	mi := &file_ktms_v1_admin_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2525,7 +2951,7 @@ func (x *SetUserRateLimitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetUserRateLimitResponse.ProtoReflect.Descriptor instead.
 func (*SetUserRateLimitResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{41}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{49}
 }
 
 type DeleteUserRateLimitRequest struct {
@@ -2538,7 +2964,7 @@ type DeleteUserRateLimitRequest struct {
 
 func (x *DeleteUserRateLimitRequest) Reset() {
 	*x = DeleteUserRateLimitRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[42]
+	mi := &file_ktms_v1_admin_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2550,7 +2976,7 @@ func (x *DeleteUserRateLimitRequest) String() string {
 func (*DeleteUserRateLimitRequest) ProtoMessage() {}
 
 func (x *DeleteUserRateLimitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[42]
+	mi := &file_ktms_v1_admin_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2563,7 +2989,7 @@ func (x *DeleteUserRateLimitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteUserRateLimitRequest.ProtoReflect.Descriptor instead.
 func (*DeleteUserRateLimitRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{42}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *DeleteUserRateLimitRequest) GetUserId() string {
@@ -2588,7 +3014,7 @@ type DeleteUserRateLimitResponse struct {
 
 func (x *DeleteUserRateLimitResponse) Reset() {
 	*x = DeleteUserRateLimitResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[43]
+	mi := &file_ktms_v1_admin_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2600,7 +3026,7 @@ func (x *DeleteUserRateLimitResponse) String() string {
 func (*DeleteUserRateLimitResponse) ProtoMessage() {}
 
 func (x *DeleteUserRateLimitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[43]
+	mi := &file_ktms_v1_admin_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2613,7 +3039,7 @@ func (x *DeleteUserRateLimitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteUserRateLimitResponse.ProtoReflect.Descriptor instead.
 func (*DeleteUserRateLimitResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{43}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{51}
 }
 
 type ListUserRateLimitsRequest struct {
@@ -2625,7 +3051,7 @@ type ListUserRateLimitsRequest struct {
 
 func (x *ListUserRateLimitsRequest) Reset() {
 	*x = ListUserRateLimitsRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[44]
+	mi := &file_ktms_v1_admin_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2637,7 +3063,7 @@ func (x *ListUserRateLimitsRequest) String() string {
 func (*ListUserRateLimitsRequest) ProtoMessage() {}
 
 func (x *ListUserRateLimitsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[44]
+	mi := &file_ktms_v1_admin_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2650,7 +3076,7 @@ func (x *ListUserRateLimitsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUserRateLimitsRequest.ProtoReflect.Descriptor instead.
 func (*ListUserRateLimitsRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{44}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ListUserRateLimitsRequest) GetUserId() string {
@@ -2669,7 +3095,7 @@ type ListUserRateLimitsResponse struct {
 
 func (x *ListUserRateLimitsResponse) Reset() {
 	*x = ListUserRateLimitsResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[45]
+	mi := &file_ktms_v1_admin_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2681,7 +3107,7 @@ func (x *ListUserRateLimitsResponse) String() string {
 func (*ListUserRateLimitsResponse) ProtoMessage() {}
 
 func (x *ListUserRateLimitsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[45]
+	mi := &file_ktms_v1_admin_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2694,7 +3120,7 @@ func (x *ListUserRateLimitsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUserRateLimitsResponse.ProtoReflect.Descriptor instead.
 func (*ListUserRateLimitsResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{45}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ListUserRateLimitsResponse) GetRateLimits() []*UserRateLimitSpec {
@@ -2722,7 +3148,7 @@ type SpendLimitSpec struct {
 
 func (x *SpendLimitSpec) Reset() {
 	*x = SpendLimitSpec{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[46]
+	mi := &file_ktms_v1_admin_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2734,7 +3160,7 @@ func (x *SpendLimitSpec) String() string {
 func (*SpendLimitSpec) ProtoMessage() {}
 
 func (x *SpendLimitSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[46]
+	mi := &file_ktms_v1_admin_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2747,7 +3173,7 @@ func (x *SpendLimitSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpendLimitSpec.ProtoReflect.Descriptor instead.
 func (*SpendLimitSpec) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{46}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *SpendLimitSpec) GetSubjectType() string {
@@ -2787,7 +3213,7 @@ type SetSpendLimitRequest struct {
 
 func (x *SetSpendLimitRequest) Reset() {
 	*x = SetSpendLimitRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[47]
+	mi := &file_ktms_v1_admin_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2799,7 +3225,7 @@ func (x *SetSpendLimitRequest) String() string {
 func (*SetSpendLimitRequest) ProtoMessage() {}
 
 func (x *SetSpendLimitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[47]
+	mi := &file_ktms_v1_admin_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2812,7 +3238,7 @@ func (x *SetSpendLimitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetSpendLimitRequest.ProtoReflect.Descriptor instead.
 func (*SetSpendLimitRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{47}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *SetSpendLimitRequest) GetSpendLimit() *SpendLimitSpec {
@@ -2830,7 +3256,7 @@ type SetSpendLimitResponse struct {
 
 func (x *SetSpendLimitResponse) Reset() {
 	*x = SetSpendLimitResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[48]
+	mi := &file_ktms_v1_admin_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2842,7 +3268,7 @@ func (x *SetSpendLimitResponse) String() string {
 func (*SetSpendLimitResponse) ProtoMessage() {}
 
 func (x *SetSpendLimitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[48]
+	mi := &file_ktms_v1_admin_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2855,7 +3281,7 @@ func (x *SetSpendLimitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetSpendLimitResponse.ProtoReflect.Descriptor instead.
 func (*SetSpendLimitResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{48}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{56}
 }
 
 type DeleteSpendLimitRequest struct {
@@ -2869,7 +3295,7 @@ type DeleteSpendLimitRequest struct {
 
 func (x *DeleteSpendLimitRequest) Reset() {
 	*x = DeleteSpendLimitRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[49]
+	mi := &file_ktms_v1_admin_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2881,7 +3307,7 @@ func (x *DeleteSpendLimitRequest) String() string {
 func (*DeleteSpendLimitRequest) ProtoMessage() {}
 
 func (x *DeleteSpendLimitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[49]
+	mi := &file_ktms_v1_admin_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2894,7 +3320,7 @@ func (x *DeleteSpendLimitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSpendLimitRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSpendLimitRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{49}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *DeleteSpendLimitRequest) GetSubjectType() string {
@@ -2926,7 +3352,7 @@ type DeleteSpendLimitResponse struct {
 
 func (x *DeleteSpendLimitResponse) Reset() {
 	*x = DeleteSpendLimitResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[50]
+	mi := &file_ktms_v1_admin_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2938,7 +3364,7 @@ func (x *DeleteSpendLimitResponse) String() string {
 func (*DeleteSpendLimitResponse) ProtoMessage() {}
 
 func (x *DeleteSpendLimitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[50]
+	mi := &file_ktms_v1_admin_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2951,7 +3377,7 @@ func (x *DeleteSpendLimitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSpendLimitResponse.ProtoReflect.Descriptor instead.
 func (*DeleteSpendLimitResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{50}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{58}
 }
 
 type ListSpendLimitsRequest struct {
@@ -2964,7 +3390,7 @@ type ListSpendLimitsRequest struct {
 
 func (x *ListSpendLimitsRequest) Reset() {
 	*x = ListSpendLimitsRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[51]
+	mi := &file_ktms_v1_admin_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2976,7 +3402,7 @@ func (x *ListSpendLimitsRequest) String() string {
 func (*ListSpendLimitsRequest) ProtoMessage() {}
 
 func (x *ListSpendLimitsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[51]
+	mi := &file_ktms_v1_admin_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2989,7 +3415,7 @@ func (x *ListSpendLimitsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSpendLimitsRequest.ProtoReflect.Descriptor instead.
 func (*ListSpendLimitsRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{51}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *ListSpendLimitsRequest) GetSubjectType() string {
@@ -3015,7 +3441,7 @@ type ListSpendLimitsResponse struct {
 
 func (x *ListSpendLimitsResponse) Reset() {
 	*x = ListSpendLimitsResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[52]
+	mi := &file_ktms_v1_admin_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3027,7 +3453,7 @@ func (x *ListSpendLimitsResponse) String() string {
 func (*ListSpendLimitsResponse) ProtoMessage() {}
 
 func (x *ListSpendLimitsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[52]
+	mi := &file_ktms_v1_admin_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3040,7 +3466,7 @@ func (x *ListSpendLimitsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSpendLimitsResponse.ProtoReflect.Descriptor instead.
 func (*ListSpendLimitsResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{52}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *ListSpendLimitsResponse) GetSpendLimits() []*SpendLimitSpec {
@@ -3061,7 +3487,7 @@ type Organization struct {
 
 func (x *Organization) Reset() {
 	*x = Organization{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[53]
+	mi := &file_ktms_v1_admin_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3073,7 +3499,7 @@ func (x *Organization) String() string {
 func (*Organization) ProtoMessage() {}
 
 func (x *Organization) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[53]
+	mi := &file_ktms_v1_admin_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3086,7 +3512,7 @@ func (x *Organization) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Organization.ProtoReflect.Descriptor instead.
 func (*Organization) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{53}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *Organization) GetId() string {
@@ -3128,7 +3554,7 @@ type Team struct {
 
 func (x *Team) Reset() {
 	*x = Team{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[54]
+	mi := &file_ktms_v1_admin_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3140,7 +3566,7 @@ func (x *Team) String() string {
 func (*Team) ProtoMessage() {}
 
 func (x *Team) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[54]
+	mi := &file_ktms_v1_admin_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3153,7 +3579,7 @@ func (x *Team) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Team.ProtoReflect.Descriptor instead.
 func (*Team) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{54}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *Team) GetId() string {
@@ -3214,7 +3640,7 @@ type CreateOrganizationRequest struct {
 
 func (x *CreateOrganizationRequest) Reset() {
 	*x = CreateOrganizationRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[55]
+	mi := &file_ktms_v1_admin_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3226,7 +3652,7 @@ func (x *CreateOrganizationRequest) String() string {
 func (*CreateOrganizationRequest) ProtoMessage() {}
 
 func (x *CreateOrganizationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[55]
+	mi := &file_ktms_v1_admin_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3239,7 +3665,7 @@ func (x *CreateOrganizationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateOrganizationRequest.ProtoReflect.Descriptor instead.
 func (*CreateOrganizationRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{55}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *CreateOrganizationRequest) GetName() string {
@@ -3258,7 +3684,7 @@ type CreateOrganizationResponse struct {
 
 func (x *CreateOrganizationResponse) Reset() {
 	*x = CreateOrganizationResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[56]
+	mi := &file_ktms_v1_admin_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3270,7 +3696,7 @@ func (x *CreateOrganizationResponse) String() string {
 func (*CreateOrganizationResponse) ProtoMessage() {}
 
 func (x *CreateOrganizationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[56]
+	mi := &file_ktms_v1_admin_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3283,7 +3709,7 @@ func (x *CreateOrganizationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateOrganizationResponse.ProtoReflect.Descriptor instead.
 func (*CreateOrganizationResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{56}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *CreateOrganizationResponse) GetOrganization() *Organization {
@@ -3301,7 +3727,7 @@ type ListOrganizationsRequest struct {
 
 func (x *ListOrganizationsRequest) Reset() {
 	*x = ListOrganizationsRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[57]
+	mi := &file_ktms_v1_admin_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3313,7 +3739,7 @@ func (x *ListOrganizationsRequest) String() string {
 func (*ListOrganizationsRequest) ProtoMessage() {}
 
 func (x *ListOrganizationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[57]
+	mi := &file_ktms_v1_admin_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3326,7 +3752,7 @@ func (x *ListOrganizationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOrganizationsRequest.ProtoReflect.Descriptor instead.
 func (*ListOrganizationsRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{57}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{65}
 }
 
 type ListOrganizationsResponse struct {
@@ -3338,7 +3764,7 @@ type ListOrganizationsResponse struct {
 
 func (x *ListOrganizationsResponse) Reset() {
 	*x = ListOrganizationsResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[58]
+	mi := &file_ktms_v1_admin_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3350,7 +3776,7 @@ func (x *ListOrganizationsResponse) String() string {
 func (*ListOrganizationsResponse) ProtoMessage() {}
 
 func (x *ListOrganizationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[58]
+	mi := &file_ktms_v1_admin_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3363,7 +3789,7 @@ func (x *ListOrganizationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOrganizationsResponse.ProtoReflect.Descriptor instead.
 func (*ListOrganizationsResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{58}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *ListOrganizationsResponse) GetOrganizations() []*Organization {
@@ -3382,7 +3808,7 @@ type DeleteOrganizationRequest struct {
 
 func (x *DeleteOrganizationRequest) Reset() {
 	*x = DeleteOrganizationRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[59]
+	mi := &file_ktms_v1_admin_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3394,7 +3820,7 @@ func (x *DeleteOrganizationRequest) String() string {
 func (*DeleteOrganizationRequest) ProtoMessage() {}
 
 func (x *DeleteOrganizationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[59]
+	mi := &file_ktms_v1_admin_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3407,7 +3833,7 @@ func (x *DeleteOrganizationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteOrganizationRequest.ProtoReflect.Descriptor instead.
 func (*DeleteOrganizationRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{59}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *DeleteOrganizationRequest) GetId() string {
@@ -3425,7 +3851,7 @@ type DeleteOrganizationResponse struct {
 
 func (x *DeleteOrganizationResponse) Reset() {
 	*x = DeleteOrganizationResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[60]
+	mi := &file_ktms_v1_admin_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3437,7 +3863,7 @@ func (x *DeleteOrganizationResponse) String() string {
 func (*DeleteOrganizationResponse) ProtoMessage() {}
 
 func (x *DeleteOrganizationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[60]
+	mi := &file_ktms_v1_admin_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3450,7 +3876,7 @@ func (x *DeleteOrganizationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteOrganizationResponse.ProtoReflect.Descriptor instead.
 func (*DeleteOrganizationResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{60}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{68}
 }
 
 type CreateTeamRequest struct {
@@ -3466,7 +3892,7 @@ type CreateTeamRequest struct {
 
 func (x *CreateTeamRequest) Reset() {
 	*x = CreateTeamRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[61]
+	mi := &file_ktms_v1_admin_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3478,7 +3904,7 @@ func (x *CreateTeamRequest) String() string {
 func (*CreateTeamRequest) ProtoMessage() {}
 
 func (x *CreateTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[61]
+	mi := &file_ktms_v1_admin_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3491,7 +3917,7 @@ func (x *CreateTeamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTeamRequest.ProtoReflect.Descriptor instead.
 func (*CreateTeamRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{61}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *CreateTeamRequest) GetOrgId() string {
@@ -3538,7 +3964,7 @@ type CreateTeamResponse struct {
 
 func (x *CreateTeamResponse) Reset() {
 	*x = CreateTeamResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[62]
+	mi := &file_ktms_v1_admin_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3550,7 +3976,7 @@ func (x *CreateTeamResponse) String() string {
 func (*CreateTeamResponse) ProtoMessage() {}
 
 func (x *CreateTeamResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[62]
+	mi := &file_ktms_v1_admin_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3563,7 +3989,7 @@ func (x *CreateTeamResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTeamResponse.ProtoReflect.Descriptor instead.
 func (*CreateTeamResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{62}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *CreateTeamResponse) GetTeam() *Team {
@@ -3582,7 +4008,7 @@ type GetTeamRequest struct {
 
 func (x *GetTeamRequest) Reset() {
 	*x = GetTeamRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[63]
+	mi := &file_ktms_v1_admin_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3594,7 +4020,7 @@ func (x *GetTeamRequest) String() string {
 func (*GetTeamRequest) ProtoMessage() {}
 
 func (x *GetTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[63]
+	mi := &file_ktms_v1_admin_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3607,7 +4033,7 @@ func (x *GetTeamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTeamRequest.ProtoReflect.Descriptor instead.
 func (*GetTeamRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{63}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *GetTeamRequest) GetId() string {
@@ -3626,7 +4052,7 @@ type GetTeamResponse struct {
 
 func (x *GetTeamResponse) Reset() {
 	*x = GetTeamResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[64]
+	mi := &file_ktms_v1_admin_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3638,7 +4064,7 @@ func (x *GetTeamResponse) String() string {
 func (*GetTeamResponse) ProtoMessage() {}
 
 func (x *GetTeamResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[64]
+	mi := &file_ktms_v1_admin_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3651,7 +4077,7 @@ func (x *GetTeamResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTeamResponse.ProtoReflect.Descriptor instead.
 func (*GetTeamResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{64}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *GetTeamResponse) GetTeam() *Team {
@@ -3670,7 +4096,7 @@ type ListTeamsRequest struct {
 
 func (x *ListTeamsRequest) Reset() {
 	*x = ListTeamsRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[65]
+	mi := &file_ktms_v1_admin_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3682,7 +4108,7 @@ func (x *ListTeamsRequest) String() string {
 func (*ListTeamsRequest) ProtoMessage() {}
 
 func (x *ListTeamsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[65]
+	mi := &file_ktms_v1_admin_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3695,7 +4121,7 @@ func (x *ListTeamsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTeamsRequest.ProtoReflect.Descriptor instead.
 func (*ListTeamsRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{65}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *ListTeamsRequest) GetOrgId() string {
@@ -3714,7 +4140,7 @@ type ListTeamsResponse struct {
 
 func (x *ListTeamsResponse) Reset() {
 	*x = ListTeamsResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[66]
+	mi := &file_ktms_v1_admin_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3726,7 +4152,7 @@ func (x *ListTeamsResponse) String() string {
 func (*ListTeamsResponse) ProtoMessage() {}
 
 func (x *ListTeamsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[66]
+	mi := &file_ktms_v1_admin_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3739,7 +4165,7 @@ func (x *ListTeamsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTeamsResponse.ProtoReflect.Descriptor instead.
 func (*ListTeamsResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{66}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *ListTeamsResponse) GetTeams() []*Team {
@@ -3764,7 +4190,7 @@ type UpdateTeamRequest struct {
 
 func (x *UpdateTeamRequest) Reset() {
 	*x = UpdateTeamRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[67]
+	mi := &file_ktms_v1_admin_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3776,7 +4202,7 @@ func (x *UpdateTeamRequest) String() string {
 func (*UpdateTeamRequest) ProtoMessage() {}
 
 func (x *UpdateTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[67]
+	mi := &file_ktms_v1_admin_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3789,7 +4215,7 @@ func (x *UpdateTeamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateTeamRequest.ProtoReflect.Descriptor instead.
 func (*UpdateTeamRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{67}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *UpdateTeamRequest) GetId() string {
@@ -3836,7 +4262,7 @@ type UpdateTeamResponse struct {
 
 func (x *UpdateTeamResponse) Reset() {
 	*x = UpdateTeamResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[68]
+	mi := &file_ktms_v1_admin_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3848,7 +4274,7 @@ func (x *UpdateTeamResponse) String() string {
 func (*UpdateTeamResponse) ProtoMessage() {}
 
 func (x *UpdateTeamResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[68]
+	mi := &file_ktms_v1_admin_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3861,7 +4287,7 @@ func (x *UpdateTeamResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateTeamResponse.ProtoReflect.Descriptor instead.
 func (*UpdateTeamResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{68}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *UpdateTeamResponse) GetTeam() *Team {
@@ -3880,7 +4306,7 @@ type DeleteTeamRequest struct {
 
 func (x *DeleteTeamRequest) Reset() {
 	*x = DeleteTeamRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[69]
+	mi := &file_ktms_v1_admin_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3892,7 +4318,7 @@ func (x *DeleteTeamRequest) String() string {
 func (*DeleteTeamRequest) ProtoMessage() {}
 
 func (x *DeleteTeamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[69]
+	mi := &file_ktms_v1_admin_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3905,7 +4331,7 @@ func (x *DeleteTeamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTeamRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTeamRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{69}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *DeleteTeamRequest) GetId() string {
@@ -3923,7 +4349,7 @@ type DeleteTeamResponse struct {
 
 func (x *DeleteTeamResponse) Reset() {
 	*x = DeleteTeamResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[70]
+	mi := &file_ktms_v1_admin_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3935,7 +4361,7 @@ func (x *DeleteTeamResponse) String() string {
 func (*DeleteTeamResponse) ProtoMessage() {}
 
 func (x *DeleteTeamResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[70]
+	mi := &file_ktms_v1_admin_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3948,7 +4374,7 @@ func (x *DeleteTeamResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTeamResponse.ProtoReflect.Descriptor instead.
 func (*DeleteTeamResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{70}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{78}
 }
 
 type GetTeamSpendRequest struct {
@@ -3960,7 +4386,7 @@ type GetTeamSpendRequest struct {
 
 func (x *GetTeamSpendRequest) Reset() {
 	*x = GetTeamSpendRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[71]
+	mi := &file_ktms_v1_admin_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3972,7 +4398,7 @@ func (x *GetTeamSpendRequest) String() string {
 func (*GetTeamSpendRequest) ProtoMessage() {}
 
 func (x *GetTeamSpendRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[71]
+	mi := &file_ktms_v1_admin_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3985,7 +4411,7 @@ func (x *GetTeamSpendRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTeamSpendRequest.ProtoReflect.Descriptor instead.
 func (*GetTeamSpendRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{71}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *GetTeamSpendRequest) GetId() string {
@@ -4010,7 +4436,7 @@ type GetTeamSpendResponse struct {
 
 func (x *GetTeamSpendResponse) Reset() {
 	*x = GetTeamSpendResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[72]
+	mi := &file_ktms_v1_admin_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4022,7 +4448,7 @@ func (x *GetTeamSpendResponse) String() string {
 func (*GetTeamSpendResponse) ProtoMessage() {}
 
 func (x *GetTeamSpendResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[72]
+	mi := &file_ktms_v1_admin_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4035,7 +4461,7 @@ func (x *GetTeamSpendResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTeamSpendResponse.ProtoReflect.Descriptor instead.
 func (*GetTeamSpendResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{72}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *GetTeamSpendResponse) GetSpentNanousd() int64 {
@@ -4078,7 +4504,7 @@ type GetSpendRequest struct {
 
 func (x *GetSpendRequest) Reset() {
 	*x = GetSpendRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[73]
+	mi := &file_ktms_v1_admin_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4090,7 +4516,7 @@ func (x *GetSpendRequest) String() string {
 func (*GetSpendRequest) ProtoMessage() {}
 
 func (x *GetSpendRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[73]
+	mi := &file_ktms_v1_admin_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4103,7 +4529,7 @@ func (x *GetSpendRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSpendRequest.ProtoReflect.Descriptor instead.
 func (*GetSpendRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{73}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *GetSpendRequest) GetSubjectType() string {
@@ -4134,7 +4560,7 @@ type SpendWindow struct {
 
 func (x *SpendWindow) Reset() {
 	*x = SpendWindow{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[74]
+	mi := &file_ktms_v1_admin_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4146,7 +4572,7 @@ func (x *SpendWindow) String() string {
 func (*SpendWindow) ProtoMessage() {}
 
 func (x *SpendWindow) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[74]
+	mi := &file_ktms_v1_admin_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4159,7 +4585,7 @@ func (x *SpendWindow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpendWindow.ProtoReflect.Descriptor instead.
 func (*SpendWindow) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{74}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *SpendWindow) GetPeriod() string {
@@ -4213,7 +4639,7 @@ type GetSpendResponse struct {
 
 func (x *GetSpendResponse) Reset() {
 	*x = GetSpendResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[75]
+	mi := &file_ktms_v1_admin_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4225,7 +4651,7 @@ func (x *GetSpendResponse) String() string {
 func (*GetSpendResponse) ProtoMessage() {}
 
 func (x *GetSpendResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[75]
+	mi := &file_ktms_v1_admin_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4238,7 +4664,7 @@ func (x *GetSpendResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSpendResponse.ProtoReflect.Descriptor instead.
 func (*GetSpendResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{75}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *GetSpendResponse) GetWindows() []*SpendWindow {
@@ -4270,7 +4696,7 @@ type MCPServerSpec struct {
 
 func (x *MCPServerSpec) Reset() {
 	*x = MCPServerSpec{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[76]
+	mi := &file_ktms_v1_admin_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4282,7 +4708,7 @@ func (x *MCPServerSpec) String() string {
 func (*MCPServerSpec) ProtoMessage() {}
 
 func (x *MCPServerSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[76]
+	mi := &file_ktms_v1_admin_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4295,7 +4721,7 @@ func (x *MCPServerSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MCPServerSpec.ProtoReflect.Descriptor instead.
 func (*MCPServerSpec) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{76}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *MCPServerSpec) GetName() string {
@@ -4363,7 +4789,7 @@ type UpsertMCPServerRequest struct {
 
 func (x *UpsertMCPServerRequest) Reset() {
 	*x = UpsertMCPServerRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[77]
+	mi := &file_ktms_v1_admin_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4375,7 +4801,7 @@ func (x *UpsertMCPServerRequest) String() string {
 func (*UpsertMCPServerRequest) ProtoMessage() {}
 
 func (x *UpsertMCPServerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[77]
+	mi := &file_ktms_v1_admin_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4388,7 +4814,7 @@ func (x *UpsertMCPServerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertMCPServerRequest.ProtoReflect.Descriptor instead.
 func (*UpsertMCPServerRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{77}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *UpsertMCPServerRequest) GetServer() *MCPServerSpec {
@@ -4406,7 +4832,7 @@ type UpsertMCPServerResponse struct {
 
 func (x *UpsertMCPServerResponse) Reset() {
 	*x = UpsertMCPServerResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[78]
+	mi := &file_ktms_v1_admin_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4418,7 +4844,7 @@ func (x *UpsertMCPServerResponse) String() string {
 func (*UpsertMCPServerResponse) ProtoMessage() {}
 
 func (x *UpsertMCPServerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[78]
+	mi := &file_ktms_v1_admin_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4431,7 +4857,7 @@ func (x *UpsertMCPServerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertMCPServerResponse.ProtoReflect.Descriptor instead.
 func (*UpsertMCPServerResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{78}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{86}
 }
 
 // DeleteMCPServer removes the server and its credential.
@@ -4444,7 +4870,7 @@ type DeleteMCPServerRequest struct {
 
 func (x *DeleteMCPServerRequest) Reset() {
 	*x = DeleteMCPServerRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[79]
+	mi := &file_ktms_v1_admin_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4456,7 +4882,7 @@ func (x *DeleteMCPServerRequest) String() string {
 func (*DeleteMCPServerRequest) ProtoMessage() {}
 
 func (x *DeleteMCPServerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[79]
+	mi := &file_ktms_v1_admin_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4469,7 +4895,7 @@ func (x *DeleteMCPServerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMCPServerRequest.ProtoReflect.Descriptor instead.
 func (*DeleteMCPServerRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{79}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *DeleteMCPServerRequest) GetName() string {
@@ -4487,7 +4913,7 @@ type DeleteMCPServerResponse struct {
 
 func (x *DeleteMCPServerResponse) Reset() {
 	*x = DeleteMCPServerResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[80]
+	mi := &file_ktms_v1_admin_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4499,7 +4925,7 @@ func (x *DeleteMCPServerResponse) String() string {
 func (*DeleteMCPServerResponse) ProtoMessage() {}
 
 func (x *DeleteMCPServerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[80]
+	mi := &file_ktms_v1_admin_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4512,7 +4938,7 @@ func (x *DeleteMCPServerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMCPServerResponse.ProtoReflect.Descriptor instead.
 func (*DeleteMCPServerResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{80}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{88}
 }
 
 // SetMCPCredential stores the header the gateway adds to every request it
@@ -4529,7 +4955,7 @@ type SetMCPCredentialRequest struct {
 
 func (x *SetMCPCredentialRequest) Reset() {
 	*x = SetMCPCredentialRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[81]
+	mi := &file_ktms_v1_admin_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4541,7 +4967,7 @@ func (x *SetMCPCredentialRequest) String() string {
 func (*SetMCPCredentialRequest) ProtoMessage() {}
 
 func (x *SetMCPCredentialRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[81]
+	mi := &file_ktms_v1_admin_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4554,7 +4980,7 @@ func (x *SetMCPCredentialRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetMCPCredentialRequest.ProtoReflect.Descriptor instead.
 func (*SetMCPCredentialRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{81}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *SetMCPCredentialRequest) GetServer() string {
@@ -4586,7 +5012,7 @@ type SetMCPCredentialResponse struct {
 
 func (x *SetMCPCredentialResponse) Reset() {
 	*x = SetMCPCredentialResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[82]
+	mi := &file_ktms_v1_admin_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4598,7 +5024,7 @@ func (x *SetMCPCredentialResponse) String() string {
 func (*SetMCPCredentialResponse) ProtoMessage() {}
 
 func (x *SetMCPCredentialResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[82]
+	mi := &file_ktms_v1_admin_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4611,7 +5037,7 @@ func (x *SetMCPCredentialResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetMCPCredentialResponse.ProtoReflect.Descriptor instead.
 func (*SetMCPCredentialResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{82}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{90}
 }
 
 type DeleteMCPCredentialRequest struct {
@@ -4623,7 +5049,7 @@ type DeleteMCPCredentialRequest struct {
 
 func (x *DeleteMCPCredentialRequest) Reset() {
 	*x = DeleteMCPCredentialRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[83]
+	mi := &file_ktms_v1_admin_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4635,7 +5061,7 @@ func (x *DeleteMCPCredentialRequest) String() string {
 func (*DeleteMCPCredentialRequest) ProtoMessage() {}
 
 func (x *DeleteMCPCredentialRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[83]
+	mi := &file_ktms_v1_admin_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4648,7 +5074,7 @@ func (x *DeleteMCPCredentialRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMCPCredentialRequest.ProtoReflect.Descriptor instead.
 func (*DeleteMCPCredentialRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{83}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *DeleteMCPCredentialRequest) GetServer() string {
@@ -4666,7 +5092,7 @@ type DeleteMCPCredentialResponse struct {
 
 func (x *DeleteMCPCredentialResponse) Reset() {
 	*x = DeleteMCPCredentialResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[84]
+	mi := &file_ktms_v1_admin_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4678,7 +5104,7 @@ func (x *DeleteMCPCredentialResponse) String() string {
 func (*DeleteMCPCredentialResponse) ProtoMessage() {}
 
 func (x *DeleteMCPCredentialResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[84]
+	mi := &file_ktms_v1_admin_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4691,7 +5117,7 @@ func (x *DeleteMCPCredentialResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMCPCredentialResponse.ProtoReflect.Descriptor instead.
 func (*DeleteMCPCredentialResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{84}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{92}
 }
 
 type MCPCredentialInfo struct {
@@ -4707,7 +5133,7 @@ type MCPCredentialInfo struct {
 
 func (x *MCPCredentialInfo) Reset() {
 	*x = MCPCredentialInfo{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[85]
+	mi := &file_ktms_v1_admin_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4719,7 +5145,7 @@ func (x *MCPCredentialInfo) String() string {
 func (*MCPCredentialInfo) ProtoMessage() {}
 
 func (x *MCPCredentialInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[85]
+	mi := &file_ktms_v1_admin_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4732,7 +5158,7 @@ func (x *MCPCredentialInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MCPCredentialInfo.ProtoReflect.Descriptor instead.
 func (*MCPCredentialInfo) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{85}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *MCPCredentialInfo) GetServer() string {
@@ -4781,7 +5207,7 @@ type ListMCPToolsRequest struct {
 
 func (x *ListMCPToolsRequest) Reset() {
 	*x = ListMCPToolsRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[86]
+	mi := &file_ktms_v1_admin_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4793,7 +5219,7 @@ func (x *ListMCPToolsRequest) String() string {
 func (*ListMCPToolsRequest) ProtoMessage() {}
 
 func (x *ListMCPToolsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[86]
+	mi := &file_ktms_v1_admin_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4806,7 +5232,7 @@ func (x *ListMCPToolsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMCPToolsRequest.ProtoReflect.Descriptor instead.
 func (*ListMCPToolsRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{86}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *ListMCPToolsRequest) GetServer() string {
@@ -4826,7 +5252,7 @@ type MCPToolInfo struct {
 
 func (x *MCPToolInfo) Reset() {
 	*x = MCPToolInfo{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[87]
+	mi := &file_ktms_v1_admin_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4838,7 +5264,7 @@ func (x *MCPToolInfo) String() string {
 func (*MCPToolInfo) ProtoMessage() {}
 
 func (x *MCPToolInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[87]
+	mi := &file_ktms_v1_admin_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4851,7 +5277,7 @@ func (x *MCPToolInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MCPToolInfo.ProtoReflect.Descriptor instead.
 func (*MCPToolInfo) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{87}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *MCPToolInfo) GetName() string {
@@ -4877,7 +5303,7 @@ type ListMCPToolsResponse struct {
 
 func (x *ListMCPToolsResponse) Reset() {
 	*x = ListMCPToolsResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[88]
+	mi := &file_ktms_v1_admin_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4889,7 +5315,7 @@ func (x *ListMCPToolsResponse) String() string {
 func (*ListMCPToolsResponse) ProtoMessage() {}
 
 func (x *ListMCPToolsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[88]
+	mi := &file_ktms_v1_admin_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4902,7 +5328,7 @@ func (x *ListMCPToolsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMCPToolsResponse.ProtoReflect.Descriptor instead.
 func (*ListMCPToolsResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{88}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *ListMCPToolsResponse) GetTools() []*MCPToolInfo {
@@ -4927,7 +5353,7 @@ type ExplainRouteRequest struct {
 
 func (x *ExplainRouteRequest) Reset() {
 	*x = ExplainRouteRequest{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[89]
+	mi := &file_ktms_v1_admin_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4939,7 +5365,7 @@ func (x *ExplainRouteRequest) String() string {
 func (*ExplainRouteRequest) ProtoMessage() {}
 
 func (x *ExplainRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[89]
+	mi := &file_ktms_v1_admin_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4952,7 +5378,7 @@ func (x *ExplainRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainRouteRequest.ProtoReflect.Descriptor instead.
 func (*ExplainRouteRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{89}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *ExplainRouteRequest) GetApiKeyName() string {
@@ -5019,7 +5445,7 @@ type RouteCandidate struct {
 
 func (x *RouteCandidate) Reset() {
 	*x = RouteCandidate{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[90]
+	mi := &file_ktms_v1_admin_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5031,7 +5457,7 @@ func (x *RouteCandidate) String() string {
 func (*RouteCandidate) ProtoMessage() {}
 
 func (x *RouteCandidate) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[90]
+	mi := &file_ktms_v1_admin_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5044,7 +5470,7 @@ func (x *RouteCandidate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteCandidate.ProtoReflect.Descriptor instead.
 func (*RouteCandidate) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{90}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *RouteCandidate) GetModelId() string {
@@ -5096,7 +5522,7 @@ type ExplainRouteResponse struct {
 
 func (x *ExplainRouteResponse) Reset() {
 	*x = ExplainRouteResponse{}
-	mi := &file_ktms_v1_admin_proto_msgTypes[91]
+	mi := &file_ktms_v1_admin_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5108,7 +5534,7 @@ func (x *ExplainRouteResponse) String() string {
 func (*ExplainRouteResponse) ProtoMessage() {}
 
 func (x *ExplainRouteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_admin_proto_msgTypes[91]
+	mi := &file_ktms_v1_admin_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5121,7 +5547,7 @@ func (x *ExplainRouteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainRouteResponse.ProtoReflect.Descriptor instead.
 func (*ExplainRouteResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{91}
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{99}
 }
 
 func (x *ExplainRouteResponse) GetRule() string {
@@ -5205,7 +5631,7 @@ var File_ktms_v1_admin_proto protoreflect.FileDescriptor
 
 const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\n" +
-	"\x13ktms/v1/admin.proto\x12\aktms.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15ktms/v1/gateway.proto\"\xcb\x06\n" +
+	"\x13ktms/v1/admin.proto\x12\aktms.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15ktms/v1/gateway.proto\x1a\x12ktms/v1/node.proto\"\xcb\x06\n" +
 	"\tModelSpec\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06vendor\x18\x02 \x01(\tR\x06vendor\x12\x1a\n" +
@@ -5351,7 +5777,7 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x0fmax_concurrency\x18\t \x01(\x05R\x0emaxConcurrency\"@\n" +
 	"\x14ListNodeKeysResponse\x12(\n" +
 	"\x04keys\x18\x01 \x03(\v2\x14.ktms.v1.NodeKeyInfoR\x04keys\"\x12\n" +
-	"\x10ListNodesRequest\"\xb4\x05\n" +
+	"\x10ListNodesRequest\"\xc9\x06\n" +
 	"\bNodeInfo\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
@@ -5377,12 +5803,38 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\vwarm_models\x18\x12 \x03(\tR\n" +
 	"warmModels\x12)\n" +
 	"\x10capacity_percent\x18\x13 \x01(\rR\x0fcapacityPercent\x12'\n" +
-	"\x0feffective_slots\x18\x14 \x01(\x05R\x0eeffectiveSlots\"<\n" +
+	"\x0feffective_slots\x18\x14 \x01(\x05R\x0eeffectiveSlots\x12'\n" +
+	"\x0fschedule_source\x18\x15 \x01(\tR\x0escheduleSource\x12'\n" +
+	"\x0fcapacity_source\x18\x16 \x01(\tR\x0ecapacitySource\x12A\n" +
+	"\x0ecapacity_until\x18\x17 \x01(\v2\x1a.google.protobuf.TimestampR\rcapacityUntil\"<\n" +
 	"\x11ListNodesResponse\x12'\n" +
 	"\x05nodes\x18\x01 \x03(\v2\x11.ktms.v1.NodeInfoR\x05nodes\"+\n" +
 	"\x10DrainNodeRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"\x13\n" +
-	"\x11DrainNodeResponse\"\xc3\x01\n" +
+	"\x11DrainNodeResponse\"1\n" +
+	"\x16GetNodeScheduleRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"\xcf\x01\n" +
+	"\x10NodeScheduleInfo\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x12\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\x12\x18\n" +
+	"\aversion\x18\x03 \x01(\x03R\aversion\x129\n" +
+	"\boverride\x18\x04 \x01(\v2\x1d.ktms.v1.NodeCapacityOverrideR\boverride\x129\n" +
+	"\n" +
+	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"E\n" +
+	"\x16SetNodeScheduleRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x12\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\"\x97\x01\n" +
+	"\x1eSetNodeCapacityOverrideRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x14\n" +
+	"\x05level\x18\x02 \x01(\rR\x05level\x120\n" +
+	"\x05until\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x05until\x12\x14\n" +
+	"\x05clear\x18\x04 \x01(\bR\x05clear\"\x1a\n" +
+	"\x18ListNodeSchedulesRequest\"T\n" +
+	"\x19ListNodeSchedulesResponse\x127\n" +
+	"\tschedules\x18\x01 \x03(\v2\x19.ktms.v1.NodeScheduleInfoR\tschedules\"4\n" +
+	"\x19DeleteNodeScheduleRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"\x1c\n" +
+	"\x1aDeleteNodeScheduleResponse\"\xc3\x01\n" +
 	"\x11UserRateLimitSpec\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x19\n" +
 	"\bmodel_id\x18\x02 \x01(\tR\amodelId\x12\x10\n" +
@@ -5575,7 +6027,7 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x11shadow_percentage\x18\t \x01(\x01R\x10shadowPercentage\x12#\n" +
 	"\rjudge_skipped\x18\n" +
 	" \x01(\bR\fjudgeSkipped\x12\x14\n" +
-	"\x05error\x18\v \x01(\tR\x05error2\xeb\x17\n" +
+	"\x05error\x18\v \x01(\tR\x05error2\xa3\x1b\n" +
 	"\fAdminService\x12H\n" +
 	"\vUpsertModel\x12\x1b.ktms.v1.UpsertModelRequest\x1a\x1c.ktms.v1.UpsertModelResponse\x12H\n" +
 	"\vDeleteModel\x12\x1b.ktms.v1.DeleteModelRequest\x1a\x1c.ktms.v1.DeleteModelResponse\x12K\n" +
@@ -5593,7 +6045,12 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\rRevokeNodeKey\x12\x1d.ktms.v1.RevokeNodeKeyRequest\x1a\x1e.ktms.v1.RevokeNodeKeyResponse\x12K\n" +
 	"\fListNodeKeys\x12\x1c.ktms.v1.ListNodeKeysRequest\x1a\x1d.ktms.v1.ListNodeKeysResponse\x12B\n" +
 	"\tListNodes\x12\x19.ktms.v1.ListNodesRequest\x1a\x1a.ktms.v1.ListNodesResponse\x12B\n" +
-	"\tDrainNode\x12\x19.ktms.v1.DrainNodeRequest\x1a\x1a.ktms.v1.DrainNodeResponse\x12W\n" +
+	"\tDrainNode\x12\x19.ktms.v1.DrainNodeRequest\x1a\x1a.ktms.v1.DrainNodeResponse\x12M\n" +
+	"\x0fGetNodeSchedule\x12\x1f.ktms.v1.GetNodeScheduleRequest\x1a\x19.ktms.v1.NodeScheduleInfo\x12Z\n" +
+	"\x11ListNodeSchedules\x12!.ktms.v1.ListNodeSchedulesRequest\x1a\".ktms.v1.ListNodeSchedulesResponse\x12M\n" +
+	"\x0fSetNodeSchedule\x12\x1f.ktms.v1.SetNodeScheduleRequest\x1a\x19.ktms.v1.NodeScheduleInfo\x12]\n" +
+	"\x17SetNodeCapacityOverride\x12'.ktms.v1.SetNodeCapacityOverrideRequest\x1a\x19.ktms.v1.NodeScheduleInfo\x12]\n" +
+	"\x12DeleteNodeSchedule\x12\".ktms.v1.DeleteNodeScheduleRequest\x1a#.ktms.v1.DeleteNodeScheduleResponse\x12W\n" +
 	"\x10SetUserRateLimit\x12 .ktms.v1.SetUserRateLimitRequest\x1a!.ktms.v1.SetUserRateLimitResponse\x12`\n" +
 	"\x13DeleteUserRateLimit\x12#.ktms.v1.DeleteUserRateLimitRequest\x1a$.ktms.v1.DeleteUserRateLimitResponse\x12]\n" +
 	"\x12ListUserRateLimits\x12\".ktms.v1.ListUserRateLimitsRequest\x1a#.ktms.v1.ListUserRateLimitsResponse\x12N\n" +
@@ -5634,232 +6091,256 @@ func file_ktms_v1_admin_proto_rawDescGZIP() []byte {
 	return file_ktms_v1_admin_proto_rawDescData
 }
 
-var file_ktms_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 94)
+var file_ktms_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 102)
 var file_ktms_v1_admin_proto_goTypes = []any{
-	(*ModelSpec)(nil),                   // 0: ktms.v1.ModelSpec
-	(*RuleSpec)(nil),                    // 1: ktms.v1.RuleSpec
-	(*UpsertModelRequest)(nil),          // 2: ktms.v1.UpsertModelRequest
-	(*UpsertModelResponse)(nil),         // 3: ktms.v1.UpsertModelResponse
-	(*DeleteModelRequest)(nil),          // 4: ktms.v1.DeleteModelRequest
-	(*DeleteModelResponse)(nil),         // 5: ktms.v1.DeleteModelResponse
-	(*ReplaceRulesRequest)(nil),         // 6: ktms.v1.ReplaceRulesRequest
-	(*ReplaceRulesResponse)(nil),        // 7: ktms.v1.ReplaceRulesResponse
-	(*SetVendorKeyRequest)(nil),         // 8: ktms.v1.SetVendorKeyRequest
-	(*SetVendorKeyResponse)(nil),        // 9: ktms.v1.SetVendorKeyResponse
-	(*DeleteVendorKeyRequest)(nil),      // 10: ktms.v1.DeleteVendorKeyRequest
-	(*DeleteVendorKeyResponse)(nil),     // 11: ktms.v1.DeleteVendorKeyResponse
-	(*VendorKeyInfo)(nil),               // 12: ktms.v1.VendorKeyInfo
-	(*GetConfigRequest)(nil),            // 13: ktms.v1.GetConfigRequest
-	(*GetConfigResponse)(nil),           // 14: ktms.v1.GetConfigResponse
-	(*MintAPIKeyRequest)(nil),           // 15: ktms.v1.MintAPIKeyRequest
-	(*APIKeyPolicy)(nil),                // 16: ktms.v1.APIKeyPolicy
-	(*SetAPIKeyPolicyRequest)(nil),      // 17: ktms.v1.SetAPIKeyPolicyRequest
-	(*SetAPIKeyPolicyResponse)(nil),     // 18: ktms.v1.SetAPIKeyPolicyResponse
-	(*MintAPIKeyResponse)(nil),          // 19: ktms.v1.MintAPIKeyResponse
-	(*RevokeAPIKeyRequest)(nil),         // 20: ktms.v1.RevokeAPIKeyRequest
-	(*RevokeAPIKeyResponse)(nil),        // 21: ktms.v1.RevokeAPIKeyResponse
-	(*ListAPIKeysRequest)(nil),          // 22: ktms.v1.ListAPIKeysRequest
-	(*APIKeyInfo)(nil),                  // 23: ktms.v1.APIKeyInfo
-	(*ListAPIKeysResponse)(nil),         // 24: ktms.v1.ListAPIKeysResponse
-	(*RotateEncryptionRequest)(nil),     // 25: ktms.v1.RotateEncryptionRequest
-	(*RotateEncryptionResponse)(nil),    // 26: ktms.v1.RotateEncryptionResponse
-	(*MintNodeKeyRequest)(nil),          // 27: ktms.v1.MintNodeKeyRequest
-	(*MintNodeKeyResponse)(nil),         // 28: ktms.v1.MintNodeKeyResponse
-	(*RevokeNodeKeyRequest)(nil),        // 29: ktms.v1.RevokeNodeKeyRequest
-	(*RevokeNodeKeyResponse)(nil),       // 30: ktms.v1.RevokeNodeKeyResponse
-	(*ListNodeKeysRequest)(nil),         // 31: ktms.v1.ListNodeKeysRequest
-	(*NodeKeyInfo)(nil),                 // 32: ktms.v1.NodeKeyInfo
-	(*ListNodeKeysResponse)(nil),        // 33: ktms.v1.ListNodeKeysResponse
-	(*ListNodesRequest)(nil),            // 34: ktms.v1.ListNodesRequest
-	(*NodeInfo)(nil),                    // 35: ktms.v1.NodeInfo
-	(*ListNodesResponse)(nil),           // 36: ktms.v1.ListNodesResponse
-	(*DrainNodeRequest)(nil),            // 37: ktms.v1.DrainNodeRequest
-	(*DrainNodeResponse)(nil),           // 38: ktms.v1.DrainNodeResponse
-	(*UserRateLimitSpec)(nil),           // 39: ktms.v1.UserRateLimitSpec
-	(*SetUserRateLimitRequest)(nil),     // 40: ktms.v1.SetUserRateLimitRequest
-	(*SetUserRateLimitResponse)(nil),    // 41: ktms.v1.SetUserRateLimitResponse
-	(*DeleteUserRateLimitRequest)(nil),  // 42: ktms.v1.DeleteUserRateLimitRequest
-	(*DeleteUserRateLimitResponse)(nil), // 43: ktms.v1.DeleteUserRateLimitResponse
-	(*ListUserRateLimitsRequest)(nil),   // 44: ktms.v1.ListUserRateLimitsRequest
-	(*ListUserRateLimitsResponse)(nil),  // 45: ktms.v1.ListUserRateLimitsResponse
-	(*SpendLimitSpec)(nil),              // 46: ktms.v1.SpendLimitSpec
-	(*SetSpendLimitRequest)(nil),        // 47: ktms.v1.SetSpendLimitRequest
-	(*SetSpendLimitResponse)(nil),       // 48: ktms.v1.SetSpendLimitResponse
-	(*DeleteSpendLimitRequest)(nil),     // 49: ktms.v1.DeleteSpendLimitRequest
-	(*DeleteSpendLimitResponse)(nil),    // 50: ktms.v1.DeleteSpendLimitResponse
-	(*ListSpendLimitsRequest)(nil),      // 51: ktms.v1.ListSpendLimitsRequest
-	(*ListSpendLimitsResponse)(nil),     // 52: ktms.v1.ListSpendLimitsResponse
-	(*Organization)(nil),                // 53: ktms.v1.Organization
-	(*Team)(nil),                        // 54: ktms.v1.Team
-	(*CreateOrganizationRequest)(nil),   // 55: ktms.v1.CreateOrganizationRequest
-	(*CreateOrganizationResponse)(nil),  // 56: ktms.v1.CreateOrganizationResponse
-	(*ListOrganizationsRequest)(nil),    // 57: ktms.v1.ListOrganizationsRequest
-	(*ListOrganizationsResponse)(nil),   // 58: ktms.v1.ListOrganizationsResponse
-	(*DeleteOrganizationRequest)(nil),   // 59: ktms.v1.DeleteOrganizationRequest
-	(*DeleteOrganizationResponse)(nil),  // 60: ktms.v1.DeleteOrganizationResponse
-	(*CreateTeamRequest)(nil),           // 61: ktms.v1.CreateTeamRequest
-	(*CreateTeamResponse)(nil),          // 62: ktms.v1.CreateTeamResponse
-	(*GetTeamRequest)(nil),              // 63: ktms.v1.GetTeamRequest
-	(*GetTeamResponse)(nil),             // 64: ktms.v1.GetTeamResponse
-	(*ListTeamsRequest)(nil),            // 65: ktms.v1.ListTeamsRequest
-	(*ListTeamsResponse)(nil),           // 66: ktms.v1.ListTeamsResponse
-	(*UpdateTeamRequest)(nil),           // 67: ktms.v1.UpdateTeamRequest
-	(*UpdateTeamResponse)(nil),          // 68: ktms.v1.UpdateTeamResponse
-	(*DeleteTeamRequest)(nil),           // 69: ktms.v1.DeleteTeamRequest
-	(*DeleteTeamResponse)(nil),          // 70: ktms.v1.DeleteTeamResponse
-	(*GetTeamSpendRequest)(nil),         // 71: ktms.v1.GetTeamSpendRequest
-	(*GetTeamSpendResponse)(nil),        // 72: ktms.v1.GetTeamSpendResponse
-	(*GetSpendRequest)(nil),             // 73: ktms.v1.GetSpendRequest
-	(*SpendWindow)(nil),                 // 74: ktms.v1.SpendWindow
-	(*GetSpendResponse)(nil),            // 75: ktms.v1.GetSpendResponse
-	(*MCPServerSpec)(nil),               // 76: ktms.v1.MCPServerSpec
-	(*UpsertMCPServerRequest)(nil),      // 77: ktms.v1.UpsertMCPServerRequest
-	(*UpsertMCPServerResponse)(nil),     // 78: ktms.v1.UpsertMCPServerResponse
-	(*DeleteMCPServerRequest)(nil),      // 79: ktms.v1.DeleteMCPServerRequest
-	(*DeleteMCPServerResponse)(nil),     // 80: ktms.v1.DeleteMCPServerResponse
-	(*SetMCPCredentialRequest)(nil),     // 81: ktms.v1.SetMCPCredentialRequest
-	(*SetMCPCredentialResponse)(nil),    // 82: ktms.v1.SetMCPCredentialResponse
-	(*DeleteMCPCredentialRequest)(nil),  // 83: ktms.v1.DeleteMCPCredentialRequest
-	(*DeleteMCPCredentialResponse)(nil), // 84: ktms.v1.DeleteMCPCredentialResponse
-	(*MCPCredentialInfo)(nil),           // 85: ktms.v1.MCPCredentialInfo
-	(*ListMCPToolsRequest)(nil),         // 86: ktms.v1.ListMCPToolsRequest
-	(*MCPToolInfo)(nil),                 // 87: ktms.v1.MCPToolInfo
-	(*ListMCPToolsResponse)(nil),        // 88: ktms.v1.ListMCPToolsResponse
-	(*ExplainRouteRequest)(nil),         // 89: ktms.v1.ExplainRouteRequest
-	(*RouteCandidate)(nil),              // 90: ktms.v1.RouteCandidate
-	(*ExplainRouteResponse)(nil),        // 91: ktms.v1.ExplainRouteResponse
-	nil,                                 // 92: ktms.v1.RuleSpec.AttributesEntry
-	nil,                                 // 93: ktms.v1.ExplainRouteRequest.AttributesEntry
-	(Effort)(0),                         // 94: ktms.v1.Effort
-	(*timestamppb.Timestamp)(nil),       // 95: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),         // 96: google.protobuf.Duration
+	(*ModelSpec)(nil),                      // 0: ktms.v1.ModelSpec
+	(*RuleSpec)(nil),                       // 1: ktms.v1.RuleSpec
+	(*UpsertModelRequest)(nil),             // 2: ktms.v1.UpsertModelRequest
+	(*UpsertModelResponse)(nil),            // 3: ktms.v1.UpsertModelResponse
+	(*DeleteModelRequest)(nil),             // 4: ktms.v1.DeleteModelRequest
+	(*DeleteModelResponse)(nil),            // 5: ktms.v1.DeleteModelResponse
+	(*ReplaceRulesRequest)(nil),            // 6: ktms.v1.ReplaceRulesRequest
+	(*ReplaceRulesResponse)(nil),           // 7: ktms.v1.ReplaceRulesResponse
+	(*SetVendorKeyRequest)(nil),            // 8: ktms.v1.SetVendorKeyRequest
+	(*SetVendorKeyResponse)(nil),           // 9: ktms.v1.SetVendorKeyResponse
+	(*DeleteVendorKeyRequest)(nil),         // 10: ktms.v1.DeleteVendorKeyRequest
+	(*DeleteVendorKeyResponse)(nil),        // 11: ktms.v1.DeleteVendorKeyResponse
+	(*VendorKeyInfo)(nil),                  // 12: ktms.v1.VendorKeyInfo
+	(*GetConfigRequest)(nil),               // 13: ktms.v1.GetConfigRequest
+	(*GetConfigResponse)(nil),              // 14: ktms.v1.GetConfigResponse
+	(*MintAPIKeyRequest)(nil),              // 15: ktms.v1.MintAPIKeyRequest
+	(*APIKeyPolicy)(nil),                   // 16: ktms.v1.APIKeyPolicy
+	(*SetAPIKeyPolicyRequest)(nil),         // 17: ktms.v1.SetAPIKeyPolicyRequest
+	(*SetAPIKeyPolicyResponse)(nil),        // 18: ktms.v1.SetAPIKeyPolicyResponse
+	(*MintAPIKeyResponse)(nil),             // 19: ktms.v1.MintAPIKeyResponse
+	(*RevokeAPIKeyRequest)(nil),            // 20: ktms.v1.RevokeAPIKeyRequest
+	(*RevokeAPIKeyResponse)(nil),           // 21: ktms.v1.RevokeAPIKeyResponse
+	(*ListAPIKeysRequest)(nil),             // 22: ktms.v1.ListAPIKeysRequest
+	(*APIKeyInfo)(nil),                     // 23: ktms.v1.APIKeyInfo
+	(*ListAPIKeysResponse)(nil),            // 24: ktms.v1.ListAPIKeysResponse
+	(*RotateEncryptionRequest)(nil),        // 25: ktms.v1.RotateEncryptionRequest
+	(*RotateEncryptionResponse)(nil),       // 26: ktms.v1.RotateEncryptionResponse
+	(*MintNodeKeyRequest)(nil),             // 27: ktms.v1.MintNodeKeyRequest
+	(*MintNodeKeyResponse)(nil),            // 28: ktms.v1.MintNodeKeyResponse
+	(*RevokeNodeKeyRequest)(nil),           // 29: ktms.v1.RevokeNodeKeyRequest
+	(*RevokeNodeKeyResponse)(nil),          // 30: ktms.v1.RevokeNodeKeyResponse
+	(*ListNodeKeysRequest)(nil),            // 31: ktms.v1.ListNodeKeysRequest
+	(*NodeKeyInfo)(nil),                    // 32: ktms.v1.NodeKeyInfo
+	(*ListNodeKeysResponse)(nil),           // 33: ktms.v1.ListNodeKeysResponse
+	(*ListNodesRequest)(nil),               // 34: ktms.v1.ListNodesRequest
+	(*NodeInfo)(nil),                       // 35: ktms.v1.NodeInfo
+	(*ListNodesResponse)(nil),              // 36: ktms.v1.ListNodesResponse
+	(*DrainNodeRequest)(nil),               // 37: ktms.v1.DrainNodeRequest
+	(*DrainNodeResponse)(nil),              // 38: ktms.v1.DrainNodeResponse
+	(*GetNodeScheduleRequest)(nil),         // 39: ktms.v1.GetNodeScheduleRequest
+	(*NodeScheduleInfo)(nil),               // 40: ktms.v1.NodeScheduleInfo
+	(*SetNodeScheduleRequest)(nil),         // 41: ktms.v1.SetNodeScheduleRequest
+	(*SetNodeCapacityOverrideRequest)(nil), // 42: ktms.v1.SetNodeCapacityOverrideRequest
+	(*ListNodeSchedulesRequest)(nil),       // 43: ktms.v1.ListNodeSchedulesRequest
+	(*ListNodeSchedulesResponse)(nil),      // 44: ktms.v1.ListNodeSchedulesResponse
+	(*DeleteNodeScheduleRequest)(nil),      // 45: ktms.v1.DeleteNodeScheduleRequest
+	(*DeleteNodeScheduleResponse)(nil),     // 46: ktms.v1.DeleteNodeScheduleResponse
+	(*UserRateLimitSpec)(nil),              // 47: ktms.v1.UserRateLimitSpec
+	(*SetUserRateLimitRequest)(nil),        // 48: ktms.v1.SetUserRateLimitRequest
+	(*SetUserRateLimitResponse)(nil),       // 49: ktms.v1.SetUserRateLimitResponse
+	(*DeleteUserRateLimitRequest)(nil),     // 50: ktms.v1.DeleteUserRateLimitRequest
+	(*DeleteUserRateLimitResponse)(nil),    // 51: ktms.v1.DeleteUserRateLimitResponse
+	(*ListUserRateLimitsRequest)(nil),      // 52: ktms.v1.ListUserRateLimitsRequest
+	(*ListUserRateLimitsResponse)(nil),     // 53: ktms.v1.ListUserRateLimitsResponse
+	(*SpendLimitSpec)(nil),                 // 54: ktms.v1.SpendLimitSpec
+	(*SetSpendLimitRequest)(nil),           // 55: ktms.v1.SetSpendLimitRequest
+	(*SetSpendLimitResponse)(nil),          // 56: ktms.v1.SetSpendLimitResponse
+	(*DeleteSpendLimitRequest)(nil),        // 57: ktms.v1.DeleteSpendLimitRequest
+	(*DeleteSpendLimitResponse)(nil),       // 58: ktms.v1.DeleteSpendLimitResponse
+	(*ListSpendLimitsRequest)(nil),         // 59: ktms.v1.ListSpendLimitsRequest
+	(*ListSpendLimitsResponse)(nil),        // 60: ktms.v1.ListSpendLimitsResponse
+	(*Organization)(nil),                   // 61: ktms.v1.Organization
+	(*Team)(nil),                           // 62: ktms.v1.Team
+	(*CreateOrganizationRequest)(nil),      // 63: ktms.v1.CreateOrganizationRequest
+	(*CreateOrganizationResponse)(nil),     // 64: ktms.v1.CreateOrganizationResponse
+	(*ListOrganizationsRequest)(nil),       // 65: ktms.v1.ListOrganizationsRequest
+	(*ListOrganizationsResponse)(nil),      // 66: ktms.v1.ListOrganizationsResponse
+	(*DeleteOrganizationRequest)(nil),      // 67: ktms.v1.DeleteOrganizationRequest
+	(*DeleteOrganizationResponse)(nil),     // 68: ktms.v1.DeleteOrganizationResponse
+	(*CreateTeamRequest)(nil),              // 69: ktms.v1.CreateTeamRequest
+	(*CreateTeamResponse)(nil),             // 70: ktms.v1.CreateTeamResponse
+	(*GetTeamRequest)(nil),                 // 71: ktms.v1.GetTeamRequest
+	(*GetTeamResponse)(nil),                // 72: ktms.v1.GetTeamResponse
+	(*ListTeamsRequest)(nil),               // 73: ktms.v1.ListTeamsRequest
+	(*ListTeamsResponse)(nil),              // 74: ktms.v1.ListTeamsResponse
+	(*UpdateTeamRequest)(nil),              // 75: ktms.v1.UpdateTeamRequest
+	(*UpdateTeamResponse)(nil),             // 76: ktms.v1.UpdateTeamResponse
+	(*DeleteTeamRequest)(nil),              // 77: ktms.v1.DeleteTeamRequest
+	(*DeleteTeamResponse)(nil),             // 78: ktms.v1.DeleteTeamResponse
+	(*GetTeamSpendRequest)(nil),            // 79: ktms.v1.GetTeamSpendRequest
+	(*GetTeamSpendResponse)(nil),           // 80: ktms.v1.GetTeamSpendResponse
+	(*GetSpendRequest)(nil),                // 81: ktms.v1.GetSpendRequest
+	(*SpendWindow)(nil),                    // 82: ktms.v1.SpendWindow
+	(*GetSpendResponse)(nil),               // 83: ktms.v1.GetSpendResponse
+	(*MCPServerSpec)(nil),                  // 84: ktms.v1.MCPServerSpec
+	(*UpsertMCPServerRequest)(nil),         // 85: ktms.v1.UpsertMCPServerRequest
+	(*UpsertMCPServerResponse)(nil),        // 86: ktms.v1.UpsertMCPServerResponse
+	(*DeleteMCPServerRequest)(nil),         // 87: ktms.v1.DeleteMCPServerRequest
+	(*DeleteMCPServerResponse)(nil),        // 88: ktms.v1.DeleteMCPServerResponse
+	(*SetMCPCredentialRequest)(nil),        // 89: ktms.v1.SetMCPCredentialRequest
+	(*SetMCPCredentialResponse)(nil),       // 90: ktms.v1.SetMCPCredentialResponse
+	(*DeleteMCPCredentialRequest)(nil),     // 91: ktms.v1.DeleteMCPCredentialRequest
+	(*DeleteMCPCredentialResponse)(nil),    // 92: ktms.v1.DeleteMCPCredentialResponse
+	(*MCPCredentialInfo)(nil),              // 93: ktms.v1.MCPCredentialInfo
+	(*ListMCPToolsRequest)(nil),            // 94: ktms.v1.ListMCPToolsRequest
+	(*MCPToolInfo)(nil),                    // 95: ktms.v1.MCPToolInfo
+	(*ListMCPToolsResponse)(nil),           // 96: ktms.v1.ListMCPToolsResponse
+	(*ExplainRouteRequest)(nil),            // 97: ktms.v1.ExplainRouteRequest
+	(*RouteCandidate)(nil),                 // 98: ktms.v1.RouteCandidate
+	(*ExplainRouteResponse)(nil),           // 99: ktms.v1.ExplainRouteResponse
+	nil,                                    // 100: ktms.v1.RuleSpec.AttributesEntry
+	nil,                                    // 101: ktms.v1.ExplainRouteRequest.AttributesEntry
+	(Effort)(0),                            // 102: ktms.v1.Effort
+	(*timestamppb.Timestamp)(nil),          // 103: google.protobuf.Timestamp
+	(*NodeCapacityOverride)(nil),           // 104: ktms.v1.NodeCapacityOverride
+	(*durationpb.Duration)(nil),            // 105: google.protobuf.Duration
 }
 var file_ktms_v1_admin_proto_depIdxs = []int32{
-	94, // 0: ktms.v1.ModelSpec.efforts:type_name -> ktms.v1.Effort
-	94, // 1: ktms.v1.RuleSpec.effort:type_name -> ktms.v1.Effort
-	92, // 2: ktms.v1.RuleSpec.attributes:type_name -> ktms.v1.RuleSpec.AttributesEntry
-	0,  // 3: ktms.v1.UpsertModelRequest.model:type_name -> ktms.v1.ModelSpec
-	1,  // 4: ktms.v1.ReplaceRulesRequest.rules:type_name -> ktms.v1.RuleSpec
-	95, // 5: ktms.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
-	0,  // 6: ktms.v1.GetConfigResponse.models:type_name -> ktms.v1.ModelSpec
-	1,  // 7: ktms.v1.GetConfigResponse.rules:type_name -> ktms.v1.RuleSpec
-	12, // 8: ktms.v1.GetConfigResponse.vendor_keys:type_name -> ktms.v1.VendorKeyInfo
-	39, // 9: ktms.v1.GetConfigResponse.user_rate_limits:type_name -> ktms.v1.UserRateLimitSpec
-	46, // 10: ktms.v1.GetConfigResponse.spend_limits:type_name -> ktms.v1.SpendLimitSpec
-	76, // 11: ktms.v1.GetConfigResponse.mcp_servers:type_name -> ktms.v1.MCPServerSpec
-	85, // 12: ktms.v1.GetConfigResponse.mcp_credentials:type_name -> ktms.v1.MCPCredentialInfo
-	16, // 13: ktms.v1.MintAPIKeyRequest.policy:type_name -> ktms.v1.APIKeyPolicy
-	16, // 14: ktms.v1.SetAPIKeyPolicyRequest.policy:type_name -> ktms.v1.APIKeyPolicy
-	95, // 15: ktms.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
-	16, // 16: ktms.v1.APIKeyInfo.policy:type_name -> ktms.v1.APIKeyPolicy
-	23, // 17: ktms.v1.ListAPIKeysResponse.keys:type_name -> ktms.v1.APIKeyInfo
-	95, // 18: ktms.v1.NodeKeyInfo.created_at:type_name -> google.protobuf.Timestamp
-	32, // 19: ktms.v1.ListNodeKeysResponse.keys:type_name -> ktms.v1.NodeKeyInfo
-	95, // 20: ktms.v1.NodeInfo.last_heartbeat:type_name -> google.protobuf.Timestamp
-	35, // 21: ktms.v1.ListNodesResponse.nodes:type_name -> ktms.v1.NodeInfo
-	39, // 22: ktms.v1.SetUserRateLimitRequest.rate_limit:type_name -> ktms.v1.UserRateLimitSpec
-	39, // 23: ktms.v1.ListUserRateLimitsResponse.rate_limits:type_name -> ktms.v1.UserRateLimitSpec
-	46, // 24: ktms.v1.SetSpendLimitRequest.spend_limit:type_name -> ktms.v1.SpendLimitSpec
-	46, // 25: ktms.v1.ListSpendLimitsResponse.spend_limits:type_name -> ktms.v1.SpendLimitSpec
-	95, // 26: ktms.v1.Organization.created_at:type_name -> google.protobuf.Timestamp
-	95, // 27: ktms.v1.Team.created_at:type_name -> google.protobuf.Timestamp
-	53, // 28: ktms.v1.CreateOrganizationResponse.organization:type_name -> ktms.v1.Organization
-	53, // 29: ktms.v1.ListOrganizationsResponse.organizations:type_name -> ktms.v1.Organization
-	54, // 30: ktms.v1.CreateTeamResponse.team:type_name -> ktms.v1.Team
-	54, // 31: ktms.v1.GetTeamResponse.team:type_name -> ktms.v1.Team
-	54, // 32: ktms.v1.ListTeamsResponse.teams:type_name -> ktms.v1.Team
-	54, // 33: ktms.v1.UpdateTeamResponse.team:type_name -> ktms.v1.Team
-	95, // 34: ktms.v1.GetTeamSpendResponse.resets_at:type_name -> google.protobuf.Timestamp
-	95, // 35: ktms.v1.SpendWindow.resets_at:type_name -> google.protobuf.Timestamp
-	74, // 36: ktms.v1.GetSpendResponse.windows:type_name -> ktms.v1.SpendWindow
-	76, // 37: ktms.v1.UpsertMCPServerRequest.server:type_name -> ktms.v1.MCPServerSpec
-	95, // 38: ktms.v1.MCPCredentialInfo.created_at:type_name -> google.protobuf.Timestamp
-	87, // 39: ktms.v1.ListMCPToolsResponse.tools:type_name -> ktms.v1.MCPToolInfo
-	94, // 40: ktms.v1.ExplainRouteRequest.effort:type_name -> ktms.v1.Effort
-	93, // 41: ktms.v1.ExplainRouteRequest.attributes:type_name -> ktms.v1.ExplainRouteRequest.AttributesEntry
-	96, // 42: ktms.v1.RouteCandidate.paused_for:type_name -> google.protobuf.Duration
-	90, // 43: ktms.v1.ExplainRouteResponse.candidates:type_name -> ktms.v1.RouteCandidate
-	2,  // 44: ktms.v1.AdminService.UpsertModel:input_type -> ktms.v1.UpsertModelRequest
-	4,  // 45: ktms.v1.AdminService.DeleteModel:input_type -> ktms.v1.DeleteModelRequest
-	6,  // 46: ktms.v1.AdminService.ReplaceRules:input_type -> ktms.v1.ReplaceRulesRequest
-	8,  // 47: ktms.v1.AdminService.SetVendorKey:input_type -> ktms.v1.SetVendorKeyRequest
-	10, // 48: ktms.v1.AdminService.DeleteVendorKey:input_type -> ktms.v1.DeleteVendorKeyRequest
-	13, // 49: ktms.v1.AdminService.GetConfig:input_type -> ktms.v1.GetConfigRequest
-	15, // 50: ktms.v1.AdminService.MintAPIKey:input_type -> ktms.v1.MintAPIKeyRequest
-	20, // 51: ktms.v1.AdminService.RevokeAPIKey:input_type -> ktms.v1.RevokeAPIKeyRequest
-	22, // 52: ktms.v1.AdminService.ListAPIKeys:input_type -> ktms.v1.ListAPIKeysRequest
-	17, // 53: ktms.v1.AdminService.SetAPIKeyPolicy:input_type -> ktms.v1.SetAPIKeyPolicyRequest
-	25, // 54: ktms.v1.AdminService.RotateEncryption:input_type -> ktms.v1.RotateEncryptionRequest
-	27, // 55: ktms.v1.AdminService.MintNodeKey:input_type -> ktms.v1.MintNodeKeyRequest
-	29, // 56: ktms.v1.AdminService.RevokeNodeKey:input_type -> ktms.v1.RevokeNodeKeyRequest
-	31, // 57: ktms.v1.AdminService.ListNodeKeys:input_type -> ktms.v1.ListNodeKeysRequest
-	34, // 58: ktms.v1.AdminService.ListNodes:input_type -> ktms.v1.ListNodesRequest
-	37, // 59: ktms.v1.AdminService.DrainNode:input_type -> ktms.v1.DrainNodeRequest
-	40, // 60: ktms.v1.AdminService.SetUserRateLimit:input_type -> ktms.v1.SetUserRateLimitRequest
-	42, // 61: ktms.v1.AdminService.DeleteUserRateLimit:input_type -> ktms.v1.DeleteUserRateLimitRequest
-	44, // 62: ktms.v1.AdminService.ListUserRateLimits:input_type -> ktms.v1.ListUserRateLimitsRequest
-	47, // 63: ktms.v1.AdminService.SetSpendLimit:input_type -> ktms.v1.SetSpendLimitRequest
-	49, // 64: ktms.v1.AdminService.DeleteSpendLimit:input_type -> ktms.v1.DeleteSpendLimitRequest
-	51, // 65: ktms.v1.AdminService.ListSpendLimits:input_type -> ktms.v1.ListSpendLimitsRequest
-	55, // 66: ktms.v1.AdminService.CreateOrganization:input_type -> ktms.v1.CreateOrganizationRequest
-	57, // 67: ktms.v1.AdminService.ListOrganizations:input_type -> ktms.v1.ListOrganizationsRequest
-	59, // 68: ktms.v1.AdminService.DeleteOrganization:input_type -> ktms.v1.DeleteOrganizationRequest
-	61, // 69: ktms.v1.AdminService.CreateTeam:input_type -> ktms.v1.CreateTeamRequest
-	63, // 70: ktms.v1.AdminService.GetTeam:input_type -> ktms.v1.GetTeamRequest
-	65, // 71: ktms.v1.AdminService.ListTeams:input_type -> ktms.v1.ListTeamsRequest
-	67, // 72: ktms.v1.AdminService.UpdateTeam:input_type -> ktms.v1.UpdateTeamRequest
-	69, // 73: ktms.v1.AdminService.DeleteTeam:input_type -> ktms.v1.DeleteTeamRequest
-	71, // 74: ktms.v1.AdminService.GetTeamSpend:input_type -> ktms.v1.GetTeamSpendRequest
-	73, // 75: ktms.v1.AdminService.GetSpend:input_type -> ktms.v1.GetSpendRequest
-	89, // 76: ktms.v1.AdminService.ExplainRoute:input_type -> ktms.v1.ExplainRouteRequest
-	77, // 77: ktms.v1.AdminService.UpsertMCPServer:input_type -> ktms.v1.UpsertMCPServerRequest
-	79, // 78: ktms.v1.AdminService.DeleteMCPServer:input_type -> ktms.v1.DeleteMCPServerRequest
-	81, // 79: ktms.v1.AdminService.SetMCPCredential:input_type -> ktms.v1.SetMCPCredentialRequest
-	83, // 80: ktms.v1.AdminService.DeleteMCPCredential:input_type -> ktms.v1.DeleteMCPCredentialRequest
-	86, // 81: ktms.v1.AdminService.ListMCPTools:input_type -> ktms.v1.ListMCPToolsRequest
-	3,  // 82: ktms.v1.AdminService.UpsertModel:output_type -> ktms.v1.UpsertModelResponse
-	5,  // 83: ktms.v1.AdminService.DeleteModel:output_type -> ktms.v1.DeleteModelResponse
-	7,  // 84: ktms.v1.AdminService.ReplaceRules:output_type -> ktms.v1.ReplaceRulesResponse
-	9,  // 85: ktms.v1.AdminService.SetVendorKey:output_type -> ktms.v1.SetVendorKeyResponse
-	11, // 86: ktms.v1.AdminService.DeleteVendorKey:output_type -> ktms.v1.DeleteVendorKeyResponse
-	14, // 87: ktms.v1.AdminService.GetConfig:output_type -> ktms.v1.GetConfigResponse
-	19, // 88: ktms.v1.AdminService.MintAPIKey:output_type -> ktms.v1.MintAPIKeyResponse
-	21, // 89: ktms.v1.AdminService.RevokeAPIKey:output_type -> ktms.v1.RevokeAPIKeyResponse
-	24, // 90: ktms.v1.AdminService.ListAPIKeys:output_type -> ktms.v1.ListAPIKeysResponse
-	18, // 91: ktms.v1.AdminService.SetAPIKeyPolicy:output_type -> ktms.v1.SetAPIKeyPolicyResponse
-	26, // 92: ktms.v1.AdminService.RotateEncryption:output_type -> ktms.v1.RotateEncryptionResponse
-	28, // 93: ktms.v1.AdminService.MintNodeKey:output_type -> ktms.v1.MintNodeKeyResponse
-	30, // 94: ktms.v1.AdminService.RevokeNodeKey:output_type -> ktms.v1.RevokeNodeKeyResponse
-	33, // 95: ktms.v1.AdminService.ListNodeKeys:output_type -> ktms.v1.ListNodeKeysResponse
-	36, // 96: ktms.v1.AdminService.ListNodes:output_type -> ktms.v1.ListNodesResponse
-	38, // 97: ktms.v1.AdminService.DrainNode:output_type -> ktms.v1.DrainNodeResponse
-	41, // 98: ktms.v1.AdminService.SetUserRateLimit:output_type -> ktms.v1.SetUserRateLimitResponse
-	43, // 99: ktms.v1.AdminService.DeleteUserRateLimit:output_type -> ktms.v1.DeleteUserRateLimitResponse
-	45, // 100: ktms.v1.AdminService.ListUserRateLimits:output_type -> ktms.v1.ListUserRateLimitsResponse
-	48, // 101: ktms.v1.AdminService.SetSpendLimit:output_type -> ktms.v1.SetSpendLimitResponse
-	50, // 102: ktms.v1.AdminService.DeleteSpendLimit:output_type -> ktms.v1.DeleteSpendLimitResponse
-	52, // 103: ktms.v1.AdminService.ListSpendLimits:output_type -> ktms.v1.ListSpendLimitsResponse
-	56, // 104: ktms.v1.AdminService.CreateOrganization:output_type -> ktms.v1.CreateOrganizationResponse
-	58, // 105: ktms.v1.AdminService.ListOrganizations:output_type -> ktms.v1.ListOrganizationsResponse
-	60, // 106: ktms.v1.AdminService.DeleteOrganization:output_type -> ktms.v1.DeleteOrganizationResponse
-	62, // 107: ktms.v1.AdminService.CreateTeam:output_type -> ktms.v1.CreateTeamResponse
-	64, // 108: ktms.v1.AdminService.GetTeam:output_type -> ktms.v1.GetTeamResponse
-	66, // 109: ktms.v1.AdminService.ListTeams:output_type -> ktms.v1.ListTeamsResponse
-	68, // 110: ktms.v1.AdminService.UpdateTeam:output_type -> ktms.v1.UpdateTeamResponse
-	70, // 111: ktms.v1.AdminService.DeleteTeam:output_type -> ktms.v1.DeleteTeamResponse
-	72, // 112: ktms.v1.AdminService.GetTeamSpend:output_type -> ktms.v1.GetTeamSpendResponse
-	75, // 113: ktms.v1.AdminService.GetSpend:output_type -> ktms.v1.GetSpendResponse
-	91, // 114: ktms.v1.AdminService.ExplainRoute:output_type -> ktms.v1.ExplainRouteResponse
-	78, // 115: ktms.v1.AdminService.UpsertMCPServer:output_type -> ktms.v1.UpsertMCPServerResponse
-	80, // 116: ktms.v1.AdminService.DeleteMCPServer:output_type -> ktms.v1.DeleteMCPServerResponse
-	82, // 117: ktms.v1.AdminService.SetMCPCredential:output_type -> ktms.v1.SetMCPCredentialResponse
-	84, // 118: ktms.v1.AdminService.DeleteMCPCredential:output_type -> ktms.v1.DeleteMCPCredentialResponse
-	88, // 119: ktms.v1.AdminService.ListMCPTools:output_type -> ktms.v1.ListMCPToolsResponse
-	82, // [82:120] is the sub-list for method output_type
-	44, // [44:82] is the sub-list for method input_type
-	44, // [44:44] is the sub-list for extension type_name
-	44, // [44:44] is the sub-list for extension extendee
-	0,  // [0:44] is the sub-list for field type_name
+	102, // 0: ktms.v1.ModelSpec.efforts:type_name -> ktms.v1.Effort
+	102, // 1: ktms.v1.RuleSpec.effort:type_name -> ktms.v1.Effort
+	100, // 2: ktms.v1.RuleSpec.attributes:type_name -> ktms.v1.RuleSpec.AttributesEntry
+	0,   // 3: ktms.v1.UpsertModelRequest.model:type_name -> ktms.v1.ModelSpec
+	1,   // 4: ktms.v1.ReplaceRulesRequest.rules:type_name -> ktms.v1.RuleSpec
+	103, // 5: ktms.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	0,   // 6: ktms.v1.GetConfigResponse.models:type_name -> ktms.v1.ModelSpec
+	1,   // 7: ktms.v1.GetConfigResponse.rules:type_name -> ktms.v1.RuleSpec
+	12,  // 8: ktms.v1.GetConfigResponse.vendor_keys:type_name -> ktms.v1.VendorKeyInfo
+	47,  // 9: ktms.v1.GetConfigResponse.user_rate_limits:type_name -> ktms.v1.UserRateLimitSpec
+	54,  // 10: ktms.v1.GetConfigResponse.spend_limits:type_name -> ktms.v1.SpendLimitSpec
+	84,  // 11: ktms.v1.GetConfigResponse.mcp_servers:type_name -> ktms.v1.MCPServerSpec
+	93,  // 12: ktms.v1.GetConfigResponse.mcp_credentials:type_name -> ktms.v1.MCPCredentialInfo
+	16,  // 13: ktms.v1.MintAPIKeyRequest.policy:type_name -> ktms.v1.APIKeyPolicy
+	16,  // 14: ktms.v1.SetAPIKeyPolicyRequest.policy:type_name -> ktms.v1.APIKeyPolicy
+	103, // 15: ktms.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	16,  // 16: ktms.v1.APIKeyInfo.policy:type_name -> ktms.v1.APIKeyPolicy
+	23,  // 17: ktms.v1.ListAPIKeysResponse.keys:type_name -> ktms.v1.APIKeyInfo
+	103, // 18: ktms.v1.NodeKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	32,  // 19: ktms.v1.ListNodeKeysResponse.keys:type_name -> ktms.v1.NodeKeyInfo
+	103, // 20: ktms.v1.NodeInfo.last_heartbeat:type_name -> google.protobuf.Timestamp
+	103, // 21: ktms.v1.NodeInfo.capacity_until:type_name -> google.protobuf.Timestamp
+	35,  // 22: ktms.v1.ListNodesResponse.nodes:type_name -> ktms.v1.NodeInfo
+	104, // 23: ktms.v1.NodeScheduleInfo.override:type_name -> ktms.v1.NodeCapacityOverride
+	103, // 24: ktms.v1.NodeScheduleInfo.updated_at:type_name -> google.protobuf.Timestamp
+	103, // 25: ktms.v1.SetNodeCapacityOverrideRequest.until:type_name -> google.protobuf.Timestamp
+	40,  // 26: ktms.v1.ListNodeSchedulesResponse.schedules:type_name -> ktms.v1.NodeScheduleInfo
+	47,  // 27: ktms.v1.SetUserRateLimitRequest.rate_limit:type_name -> ktms.v1.UserRateLimitSpec
+	47,  // 28: ktms.v1.ListUserRateLimitsResponse.rate_limits:type_name -> ktms.v1.UserRateLimitSpec
+	54,  // 29: ktms.v1.SetSpendLimitRequest.spend_limit:type_name -> ktms.v1.SpendLimitSpec
+	54,  // 30: ktms.v1.ListSpendLimitsResponse.spend_limits:type_name -> ktms.v1.SpendLimitSpec
+	103, // 31: ktms.v1.Organization.created_at:type_name -> google.protobuf.Timestamp
+	103, // 32: ktms.v1.Team.created_at:type_name -> google.protobuf.Timestamp
+	61,  // 33: ktms.v1.CreateOrganizationResponse.organization:type_name -> ktms.v1.Organization
+	61,  // 34: ktms.v1.ListOrganizationsResponse.organizations:type_name -> ktms.v1.Organization
+	62,  // 35: ktms.v1.CreateTeamResponse.team:type_name -> ktms.v1.Team
+	62,  // 36: ktms.v1.GetTeamResponse.team:type_name -> ktms.v1.Team
+	62,  // 37: ktms.v1.ListTeamsResponse.teams:type_name -> ktms.v1.Team
+	62,  // 38: ktms.v1.UpdateTeamResponse.team:type_name -> ktms.v1.Team
+	103, // 39: ktms.v1.GetTeamSpendResponse.resets_at:type_name -> google.protobuf.Timestamp
+	103, // 40: ktms.v1.SpendWindow.resets_at:type_name -> google.protobuf.Timestamp
+	82,  // 41: ktms.v1.GetSpendResponse.windows:type_name -> ktms.v1.SpendWindow
+	84,  // 42: ktms.v1.UpsertMCPServerRequest.server:type_name -> ktms.v1.MCPServerSpec
+	103, // 43: ktms.v1.MCPCredentialInfo.created_at:type_name -> google.protobuf.Timestamp
+	95,  // 44: ktms.v1.ListMCPToolsResponse.tools:type_name -> ktms.v1.MCPToolInfo
+	102, // 45: ktms.v1.ExplainRouteRequest.effort:type_name -> ktms.v1.Effort
+	101, // 46: ktms.v1.ExplainRouteRequest.attributes:type_name -> ktms.v1.ExplainRouteRequest.AttributesEntry
+	105, // 47: ktms.v1.RouteCandidate.paused_for:type_name -> google.protobuf.Duration
+	98,  // 48: ktms.v1.ExplainRouteResponse.candidates:type_name -> ktms.v1.RouteCandidate
+	2,   // 49: ktms.v1.AdminService.UpsertModel:input_type -> ktms.v1.UpsertModelRequest
+	4,   // 50: ktms.v1.AdminService.DeleteModel:input_type -> ktms.v1.DeleteModelRequest
+	6,   // 51: ktms.v1.AdminService.ReplaceRules:input_type -> ktms.v1.ReplaceRulesRequest
+	8,   // 52: ktms.v1.AdminService.SetVendorKey:input_type -> ktms.v1.SetVendorKeyRequest
+	10,  // 53: ktms.v1.AdminService.DeleteVendorKey:input_type -> ktms.v1.DeleteVendorKeyRequest
+	13,  // 54: ktms.v1.AdminService.GetConfig:input_type -> ktms.v1.GetConfigRequest
+	15,  // 55: ktms.v1.AdminService.MintAPIKey:input_type -> ktms.v1.MintAPIKeyRequest
+	20,  // 56: ktms.v1.AdminService.RevokeAPIKey:input_type -> ktms.v1.RevokeAPIKeyRequest
+	22,  // 57: ktms.v1.AdminService.ListAPIKeys:input_type -> ktms.v1.ListAPIKeysRequest
+	17,  // 58: ktms.v1.AdminService.SetAPIKeyPolicy:input_type -> ktms.v1.SetAPIKeyPolicyRequest
+	25,  // 59: ktms.v1.AdminService.RotateEncryption:input_type -> ktms.v1.RotateEncryptionRequest
+	27,  // 60: ktms.v1.AdminService.MintNodeKey:input_type -> ktms.v1.MintNodeKeyRequest
+	29,  // 61: ktms.v1.AdminService.RevokeNodeKey:input_type -> ktms.v1.RevokeNodeKeyRequest
+	31,  // 62: ktms.v1.AdminService.ListNodeKeys:input_type -> ktms.v1.ListNodeKeysRequest
+	34,  // 63: ktms.v1.AdminService.ListNodes:input_type -> ktms.v1.ListNodesRequest
+	37,  // 64: ktms.v1.AdminService.DrainNode:input_type -> ktms.v1.DrainNodeRequest
+	39,  // 65: ktms.v1.AdminService.GetNodeSchedule:input_type -> ktms.v1.GetNodeScheduleRequest
+	43,  // 66: ktms.v1.AdminService.ListNodeSchedules:input_type -> ktms.v1.ListNodeSchedulesRequest
+	41,  // 67: ktms.v1.AdminService.SetNodeSchedule:input_type -> ktms.v1.SetNodeScheduleRequest
+	42,  // 68: ktms.v1.AdminService.SetNodeCapacityOverride:input_type -> ktms.v1.SetNodeCapacityOverrideRequest
+	45,  // 69: ktms.v1.AdminService.DeleteNodeSchedule:input_type -> ktms.v1.DeleteNodeScheduleRequest
+	48,  // 70: ktms.v1.AdminService.SetUserRateLimit:input_type -> ktms.v1.SetUserRateLimitRequest
+	50,  // 71: ktms.v1.AdminService.DeleteUserRateLimit:input_type -> ktms.v1.DeleteUserRateLimitRequest
+	52,  // 72: ktms.v1.AdminService.ListUserRateLimits:input_type -> ktms.v1.ListUserRateLimitsRequest
+	55,  // 73: ktms.v1.AdminService.SetSpendLimit:input_type -> ktms.v1.SetSpendLimitRequest
+	57,  // 74: ktms.v1.AdminService.DeleteSpendLimit:input_type -> ktms.v1.DeleteSpendLimitRequest
+	59,  // 75: ktms.v1.AdminService.ListSpendLimits:input_type -> ktms.v1.ListSpendLimitsRequest
+	63,  // 76: ktms.v1.AdminService.CreateOrganization:input_type -> ktms.v1.CreateOrganizationRequest
+	65,  // 77: ktms.v1.AdminService.ListOrganizations:input_type -> ktms.v1.ListOrganizationsRequest
+	67,  // 78: ktms.v1.AdminService.DeleteOrganization:input_type -> ktms.v1.DeleteOrganizationRequest
+	69,  // 79: ktms.v1.AdminService.CreateTeam:input_type -> ktms.v1.CreateTeamRequest
+	71,  // 80: ktms.v1.AdminService.GetTeam:input_type -> ktms.v1.GetTeamRequest
+	73,  // 81: ktms.v1.AdminService.ListTeams:input_type -> ktms.v1.ListTeamsRequest
+	75,  // 82: ktms.v1.AdminService.UpdateTeam:input_type -> ktms.v1.UpdateTeamRequest
+	77,  // 83: ktms.v1.AdminService.DeleteTeam:input_type -> ktms.v1.DeleteTeamRequest
+	79,  // 84: ktms.v1.AdminService.GetTeamSpend:input_type -> ktms.v1.GetTeamSpendRequest
+	81,  // 85: ktms.v1.AdminService.GetSpend:input_type -> ktms.v1.GetSpendRequest
+	97,  // 86: ktms.v1.AdminService.ExplainRoute:input_type -> ktms.v1.ExplainRouteRequest
+	85,  // 87: ktms.v1.AdminService.UpsertMCPServer:input_type -> ktms.v1.UpsertMCPServerRequest
+	87,  // 88: ktms.v1.AdminService.DeleteMCPServer:input_type -> ktms.v1.DeleteMCPServerRequest
+	89,  // 89: ktms.v1.AdminService.SetMCPCredential:input_type -> ktms.v1.SetMCPCredentialRequest
+	91,  // 90: ktms.v1.AdminService.DeleteMCPCredential:input_type -> ktms.v1.DeleteMCPCredentialRequest
+	94,  // 91: ktms.v1.AdminService.ListMCPTools:input_type -> ktms.v1.ListMCPToolsRequest
+	3,   // 92: ktms.v1.AdminService.UpsertModel:output_type -> ktms.v1.UpsertModelResponse
+	5,   // 93: ktms.v1.AdminService.DeleteModel:output_type -> ktms.v1.DeleteModelResponse
+	7,   // 94: ktms.v1.AdminService.ReplaceRules:output_type -> ktms.v1.ReplaceRulesResponse
+	9,   // 95: ktms.v1.AdminService.SetVendorKey:output_type -> ktms.v1.SetVendorKeyResponse
+	11,  // 96: ktms.v1.AdminService.DeleteVendorKey:output_type -> ktms.v1.DeleteVendorKeyResponse
+	14,  // 97: ktms.v1.AdminService.GetConfig:output_type -> ktms.v1.GetConfigResponse
+	19,  // 98: ktms.v1.AdminService.MintAPIKey:output_type -> ktms.v1.MintAPIKeyResponse
+	21,  // 99: ktms.v1.AdminService.RevokeAPIKey:output_type -> ktms.v1.RevokeAPIKeyResponse
+	24,  // 100: ktms.v1.AdminService.ListAPIKeys:output_type -> ktms.v1.ListAPIKeysResponse
+	18,  // 101: ktms.v1.AdminService.SetAPIKeyPolicy:output_type -> ktms.v1.SetAPIKeyPolicyResponse
+	26,  // 102: ktms.v1.AdminService.RotateEncryption:output_type -> ktms.v1.RotateEncryptionResponse
+	28,  // 103: ktms.v1.AdminService.MintNodeKey:output_type -> ktms.v1.MintNodeKeyResponse
+	30,  // 104: ktms.v1.AdminService.RevokeNodeKey:output_type -> ktms.v1.RevokeNodeKeyResponse
+	33,  // 105: ktms.v1.AdminService.ListNodeKeys:output_type -> ktms.v1.ListNodeKeysResponse
+	36,  // 106: ktms.v1.AdminService.ListNodes:output_type -> ktms.v1.ListNodesResponse
+	38,  // 107: ktms.v1.AdminService.DrainNode:output_type -> ktms.v1.DrainNodeResponse
+	40,  // 108: ktms.v1.AdminService.GetNodeSchedule:output_type -> ktms.v1.NodeScheduleInfo
+	44,  // 109: ktms.v1.AdminService.ListNodeSchedules:output_type -> ktms.v1.ListNodeSchedulesResponse
+	40,  // 110: ktms.v1.AdminService.SetNodeSchedule:output_type -> ktms.v1.NodeScheduleInfo
+	40,  // 111: ktms.v1.AdminService.SetNodeCapacityOverride:output_type -> ktms.v1.NodeScheduleInfo
+	46,  // 112: ktms.v1.AdminService.DeleteNodeSchedule:output_type -> ktms.v1.DeleteNodeScheduleResponse
+	49,  // 113: ktms.v1.AdminService.SetUserRateLimit:output_type -> ktms.v1.SetUserRateLimitResponse
+	51,  // 114: ktms.v1.AdminService.DeleteUserRateLimit:output_type -> ktms.v1.DeleteUserRateLimitResponse
+	53,  // 115: ktms.v1.AdminService.ListUserRateLimits:output_type -> ktms.v1.ListUserRateLimitsResponse
+	56,  // 116: ktms.v1.AdminService.SetSpendLimit:output_type -> ktms.v1.SetSpendLimitResponse
+	58,  // 117: ktms.v1.AdminService.DeleteSpendLimit:output_type -> ktms.v1.DeleteSpendLimitResponse
+	60,  // 118: ktms.v1.AdminService.ListSpendLimits:output_type -> ktms.v1.ListSpendLimitsResponse
+	64,  // 119: ktms.v1.AdminService.CreateOrganization:output_type -> ktms.v1.CreateOrganizationResponse
+	66,  // 120: ktms.v1.AdminService.ListOrganizations:output_type -> ktms.v1.ListOrganizationsResponse
+	68,  // 121: ktms.v1.AdminService.DeleteOrganization:output_type -> ktms.v1.DeleteOrganizationResponse
+	70,  // 122: ktms.v1.AdminService.CreateTeam:output_type -> ktms.v1.CreateTeamResponse
+	72,  // 123: ktms.v1.AdminService.GetTeam:output_type -> ktms.v1.GetTeamResponse
+	74,  // 124: ktms.v1.AdminService.ListTeams:output_type -> ktms.v1.ListTeamsResponse
+	76,  // 125: ktms.v1.AdminService.UpdateTeam:output_type -> ktms.v1.UpdateTeamResponse
+	78,  // 126: ktms.v1.AdminService.DeleteTeam:output_type -> ktms.v1.DeleteTeamResponse
+	80,  // 127: ktms.v1.AdminService.GetTeamSpend:output_type -> ktms.v1.GetTeamSpendResponse
+	83,  // 128: ktms.v1.AdminService.GetSpend:output_type -> ktms.v1.GetSpendResponse
+	99,  // 129: ktms.v1.AdminService.ExplainRoute:output_type -> ktms.v1.ExplainRouteResponse
+	86,  // 130: ktms.v1.AdminService.UpsertMCPServer:output_type -> ktms.v1.UpsertMCPServerResponse
+	88,  // 131: ktms.v1.AdminService.DeleteMCPServer:output_type -> ktms.v1.DeleteMCPServerResponse
+	90,  // 132: ktms.v1.AdminService.SetMCPCredential:output_type -> ktms.v1.SetMCPCredentialResponse
+	92,  // 133: ktms.v1.AdminService.DeleteMCPCredential:output_type -> ktms.v1.DeleteMCPCredentialResponse
+	96,  // 134: ktms.v1.AdminService.ListMCPTools:output_type -> ktms.v1.ListMCPToolsResponse
+	92,  // [92:135] is the sub-list for method output_type
+	49,  // [49:92] is the sub-list for method input_type
+	49,  // [49:49] is the sub-list for extension type_name
+	49,  // [49:49] is the sub-list for extension extendee
+	0,   // [0:49] is the sub-list for field type_name
 }
 
 func init() { file_ktms_v1_admin_proto_init() }
@@ -5868,13 +6349,14 @@ func file_ktms_v1_admin_proto_init() {
 		return
 	}
 	file_ktms_v1_gateway_proto_init()
+	file_ktms_v1_node_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ktms_v1_admin_proto_rawDesc), len(file_ktms_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   94,
+			NumMessages:   102,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

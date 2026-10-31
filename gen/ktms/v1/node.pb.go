@@ -567,8 +567,16 @@ type HeartbeatRequest struct {
 	// Share of time the node may spend on proxy requests, 0-100, from its local
 	// schedule. Unset means 100, so agents that predate it keep full capacity.
 	CapacityPercent *uint32 `protobuf:"varint,7,opt,name=capacity_percent,json=capacityPercent,proto3,oneof" json:"capacity_percent,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Where the agent takes its levels from: "local" (its own schedule file) or
+	// "ktms" (HeartbeatResponse.schedule). Empty from agents that predate it.
+	ScheduleSource string `protobuf:"bytes,8,opt,name=schedule_source,json=scheduleSource,proto3" json:"schedule_source,omitempty"`
+	// What set capacity_percent: schedule, override (by the owner, on the machine),
+	// ktms_schedule, ktms_override or default (no schedule, 100%).
+	CapacitySource string `protobuf:"bytes,9,opt,name=capacity_source,json=capacitySource,proto3" json:"capacity_source,omitempty"`
+	// When the override behind capacity_percent ends; unset without one.
+	CapacityUntil *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=capacity_until,json=capacityUntil,proto3" json:"capacity_until,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *HeartbeatRequest) Reset() {
@@ -650,6 +658,142 @@ func (x *HeartbeatRequest) GetCapacityPercent() uint32 {
 	return 0
 }
 
+func (x *HeartbeatRequest) GetScheduleSource() string {
+	if x != nil {
+		return x.ScheduleSource
+	}
+	return ""
+}
+
+func (x *HeartbeatRequest) GetCapacitySource() string {
+	if x != nil {
+		return x.CapacitySource
+	}
+	return ""
+}
+
+func (x *HeartbeatRequest) GetCapacityUntil() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CapacityUntil
+	}
+	return nil
+}
+
+// NodeSchedule is the schedule KTMS keeps for a node whose agent takes its
+// levels from KTMS.
+type NodeSchedule struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`         // rules in the agent's format, "[days] HH:MM-HH:MM level" per line; empty = 100%
+	Version       int64                  `protobuf:"varint,2,opt,name=version,proto3" json:"version,omitempty"`  // bumps on every change of text or override; 0 = none set yet
+	Override      *NodeCapacityOverride  `protobuf:"bytes,3,opt,name=override,proto3" json:"override,omitempty"` // unset = none
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodeSchedule) Reset() {
+	*x = NodeSchedule{}
+	mi := &file_ktms_v1_node_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeSchedule) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeSchedule) ProtoMessage() {}
+
+func (x *NodeSchedule) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_node_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeSchedule.ProtoReflect.Descriptor instead.
+func (*NodeSchedule) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *NodeSchedule) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *NodeSchedule) GetVersion() int64 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *NodeSchedule) GetOverride() *NodeCapacityOverride {
+	if x != nil {
+		return x.Override
+	}
+	return nil
+}
+
+// NodeCapacityOverride holds a node at a level until a moment, over its schedule.
+type NodeCapacityOverride struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Level         uint32                 `protobuf:"varint,1,opt,name=level,proto3" json:"level,omitempty"` // 0-100
+	Until         *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=until,proto3" json:"until,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodeCapacityOverride) Reset() {
+	*x = NodeCapacityOverride{}
+	mi := &file_ktms_v1_node_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeCapacityOverride) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeCapacityOverride) ProtoMessage() {}
+
+func (x *NodeCapacityOverride) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_node_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeCapacityOverride.ProtoReflect.Descriptor instead.
+func (*NodeCapacityOverride) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *NodeCapacityOverride) GetLevel() uint32 {
+	if x != nil {
+		return x.Level
+	}
+	return 0
+}
+
+func (x *NodeCapacityOverride) GetUntil() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Until
+	}
+	return nil
+}
+
 type HeartbeatResponse struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	Ok                  bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
@@ -657,13 +801,16 @@ type HeartbeatResponse struct {
 	DrainRequested      bool                   `protobuf:"varint,3,opt,name=drain_requested,json=drainRequested,proto3" json:"drain_requested,omitempty"`
 	ActiveProxyRequests int32                  `protobuf:"varint,4,opt,name=active_proxy_requests,json=activeProxyRequests,proto3" json:"active_proxy_requests,omitempty"` // requests still running, not counting post-request cooldown
 	CapacityApplied     bool                   `protobuf:"varint,5,opt,name=capacity_applied,json=capacityApplied,proto3" json:"capacity_applied,omitempty"`               // false from proxies that ignore capacity_percent
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// The node's schedule in KTMS, sent only to agents with schedule_source "ktms".
+	// Unset when the proxy could not read it: the agent keeps the last one it got.
+	Schedule      *NodeSchedule `protobuf:"bytes,6,opt,name=schedule,proto3" json:"schedule,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_ktms_v1_node_proto_msgTypes[7]
+	mi := &file_ktms_v1_node_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -675,7 +822,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_node_proto_msgTypes[7]
+	mi := &file_ktms_v1_node_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -688,7 +835,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_node_proto_rawDescGZIP(), []int{7}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *HeartbeatResponse) GetOk() bool {
@@ -726,6 +873,13 @@ func (x *HeartbeatResponse) GetCapacityApplied() bool {
 	return false
 }
 
+func (x *HeartbeatResponse) GetSchedule() *NodeSchedule {
+	if x != nil {
+		return x.Schedule
+	}
+	return nil
+}
+
 // NodeUsageRecord is one request the proxy sent to a node, as the node's owner
 // sees it: how much the machine worked, never for whom (no user, key or text).
 type NodeUsageRecord struct {
@@ -750,7 +904,7 @@ type NodeUsageRecord struct {
 
 func (x *NodeUsageRecord) Reset() {
 	*x = NodeUsageRecord{}
-	mi := &file_ktms_v1_node_proto_msgTypes[8]
+	mi := &file_ktms_v1_node_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -762,7 +916,7 @@ func (x *NodeUsageRecord) String() string {
 func (*NodeUsageRecord) ProtoMessage() {}
 
 func (x *NodeUsageRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_node_proto_msgTypes[8]
+	mi := &file_ktms_v1_node_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -775,7 +929,7 @@ func (x *NodeUsageRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeUsageRecord.ProtoReflect.Descriptor instead.
 func (*NodeUsageRecord) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_node_proto_rawDescGZIP(), []int{8}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *NodeUsageRecord) GetId() string {
@@ -887,7 +1041,7 @@ type PullNodeUsageRequest struct {
 
 func (x *PullNodeUsageRequest) Reset() {
 	*x = PullNodeUsageRequest{}
-	mi := &file_ktms_v1_node_proto_msgTypes[9]
+	mi := &file_ktms_v1_node_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -899,7 +1053,7 @@ func (x *PullNodeUsageRequest) String() string {
 func (*PullNodeUsageRequest) ProtoMessage() {}
 
 func (x *PullNodeUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_node_proto_msgTypes[9]
+	mi := &file_ktms_v1_node_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -912,7 +1066,7 @@ func (x *PullNodeUsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PullNodeUsageRequest.ProtoReflect.Descriptor instead.
 func (*PullNodeUsageRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_node_proto_rawDescGZIP(), []int{9}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *PullNodeUsageRequest) GetNodeId() string {
@@ -950,7 +1104,7 @@ type PullNodeUsageResponse struct {
 
 func (x *PullNodeUsageResponse) Reset() {
 	*x = PullNodeUsageResponse{}
-	mi := &file_ktms_v1_node_proto_msgTypes[10]
+	mi := &file_ktms_v1_node_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -962,7 +1116,7 @@ func (x *PullNodeUsageResponse) String() string {
 func (*PullNodeUsageResponse) ProtoMessage() {}
 
 func (x *PullNodeUsageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_node_proto_msgTypes[10]
+	mi := &file_ktms_v1_node_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -975,7 +1129,7 @@ func (x *PullNodeUsageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PullNodeUsageResponse.ProtoReflect.Descriptor instead.
 func (*PullNodeUsageResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_node_proto_rawDescGZIP(), []int{10}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *PullNodeUsageResponse) GetRecords() []*NodeUsageRecord {
@@ -1016,7 +1170,7 @@ type UnregisterNodeRequest struct {
 
 func (x *UnregisterNodeRequest) Reset() {
 	*x = UnregisterNodeRequest{}
-	mi := &file_ktms_v1_node_proto_msgTypes[11]
+	mi := &file_ktms_v1_node_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1028,7 +1182,7 @@ func (x *UnregisterNodeRequest) String() string {
 func (*UnregisterNodeRequest) ProtoMessage() {}
 
 func (x *UnregisterNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_node_proto_msgTypes[11]
+	mi := &file_ktms_v1_node_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1041,7 +1195,7 @@ func (x *UnregisterNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnregisterNodeRequest.ProtoReflect.Descriptor instead.
 func (*UnregisterNodeRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_node_proto_rawDescGZIP(), []int{11}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *UnregisterNodeRequest) GetNodeId() string {
@@ -1067,7 +1221,7 @@ type UnregisterNodeResponse struct {
 
 func (x *UnregisterNodeResponse) Reset() {
 	*x = UnregisterNodeResponse{}
-	mi := &file_ktms_v1_node_proto_msgTypes[12]
+	mi := &file_ktms_v1_node_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1079,7 +1233,7 @@ func (x *UnregisterNodeResponse) String() string {
 func (*UnregisterNodeResponse) ProtoMessage() {}
 
 func (x *UnregisterNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_node_proto_msgTypes[12]
+	mi := &file_ktms_v1_node_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1092,7 +1246,7 @@ func (x *UnregisterNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnregisterNodeResponse.ProtoReflect.Descriptor instead.
 func (*UnregisterNodeResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_node_proto_rawDescGZIP(), []int{12}
+	return file_ktms_v1_node_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *UnregisterNodeResponse) GetOk() bool {
@@ -1151,7 +1305,7 @@ const file_ktms_v1_node_proto_rawDesc = "" +
 	"\x06models\x18\x02 \x03(\v2\x16.ktms.v1.NodeModelSpecR\x06models\"f\n" +
 	"\x14ValidateNodeResponse\x12'\n" +
 	"\x0faccepted_models\x18\x01 \x03(\tR\x0eacceptedModels\x12%\n" +
-	"\x0edropped_models\x18\x02 \x03(\tR\rdroppedModels\"\xbc\x02\n" +
+	"\x0edropped_models\x18\x02 \x03(\tR\rdroppedModels\"\xd1\x03\n" +
 	"\x10HeartbeatRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x1a\n" +
 	"\bdraining\x18\x02 \x01(\bR\bdraining\x12'\n" +
@@ -1160,14 +1314,26 @@ const file_ktms_v1_node_proto_rawDesc = "" +
 	"queueDepth\x124\n" +
 	"\tresources\x18\x05 \x01(\v2\x16.ktms.v1.NodeResourcesR\tresources\x12.\n" +
 	"\x06models\x18\x06 \x03(\v2\x16.ktms.v1.NodeModelSpecR\x06models\x12.\n" +
-	"\x10capacity_percent\x18\a \x01(\rH\x00R\x0fcapacityPercent\x88\x01\x01B\x13\n" +
-	"\x11_capacity_percent\"\xdd\x01\n" +
+	"\x10capacity_percent\x18\a \x01(\rH\x00R\x0fcapacityPercent\x88\x01\x01\x12'\n" +
+	"\x0fschedule_source\x18\b \x01(\tR\x0escheduleSource\x12'\n" +
+	"\x0fcapacity_source\x18\t \x01(\tR\x0ecapacitySource\x12A\n" +
+	"\x0ecapacity_until\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\rcapacityUntilB\x13\n" +
+	"\x11_capacity_percent\"w\n" +
+	"\fNodeSchedule\x12\x12\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\x03R\aversion\x129\n" +
+	"\boverride\x18\x03 \x01(\v2\x1d.ktms.v1.NodeCapacityOverrideR\boverride\"^\n" +
+	"\x14NodeCapacityOverride\x12\x14\n" +
+	"\x05level\x18\x01 \x01(\rR\x05level\x120\n" +
+	"\x05until\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x05until\"\x90\x02\n" +
 	"\x11HeartbeatResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x120\n" +
 	"\x14re_register_required\x18\x02 \x01(\bR\x12reRegisterRequired\x12'\n" +
 	"\x0fdrain_requested\x18\x03 \x01(\bR\x0edrainRequested\x122\n" +
 	"\x15active_proxy_requests\x18\x04 \x01(\x05R\x13activeProxyRequests\x12)\n" +
-	"\x10capacity_applied\x18\x05 \x01(\bR\x0fcapacityApplied\"\xdd\x03\n" +
+	"\x10capacity_applied\x18\x05 \x01(\bR\x0fcapacityApplied\x121\n" +
+	"\bschedule\x18\x06 \x01(\v2\x15.ktms.v1.NodeScheduleR\bschedule\"\xdd\x03\n" +
 	"\x0fNodeUsageRecord\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -1232,7 +1398,7 @@ func file_ktms_v1_node_proto_rawDescGZIP() []byte {
 }
 
 var file_ktms_v1_node_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_ktms_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_ktms_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_ktms_v1_node_proto_goTypes = []any{
 	(NodeState)(0),                 // 0: ktms.v1.NodeState
 	(*NodeResources)(nil),          // 1: ktms.v1.NodeResources
@@ -1242,40 +1408,46 @@ var file_ktms_v1_node_proto_goTypes = []any{
 	(*ValidateNodeRequest)(nil),    // 5: ktms.v1.ValidateNodeRequest
 	(*ValidateNodeResponse)(nil),   // 6: ktms.v1.ValidateNodeResponse
 	(*HeartbeatRequest)(nil),       // 7: ktms.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),      // 8: ktms.v1.HeartbeatResponse
-	(*NodeUsageRecord)(nil),        // 9: ktms.v1.NodeUsageRecord
-	(*PullNodeUsageRequest)(nil),   // 10: ktms.v1.PullNodeUsageRequest
-	(*PullNodeUsageResponse)(nil),  // 11: ktms.v1.PullNodeUsageResponse
-	(*UnregisterNodeRequest)(nil),  // 12: ktms.v1.UnregisterNodeRequest
-	(*UnregisterNodeResponse)(nil), // 13: ktms.v1.UnregisterNodeResponse
-	nil,                            // 14: ktms.v1.RegisterNodeRequest.TagsEntry
-	(*timestamppb.Timestamp)(nil),  // 15: google.protobuf.Timestamp
+	(*NodeSchedule)(nil),           // 8: ktms.v1.NodeSchedule
+	(*NodeCapacityOverride)(nil),   // 9: ktms.v1.NodeCapacityOverride
+	(*HeartbeatResponse)(nil),      // 10: ktms.v1.HeartbeatResponse
+	(*NodeUsageRecord)(nil),        // 11: ktms.v1.NodeUsageRecord
+	(*PullNodeUsageRequest)(nil),   // 12: ktms.v1.PullNodeUsageRequest
+	(*PullNodeUsageResponse)(nil),  // 13: ktms.v1.PullNodeUsageResponse
+	(*UnregisterNodeRequest)(nil),  // 14: ktms.v1.UnregisterNodeRequest
+	(*UnregisterNodeResponse)(nil), // 15: ktms.v1.UnregisterNodeResponse
+	nil,                            // 16: ktms.v1.RegisterNodeRequest.TagsEntry
+	(*timestamppb.Timestamp)(nil),  // 17: google.protobuf.Timestamp
 }
 var file_ktms_v1_node_proto_depIdxs = []int32{
 	1,  // 0: ktms.v1.RegisterNodeRequest.resources:type_name -> ktms.v1.NodeResources
 	2,  // 1: ktms.v1.RegisterNodeRequest.models:type_name -> ktms.v1.NodeModelSpec
-	14, // 2: ktms.v1.RegisterNodeRequest.tags:type_name -> ktms.v1.RegisterNodeRequest.TagsEntry
+	16, // 2: ktms.v1.RegisterNodeRequest.tags:type_name -> ktms.v1.RegisterNodeRequest.TagsEntry
 	2,  // 3: ktms.v1.ValidateNodeRequest.models:type_name -> ktms.v1.NodeModelSpec
 	1,  // 4: ktms.v1.HeartbeatRequest.resources:type_name -> ktms.v1.NodeResources
 	2,  // 5: ktms.v1.HeartbeatRequest.models:type_name -> ktms.v1.NodeModelSpec
-	15, // 6: ktms.v1.NodeUsageRecord.started_at:type_name -> google.protobuf.Timestamp
-	9,  // 7: ktms.v1.PullNodeUsageResponse.records:type_name -> ktms.v1.NodeUsageRecord
-	15, // 8: ktms.v1.PullNodeUsageResponse.gap_until:type_name -> google.protobuf.Timestamp
-	3,  // 9: ktms.v1.NodeRegistryService.RegisterNode:input_type -> ktms.v1.RegisterNodeRequest
-	5,  // 10: ktms.v1.NodeRegistryService.ValidateNode:input_type -> ktms.v1.ValidateNodeRequest
-	7,  // 11: ktms.v1.NodeRegistryService.Heartbeat:input_type -> ktms.v1.HeartbeatRequest
-	12, // 12: ktms.v1.NodeRegistryService.UnregisterNode:input_type -> ktms.v1.UnregisterNodeRequest
-	10, // 13: ktms.v1.NodeRegistryService.PullNodeUsage:input_type -> ktms.v1.PullNodeUsageRequest
-	4,  // 14: ktms.v1.NodeRegistryService.RegisterNode:output_type -> ktms.v1.RegisterNodeResponse
-	6,  // 15: ktms.v1.NodeRegistryService.ValidateNode:output_type -> ktms.v1.ValidateNodeResponse
-	8,  // 16: ktms.v1.NodeRegistryService.Heartbeat:output_type -> ktms.v1.HeartbeatResponse
-	13, // 17: ktms.v1.NodeRegistryService.UnregisterNode:output_type -> ktms.v1.UnregisterNodeResponse
-	11, // 18: ktms.v1.NodeRegistryService.PullNodeUsage:output_type -> ktms.v1.PullNodeUsageResponse
-	14, // [14:19] is the sub-list for method output_type
-	9,  // [9:14] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	17, // 6: ktms.v1.HeartbeatRequest.capacity_until:type_name -> google.protobuf.Timestamp
+	9,  // 7: ktms.v1.NodeSchedule.override:type_name -> ktms.v1.NodeCapacityOverride
+	17, // 8: ktms.v1.NodeCapacityOverride.until:type_name -> google.protobuf.Timestamp
+	8,  // 9: ktms.v1.HeartbeatResponse.schedule:type_name -> ktms.v1.NodeSchedule
+	17, // 10: ktms.v1.NodeUsageRecord.started_at:type_name -> google.protobuf.Timestamp
+	11, // 11: ktms.v1.PullNodeUsageResponse.records:type_name -> ktms.v1.NodeUsageRecord
+	17, // 12: ktms.v1.PullNodeUsageResponse.gap_until:type_name -> google.protobuf.Timestamp
+	3,  // 13: ktms.v1.NodeRegistryService.RegisterNode:input_type -> ktms.v1.RegisterNodeRequest
+	5,  // 14: ktms.v1.NodeRegistryService.ValidateNode:input_type -> ktms.v1.ValidateNodeRequest
+	7,  // 15: ktms.v1.NodeRegistryService.Heartbeat:input_type -> ktms.v1.HeartbeatRequest
+	14, // 16: ktms.v1.NodeRegistryService.UnregisterNode:input_type -> ktms.v1.UnregisterNodeRequest
+	12, // 17: ktms.v1.NodeRegistryService.PullNodeUsage:input_type -> ktms.v1.PullNodeUsageRequest
+	4,  // 18: ktms.v1.NodeRegistryService.RegisterNode:output_type -> ktms.v1.RegisterNodeResponse
+	6,  // 19: ktms.v1.NodeRegistryService.ValidateNode:output_type -> ktms.v1.ValidateNodeResponse
+	10, // 20: ktms.v1.NodeRegistryService.Heartbeat:output_type -> ktms.v1.HeartbeatResponse
+	15, // 21: ktms.v1.NodeRegistryService.UnregisterNode:output_type -> ktms.v1.UnregisterNodeResponse
+	13, // 22: ktms.v1.NodeRegistryService.PullNodeUsage:output_type -> ktms.v1.PullNodeUsageResponse
+	18, // [18:23] is the sub-list for method output_type
+	13, // [13:18] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_ktms_v1_node_proto_init() }
@@ -1290,7 +1462,7 @@ func file_ktms_v1_node_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ktms_v1_node_proto_rawDesc), len(file_ktms_v1_node_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   14,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

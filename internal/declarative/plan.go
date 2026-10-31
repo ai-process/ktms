@@ -511,6 +511,46 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 		}
 	}
 
+	if cfg.Manages("node_schedules") {
+		if live.NodeSchedulesErr != nil {
+			conflict("node_schedules: %v", live.NodeSchedulesErr)
+		}
+		liveNS := map[string]string{}
+		for _, ns := range live.NodeSchedules {
+			if ns.GetVersion() > 0 {
+				liveNS[ns.GetNodeId()] = ns.GetText()
+			}
+		}
+		for _, ns := range cfg.NodeSchedules {
+			ns := ns
+			set := func(ctx context.Context, c pb.AdminServiceClient, _ *applied) error {
+				_, err := c.SetNodeSchedule(ctx, &pb.SetNodeScheduleRequest{NodeId: ns.NodeID, Text: ns.Schedule})
+				return err
+			}
+			cur, ok := liveNS[ns.NodeID]
+			switch {
+			case !ok:
+				p.add(Change{Op: Create, Kind: "node schedule", Name: ns.NodeID}, set)
+			case strings.TrimSpace(cur) != strings.TrimSpace(ns.Schedule):
+				p.add(Change{Op: Update, Kind: "node schedule", Name: ns.NodeID, Details: []string{"rules changed"}}, set)
+			}
+		}
+		if opt.Prune {
+			for id := range liveNS {
+				id := id
+				if slices.ContainsFunc(cfg.NodeSchedules, func(ns NodeSchedule) bool { return ns.NodeID == id }) {
+					continue
+				}
+				deletes = append(deletes, func() {
+					p.add(Change{Op: Delete, Kind: "node schedule", Name: id}, func(ctx context.Context, c pb.AdminServiceClient, _ *applied) error {
+						_, err := c.DeleteNodeSchedule(ctx, &pb.DeleteNodeScheduleRequest{NodeId: id})
+						return err
+					})
+				})
+			}
+		}
+	}
+
 	if cfg.Manages("models") && opt.Prune {
 		var gone []string
 		for id := range liveModels {

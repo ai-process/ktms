@@ -16,10 +16,11 @@ import (
 
 // controlCommands talk to the running agent over its control socket.
 var controlCommands = map[string]func(args []string, stdout, stderr io.Writer) int{
-	"status": runStatus,
-	"pause":  runPause,
-	"level":  runLevel,
-	"resume": runResume,
+	"status":   runStatus,
+	"pause":    runPause,
+	"level":    runLevel,
+	"resume":   runResume,
+	"settings": runSettings,
 }
 
 func controlFlags(name string, stderr io.Writer) (*flag.FlagSet, *string) {
@@ -142,6 +143,30 @@ func runResume(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// runSettings prints or changes the owner's run-time settings.
+func runSettings(args []string, stdout, stderr io.Writer) int {
+	fs, socket := controlFlags("settings", stderr)
+	src := fs.String("schedule-source", "", "local: follow this machine's schedule file; ktms: follow the schedule KTMS keeps for this node")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	c := nodeagent.NewControlClient(*socket)
+	if *src == "" {
+		s, err := c.Settings(context.Background())
+		if err != nil {
+			return controlFailed(stderr, "settings", err)
+		}
+		fmt.Fprintf(stdout, "schedule-source %s\n", s.ScheduleSource)
+		return 0
+	}
+	s, err := c.SetScheduleSource(context.Background(), *src)
+	if err != nil {
+		return controlFailed(stderr, "settings", err)
+	}
+	printStatus(stdout, s, time.Now())
+	return 0
+}
+
 // reorder moves flags ahead of positional arguments: `pause 10m --now` reads
 // like `pause --now 10m`, which is all the flag package accepts.
 func reorder(fs *flag.FlagSet, args []string) []string {
@@ -216,6 +241,16 @@ func levelOrigin(s *nodeagent.Status, now time.Time) string {
 		}
 	case nodeagent.SourceDefault:
 		out = "(no schedule"
+		if s.ScheduleSource == nodeagent.ScheduleSourceKTMS {
+			out = "(no schedule from KTMS yet"
+		}
+	case nodeagent.SourceKTMSOverride:
+		out = "(set in KTMS"
+		if k := s.Level.KTMS; k != nil && k.Override != nil {
+			out += " until " + clock(k.Override.Until, now)
+		}
+	case nodeagent.SourceKTMSSchedule:
+		out = "(schedule from KTMS"
 	default:
 		out = "(schedule"
 	}

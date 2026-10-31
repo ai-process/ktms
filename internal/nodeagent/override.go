@@ -11,9 +11,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// Bounds of an override, by the owner or from KTMS: a node cannot be forgotten on a pause for good.
 const (
-	minOverride = time.Minute
-	maxOverride = 24 * time.Hour // a node cannot be forgotten on a pause for good
+	MinOverride = time.Minute
+	MaxOverride = 24 * time.Hour
 )
 
 // Where the level in force comes from.
@@ -21,6 +22,9 @@ const (
 	SourceSchedule = "schedule"
 	SourceOverride = "override"
 	SourceDefault  = "default" // no schedule: 100%
+
+	SourceKTMSSchedule = "ktms_schedule"
+	SourceKTMSOverride = "ktms_override"
 )
 
 // Override is a level the owner set by hand until a moment; it wins over the
@@ -80,17 +84,17 @@ func (r OverrideRequest) resolve(now time.Time, next time.Time, nextOK bool) (*O
 			return nil, badRequest("the schedule never switches; give a duration instead")
 		}
 		until = next
-		if until.Sub(now) > maxOverride {
-			until = now.Add(maxOverride)
+		if until.Sub(now) > MaxOverride {
+			until = now.Add(MaxOverride)
 		}
 	default:
 		until = r.Until
 	}
 	switch d := until.Sub(now); {
-	case d < minOverride:
-		return nil, badRequest("the override must last at least %v", minOverride)
-	case d > maxOverride:
-		return nil, badRequest("the override may last at most %v", maxOverride)
+	case d < MinOverride:
+		return nil, badRequest("the override must last at least %v", MinOverride)
+	case d > MaxOverride:
+		return nil, badRequest("the override may last at most %v", MaxOverride)
 	}
 	return &Override{Level: r.Level, Until: until.UTC(), SetAt: now.UTC(), Warm: r.Warm}, nil
 }
@@ -149,31 +153,56 @@ func removeIfExists(path string) error {
 	return nil
 }
 
-// effectiveLevel is the override while it lasts, else the schedule.
-func (a *Agent) effectiveLevel(now time.Time) (uint32, string) {
+// effectiveLevel is the level in force now and where it comes from.
+func (a *Agent) effectiveLevel(now time.Time) (uint32, string) { return a.levelAt(now) }
+
+// levelAt layers the sources at t: the owner's override, then in ktms mode
+// the override from KTMS, then the schedule (the file's or the one from KTMS).
+func (a *Agent) levelAt(t time.Time) (uint32, string) {
 	p := &a.pause
-	if p.override.activeAt(now) {
+	if p.override.activeAt(t) {
 		return p.override.Level, SourceOverride
+	}
+	ktms := a.source == ScheduleSourceKTMS
+	if o := p.managed.override(); ktms && o.activeAt(t) {
+		return o.Level, SourceKTMSOverride
 	}
 	if p.sched == nil {
 		return 100, SourceDefault
 	}
-	return p.sched.Level(now), SourceSchedule
+	if ktms {
+		return p.sched.Level(t), SourceKTMSSchedule
+	}
+	return p.sched.Level(t), SourceSchedule
 }
 
-// nextSwitch is when the level in force next changes: the override's end
-// if the schedule then differs from it, else the schedule's next switch.
+// nextSwitch is when the level in force next changes. An override hides the
+// layers below it, so the search jumps to its end rather than through them.
 func (a *Agent) nextSwitch(now time.Time) (at time.Time, level uint32, ok bool, source string) {
 	p := &a.pause
-	if o := p.override; o.activeAt(now) {
-		if l := p.sched.Level(o.Until); l != o.Level {
-			return o.Until, l, true, "override_end"
+	cur, _ := a.levelAt(now)
+	t := now
+	for range 8 {
+		var next time.Time
+		src := "override_end"
+		switch o := p.managed.override(); {
+		case p.override.activeAt(t):
+			next = p.override.Until
+		case a.source == ScheduleSourceKTMS && o.activeAt(t):
+			next = o.Until
+		default:
+			var found bool
+			if next, _, found = p.sched.Next(t); !found {
+				return time.Time{}, cur, false, ""
+			}
+			_, src = a.levelAt(next)
 		}
-		at, level, ok = p.sched.Next(o.Until)
-		return at, level, ok, SourceSchedule
+		if l, _ := a.levelAt(next); l != cur {
+			return next, l, true, src
+		}
+		t = next
 	}
-	at, level, ok = p.sched.Next(now)
-	return at, level, ok, SourceSchedule
+	return time.Time{}, cur, false, ""
 }
 
 // expireOverride drops an override whose time has passed and reports whether it did.
@@ -195,12 +224,25 @@ func (a *Agent) setOverride(o *Override) {
 	if err := saveOverride(a.overrideFile(), o); err != nil {
 		log.Warn().Err(err).Msg("cannot store the manual level; a restart will forget it")
 	}
+	a.armOverrideTimer()
+}
+
+// armOverrideTimer fires at the end of the first override in force.
+func (a *Agent) armOverrideTimer() {
+	p := &a.pause
 	if a.ovTimer != nil {
 		a.ovTimer.Stop()
 		a.ovTimer = nil
 	}
-	if o != nil {
-		a.ovTimer = time.NewTimer(max(o.Until.Sub(a.now()), 0))
+	now := a.now()
+	var end time.Time
+	for _, o := range []*Override{p.override, p.managed.override()} {
+		if o.activeAt(now) && (end.IsZero() || o.Until.Before(end)) {
+			end = o.Until
+		}
+	}
+	if !end.IsZero() {
+		a.ovTimer = time.NewTimer(end.Sub(now))
 	}
 }
 

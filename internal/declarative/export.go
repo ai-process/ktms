@@ -184,6 +184,21 @@ func exportDoc(live *State) (*yaml.Node, error) {
 	}
 	add(doc, "mcp_credentials", creds)
 
+	// A Keystone that predates node schedules exports without the section.
+	if live.NodeSchedulesErr == nil {
+		scheds := seq()
+		for _, ns := range live.NodeSchedules {
+			if ns.GetVersion() == 0 {
+				continue
+			}
+			n := mapping()
+			add(n, "node_id", scalarNode(ns.GetNodeId()))
+			add(n, "schedule", literalNode(ns.GetText()))
+			scheds.Content = append(scheds.Content, n)
+		}
+		add(doc, "node_schedules", scheds)
+	}
+
 	return doc, nil
 }
 
@@ -294,6 +309,15 @@ func seq() *yaml.Node     { return &yaml.Node{Kind: yaml.SequenceNode} }
 func scalarNode(v string) *yaml.Node {
 	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}
 }
+// literalNode keeps a multi-line string readable as a YAML block.
+func literalNode(v string) *yaml.Node {
+	n := scalarNode(v)
+	if strings.Contains(v, "\n") {
+		n.Style = yaml.LiteralStyle
+	}
+	return n
+}
+
 func numberNode(v string) *yaml.Node {
 	tag := "!!int"
 	if strings.ContainsAny(v, ".eE") {

@@ -19,44 +19,49 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AdminService_UpsertModel_FullMethodName         = "/ktms.v1.AdminService/UpsertModel"
-	AdminService_DeleteModel_FullMethodName         = "/ktms.v1.AdminService/DeleteModel"
-	AdminService_ReplaceRules_FullMethodName        = "/ktms.v1.AdminService/ReplaceRules"
-	AdminService_SetVendorKey_FullMethodName        = "/ktms.v1.AdminService/SetVendorKey"
-	AdminService_DeleteVendorKey_FullMethodName     = "/ktms.v1.AdminService/DeleteVendorKey"
-	AdminService_GetConfig_FullMethodName           = "/ktms.v1.AdminService/GetConfig"
-	AdminService_MintAPIKey_FullMethodName          = "/ktms.v1.AdminService/MintAPIKey"
-	AdminService_RevokeAPIKey_FullMethodName        = "/ktms.v1.AdminService/RevokeAPIKey"
-	AdminService_ListAPIKeys_FullMethodName         = "/ktms.v1.AdminService/ListAPIKeys"
-	AdminService_SetAPIKeyPolicy_FullMethodName     = "/ktms.v1.AdminService/SetAPIKeyPolicy"
-	AdminService_RotateEncryption_FullMethodName    = "/ktms.v1.AdminService/RotateEncryption"
-	AdminService_MintNodeKey_FullMethodName         = "/ktms.v1.AdminService/MintNodeKey"
-	AdminService_RevokeNodeKey_FullMethodName       = "/ktms.v1.AdminService/RevokeNodeKey"
-	AdminService_ListNodeKeys_FullMethodName        = "/ktms.v1.AdminService/ListNodeKeys"
-	AdminService_ListNodes_FullMethodName           = "/ktms.v1.AdminService/ListNodes"
-	AdminService_DrainNode_FullMethodName           = "/ktms.v1.AdminService/DrainNode"
-	AdminService_SetUserRateLimit_FullMethodName    = "/ktms.v1.AdminService/SetUserRateLimit"
-	AdminService_DeleteUserRateLimit_FullMethodName = "/ktms.v1.AdminService/DeleteUserRateLimit"
-	AdminService_ListUserRateLimits_FullMethodName  = "/ktms.v1.AdminService/ListUserRateLimits"
-	AdminService_SetSpendLimit_FullMethodName       = "/ktms.v1.AdminService/SetSpendLimit"
-	AdminService_DeleteSpendLimit_FullMethodName    = "/ktms.v1.AdminService/DeleteSpendLimit"
-	AdminService_ListSpendLimits_FullMethodName     = "/ktms.v1.AdminService/ListSpendLimits"
-	AdminService_CreateOrganization_FullMethodName  = "/ktms.v1.AdminService/CreateOrganization"
-	AdminService_ListOrganizations_FullMethodName   = "/ktms.v1.AdminService/ListOrganizations"
-	AdminService_DeleteOrganization_FullMethodName  = "/ktms.v1.AdminService/DeleteOrganization"
-	AdminService_CreateTeam_FullMethodName          = "/ktms.v1.AdminService/CreateTeam"
-	AdminService_GetTeam_FullMethodName             = "/ktms.v1.AdminService/GetTeam"
-	AdminService_ListTeams_FullMethodName           = "/ktms.v1.AdminService/ListTeams"
-	AdminService_UpdateTeam_FullMethodName          = "/ktms.v1.AdminService/UpdateTeam"
-	AdminService_DeleteTeam_FullMethodName          = "/ktms.v1.AdminService/DeleteTeam"
-	AdminService_GetTeamSpend_FullMethodName        = "/ktms.v1.AdminService/GetTeamSpend"
-	AdminService_GetSpend_FullMethodName            = "/ktms.v1.AdminService/GetSpend"
-	AdminService_ExplainRoute_FullMethodName        = "/ktms.v1.AdminService/ExplainRoute"
-	AdminService_UpsertMCPServer_FullMethodName     = "/ktms.v1.AdminService/UpsertMCPServer"
-	AdminService_DeleteMCPServer_FullMethodName     = "/ktms.v1.AdminService/DeleteMCPServer"
-	AdminService_SetMCPCredential_FullMethodName    = "/ktms.v1.AdminService/SetMCPCredential"
-	AdminService_DeleteMCPCredential_FullMethodName = "/ktms.v1.AdminService/DeleteMCPCredential"
-	AdminService_ListMCPTools_FullMethodName        = "/ktms.v1.AdminService/ListMCPTools"
+	AdminService_UpsertModel_FullMethodName             = "/ktms.v1.AdminService/UpsertModel"
+	AdminService_DeleteModel_FullMethodName             = "/ktms.v1.AdminService/DeleteModel"
+	AdminService_ReplaceRules_FullMethodName            = "/ktms.v1.AdminService/ReplaceRules"
+	AdminService_SetVendorKey_FullMethodName            = "/ktms.v1.AdminService/SetVendorKey"
+	AdminService_DeleteVendorKey_FullMethodName         = "/ktms.v1.AdminService/DeleteVendorKey"
+	AdminService_GetConfig_FullMethodName               = "/ktms.v1.AdminService/GetConfig"
+	AdminService_MintAPIKey_FullMethodName              = "/ktms.v1.AdminService/MintAPIKey"
+	AdminService_RevokeAPIKey_FullMethodName            = "/ktms.v1.AdminService/RevokeAPIKey"
+	AdminService_ListAPIKeys_FullMethodName             = "/ktms.v1.AdminService/ListAPIKeys"
+	AdminService_SetAPIKeyPolicy_FullMethodName         = "/ktms.v1.AdminService/SetAPIKeyPolicy"
+	AdminService_RotateEncryption_FullMethodName        = "/ktms.v1.AdminService/RotateEncryption"
+	AdminService_MintNodeKey_FullMethodName             = "/ktms.v1.AdminService/MintNodeKey"
+	AdminService_RevokeNodeKey_FullMethodName           = "/ktms.v1.AdminService/RevokeNodeKey"
+	AdminService_ListNodeKeys_FullMethodName            = "/ktms.v1.AdminService/ListNodeKeys"
+	AdminService_ListNodes_FullMethodName               = "/ktms.v1.AdminService/ListNodes"
+	AdminService_DrainNode_FullMethodName               = "/ktms.v1.AdminService/DrainNode"
+	AdminService_GetNodeSchedule_FullMethodName         = "/ktms.v1.AdminService/GetNodeSchedule"
+	AdminService_ListNodeSchedules_FullMethodName       = "/ktms.v1.AdminService/ListNodeSchedules"
+	AdminService_SetNodeSchedule_FullMethodName         = "/ktms.v1.AdminService/SetNodeSchedule"
+	AdminService_SetNodeCapacityOverride_FullMethodName = "/ktms.v1.AdminService/SetNodeCapacityOverride"
+	AdminService_DeleteNodeSchedule_FullMethodName      = "/ktms.v1.AdminService/DeleteNodeSchedule"
+	AdminService_SetUserRateLimit_FullMethodName        = "/ktms.v1.AdminService/SetUserRateLimit"
+	AdminService_DeleteUserRateLimit_FullMethodName     = "/ktms.v1.AdminService/DeleteUserRateLimit"
+	AdminService_ListUserRateLimits_FullMethodName      = "/ktms.v1.AdminService/ListUserRateLimits"
+	AdminService_SetSpendLimit_FullMethodName           = "/ktms.v1.AdminService/SetSpendLimit"
+	AdminService_DeleteSpendLimit_FullMethodName        = "/ktms.v1.AdminService/DeleteSpendLimit"
+	AdminService_ListSpendLimits_FullMethodName         = "/ktms.v1.AdminService/ListSpendLimits"
+	AdminService_CreateOrganization_FullMethodName      = "/ktms.v1.AdminService/CreateOrganization"
+	AdminService_ListOrganizations_FullMethodName       = "/ktms.v1.AdminService/ListOrganizations"
+	AdminService_DeleteOrganization_FullMethodName      = "/ktms.v1.AdminService/DeleteOrganization"
+	AdminService_CreateTeam_FullMethodName              = "/ktms.v1.AdminService/CreateTeam"
+	AdminService_GetTeam_FullMethodName                 = "/ktms.v1.AdminService/GetTeam"
+	AdminService_ListTeams_FullMethodName               = "/ktms.v1.AdminService/ListTeams"
+	AdminService_UpdateTeam_FullMethodName              = "/ktms.v1.AdminService/UpdateTeam"
+	AdminService_DeleteTeam_FullMethodName              = "/ktms.v1.AdminService/DeleteTeam"
+	AdminService_GetTeamSpend_FullMethodName            = "/ktms.v1.AdminService/GetTeamSpend"
+	AdminService_GetSpend_FullMethodName                = "/ktms.v1.AdminService/GetSpend"
+	AdminService_ExplainRoute_FullMethodName            = "/ktms.v1.AdminService/ExplainRoute"
+	AdminService_UpsertMCPServer_FullMethodName         = "/ktms.v1.AdminService/UpsertMCPServer"
+	AdminService_DeleteMCPServer_FullMethodName         = "/ktms.v1.AdminService/DeleteMCPServer"
+	AdminService_SetMCPCredential_FullMethodName        = "/ktms.v1.AdminService/SetMCPCredential"
+	AdminService_DeleteMCPCredential_FullMethodName     = "/ktms.v1.AdminService/DeleteMCPCredential"
+	AdminService_ListMCPTools_FullMethodName            = "/ktms.v1.AdminService/ListMCPTools"
 )
 
 // AdminServiceClient is the client API for AdminService service.
@@ -83,6 +88,12 @@ type AdminServiceClient interface {
 	ListNodeKeys(ctx context.Context, in *ListNodeKeysRequest, opts ...grpc.CallOption) (*ListNodeKeysResponse, error)
 	ListNodes(ctx context.Context, in *ListNodesRequest, opts ...grpc.CallOption) (*ListNodesResponse, error)
 	DrainNode(ctx context.Context, in *DrainNodeRequest, opts ...grpc.CallOption) (*DrainNodeResponse, error)
+	// Schedules KTMS sends to nodes that hand their schedule to it.
+	GetNodeSchedule(ctx context.Context, in *GetNodeScheduleRequest, opts ...grpc.CallOption) (*NodeScheduleInfo, error)
+	ListNodeSchedules(ctx context.Context, in *ListNodeSchedulesRequest, opts ...grpc.CallOption) (*ListNodeSchedulesResponse, error)
+	SetNodeSchedule(ctx context.Context, in *SetNodeScheduleRequest, opts ...grpc.CallOption) (*NodeScheduleInfo, error)
+	SetNodeCapacityOverride(ctx context.Context, in *SetNodeCapacityOverrideRequest, opts ...grpc.CallOption) (*NodeScheduleInfo, error)
+	DeleteNodeSchedule(ctx context.Context, in *DeleteNodeScheduleRequest, opts ...grpc.CallOption) (*DeleteNodeScheduleResponse, error)
 	SetUserRateLimit(ctx context.Context, in *SetUserRateLimitRequest, opts ...grpc.CallOption) (*SetUserRateLimitResponse, error)
 	DeleteUserRateLimit(ctx context.Context, in *DeleteUserRateLimitRequest, opts ...grpc.CallOption) (*DeleteUserRateLimitResponse, error)
 	ListUserRateLimits(ctx context.Context, in *ListUserRateLimitsRequest, opts ...grpc.CallOption) (*ListUserRateLimitsResponse, error)
@@ -272,6 +283,56 @@ func (c *adminServiceClient) DrainNode(ctx context.Context, in *DrainNodeRequest
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DrainNodeResponse)
 	err := c.cc.Invoke(ctx, AdminService_DrainNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) GetNodeSchedule(ctx context.Context, in *GetNodeScheduleRequest, opts ...grpc.CallOption) (*NodeScheduleInfo, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NodeScheduleInfo)
+	err := c.cc.Invoke(ctx, AdminService_GetNodeSchedule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) ListNodeSchedules(ctx context.Context, in *ListNodeSchedulesRequest, opts ...grpc.CallOption) (*ListNodeSchedulesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListNodeSchedulesResponse)
+	err := c.cc.Invoke(ctx, AdminService_ListNodeSchedules_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) SetNodeSchedule(ctx context.Context, in *SetNodeScheduleRequest, opts ...grpc.CallOption) (*NodeScheduleInfo, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NodeScheduleInfo)
+	err := c.cc.Invoke(ctx, AdminService_SetNodeSchedule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) SetNodeCapacityOverride(ctx context.Context, in *SetNodeCapacityOverrideRequest, opts ...grpc.CallOption) (*NodeScheduleInfo, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NodeScheduleInfo)
+	err := c.cc.Invoke(ctx, AdminService_SetNodeCapacityOverride_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) DeleteNodeSchedule(ctx context.Context, in *DeleteNodeScheduleRequest, opts ...grpc.CallOption) (*DeleteNodeScheduleResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteNodeScheduleResponse)
+	err := c.cc.Invoke(ctx, AdminService_DeleteNodeSchedule_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -522,6 +583,12 @@ type AdminServiceServer interface {
 	ListNodeKeys(context.Context, *ListNodeKeysRequest) (*ListNodeKeysResponse, error)
 	ListNodes(context.Context, *ListNodesRequest) (*ListNodesResponse, error)
 	DrainNode(context.Context, *DrainNodeRequest) (*DrainNodeResponse, error)
+	// Schedules KTMS sends to nodes that hand their schedule to it.
+	GetNodeSchedule(context.Context, *GetNodeScheduleRequest) (*NodeScheduleInfo, error)
+	ListNodeSchedules(context.Context, *ListNodeSchedulesRequest) (*ListNodeSchedulesResponse, error)
+	SetNodeSchedule(context.Context, *SetNodeScheduleRequest) (*NodeScheduleInfo, error)
+	SetNodeCapacityOverride(context.Context, *SetNodeCapacityOverrideRequest) (*NodeScheduleInfo, error)
+	DeleteNodeSchedule(context.Context, *DeleteNodeScheduleRequest) (*DeleteNodeScheduleResponse, error)
 	SetUserRateLimit(context.Context, *SetUserRateLimitRequest) (*SetUserRateLimitResponse, error)
 	DeleteUserRateLimit(context.Context, *DeleteUserRateLimitRequest) (*DeleteUserRateLimitResponse, error)
 	ListUserRateLimits(context.Context, *ListUserRateLimitsRequest) (*ListUserRateLimitsResponse, error)
@@ -604,6 +671,21 @@ func (UnimplementedAdminServiceServer) ListNodes(context.Context, *ListNodesRequ
 }
 func (UnimplementedAdminServiceServer) DrainNode(context.Context, *DrainNodeRequest) (*DrainNodeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DrainNode not implemented")
+}
+func (UnimplementedAdminServiceServer) GetNodeSchedule(context.Context, *GetNodeScheduleRequest) (*NodeScheduleInfo, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetNodeSchedule not implemented")
+}
+func (UnimplementedAdminServiceServer) ListNodeSchedules(context.Context, *ListNodeSchedulesRequest) (*ListNodeSchedulesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListNodeSchedules not implemented")
+}
+func (UnimplementedAdminServiceServer) SetNodeSchedule(context.Context, *SetNodeScheduleRequest) (*NodeScheduleInfo, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetNodeSchedule not implemented")
+}
+func (UnimplementedAdminServiceServer) SetNodeCapacityOverride(context.Context, *SetNodeCapacityOverrideRequest) (*NodeScheduleInfo, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetNodeCapacityOverride not implemented")
+}
+func (UnimplementedAdminServiceServer) DeleteNodeSchedule(context.Context, *DeleteNodeScheduleRequest) (*DeleteNodeScheduleResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteNodeSchedule not implemented")
 }
 func (UnimplementedAdminServiceServer) SetUserRateLimit(context.Context, *SetUserRateLimitRequest) (*SetUserRateLimitResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetUserRateLimit not implemented")
@@ -976,6 +1058,96 @@ func _AdminService_DrainNode_Handler(srv interface{}, ctx context.Context, dec f
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AdminServiceServer).DrainNode(ctx, req.(*DrainNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_GetNodeSchedule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNodeScheduleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).GetNodeSchedule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_GetNodeSchedule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).GetNodeSchedule(ctx, req.(*GetNodeScheduleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_ListNodeSchedules_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNodeSchedulesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).ListNodeSchedules(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_ListNodeSchedules_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).ListNodeSchedules(ctx, req.(*ListNodeSchedulesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_SetNodeSchedule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetNodeScheduleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).SetNodeSchedule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_SetNodeSchedule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).SetNodeSchedule(ctx, req.(*SetNodeScheduleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_SetNodeCapacityOverride_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetNodeCapacityOverrideRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).SetNodeCapacityOverride(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_SetNodeCapacityOverride_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).SetNodeCapacityOverride(ctx, req.(*SetNodeCapacityOverrideRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_DeleteNodeSchedule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteNodeScheduleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).DeleteNodeSchedule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_DeleteNodeSchedule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).DeleteNodeSchedule(ctx, req.(*DeleteNodeScheduleRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1446,6 +1618,26 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DrainNode",
 			Handler:    _AdminService_DrainNode_Handler,
+		},
+		{
+			MethodName: "GetNodeSchedule",
+			Handler:    _AdminService_GetNodeSchedule_Handler,
+		},
+		{
+			MethodName: "ListNodeSchedules",
+			Handler:    _AdminService_ListNodeSchedules_Handler,
+		},
+		{
+			MethodName: "SetNodeSchedule",
+			Handler:    _AdminService_SetNodeSchedule_Handler,
+		},
+		{
+			MethodName: "SetNodeCapacityOverride",
+			Handler:    _AdminService_SetNodeCapacityOverride_Handler,
+		},
+		{
+			MethodName: "DeleteNodeSchedule",
+			Handler:    _AdminService_DeleteNodeSchedule_Handler,
 		},
 		{
 			MethodName: "SetUserRateLimit",

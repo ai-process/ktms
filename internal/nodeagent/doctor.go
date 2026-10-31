@@ -152,7 +152,11 @@ func (d *Doctor) checkControl(ctx context.Context) []Finding {
 		return []Finding{{"Control", LevelOK, fmt.Sprintf("Level set by hand: %d%% until %s.", o.Level, o.Until.Local().Format("Mon 15:04")),
 			"`ktms-node resume` returns the node to its schedule."}}
 	}
-	return []Finding{{"Control", LevelOK, fmt.Sprintf("The running agent answers on its control socket: %d%%, %s.", s.Level.Effective, s.State), ""}}
+	msg := fmt.Sprintf("The running agent answers on its control socket: %d%%, %s.", s.Level.Effective, s.State)
+	if s.ScheduleSource == ScheduleSourceKTMS {
+		msg += " Its schedule is set by KTMS; the local schedule file is ignored."
+	}
+	return []Finding{{"Control", LevelOK, msg, ""}}
 }
 
 // ---- usage log ------------------------------------------------------------
