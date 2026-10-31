@@ -52,7 +52,8 @@ holds it.
    (`user`, `metadata.action_id`). Flag what does not map: an
    endpoint missing from [Endpoints](https://github.com/ai-process/ktms/blob/main/README.md#endpoints)
    (Responses, Assistants, Files, Realtime, transcription), `n` above 1, and code that relies on
-   `temperature`, `top_p`, `stop` or `seed`, which `/v1` ignores.
+   `temperature`, `top_p`, `stop` or `seed`: Keystone 1.4 and earlier ignore them, later versions
+   pass them on as far as the model takes them ([Sampling](https://github.com/ai-process/ktms/blob/main/README.md#sampling)).
 4. **What it brings and costs here**: fallbacks across vendors, per-key and per-user limits and
    budgets, vendor keys out of the services, spend per call site, local nodes; against one more
    hop (about a millisecond, see [Resource footprint](https://github.com/ai-process/ktms/blob/main/README.md#resource-footprint)),

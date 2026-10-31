@@ -87,7 +87,8 @@ type ChatContext struct {
 	messages                    []*Message
 	protectedIndices            []int
 	responseSchema              *ResponseSchema
-	maxOutputTokens             int    // 0 = unset, no ceiling sent to the vendor
+	maxOutputTokens             int // 0 = unset, no ceiling sent to the vendor
+	sampling                    Sampling
 	enableGoogleSearch          bool   // per-request, never persisted; see SetEnableGoogleSearch
 	BaseSystemInstruction       string // Persistent system instructions (not in messages)
 	perRequestSystemInstruction string // Ephemeral per-request instruction (not persisted)
@@ -338,6 +339,17 @@ func (c *ChatContext) SetMaxOutputTokens(max int) {
 // GetMaxOutputTokens returns the output ceiling, or 0 when the caller set none.
 func (c *ChatContext) GetMaxOutputTokens() int {
 	return c.maxOutputTokens
+}
+
+// SetSampling sets the caller's sampling. Each adapter passes on what its
+// model takes (SamplingSupport.Apply).
+func (c *ChatContext) SetSampling(s Sampling) {
+	c.sampling = s
+}
+
+// GetSampling returns the caller's sampling, before any model's filter.
+func (c *ChatContext) GetSampling() Sampling {
+	return c.sampling
 }
 
 // SetEnableGoogleSearch asks for Google Search grounding on this request.

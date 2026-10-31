@@ -78,6 +78,9 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 		if itemReq == nil || (len(itemReq.GetMessages()) == 0 && itemReq.GetBaseSystemInstruction() == "" && itemReq.GetRequestInstruction() == "") {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q has no messages or instructions", cid)
 		}
+		if err := validateSampling(itemReq); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q: %s", cid, strings.TrimPrefix(status.Convert(err).Message(), "bad_request: "))
+		}
 		if err := classify(ctx, id, itemReq); err != nil {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: item %q: %s", cid, strings.TrimPrefix(status.Convert(err).Message(), "bad_request: "))
 		}

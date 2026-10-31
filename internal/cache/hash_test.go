@@ -3,6 +3,8 @@ package cache
 import (
 	"testing"
 
+	"google.golang.org/protobuf/proto"
+
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 )
 
@@ -130,5 +132,24 @@ func TestComputeKey_SchemaConstraints(t *testing.T) {
 		if withSchema(mut) == base {
 			t.Errorf("a different %s shares the cache key", name)
 		}
+	}
+}
+
+func TestComputeKeySampling(t *testing.T) {
+	base := &pb.GenerateTextRequest{Messages: []*pb.ChatMessage{{Text: "hi"}}}
+	key := ComputeKey("k", 1, base)
+	seen := map[string]bool{key: true}
+	for _, r := range []*pb.GenerateTextRequest{
+		{Messages: base.Messages, Temperature: proto.Float64(0)},
+		{Messages: base.Messages, Temperature: proto.Float64(0.7)},
+		{Messages: base.Messages, TopP: proto.Float64(0.5)},
+		{Messages: base.Messages, Stop: []string{"END"}},
+		{Messages: base.Messages, Seed: proto.Int64(1)},
+	} {
+		k := ComputeKey("k", 1, r)
+		if seen[k] {
+			t.Fatalf("sampling %v shares a key", r)
+		}
+		seen[k] = true
 	}
 }

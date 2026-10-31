@@ -34,6 +34,7 @@ type AnthropicAdapter struct {
 	model       string
 	softSchema  bool
 	promptCache bool
+	sampling    llm.SamplingSupport
 }
 
 func NewAnthropicAdapter(client *anthropic.Client, model string, throttle *llm.ThrottleControl) *AnthropicAdapter {
@@ -51,6 +52,9 @@ func (a *AnthropicAdapter) SetPromptCache(on bool) { a.promptCache = on }
 
 // SetSoftSchema switches this adapter to prompt-described schemas.
 func (a *AnthropicAdapter) SetSoftSchema(soft bool) { a.softSchema = soft }
+
+// SetSampling sets the sampling fields the model takes.
+func (a *AnthropicAdapter) SetSampling(s llm.SamplingSupport) { a.sampling = s }
 
 func (a *AnthropicAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
 	ceiling := chat.GetMaxOutputTokens()
@@ -446,6 +450,14 @@ func (a *AnthropicAdapter) buildParams(chat *llm.ChatContext, ceiling int) anthr
 	if system != "" && !systemConsumed {
 		params.System = []anthropic.TextBlockParam{{Text: system}}
 	}
+	s, _ := a.sampling.Apply(chat.GetSampling())
+	if s.Temperature != nil {
+		params.Temperature = anthropic.Float(*s.Temperature)
+	}
+	if s.TopP != nil {
+		params.TopP = anthropic.Float(*s.TopP)
+	}
+	params.StopSequences = s.Stop
 
 	if chat.GetResponseSchema() != nil && !a.softSchema {
 		schema := llm.EnforceAllRequired(chat.GetResponseSchema())
