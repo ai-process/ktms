@@ -92,6 +92,9 @@ func exportDoc(live *State) (*yaml.Node, error) {
 			if len(t.GetAllowedMcp()) > 0 {
 				add(tn, "allowed_mcp", stringSeq(t.GetAllowedMcp()))
 			}
+			if t.GetDataClassification() != "" {
+				add(tn, "data_classification", scalarNode(t.GetDataClassification()))
+			}
 			teams.Content = append(teams.Content, tn)
 		}
 		if len(teams.Content) > 0 {

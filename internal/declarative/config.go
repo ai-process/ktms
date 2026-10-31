@@ -54,6 +54,8 @@ type Team struct {
 	MonthlyBudgetUSD float64  `json:"monthly_budget_usd,omitempty"`
 	AllowedModels    []string `json:"allowed_models,omitempty"`
 	AllowedMCP       []string `json:"allowed_mcp,omitempty"`
+	// "restricted" keeps every key of the team on self-hosted nodes.
+	DataClassification string `json:"data_classification,omitempty"`
 }
 
 // APIKey is a client key, matched by name. Its secret exists only in the

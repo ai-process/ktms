@@ -1304,6 +1304,10 @@ type GenerateTextRequest struct {
 	// choice is experimental; with it true the routing is stable.
 	AutoRoute       bool `protobuf:"varint,15,opt,name=auto_route,json=autoRoute,proto3" json:"auto_route,omitempty"`
 	EffortSpecified bool `protobuf:"varint,16,opt,name=effort_specified,json=effortSpecified,proto3" json:"effort_specified,omitempty"` // true when effort was explicitly pinned by caller
+	// "restricted" keeps the request, and the judge calls it makes, on self-hosted
+	// nodes: no cloud vendor sees it and there is no cloud fallback. "" is
+	// unrestricted unless the key or its team is restricted.
+	DataClassification string `protobuf:"bytes,17,opt,name=data_classification,json=dataClassification,proto3" json:"data_classification,omitempty"`
 	// Sampling, passed to the model that serves the call. Unset leaves the
 	// model's default. A model that does not take one gets the call without it,
 	// and the response names it in ignored_parameters.
@@ -1455,6 +1459,13 @@ func (x *GenerateTextRequest) GetEffortSpecified() bool {
 		return x.EffortSpecified
 	}
 	return false
+}
+
+func (x *GenerateTextRequest) GetDataClassification() string {
+	if x != nil {
+		return x.DataClassification
+	}
+	return ""
 }
 
 func (x *GenerateTextRequest) GetTemperature() float64 {
@@ -4303,7 +4314,7 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\x0fPropertiesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
 	"\x05value\x18\x02 \x01(\v2\x17.ktms.v1.SchemaPropertyR\x05value:\x028\x01B\x18\n" +
-	"\x16_additional_properties\"\xc1\a\n" +
+	"\x16_additional_properties\"\xf2\a\n" +
 	"\x13GenerateTextRequest\x12'\n" +
 	"\x06effort\x18\x01 \x01(\x0e2\x0f.ktms.v1.EffortR\x06effort\x12L\n" +
 	"\n" +
@@ -4325,7 +4336,8 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\tplacement\x18\x0e \x01(\tR\tplacement\x12\x1d\n" +
 	"\n" +
 	"auto_route\x18\x0f \x01(\bR\tautoRoute\x12)\n" +
-	"\x10effort_specified\x18\x10 \x01(\bR\x0feffortSpecified\x12%\n" +
+	"\x10effort_specified\x18\x10 \x01(\bR\x0feffortSpecified\x12/\n" +
+	"\x13data_classification\x18\x11 \x01(\tR\x12dataClassification\x12%\n" +
 	"\vtemperature\x18\x12 \x01(\x01H\x00R\vtemperature\x88\x01\x01\x12\x18\n" +
 	"\x05top_p\x18\x13 \x01(\x01H\x01R\x04topP\x88\x01\x01\x12\x12\n" +
 	"\x04stop\x18\x14 \x03(\tR\x04stop\x12\x17\n" +

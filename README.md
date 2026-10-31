@@ -611,6 +611,8 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
 
 - `allowed_mcp`: the MCP servers and tools a key with the `mcp` scope may use; see
   [MCP gateway](#mcp-gateway).
+- `data_classification`: `restricted` keeps every call of the key on self-hosted nodes; see
+  [Restricted data](#restricted-data).
 - `allowed_models`: the models the key may call; empty allows any. A chain keeps only the models
   both the key's and its team's lists allow; an override outside them, or a chain with none left,
   is `PERMISSION_DENIED` (the message names `key` or `team`).
@@ -797,6 +799,8 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"name":"search-ser
   with `RESOURCE_EXHAUSTED throttled:spend_team_monthly`. It is set only through
   `CreateTeam`/`UpdateTeam` (`0` lifts it); `SetSpendLimit` refuses `subject_type: "team"`.
   `GetTeamSpend` reads the enforced counter, which runs only while a budget is set.
+- `data_classification: restricted` keeps every call of the team's keys on self-hosted nodes; see
+  [Restricted data](#restricted-data).
 - Rules can match `org_id` and `team_id`. The proxy sets them from the key; callers cannot.
 - Deleting a team or organization detaches revoked keys and is `FAILED_PRECONDITION` while
   active keys remain: revoke or move them first.
@@ -1129,6 +1133,7 @@ make proto-ts  # TypeScript stubs in gen/ts/
 | `action_id` | Free-form label for usage attribution. |
 | `model_override` | Exact model id; bypasses rules but **not** throttles. |
 | `placement` | Compute locality preference: `nodes_first`, `nodes_only`, `cloud_first`, `cloud_only`. |
+| `data_classification` | `restricted` keeps the call and the judge calls it makes on self-hosted nodes, with no cloud fallback; see [Restricted data](#restricted-data). |
 | `auto_route` | Enables smart model auto-selection; when effort is unpinned, evaluates task complexity via Judge. |
 | `effort_specified` | Signals caller explicitly pinned effort (skips dynamic Judge evaluation). |
 
@@ -1359,7 +1364,7 @@ The `model` parameter supports smart auto-routing and infrastructure placement:
 
 #### Infrastructure Placement Policies
 - `nodes_first` (default): Prefers registered self-hosted compute nodes (`VendorLocal`, `VendorOllama`), falling back to cloud providers if unavailable or busy.
-- `nodes_only` (aliases: `nodes`, `private`, `self_hosted`): Restricts routing strictly to self-hosted nodes. Fails if no capable node is available.
+- `nodes_only` (aliases: `nodes`, `private`, `self_hosted`): Restricts routing strictly to self-hosted nodes. Fails if no capable node is available. A preference of the request; for a guarantee that also covers the judge and holds per key or team, see [Restricted data](#restricted-data).
 - `cloud_first`: Prefers managed cloud providers, falling back to registered nodes.
 - `cloud_only`: Excludes self-hosted nodes completely.
 
@@ -1589,6 +1594,55 @@ Events are attributed to the project named by the `usage_project` attribute, fal
 API key's name. Any service implementing `RecordUsageEvent(s)` works as a sink. When
 light-tokenmeter has authentication on, give KTMS a token with the `write` scope in
 `USAGE_COLLECTOR_TOKEN`; a refused token is logged as an error and events are held and retried.
+
+### Restricted data
+
+`data_classification: restricted` keeps a call on your self-hosted nodes: no cloud vendor sees it,
+and when the nodes fail there is no fallback to the cloud. Set it on a request, or on a key's policy
+or a team, where it holds for every call of the key whatever the request says:
+
+```bash
+ktms keys mint scribe --team clinic/notes --data-classification restricted
+ktms keys policy set billing --data-classification restricted   # unrestricted lifts it
+```
+
+```yaml
+organizations:
+  - name: clinic
+    teams:
+      - name: notes
+        data_classification: restricted   # every key of the team
+```
+
+`SetAPIKeyPolicy` and `UpdateTeam` replace the rest of the policy or team, but keep the current
+`data_classification` when the field is empty: a client that predates it, such as an older
+console, cannot lift a restriction by leaving it out. `unrestricted` lifts it, and the
+configuration file does that when the field is removed. `ktms keys list` shows a key's
+restriction, or its team's as `restricted (team)`.
+
+For a single call, set `data_classification: restricted` in the request (`GenerateTextRequest`,
+`data_classification` on `/v1/chat/completions`), or send the `X-KTMS-Data-Classification:
+restricted` header over HTTP or `x-ktms-data-classification` gRPC metadata, which also covers
+embeddings, judgments, speech and images. A request can restrict a call, not lift its key's or
+team's restriction; a value other than `restricted` or empty is `INVALID_ARGUMENT`. A restricted call:
+
+- routes as `placement: nodes_only`: the chain keeps the node models (`VendorLocal`,
+  `VendorOllama`) and is `FAILED_PRECONDITION no_capable_model` without one; when every node fails
+  it is `UNAVAILABLE vendors_unavailable`. `nodes_first` and `cloud_first` become `nodes_only`,
+  `cloud_only` is `INVALID_ARGUMENT`, and a `model_override` of a cloud model is
+  `FAILED_PRECONDITION`.
+- asks the auto-effort judge and the shadow evaluation judge only on nodes, and falls back to the
+  default effort, or skips the evaluation, when no node can judge.
+- skips the response cache, so its answer cannot be served to another key.
+- for embeddings, judgments, speech and images is `FAILED_PRECONDITION` without a node model;
+  batches go to vendors' batch APIs and need a node model too, or are refused.
+- carries `data_classification: restricted` in its usage event's meta; callers cannot set that
+  attribute themselves.
+
+Nodes are models of vendor `local` (registered `ktms-node`s) and `ollama`, an Ollama endpoint you
+configure: point `ollama` models only at servers you run. Restricted data also does not cover what
+is sent outside the model chain: `LATENT_ENCODER_URL` (latent guardrails and the semantic cache)
+and MCP servers. Point the encoder at your own infrastructure.
 
 ### Semantic cache and latent guardrails
 

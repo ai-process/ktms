@@ -6,6 +6,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/apikeys"
 )
 
 // SchemaURL is where the published schema lives, for editors' $schema hints.
@@ -40,10 +41,11 @@ func Schema() []byte {
 			"organizations": list(obj(map[string]any{
 				"name": str,
 				"teams": list(obj(map[string]any{
-					"name":               str,
-					"monthly_budget_usd": map[string]any{"type": "number", "minimum": 0},
-					"allowed_models":     strs,
-					"allowed_mcp":        map[string]any{"type": "array", "items": str, "description": "MCP servers (server) and tools (server/tool) the team's keys may use; empty means any."},
+					"name":                str,
+					"monthly_budget_usd":  map[string]any{"type": "number", "minimum": 0},
+					"allowed_models":      strs,
+					"allowed_mcp":         map[string]any{"type": "array", "items": str, "description": "MCP servers (server) and tools (server/tool) the team's keys may use; empty means any."},
+					"data_classification": dataClassSchema("every call of the team's keys"),
 				}, "name")),
 			}, "name")),
 			"api_keys": list(obj(map[string]any{
@@ -51,7 +53,7 @@ func Schema() []byte {
 				"scopes":       map[string]any{"type": "array", "items": map[string]any{"enum": KeyScopes}},
 				"organization": str,
 				"team":         str,
-				"policy":       messageSchema((&pb.APIKeyPolicy{}).ProtoReflect().Descriptor()),
+				"policy":       keyPolicySchema(),
 			}, "name")),
 			"vendor_keys": list(obj(map[string]any{
 				"api_key_name":  str,
@@ -75,6 +77,18 @@ func Schema() []byte {
 	}
 	b, _ := json.MarshalIndent(s, "", "  ")
 	return append(b, '\n')
+}
+
+// keyPolicySchema is APIKeyPolicy's, with data_classification as the enum the team's is.
+func keyPolicySchema() map[string]any {
+	s := messageSchema((&pb.APIKeyPolicy{}).ProtoReflect().Descriptor())
+	s["properties"].(map[string]any)["data_classification"] = dataClassSchema("the key's calls")
+	return s
+}
+
+func dataClassSchema(whose string) map[string]any {
+	return map[string]any{"enum": []string{"", apikeys.DataRestricted},
+		"description": "restricted keeps " + whose + " on self-hosted nodes, with no cloud fallback."}
 }
 
 // messageSchema describes a message as protojson reads it: proto field
