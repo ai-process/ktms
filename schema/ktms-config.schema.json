@@ -219,6 +219,26 @@
       },
       "type": "array"
     },
+    "node_schedules": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "type": "string"
+          },
+          "schedule": {
+            "description": "Rules for a node that hands its schedule to KTMS, \"[days] HH:MM-HH:MM level\" per line; empty means 100% all the time.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_id",
+          "schedule"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
     "organizations": {
       "items": {
         "additionalProperties": false,

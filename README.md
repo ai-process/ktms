@@ -423,8 +423,20 @@ schedule's behaviour). These commands, and the desktop tray, talk to the running
 socket, `--control-socket` (default `~/.ktms-node/control.sock`, empty turns it off). It is
 owner-only: mode 0600, and a caller running as another user is refused. Its HTTP/JSON API
 (`GET /v1/status`, `GET /v1/events` as server-sent events, `POST`/`DELETE /v1/override`,
-`GET`/`PUT /v1/schedule`, `POST /v1/schedule/preview`, `GET /v1/stats`) never returns the node key
-or any token.
+`GET`/`PUT /v1/schedule`, `POST /v1/schedule/preview`, `GET /v1/stats`, `GET`/`PUT /v1/settings`)
+never returns the node key or any token.
+
+**Schedule set by KTMS.** With `--schedule-source=ktms`, or `ktms-node settings
+--schedule-source=ktms` (the tray's "Schedule set by KTMS") at run time, the node takes its
+schedule and load from KTMS and ignores its local file, which stays in place for when the setting
+is turned off. KTMS keeps one schedule per node id (`ktms nodes schedule set|show|list|delete`,
+the `node_schedules` file section, `SetNodeSchedule` in the Admin API), validated with the agent's
+parser, plus an optional override of 1 minute to 24 hours (`ktms nodes schedule override`,
+`SetNodeCapacityOverride`). It reaches the node with a heartbeat within about 15 seconds (KTMS
+re-reads a node's schedule at most every 10 s). The node stores the last
+one it got in `~/.ktms-node/managed-schedule`, so a restart without the proxy keeps it; before the
+first one it runs at 100%. The owner's own pause or level on the machine still wins over both.
+`ListNodes` shows each node's `schedule_source`, `capacity_source` and `capacity_until`.
 
 While the proxy refuses the node (wrong key, other node id, no allowed model) the agent does not
 exit and does not open a tunnel: it checks with the proxy first, then retries with a pause that
@@ -603,6 +615,8 @@ user_rate_limits:
 - What the Admin API cannot change is refused before anything is applied: a key's scopes or
   team, or a revoked key named again. Mint a key under another name instead.
 - A team's cap is its `monthly_budget_usd`; `spend_limits` holds key and user caps.
+- `node_schedules` lists the schedules KTMS sends to nodes that hand theirs to it (`node_id` and
+  `schedule`, the rules as text); temporary overrides are not configuration.
 - Steps run in dependency order (organizations, models, keys, vendor keys, rules, limits, then
   deletes). If one fails, the earlier ones stay applied; plan again to see what is left.
 
@@ -1011,6 +1025,8 @@ ktms limits set key billing day 5             # USD per UTC day; * sets the defa
 ktms spend get key billing                    # or user ID, team org/team
 ktms route explain billing --effort high      # where it would go, and why
 ktms nodes list; ktms nodes drain gpu-1
+ktms nodes schedule set mac --file week.txt   # for nodes that hand their schedule to KTMS
+ktms nodes schedule override mac --level 0 --for 2h
 ktms node-keys mint gpu-1 --node-id gpu-1 --allowed-cidrs 10.0.0.0/8
 ktms keys revoke billing                      # asks first; --yes for scripts
 ktms rotate-encryption

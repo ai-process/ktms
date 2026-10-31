@@ -33,6 +33,9 @@ type NodeHeartbeatData struct {
 	WarmModels      []string            `json:"warm_models"`
 	ModelSpecs      []*pb.NodeModelSpec `json:"model_specs,omitempty"`
 	CapacityPercent *uint32             `json:"capacity_percent,omitempty"` // nil = 100
+	ScheduleSource  string              `json:"schedule_source,omitempty"`  // local | ktms
+	CapacitySource  string              `json:"capacity_source,omitempty"`
+	CapacityUntil   *time.Time          `json:"capacity_until,omitempty"`
 }
 
 type NodePerfData struct {

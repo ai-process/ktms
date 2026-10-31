@@ -13,6 +13,9 @@ type State struct {
 	Keys   []*pb.APIKeyInfo
 	Orgs   []*pb.Organization
 	Teams  []*pb.Team
+
+	NodeSchedules    []*pb.NodeScheduleInfo
+	NodeSchedulesErr error // set when this Keystone cannot list them (it predates node schedules)
 }
 
 // Fetch reads the live configuration. It needs a key that may call GetConfig
@@ -34,7 +37,14 @@ func Fetch(ctx context.Context, c pb.AdminServiceClient) (*State, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ListTeams: %w", err)
 	}
-	return &State{Config: cfg, Keys: keys.GetKeys(), Orgs: orgs.GetOrganizations(), Teams: teams.GetTeams()}, nil
+	st := &State{Config: cfg, Keys: keys.GetKeys(), Orgs: orgs.GetOrganizations(), Teams: teams.GetTeams()}
+	// Only a file with node_schedules needs them, so an older Keystone still plans the rest.
+	if ns, err := c.ListNodeSchedules(ctx, &pb.ListNodeSchedulesRequest{}); err != nil {
+		st.NodeSchedulesErr = fmt.Errorf("ListNodeSchedules: %w", err)
+	} else {
+		st.NodeSchedules = ns.GetSchedules()
+	}
+	return st, nil
 }
 
 func (s *State) orgByName(name string) *pb.Organization {

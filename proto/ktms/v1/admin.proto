@@ -5,6 +5,7 @@ package ktms.v1;
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "ktms/v1/gateway.proto";
+import "ktms/v1/node.proto";
 
 option go_package = "github.com/ai-process/ktms/gen/ktms/v1;ktmsv1";
 
@@ -238,6 +239,9 @@ message NodeInfo {
   repeated string warm_models = 18;
   uint32 capacity_percent = 19; // current level of the node's schedule
   int32 effective_slots = 20; // concurrent requests allowed at that level
+  string schedule_source = 21; // local | ktms; empty from agents that predate it
+  string capacity_source = 22; // schedule | override | ktms_schedule | ktms_override | default
+  google.protobuf.Timestamp capacity_until = 23; // end of the override behind capacity_percent
 }
 
 message ListNodesResponse {
@@ -249,6 +253,44 @@ message DrainNodeRequest {
 }
 
 message DrainNodeResponse {}
+
+message GetNodeScheduleRequest {
+  string node_id = 1;
+}
+
+// NodeScheduleInfo is what KTMS keeps for a node: the agent follows it only
+// when it runs with schedule_source "ktms" (NodeInfo.schedule_source).
+message NodeScheduleInfo {
+  string node_id = 1;
+  string text = 2; // "[days] HH:MM-HH:MM level" per line; empty = 100%
+  int64 version = 3; // 0 = nothing stored
+  NodeCapacityOverride override = 4; // unset = none in force
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message SetNodeScheduleRequest {
+  string node_id = 1;
+  string text = 2; // validated with the agent's parser; empty = 100% all the time
+}
+
+message SetNodeCapacityOverrideRequest {
+  string node_id = 1;
+  uint32 level = 2; // 0-100
+  google.protobuf.Timestamp until = 3; // 1 minute to 24 hours ahead
+  bool clear = 4; // remove the override; level and until are ignored
+}
+
+message ListNodeSchedulesRequest {}
+
+message ListNodeSchedulesResponse {
+  repeated NodeScheduleInfo schedules = 1;
+}
+
+message DeleteNodeScheduleRequest {
+  string node_id = 1;
+}
+
+message DeleteNodeScheduleResponse {}
 
 message UserRateLimitSpec {
   string user_id = 1; // user identity or "*" wildcard for default across users
@@ -527,6 +569,12 @@ service AdminService {
   rpc ListNodeKeys(ListNodeKeysRequest) returns (ListNodeKeysResponse);
   rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
   rpc DrainNode(DrainNodeRequest) returns (DrainNodeResponse);
+  // Schedules KTMS sends to nodes that hand their schedule to it.
+  rpc GetNodeSchedule(GetNodeScheduleRequest) returns (NodeScheduleInfo);
+  rpc ListNodeSchedules(ListNodeSchedulesRequest) returns (ListNodeSchedulesResponse);
+  rpc SetNodeSchedule(SetNodeScheduleRequest) returns (NodeScheduleInfo);
+  rpc SetNodeCapacityOverride(SetNodeCapacityOverrideRequest) returns (NodeScheduleInfo);
+  rpc DeleteNodeSchedule(DeleteNodeScheduleRequest) returns (DeleteNodeScheduleResponse);
   rpc SetUserRateLimit(SetUserRateLimitRequest) returns (SetUserRateLimitResponse);
   rpc DeleteUserRateLimit(DeleteUserRateLimitRequest) returns (DeleteUserRateLimitResponse);
   rpc ListUserRateLimits(ListUserRateLimitsRequest) returns (ListUserRateLimitsResponse);

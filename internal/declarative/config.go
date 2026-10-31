@@ -37,6 +37,7 @@ type Config struct {
 	UserRateLimits []*pb.UserRateLimitSpec
 	MCPServers     []*pb.MCPServerSpec
 	MCPCredentials []MCPCredential
+	NodeSchedules  []NodeSchedule
 
 	// Which sections the file has, since an empty list differs from a missing one.
 	managed map[string]bool
@@ -82,6 +83,13 @@ type MCPCredential struct {
 	ValueEnv string `json:"value_env"`
 }
 
+// NodeSchedule is the schedule KTMS sends a node whose agent hands its
+// schedule to KTMS (--schedule-source=ktms). Overrides are not configuration.
+type NodeSchedule struct {
+	NodeID   string `json:"node_id"`
+	Schedule string `json:"schedule"`
+}
+
 // SpendLimit caps a key's or a user's spend per UTC day or month. Team caps
 // belong to Team.MonthlyBudgetUSD.
 type SpendLimit struct {
@@ -102,10 +110,10 @@ func (l SpendLimit) Nano() int64 {
 
 // Manages reports whether the file has the section (models, rules,
 // organizations, api_keys, vendor_keys, spend_limits, user_rate_limits,
-// mcp_servers, mcp_credentials).
+// mcp_servers, mcp_credentials, node_schedules).
 func (c *Config) Manages(section string) bool { return c.managed[section] }
 
-var sections = []string{"models", "rules", "organizations", "api_keys", "vendor_keys", "spend_limits", "user_rate_limits", "mcp_servers", "mcp_credentials"}
+var sections = []string{"models", "rules", "organizations", "api_keys", "vendor_keys", "spend_limits", "user_rate_limits", "mcp_servers", "mcp_credentials", "node_schedules"}
 
 // Load reads and parses a configuration file.
 func Load(path string) (*Config, error) {
@@ -170,6 +178,9 @@ func Parse(b []byte) (*Config, error) {
 		return nil, err
 	}
 	if err := jsonList(doc, "spend_limits", &cfg.SpendLimits); err != nil {
+		return nil, err
+	}
+	if err := jsonList(doc, "node_schedules", &cfg.NodeSchedules); err != nil {
 		return nil, err
 	}
 	if err := parseKeys(doc, cfg); err != nil {

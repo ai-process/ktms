@@ -63,3 +63,8 @@ mcp_servers:
 mcp_credentials:
   - server: github
     value_env: TEST_MCP_TOKEN
+node_schedules:
+  - node_id: mac-studio
+    schedule: |
+      mon-fri 09:00-18:00 0
+      mon-fri 18:00-23:00 50

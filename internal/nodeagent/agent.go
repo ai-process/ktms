@@ -39,6 +39,7 @@ type AgentConfig struct {
 	BaseWeight     float64
 	MaxConcurrent  uint32
 	ScheduleFile   string        // capacity levels by local time; missing = 100%
+	ScheduleSource string        // local (ScheduleFile) or ktms (sent by KTMS); the tray's saved choice wins
 	Warmup         time.Duration // load the model this long before a paused window ends
 	StatsDir       string        // where the usage log is kept for the owner; "" = none
 	StatsRetention time.Duration // days of usage log kept; 0 = all
@@ -69,6 +70,7 @@ type Agent struct {
 	levelEvery time.Duration
 	pauseGrace time.Duration
 	ovTimer    *time.Timer // ends the override on time; nil without one
+	source     string      // schedule source in force: local or ktms
 
 	ctl    chan ctlCmd // control API commands, run on Run's goroutine
 	status statusHub
@@ -249,7 +251,8 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// The first heartbeat must carry the level: until it, the proxy sees the node offline.
 	// A broken file at start is refused, not run at 100% over the owner's pauses.
-	if a.cfg.ScheduleFile != "" {
+	a.initSource()
+	if a.cfg.ScheduleFile != "" && a.source == ScheduleSourceLocal {
 		if _, err := LoadSchedule(a.cfg.ScheduleFile); err != nil {
 			return fmt.Errorf("schedule: %w (check it with: ktms-node schedule --file %s)", err, a.cfg.ScheduleFile)
 		}
@@ -339,7 +342,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		log.Info().Str("endpoint", a.currentEndpoint()).Msg("node re-registered")
 	}
 
-	beat := func() {
+	var beat func()
+	beat = func() {
 		currModels, currRes := a.snapshot(authCtx)
 
 		a.mu.Lock()
@@ -356,6 +360,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			Resources:       currRes,
 			Models:          currModels,
 			CapacityPercent: &level,
+			ScheduleSource:  a.source,
+			CapacitySource:  a.pause.source,
+			CapacityUntil:   timestampOrNil(a.capacityUntil()),
 		})
 		if err != nil {
 			log.Warn().Err(err).Msg("heartbeat failed")
@@ -388,7 +395,15 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 		}
 		a.afterHeartbeat(hbResp, currModels)
+		again := false
+		if hbResp.GetOk() && a.applyManaged(hbResp.GetSchedule()) {
+			again = a.refreshLevel() // the next beat carries the new level; its answer repeats the version
+			a.stepPause()
+		}
 		a.publish()
+		if again {
+			beat()
+		}
 	}
 	onLevel := func() {
 		if a.refreshLevel() {
@@ -415,6 +430,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			onLevel()
 		case <-a.ovC():
 			onLevel()
+			a.armOverrideTimer()
 		case c := <-a.ctl:
 			a.runCommand(c, beat)
 		case r := <-a.engineDone:
