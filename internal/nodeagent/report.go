@@ -370,6 +370,9 @@ func ParseWhen(s string, now time.Time) (time.Time, error) {
 	if d, err := time.ParseDuration(s); err == nil && d >= 0 {
 		return now.Add(-d), nil
 	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, nil
+	}
 	for _, layout := range []string{"2006-01-02T15:04", "2006-01-02"} {
 		if t, err := time.ParseInLocation(layout, s, now.Location()); err == nil {
 			return t, nil

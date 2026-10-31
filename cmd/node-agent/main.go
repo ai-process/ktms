@@ -33,6 +33,11 @@ func main() {
 	if len(args) > 0 && args[0] == "stats" {
 		os.Exit(runStats(args[1:], os.Stdout, os.Stderr))
 	}
+	if len(args) > 0 {
+		if run, ok := controlCommands[args[0]]; ok {
+			os.Exit(run(args[1:], os.Stdout, os.Stderr))
+		}
+	}
 	os.Exit(runAgent(args))
 }
 
@@ -57,6 +62,8 @@ type settings struct {
 	stats         *bool
 	statsDir      *string
 	statsKeep     *string
+	stateDir      *string
+	controlSocket *string
 	onlyModels    stringList
 	judgeModels   stringList
 }
@@ -96,6 +103,8 @@ func newSettings(name string) *settings {
 		stats:         fs.Bool("stats", true, "Keep a local log of the requests the proxy sends here, for `stats`"),
 		statsDir:      fs.String("stats-dir", nodeagent.DefaultStatsDir(), "Where the usage log is kept"),
 		statsKeep:     fs.String("stats-retention", "90d", "How long the usage log is kept (e.g. 90d, 36h; 0 = forever)"),
+		stateDir:      fs.String("state-dir", nodeagent.DefaultHome(), "Where the agent keeps state that outlives a restart, such as a manual pause"),
+		controlSocket: fs.String("control-socket", nodeagent.DefaultControlSocket(), "Unix socket for the owner's control API (the tray, `status`, `pause`); empty turns it off"),
 	}
 	fs.Var(&s.onlyModels, "only-model", "Report only these engine models to the proxy; repeat the flag or comma-separate (default: every model the engine has)")
 	fs.Var(&s.judgeModels, "judge-model", "Model ID that serves the judge capability; repeat or comma-separate")
@@ -159,6 +168,9 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 		Warmup:         *s.warmup,
 		StatsDir:       statsDir,
 		StatsRetention: keep,
+		StateDir:       *s.stateDir,
+		ControlSocket:  *s.controlSocket,
+		Version:        version,
 	}, nil
 }
 

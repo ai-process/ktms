@@ -17,8 +17,19 @@ All notable changes to KTMS are listed here. The format follows
   estimate. Claude Code's session-scoped `metadata.user_id` becomes its account or device as the
   user, with the session in `attributes["session_id"]`.
 
+- Node owners override the schedule for a while: `ktms-node pause [10m | --until-next] [--now]`,
+  `ktms-node level 30 --for 1h` and `ktms-node resume`, from 1 minute to 24 hours, ending by the
+  wall clock and kept across agent restarts; a manual pause skips the warm-up, so the models load
+  only after it ends. `ktms-node status` shows the level in force, where it comes from, running
+  requests, models, GPU and the next switch. They talk to the running agent over an owner-only
+  Unix socket (`--control-socket`, `--state-dir`), whose HTTP/JSON API also serves the schedule
+  (read, validate, preview, save), the usage report and a server-sent event stream of the
+  status. `doctor` shows a manual level.
+
 ### Changed
 - Token budget reservations count tool definitions and the tool calls in the conversation.
+- A node that ends a pause without having warmed its models (no time for `--warmup`) loads them
+  right after the pause instead of on the first request.
 
 ## [1.4.0] - 2026-10-27
 
