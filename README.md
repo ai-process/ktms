@@ -432,7 +432,8 @@ schedule and load from KTMS and ignores its local file, which stays in place for
 is turned off. KTMS keeps one schedule per node id (`ktms nodes schedule set|show|list|delete`,
 the `node_schedules` file section, `SetNodeSchedule` in the Admin API), validated with the agent's
 parser, plus an optional override of 1 minute to 24 hours (`ktms nodes schedule override`,
-`SetNodeCapacityOverride`). It reaches the node with its next heartbeat. The node stores the last
+`SetNodeCapacityOverride`). It reaches the node with a heartbeat within about 15 seconds (KTMS
+re-reads a node's schedule at most every 10 s). The node stores the last
 one it got in `~/.ktms-node/managed-schedule`, so a restart without the proxy keeps it; before the
 first one it runs at 100%. The owner's own pause or level on the machine still wins over both.
 `ListNodes` shows each node's `schedule_source`, `capacity_source` and `capacity_until`.
