@@ -40,6 +40,16 @@ type View struct {
 	Ticking      bool   // the title counts down: redraw every second
 }
 
+// StopNow is the request behind "Stop now": it cuts the running requests and
+// keeps a manual pause that is already in force until its own end.
+func StopNow(s *nodeagent.Status, now time.Time) nodeagent.OverrideRequest {
+	req := nodeagent.OverrideRequest{Level: 0, For: "10m", AbortInflight: true}
+	if o := s.Level.Override; s.Level.Source == nodeagent.SourceOverride && o != nil && o.Level == 0 && o.Until.Sub(now) > nodeagent.MinOverride {
+		req.For, req.Until = "", o.Until
+	}
+	return req
+}
+
 // Build renders a status; err is the last failure to reach the agent.
 func Build(s *nodeagent.Status, err error, now time.Time) View {
 	v := View{Header: "Keystone node"}

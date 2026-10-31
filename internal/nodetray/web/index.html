@@ -201,7 +201,13 @@ const override = body => api("POST", "/api/v1/override", body).then(r => { rende
 $$("[data-pause]").forEach(b => b.onclick = () => override({level: 0, for: b.dataset.pause}));
 $("#untilNext").onclick = () => override({level: 0, until_next_window: true});
 $("#limit").onclick = () => override({level: +$("#limLevel").value, for: $("#limFor").value});
-$("#stop").onclick = () => { if (confirm("Cut the running requests? Their callers get an error.")) override({level: 0, for: "10m", abort_inflight: true}); };
+// A manual pause already in force keeps its end; otherwise the cut starts a 10-minute pause.
+$("#stop").onclick = () => {
+  if (!confirm("Cut the running requests? Their callers get an error.")) return;
+  const o = st && st.level.source === "override" && st.level.override;
+  const keep = o && o.level === 0 && new Date(o.until) - Date.now() > 60e3;
+  override(keep ? {level: 0, until: o.until, abort_inflight: true} : {level: 0, for: "10m", abort_inflight: true});
+};
 $("#resume").onclick = () => api("DELETE", "/api/v1/override").then(render).catch(fail);
 
 // ---- schedule

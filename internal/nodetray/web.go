@@ -29,6 +29,7 @@ const (
 	cookieName   = "ktms_tray"
 	csrfHeader   = "X-KTMS-Tray"
 	slotsPerWeek = 7 * 48 // the grid edits half hours
+	ticketTTL    = 2 * time.Minute
 )
 
 // Prefs are the tray's own settings.
@@ -37,37 +38,94 @@ type Prefs struct {
 }
 
 // Web is the settings window: a page on 127.0.0.1 that only a browser holding
-// the one-time token opens. It relays the agent's control API to the page.
+// a one-time ticket opens. It relays the agent's control API to the page.
 type Web struct {
 	socket    string
 	prefsFile string
-	token     string
+	session   string // the cookie a used ticket turns into
 	addr      string
 	srv       *http.Server
 
-	mu    sync.Mutex
-	prefs Prefs
+	mu      sync.Mutex
+	prefs   Prefs
+	tickets map[string]time.Time // unused tickets and when they expire
+}
+
+func randomHex() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // StartWeb serves the window on a random local port.
 func StartWeb(socket, prefsFile string) (*Web, error) {
-	tok := make([]byte, 32)
-	if _, err := rand.Read(tok); err != nil {
+	session, err := randomHex()
+	if err != nil {
 		return nil, err
 	}
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, err
 	}
-	w := &Web{socket: socket, prefsFile: prefsFile, token: hex.EncodeToString(tok), addr: lis.Addr().String(), prefs: LoadPrefs(prefsFile)}
+	w := &Web{socket: socket, prefsFile: prefsFile, session: session, addr: lis.Addr().String(), prefs: LoadPrefs(prefsFile), tickets: map[string]time.Time{}}
 	w.srv = &http.Server{Handler: w.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = w.srv.Serve(lis) }()
 	return w, nil
 }
 
-// URL opens the window at a section: status, schedule, stats or settings.
-func (w *Web) URL(section string) string {
-	return fmt.Sprintf("http://%s/?t=%s#%s", w.addr, w.token, section)
+// URL opens the window at a section (status, schedule, stats or settings)
+// with a ticket that works once, within ticketTTL.
+func (w *Web) URL(section string) (string, error) {
+	t, err := randomHex()
+	if err != nil {
+		return "", err
+	}
+	w.mu.Lock()
+	now := time.Now()
+	for k, exp := range w.tickets {
+		if now.After(exp) {
+			delete(w.tickets, k)
+		}
+	}
+	w.tickets[t] = now.Add(ticketTTL)
+	w.mu.Unlock()
+	return fmt.Sprintf("http://%s/?t=%s#%s", w.addr, t, section), nil
+}
+
+// OpenFile writes an owner-only page that forwards to URL(section) and
+// returns its path. Opening the file rather than the URL keeps the ticket
+// out of the opener's arguments, which every local user can list.
+func (w *Web) OpenFile(section string) (string, error) {
+	u, err := w.URL(section)
+	if err != nil {
+		return "", err
+	}
+	f, err := os.CreateTemp("", "ktms-tray-*.html") // 0600
+	if err != nil {
+		return "", err
+	}
+	page := fmt.Sprintf("<!doctype html><meta charset=utf-8><meta http-equiv=refresh content=\"0;url=%s\"><title>Keystone node</title>", u)
+	if _, err := f.WriteString(page); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		return "", err
+	}
+	time.AfterFunc(time.Minute, func() { _ = os.Remove(f.Name()) })
+	return f.Name(), nil
+}
+
+// useTicket consumes a ticket; a used or expired one fails.
+func (w *Web) useTicket(t string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	exp, ok := w.tickets[t]
+	delete(w.tickets, t)
+	return ok && time.Now().Before(exp)
 }
 
 func (w *Web) Close() error {
@@ -98,16 +156,16 @@ func (w *Web) Handler() http.Handler {
 			return
 		}
 		if t := r.URL.Query().Get("t"); t != "" && r.Method == http.MethodGet && r.URL.Path == "/" {
-			if subtle.ConstantTimeCompare([]byte(t), []byte(w.token)) != 1 {
-				http.Error(rw, "bad token", http.StatusForbidden)
+			if !w.useTicket(t) {
+				http.Error(rw, "this link was used or has expired; open the window from the tray menu again", http.StatusForbidden)
 				return
 			}
-			http.SetCookie(rw, &http.Cookie{Name: cookieName, Value: w.token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+			http.SetCookie(rw, &http.Cookie{Name: cookieName, Value: w.session, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
 			http.Redirect(rw, r, "/", http.StatusSeeOther) // the token leaves the address bar and history
 			return
 		}
 		c, err := r.Cookie(cookieName)
-		if err != nil || subtle.ConstantTimeCompare([]byte(c.Value), []byte(w.token)) != 1 {
+		if err != nil || subtle.ConstantTimeCompare([]byte(c.Value), []byte(w.session)) != 1 {
 			http.Error(rw, "open this window from the tray menu", http.StatusForbidden)
 			return
 		}
