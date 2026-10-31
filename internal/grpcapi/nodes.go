@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rs/zerolog/log"
@@ -28,12 +29,15 @@ type NodeRegistryServer struct {
 	keyring   *crypto.Keyring
 	warned    sync.Map           // node id -> dropped-model list already logged, so heartbeats do not repeat it
 	schedules NodeScheduleReader // nil: no schedules are sent
+	schedTTL  time.Duration      // how long a read schedule is reused across heartbeats
+	schedMemo sync.Map           // node id -> memoSchedule
 }
 
 func NewNodeRegistryServer(mgr *nodes.Manager, keyring *crypto.Keyring) *NodeRegistryServer {
 	return &NodeRegistryServer{
-		mgr:     mgr,
-		keyring: keyring,
+		mgr:      mgr,
+		keyring:  keyring,
+		schedTTL: scheduleMemoTTL,
 	}
 }
 
@@ -219,8 +223,8 @@ func (s *NodeRegistryServer) Heartbeat(ctx context.Context, req *pb.HeartbeatReq
 		WarmModels:      warmModels,
 		ModelSpecs:      models,
 		CapacityPercent: req.CapacityPercent,
-		ScheduleSource:  req.GetScheduleSource(),
-		CapacitySource:  req.GetCapacitySource(),
+		ScheduleSource:  knownOr(req.GetScheduleSource(), scheduleSources),
+		CapacitySource:  knownOr(req.GetCapacitySource(), capacitySources),
 	}
 	if req.GetCapacityUntil() != nil {
 		u := req.GetCapacityUntil().AsTime()

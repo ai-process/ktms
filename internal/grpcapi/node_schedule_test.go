@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,14 +31,18 @@ func TestHeartbeatSendsScheduleOnlyToKTMSManagedNodes(t *testing.T) {
 	expired := time.Now().Add(-time.Minute)
 	sched := &fakeSchedules{row: &proxydb.NodeSchedule{NodeID: "node-1", Text: "09:00-18:00 0\n", Version: 7, OverrideLevel: &lvl, OverrideUntil: &until}}
 	s.SetSchedules(sched)
+	s.schedTTL = 0 // each heartbeat reads, so the test sees every change
 	ctx := apikeys.WithIdentity(context.Background(), &apikeys.Identity{NodeID: "node-1"})
 	if _, err := s.RegisterNode(ctx, &pb.RegisterNodeRequest{NodeId: "node-1", Endpoint: "http://127.0.0.1:9", Models: specs("tiny:1b")}); err != nil {
 		t.Fatal(err)
 	}
 
-	resp, err := s.Heartbeat(ctx, &pb.HeartbeatRequest{NodeId: "node-1", ScheduleSource: "local"})
+	resp, err := s.Heartbeat(ctx, &pb.HeartbeatRequest{NodeId: "node-1", ScheduleSource: "local", CapacitySource: strings.Repeat("x", 1<<16)})
 	if err != nil || resp.GetSchedule() != nil {
 		t.Fatalf("local node got a schedule: %v %v", resp.GetSchedule(), err)
+	}
+	if hb := snapshotOf(t, mgr, "node-1").Heartbeat; hb.CapacitySource != "" || hb.ScheduleSource != "local" {
+		t.Fatalf("unknown source stored: %q", hb.CapacitySource[:min(len(hb.CapacitySource), 20)])
 	}
 
 	resp, err = s.Heartbeat(ctx, &pb.HeartbeatRequest{NodeId: "node-1", ScheduleSource: "ktms", CapacitySource: "ktms_override", CapacityUntil: timestamppb.New(until)})
@@ -117,5 +122,25 @@ func TestNodeScheduleAdminRPCs(t *testing.T) {
 	}
 	if _, err := s.DeleteNodeSchedule(ctx, &pb.DeleteNodeScheduleRequest{NodeId: "mac"}); status.Code(err) != codes.NotFound {
 		t.Fatalf("second delete: %v", err)
+	}
+}
+
+func TestHeartbeatScheduleIsReusedForAWhile(t *testing.T) {
+	s, _ := newRegistry(t)
+	sched := &fakeSchedules{row: &proxydb.NodeSchedule{NodeID: "node-1", Text: "", Version: 1}}
+	s.SetSchedules(sched)
+	ctx := apikeys.WithIdentity(context.Background(), &apikeys.Identity{NodeID: "node-1"})
+	if _, err := s.RegisterNode(ctx, &pb.RegisterNodeRequest{NodeId: "node-1", Endpoint: "http://127.0.0.1:9", Models: specs("tiny:1b")}); err != nil {
+		t.Fatal(err)
+	}
+	first, _ := s.Heartbeat(ctx, &pb.HeartbeatRequest{NodeId: "node-1", ScheduleSource: "ktms"})
+	sched.row = &proxydb.NodeSchedule{NodeID: "node-1", Text: "00:00-24:00 0\n", Version: 2}
+	second, _ := s.Heartbeat(ctx, &pb.HeartbeatRequest{NodeId: "node-1", ScheduleSource: "ktms"})
+	if first.GetSchedule().GetVersion() != 1 || second.GetSchedule().GetVersion() != 1 {
+		t.Fatalf("versions %d, %d: a fresh read should be reused", first.GetSchedule().GetVersion(), second.GetSchedule().GetVersion())
+	}
+	s.schedTTL = 0
+	if third, _ := s.Heartbeat(ctx, &pb.HeartbeatRequest{NodeId: "node-1", ScheduleSource: "ktms"}); third.GetSchedule().GetVersion() != 2 {
+		t.Fatalf("after the memo expired: version %d", third.GetSchedule().GetVersion())
 	}
 }

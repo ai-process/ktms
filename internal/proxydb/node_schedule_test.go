@@ -22,25 +22,35 @@ func TestNodeScheduleVersionsBump(t *testing.T) {
 		t.Fatalf("first set = %+v, %v", s, err)
 	}
 	lvl, until := int32(30), time.Now().Add(time.Hour).UTC().Truncate(time.Microsecond)
-	s, err = d.SetNodeOverride(ctx, id, &lvl, &until)
+	s, err = d.SetNodeOverride(ctx, id, lvl, until)
 	if err != nil || s.Version != 2 || *s.OverrideLevel != 30 || !s.OverrideUntil.Equal(until) || s.Text != "mon-fri 09:00-18:00 0\n" {
 		t.Fatalf("override = %+v, %v", s, err)
 	}
-	s, err = d.SetNodeScheduleText(ctx, id, "")
+	s, err = d.SetNodeScheduleText(ctx, id, "00:00-24:00 10\n")
 	if err != nil || s.Version != 3 || s.OverrideLevel == nil {
 		t.Fatalf("text change dropped the override or the version: %+v, %v", s, err)
 	}
-	if s, err = d.SetNodeOverride(ctx, id, nil, nil); err != nil || s.Version != 4 || s.OverrideLevel != nil {
+	if s, err = d.ClearNodeOverride(ctx, id); err != nil || s.Version != 4 || s.OverrideLevel != nil {
 		t.Fatalf("clear = %+v, %v", s, err)
 	}
 	other := "sched-test-node-2"
 	t.Cleanup(func() { _ = d.DeleteNodeSchedule(ctx, other) })
-	if s, err = d.SetNodeOverride(ctx, other, &lvl, &until); err != nil || s.Text != "" || s.Version != 1 {
+	if s, err = d.SetNodeOverride(ctx, other, lvl, until); err != nil || s.Text != "" || s.Version != 1 {
 		t.Fatalf("override on a node without rules = %+v, %v", s, err)
+	}
+	if _, err := d.ClearNodeOverride(ctx, "sched-test-none"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("clear without a row: %v", err)
 	}
 	all, err := d.ListNodeSchedules(ctx)
 	if err != nil || len(all) < 2 {
 		t.Fatalf("list = %d, %v", len(all), err)
+	}
+	// Clearing an override-only row removes it: it was never a schedule.
+	if _, err := d.ClearNodeOverride(ctx, other); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("clear of an override-only row: %v", err)
+	}
+	if _, err := d.GetNodeSchedule(ctx, other); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("override-only row kept: %v", err)
 	}
 	if err := d.DeleteNodeSchedule(ctx, id); err != nil {
 		t.Fatal(err)

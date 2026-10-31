@@ -516,8 +516,9 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 			conflict("node_schedules: %v", live.NodeSchedulesErr)
 		}
 		liveNS := map[string]string{}
+		// A row without rules only carries an override, which is not configuration.
 		for _, ns := range live.NodeSchedules {
-			if ns.GetVersion() > 0 {
+			if ns.GetVersion() > 0 && strings.TrimSpace(ns.GetText()) != "" {
 				liveNS[ns.GetNodeId()] = ns.GetText()
 			}
 		}
@@ -529,6 +530,8 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 			}
 			cur, ok := liveNS[ns.NodeID]
 			switch {
+			case !ok && strings.TrimSpace(ns.Schedule) == "":
+				// no rules on either side: 100% already
 			case !ok:
 				p.add(Change{Op: Create, Kind: "node schedule", Name: ns.NodeID}, set)
 			case strings.TrimSpace(cur) != strings.TrimSpace(ns.Schedule):

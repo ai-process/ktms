@@ -202,6 +202,9 @@ func probeWritable(dir string) error {
 // ---- schedule -------------------------------------------------------------
 
 func (d *Doctor) checkSchedule() (*Schedule, []Finding) {
+	if sourceSetting(d.Cfg) == ScheduleSourceKTMS {
+		return nil, []Finding{{"Schedule", LevelOK, "The schedule is set by KTMS; the local schedule file is ignored.", ""}}
+	}
 	if d.Cfg.ScheduleFile == "" {
 		return nil, nil
 	}
