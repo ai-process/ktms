@@ -759,5 +759,66 @@ eq "prompt: key typed at the terminal is not echoed" 0 "$RC"
 eq "prompt: key stored from the terminal" "llm_node_typed_secret" "$(cat "$BASE/key" 2>/dev/null)"
 eq "prompt: stored key is 0600" 600 "$(mode_of "$BASE/key")"
 
+# ---------------------------------------------------------------- tray
+make_tray() { # version os arch
+	d="$FX/ai-process/ktms/v$1"
+	mkdir -p "$d" "$W/tpack"
+	if [ "$2" = darwin ]; then
+		mkdir -p "$W/tpack/Keystone Node.app/Contents/MacOS"
+		printf '#!/bin/sh\nexit 0\n' >"$W/tpack/Keystone Node.app/Contents/MacOS/ktms-node-tray"
+		chmod +x "$W/tpack/Keystone Node.app/Contents/MacOS/ktms-node-tray"
+		(cd "$W/tpack" && zip -qr "$d/ktms-node-tray_$1_darwin_universal.zip" "Keystone Node.app")
+	else
+		printf '#!/bin/sh\nexit 0\n' >"$W/tpack/ktms-node-tray"
+		chmod +x "$W/tpack/ktms-node-tray"
+		asset="ktms-node-tray_$1_$2_$3.tar.gz"
+		tar -czf "$d/$asset" -C "$W/tpack" ktms-node-tray
+		printf '%s  %s\n' "$(sha "$d/$asset")" "$asset" >>"$d/checksums.txt"
+	fi
+}
+
+FAKE_OS=Linux FAKE_ARCH=x86_64
+reset_world
+make_deps amd64
+make_agent 0.11.0 good linux amd64
+mkdir -p "$BASE/ollama/bin"
+fake_ollama_bin "$BASE/ollama/bin/ollama"
+OUT=$(run_install $ARGS --tray)
+has "tray: a release without one is skipped" "has no tray for Linux" "$OUT"
+make_tray 0.11.0 linux amd64
+OUT=$(run_install $ARGS --tray)
+RC=$?
+eq "tray: linux install exits 0" 0 "$RC"
+if [ -x "$BASE/bin/ktms-node-tray" ]; then ok "tray: binary installed"; else bad "tray: binary installed"; fi
+DESK="$W/home/.config/autostart/ktms-node-tray.desktop"
+has "tray: starts at login" "Exec=\"$BASE/bin/ktms-node-tray\"" "$(cat "$DESK" 2>/dev/null)"
+has "tray: status names it" "Tray:    $BASE/bin/ktms-node-tray" "$OUT"
+run_install $ARGS >/dev/null
+if [ -f "$DESK" ] && [ -x "$BASE/bin/ktms-node-tray" ]; then ok "tray: a re-run without --tray keeps it"; else bad "tray: a re-run without --tray keeps it"; fi
+run_install --uninstall >/dev/null
+if [ ! -f "$DESK" ]; then ok "tray: uninstall removes the autostart entry"; else bad "tray: uninstall removes the autostart entry"; fi
+
+TP=$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; render_tray_plist /x/tray)
+hasnt "tray: plist does not keep a quit tray alive" "KeepAlive" "$TP"
+has "tray: plist runs in the desktop session" "<string>Aqua</string>" "$TP"
+if command -v plutil >/dev/null 2>&1; then
+	printf '%s' "$TP" >"$W/tray.plist"
+	if plutil -lint "$W/tray.plist" >/dev/null 2>&1; then ok "tray: plist lints"; else bad "tray: plist lints"; fi
+fi
+
+if [ "$(uname -s)" = Darwin ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ]; then
+	FAKE_OS=Darwin FAKE_ARCH=arm64
+	reset_world
+	make_deps arm64
+	make_agent 0.11.0 good darwin arm64
+	make_tray 0.11.0 darwin
+	OUT=$(run_install $ARGS --tray)
+	eq "mac tray: install exits 0" 0 "$?"
+	if [ -x "$W/home/Applications/Keystone Node.app/Contents/MacOS/ktms-node-tray" ]; then ok "mac tray: app installed"; else bad "mac tray: app installed"; fi
+	has "mac tray: launch agent written" "Keystone Node.app/Contents/MacOS/ktms-node-tray" "$(cat "$W/svc/com.ktms.node-tray.plist" 2>/dev/null)"
+	run_install --uninstall >/dev/null
+	if [ ! -e "$W/home/Applications/Keystone Node.app" ] && [ ! -e "$W/svc/com.ktms.node-tray.plist" ]; then ok "mac tray: uninstall removes it"; else bad "mac tray: uninstall removes it"; fi
+fi
+
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" = 0 ]

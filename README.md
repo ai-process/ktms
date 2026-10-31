@@ -426,6 +426,18 @@ owner-only: mode 0600, and a caller running as another user is refused. Its HTTP
 `GET`/`PUT /v1/schedule`, `POST /v1/schedule/preview`, `GET /v1/stats`, `GET`/`PUT /v1/settings`)
 never returns the node key or any token.
 
+**Desktop tray.** `install-node.sh --tray` adds `ktms-node-tray`: a menu bar app on macOS
+(`~/Applications/Keystone Node.app`, started at login, no Dock icon) or a tray icon on Linux
+(StatusNotifierItem; GNOME needs the AppIndicator extension). The icon shows the level and where it
+comes from, a countdown during a manual pause, and a warning when the agent or KTMS does not
+answer. Its menu pauses for 5, 10 or 30 minutes or until the next switch, limits the node to 50, 30
+or 10% for an hour, cuts running requests, resumes the schedule and turns "Schedule set by KTMS" on
+or off. Its window, a page served on `127.0.0.1` that only the tray's one-time link opens, edits the
+schedule as a week grid or as text with a live preview, shows the usage log for 24 hours, 7 and 30
+days, and turns notifications (pause over, agent silent, schedule invalid) on or off. The tray is a
+client of the control socket and keeps no state of its own beyond `~/.ktms-node/tray.json`;
+quitting it leaves the node running.
+
 **Schedule set by KTMS.** With `--schedule-source=ktms`, or `ktms-node settings
 --schedule-source=ktms` (the tray's "Schedule set by KTMS") at run time, the node takes its
 schedule and load from KTMS and ignores its local file, which stays in place for when the setting
@@ -918,6 +930,10 @@ time (format above, under the node agent). The installer checks the file and cop
 last lines then show the level now and the next switch (`Schedule: now 0%, next 23:00 100%`), and
 during a pause the installer does not load the model into memory. The `Stats:` line gives the
 command that shows how the machine was used (`~/.ktms-node/bin/ktms-node stats`).
+
+Add `--tray` for the menu bar (macOS) or tray (Linux) app that pauses the node for a while and
+edits its schedule without touching the file (see Desktop tray above). A re-run without `--tray`
+keeps it.
 
 Run the same command again to update; a re-run only restarts what changed, and a new agent that
 fails to start is rolled back. Remove everything with the same command plus `--uninstall`

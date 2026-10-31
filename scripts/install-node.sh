@@ -13,6 +13,9 @@ LABEL_NODE="com.ktms.node"
 LABEL_OLLAMA="com.ktms.ollama"
 UNIT_NODE="ktms-node"
 UNIT_OLLAMA="ktms-ollama"
+LABEL_TRAY="com.ktms.node-tray"
+TRAY_APP="$HOME/Applications/Keystone Node.app"
+TRAY_DESKTOP="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/ktms-node-tray.desktop"
 # Names of installs made before the rename to KTMS; found and retired on install.
 LEGACY_LABEL_PREFIX="com.llm-proxy"
 LEGACY_UNIT_PREFIX="llm-proxy"
@@ -44,6 +47,8 @@ Options:
   --endpoint URL         you expose the node yourself: skip the built-in tunnel
   --schedule FILE        load levels by local time, "[days] HH:MM-HH:MM level" per line;
                          copied to ~/.ktms-node/schedule, which a re-run without it keeps
+  --tray                 also install the menu bar (macOS) or tray (Linux) app and start it at
+                         login; a re-run without it keeps the tray, --uninstall removes it
   --upgrade-deps         also update Ollama and cloudflared (a re-run keeps them)
   --dry-run              check this machine and print the plan, change nothing
   --doctor               explain in plain words why the installed node is not working
@@ -58,7 +63,7 @@ EOF
 
 parse_args() {
 	PROXY="" NODE_ID="" MODEL="" NAME="" MAXC=1 CTX=8192 VERSION="latest"
-	KEY_SRC="" NEW_KEY=0 PLAINTEXT=0 ENDPOINT="" UPGRADE=0 DRY_RUN=0 UNINSTALL=0 DOCTOR=0 KEEP_LEGACY=0 PURGE_BACKUPS=0 SCHEDULE_SRC=""
+	KEY_SRC="" NEW_KEY=0 PLAINTEXT=0 ENDPOINT="" TRAY=0 UPGRADE=0 DRY_RUN=0 UNINSTALL=0 DOCTOR=0 KEEP_LEGACY=0 PURGE_BACKUPS=0 SCHEDULE_SRC=""
 	while [ $# -gt 0 ]; do
 		opt=$1 val="" shift_n=1
 		case $1 in --*=*) opt=${1%%=*} val=${1#*=} ;; esac
@@ -76,6 +81,7 @@ parse_args() {
 			;;
 		--new-key) NEW_KEY=1 ;;
 		--plaintext) PLAINTEXT=1 ;;
+		--tray) TRAY=1 ;;
 		--upgrade-deps) UPGRADE=1 ;;
 		--dry-run) DRY_RUN=1 ;;
 		--uninstall) UNINSTALL=1 ;;
@@ -626,6 +632,7 @@ stage_agent() {
 		case $tag in v*) ;; *) tag="v$tag" ;; esac
 	fi
 	ver=${tag#v}
+	AGENT_TAG=$tag # the tray comes from the same release; later steps reuse $tag
 	if [ -x "$BASE/bin/ktms-node" ] && [ "$("$BASE/bin/ktms-node" --version 2>/dev/null || true)" = "$ver" ]; then
 		say "Node agent $ver is already installed."
 		AGENT_STAGED=0
@@ -821,6 +828,93 @@ start_node_and_wait() {
 	return 1
 }
 
+# ---- tray ------------------------------------------------------------------
+
+render_tray_plist() { # program
+	printf '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n'
+	printf '\t<key>Label</key><string>%s</string>\n\t<key>ProgramArguments</key>\n\t<array>\n\t\t<string>%s</string>\n\t</array>\n' "$LABEL_TRAY" "$(xml_esc "$1")"
+	# No KeepAlive: the owner may quit the tray, and the node keeps running without it.
+	printf '\t<key>RunAtLoad</key><true/>\n\t<key>LimitLoadToSessionType</key><string>Aqua</string>\n'
+	printf '\t<key>StandardOutPath</key><string>%s</string>\n\t<key>StandardErrorPath</key><string>%s</string>\n</dict>\n</plist>\n' "$(xml_esc "$BASE/logs/tray.log")" "$(xml_esc "$BASE/logs/tray.log")"
+}
+
+# install_tray puts the tray of the agent's release in place and starts it at
+# login. A release without one is skipped: the node itself does not need it.
+install_tray() {
+	[ "$TRAY" = 1 ] || return 0
+	tag=$AGENT_TAG ver=${AGENT_TAG#v}
+	step "Installing the tray $ver"
+	tmp=$(mktemp -d "$BASE/dl.XXXXXX")
+	if [ "$OS" = darwin ]; then
+		asset="ktms-node-tray_${ver}_darwin_universal.zip"
+		want=$(asset_digest "$REPO" "$tag" "$asset")
+		if [ -z "$want" ]; then
+			rm -rf "$tmp"
+			warn "release $tag has no tray for macOS; the node runs without it"
+			return 0
+		fi
+		fetch "$GITHUB/$REPO/releases/download/$tag/$asset" "$tmp/$asset"
+		verify_sha "$tmp/$asset" "$want"
+		unzip -q "$tmp/$asset" -d "$tmp/app" || die "cannot unpack $asset"
+		[ -x "$tmp/app/Keystone Node.app/Contents/MacOS/ktms-node-tray" ] || die "$asset holds no Keystone Node.app"
+		stop_label "$LABEL_TRAY"
+		mkdir -p "$(dirname "$TRAY_APP")"
+		rm -rf "$TRAY_APP"
+		mv "$tmp/app/Keystone Node.app" "$TRAY_APP"
+		xattr -dr com.apple.quarantine "$TRAY_APP" 2>/dev/null || true
+		f="$(svc_dir)/$LABEL_TRAY.plist"
+		mkdir -p "$(dirname "$f")"
+		render_tray_plist "$TRAY_APP/Contents/MacOS/ktms-node-tray" >"$f"
+		dom=$(mac_domain)
+		case $dom in
+		gui/*) launchctl bootstrap "$dom" "$f" 2>/dev/null || warn "the tray starts at your next login" ;;
+		*) say "The tray starts at your next login (no desktop session here)." ;;
+		esac
+	else
+		asset="ktms-node-tray_${ver}_${OS}_${ARCH}.tar.gz"
+		curl -fsSL -o "$tmp/checksums.txt" "$GITHUB/$REPO/releases/download/$tag/checksums.txt" || die "cannot read the checksums of $tag"
+		want=$(awk -v a="$asset" '$2 == a { print $1 }' "$tmp/checksums.txt")
+		if [ -z "$want" ]; then
+			rm -rf "$tmp"
+			warn "release $tag has no tray for Linux; the node runs without it"
+			return 0
+		fi
+		fetch "$GITHUB/$REPO/releases/download/$tag/$asset" "$tmp/$asset"
+		verify_sha "$tmp/$asset" "$want"
+		tar -xzf "$tmp/$asset" -C "$tmp" ktms-node-tray || die "$asset holds no ktms-node-tray"
+		stop_tray_linux
+		mv "$tmp/ktms-node-tray" "$BASE/bin/ktms-node-tray"
+		chmod 755 "$BASE/bin/ktms-node-tray"
+		mkdir -p "$(dirname "$TRAY_DESKTOP")"
+		printf '[Desktop Entry]\nType=Application\nName=Keystone Node\nComment=Pause and schedule this KTMS node\nExec="%s"\nTerminal=false\nX-GNOME-Autostart-enabled=true\n' "$BASE/bin/ktms-node-tray" >"$TRAY_DESKTOP"
+		if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+			nohup "$BASE/bin/ktms-node-tray" >>"$BASE/logs/tray.log" 2>&1 &
+			echo $! >"$BASE/tray.pid"
+		fi
+		say "GNOME shows tray icons only with the AppIndicator extension."
+	fi
+	rm -rf "$tmp"
+}
+
+# stop_tray_linux ends the tray this installer started, and only that one.
+stop_tray_linux() {
+	[ -f "$BASE/tray.pid" ] || return 0
+	pid=$(cat "$BASE/tray.pid")
+	if [ -n "$pid" ] && ps -p "$pid" -o args= 2>/dev/null | grep -q ktms-node-tray; then kill "$pid" 2>/dev/null || true; fi
+	rm -f "$BASE/tray.pid"
+}
+
+uninstall_tray() {
+	if [ "$OS" = darwin ]; then
+		stop_label "$LABEL_TRAY"
+		rm -f "$(svc_dir)/$LABEL_TRAY.plist"
+		rm -rf "$TRAY_APP"
+	else
+		stop_tray_linux
+		rm -f "$TRAY_DESKTOP"
+	fi
+}
+
 # ---- main ------------------------------------------------------------------
 
 do_uninstall() {
@@ -831,6 +925,7 @@ do_uninstall() {
 	detect_legacy
 	cleanup_legacy
 	step "Removing the node"
+	uninstall_tray
 	for id in node ollama; do
 		svc_stop "$id"
 		if [ "$OS" = linux ]; then systemctl --user disable "$(svc_label "$id").service" >/dev/null 2>&1 || true; fi
@@ -860,6 +955,9 @@ print_status() {
 		sched="none, 100% all the time (add one with --schedule FILE)"
 		[ -f "$BASE/schedule" ] && sched="see $BASE/schedule"
 	fi
+	tray="not installed (add it with --tray)"
+	if [ "$OS" = darwin ] && [ -d "$TRAY_APP" ]; then tray="$TRAY_APP, starts at login"; fi
+	if [ "$OS" = linux ] && [ -f "$TRAY_DESKTOP" ]; then tray="$BASE/bin/ktms-node-tray, starts at login"; fi
 	stats="needs a newer node agent"
 	agent_has_stats "$BASE/bin/ktms-node" && stats="$BASE/bin/ktms-node stats --since 24h (log in $BASE/stats)"
 	cat <<EOF
@@ -871,6 +969,7 @@ Node $NODE_ID is running and registered.
   Schedule: $sched
   Stats:   $stats
   Logs:    $BASE/logs/node.log
+  Tray:    $tray
   Update:  run the same command again
   Remove:  re-run with --uninstall
 EOF
@@ -958,6 +1057,7 @@ main() {
 		fi
 	fi
 	rm -f "$BASE/schedule.prev"
+	install_tray
 	print_status
 }
 
