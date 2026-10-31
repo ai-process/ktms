@@ -36,6 +36,14 @@ All notable changes to KTMS are listed here. The format follows
   `schedule_source`, `capacity_source` and `capacity_until`, which `ListNodes` and `ktms nodes
   list` show.
 
+- Desktop tray for local nodes, `ktms-node-tray`: a macOS menu bar app (universal, no Dock icon)
+  and a Linux tray icon showing the level, its source and a pause countdown, with pause, limit,
+  stop-now, resume and "Schedule set by KTMS" in the menu. Its window edits the schedule as a week
+  grid or text with a live preview, shows the usage log and sends notifications when a pause ends,
+  the agent goes silent or the schedule is invalid. `install-node.sh --tray` installs it and starts
+  it at login; `--uninstall` removes it. Releases carry `ktms-node-tray_<v>_darwin_universal.zip`
+  (ad hoc signed) and Linux archives.
+
 ### Changed
 - Token budget reservations count tool definitions and the tool calls in the conversation.
 - A node that ends a pause without having warmed its models (no time for `--warmup`) loads them
