@@ -1147,7 +1147,7 @@ describes the model that answered.
 
 | Vendor | Takes |
 | --- | --- |
-| `openai`, `azure` | All four, up to 4 `stop` sequences. Reasoning models (an id with `o<digit>` or `gpt-5`, as a whole or after a `/`, `-` or `_`, except `gpt-5-chat`) take none. |
+| `openai`, `azure` | All four, up to 4 `stop` sequences. Reasoning models (an id starting with `o<digit>`, `gpt-5`, `codex-mini` or `computer-use`, as a whole or after a `/`, `-` or `_`, except `gpt-5-chat`) take none: they reject `temperature`, `top_p` and `stop`, and `seed` is not confirmed for them. |
 | `groq` | All four, up to 4 `stop` sequences. |
 | `google` | All four, up to 5 `stop` sequences. |
 | `ollama`, `local` | All four. |
@@ -1155,6 +1155,7 @@ describes the model that answered.
 | `mistral` | `temperature` (capped at 1.5), `top_p`, `stop`. |
 | `anthropic`, Claude on `bedrock` | `stop`, without sequences of whitespace alone. Claude 4.6 and earlier also take `temperature` (capped at 1) and `top_p`; from Claude 4 on, not both: with both set, only `temperature`. Claude 4.7 and later accept only the default sampling, so they get neither. |
 | Other `bedrock` models | `temperature` (capped at 1), `top_p`, up to 4 `stop` sequences. |
+| `bedrock` application inference profiles (ARNs) | Up to 4 `stop` sequences: the ARN does not say which model is behind it. With `sampling` declared, also `temperature` (capped at 1) or `top_p`, not both, which every family takes. |
 
 A temperature above a vendor's cap is lowered to it and reported as `temperature`. When a vendor
 takes fewer stop sequences than the call has, it gets the first ones and `stop` is reported. The model is told apart

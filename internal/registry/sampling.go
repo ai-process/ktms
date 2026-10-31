@@ -18,9 +18,9 @@ const CapabilityNoSampling = "no_sampling"
 const CapabilitySampling = "sampling"
 
 var (
-	// OpenAI reasoning models reject temperature, top_p and stop;
-	// gpt-5-chat is the chat variant that takes them. Ids may carry a prefix.
-	openAIReasoning = regexp.MustCompile(`(^|[/_-])(o\d|gpt-5)`)
+	// OpenAI reasoning models reject temperature, top_p and stop; whether they
+	// take seed is unconfirmed, so it is dropped too. gpt-5-chat takes all four.
+	openAIReasoning = regexp.MustCompile(`(^|[/_-])(o\d|gpt-5|codex-mini|computer-use)`)
 	// Claude up to 4.6 takes temperature and top_p on the 2023-06-01 API; 4.7
 	// and later accept only the defaults, so unknown ids get none.
 	claudeWithSampling = regexp.MustCompile(`claude-(3([-.@:]|$)|(opus|sonnet|haiku)-4([-.][0-6])?(-\d{8}|-v\d|-latest|[@:]|$))`)
@@ -63,6 +63,15 @@ func SamplingSupport(m *proxydb.Model) llm.SamplingSupport {
 	case VendorBedrock:
 		if strings.Contains(id, "claude") {
 			return claudeSampling(id, declared)
+		}
+		// An application inference profile hides its model, Claude perhaps:
+		// stop alone, or with sampling declared what every family takes.
+		if strings.Contains(id, ":application-inference-profile/") {
+			s := llm.SamplingSupport{Stop: true, NoBlankStop: true, MaxStop: 4}
+			if declared {
+				s.Temperature, s.TopP, s.MaxTemperature, s.OneOfTemperatureTopP = true, true, 1, true
+			}
+			return s
 		}
 		// Converse takes temperature 0..1 and no seed for every model family.
 		return llm.SamplingSupport{Temperature: true, TopP: true, Stop: true, MaxTemperature: 1, MaxStop: 4}

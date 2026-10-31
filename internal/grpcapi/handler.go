@@ -461,12 +461,14 @@ func sendCachedStream(stream pb.GatewayService_GenerateTextStreamServer, cached 
 	for _, choice := range cached.Details {
 		if choice.Text != "" {
 			chunk := &pb.GenerateTextChunk{
-				Delta:             choice.Text,
-				ResolvedModel:     cached.ResolvedModel,
-				ResolvedVendor:    cached.ResolvedVendor,
-				MatchedRule:       cached.MatchedRule,
-				Cached:            true,
-				IgnoredParameters: cached.IgnoredParameters,
+				Delta:          choice.Text,
+				ResolvedModel:  cached.ResolvedModel,
+				ResolvedVendor: cached.ResolvedVendor,
+				MatchedRule:    cached.MatchedRule,
+				Cached:         true,
+			}
+			if !sentFirst {
+				chunk.IgnoredParameters = cached.IgnoredParameters
 			}
 			sentFirst = true
 			if err := stream.Send(chunk); err != nil {
@@ -520,14 +522,16 @@ func sendCachedStream(stream pb.GatewayService_GenerateTextStreamServer, cached 
 		}
 	}
 	if len(cached.Details) == 0 && len(cached.Choices) > 0 {
-		for _, text := range cached.Choices {
+		for i, text := range cached.Choices {
 			chunk := &pb.GenerateTextChunk{
-				Delta:             text,
-				ResolvedModel:     cached.ResolvedModel,
-				ResolvedVendor:    cached.ResolvedVendor,
-				MatchedRule:       cached.MatchedRule,
-				Cached:            true,
-				IgnoredParameters: cached.IgnoredParameters,
+				Delta:          text,
+				ResolvedModel:  cached.ResolvedModel,
+				ResolvedVendor: cached.ResolvedVendor,
+				MatchedRule:    cached.MatchedRule,
+				Cached:         true,
+			}
+			if i == 0 {
+				chunk.IgnoredParameters = cached.IgnoredParameters
 			}
 			if err := stream.Send(chunk); err != nil {
 				return err

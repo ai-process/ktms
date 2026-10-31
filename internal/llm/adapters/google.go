@@ -784,11 +784,11 @@ func (a *GoogleAdapter) SubmitBatch(ctx context.Context, batchID string, items [
 			}
 			if c := inlineRequests[i].Config; c != nil {
 				cfgMap := map[string]any{}
-				if inlineRequests[i].Config.SystemInstruction != nil {
-					lineReq["system_instruction"] = inlineRequests[i].Config.SystemInstruction
+				if c.SystemInstruction != nil {
+					lineReq["system_instruction"] = c.SystemInstruction
 				}
-				if inlineRequests[i].Config.MaxOutputTokens > 0 {
-					cfgMap["max_output_tokens"] = inlineRequests[i].Config.MaxOutputTokens
+				if c.MaxOutputTokens > 0 {
+					cfgMap["max_output_tokens"] = c.MaxOutputTokens
 				}
 				if c.Temperature != nil {
 					cfgMap["temperature"] = *c.Temperature
@@ -802,11 +802,11 @@ func (a *GoogleAdapter) SubmitBatch(ctx context.Context, batchID string, items [
 				if c.Seed != nil {
 					cfgMap["seed"] = *c.Seed
 				}
-				if inlineRequests[i].Config.ResponseMIMEType != "" {
-					cfgMap["response_mime_type"] = inlineRequests[i].Config.ResponseMIMEType
+				if c.ResponseMIMEType != "" {
+					cfgMap["response_mime_type"] = c.ResponseMIMEType
 				}
-				if inlineRequests[i].Config.ResponseSchema != nil {
-					cfgMap["response_schema"] = inlineRequests[i].Config.ResponseSchema
+				if c.ResponseSchema != nil {
+					cfgMap["response_schema"] = c.ResponseSchema
 				}
 				if len(cfgMap) > 0 {
 					lineReq["generation_config"] = cfgMap

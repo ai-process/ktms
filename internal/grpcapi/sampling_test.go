@@ -90,3 +90,22 @@ func TestSamplingValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestCachedReplayReportsIgnoredOnce(t *testing.T) {
+	for _, cached := range []*pb.GenerateTextResponse{
+		{Details: []*pb.Choice{{Text: "a"}, {Text: "b"}}, IgnoredParameters: []string{"seed"}},
+		{Choices: []string{"a", "b"}, IgnoredParameters: []string{"seed"}},
+	} {
+		stream := &mockStreamServer{ctx: testIdentity()}
+		if err := sendCachedStream(stream, cached); err != nil {
+			t.Fatal(err)
+		}
+		var n int
+		for _, c := range stream.chunks {
+			n += len(c.GetIgnoredParameters())
+		}
+		if n != 1 || len(stream.chunks[0].GetIgnoredParameters()) != 1 {
+			t.Errorf("ignored_parameters on %d chunks, want the first only", n)
+		}
+	}
+}
