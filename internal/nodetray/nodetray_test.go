@@ -81,11 +81,18 @@ func TestBuildView(t *testing.T) {
 
 func TestNotifier(t *testing.T) {
 	var n Notifier
-	paused := status(func(s *nodeagent.Status) { s.Level.Effective, s.Level.Source = 0, nodeagent.SourceOverride })
+	paused := status(func(s *nodeagent.Status) {
+		s.Level.Effective, s.Level.Source = 0, nodeagent.SourceOverride
+		s.Level.Override = &nodeagent.Override{Until: now.Add(10 * time.Minute)}
+	})
 	if got := n.Next(paused, nil, now); len(got) != 0 {
 		t.Fatalf("first status: %v", got)
 	}
-	if got := n.Next(status(nil), nil, now); len(got) != 1 || !strings.Contains(got[0], "pause is over") {
+	if got := n.Next(status(nil), nil, now.Add(time.Minute)); len(got) != 0 {
+		t.Fatalf("the owner's own Resume notified: %v", got)
+	}
+	n.Next(paused, nil, now)
+	if got := n.Next(status(nil), nil, now.Add(10*time.Minute)); len(got) != 1 || !strings.Contains(got[0], "pause is over") {
 		t.Fatalf("pause end: %v", got)
 	}
 	if got := n.Next(status(func(s *nodeagent.Status) { s.ScheduleError = "line 3: x" }), nil, now); len(got) != 1 || !strings.Contains(got[0], "invalid") {
@@ -158,10 +165,25 @@ func TestWebGuardsAndRelays(t *testing.T) {
 	if r, _ := c.Get(base + "/?t=wrong"); r.StatusCode != http.StatusForbidden {
 		t.Fatalf("wrong token: %d", r.StatusCode)
 	}
-	r, err := c.Get(w.URL("status"))
+	link, _ := w.URL("status")
+	r, err := c.Get(link)
 	if err != nil || r.StatusCode != http.StatusOK || r.Request.URL.RawQuery != "" {
-		t.Fatalf("token login: %v %v %q", r.StatusCode, err, r.Request.URL)
+		t.Fatalf("ticket login: %v %v %q", r.StatusCode, err, r.Request.URL)
 	}
+	// A ticket works once: whoever saw the link afterwards gets nothing.
+	if r, _ := http.Get(link); r.StatusCode != http.StatusForbidden {
+		t.Fatalf("reused ticket: %d", r.StatusCode)
+	}
+	path, err := w.OpenFile("schedule")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fi, _ := os.Stat(path)
+	page, _ := os.ReadFile(path)
+	if fi.Mode().Perm() != 0o600 || !strings.Contains(string(page), "#schedule") {
+		t.Fatalf("open file %v: %s", fi.Mode().Perm(), page)
+	}
+	os.Remove(path)
 	body, _ := io.ReadAll(r.Body)
 	if !strings.Contains(string(body), "Keystone node") {
 		t.Fatal("index not served")
@@ -183,7 +205,7 @@ func TestWebGuardsAndRelays(t *testing.T) {
 	// Another Host (DNS rebinding) is refused even with the cookie.
 	req, _ = http.NewRequest(http.MethodGet, base+"/api/v1/status", nil)
 	req.Host = "evil.example"
-	req.AddCookie(&http.Cookie{Name: cookieName, Value: w.token})
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: w.session})
 	if r, _ := http.DefaultClient.Do(req); r.StatusCode != http.StatusForbidden {
 		t.Fatalf("foreign host: %d", r.StatusCode)
 	}
@@ -218,5 +240,20 @@ func TestFormatGrid(t *testing.T) {
 	handleFormat(rec, httptest.NewRequest(http.MethodPost, "/api/format", strings.NewReader(`{"week":[1,2]}`)))
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("short week: %d", rec.Code)
+	}
+}
+
+func TestStopNowKeepsAManualPause(t *testing.T) {
+	plain := StopNow(status(nil), now)
+	if plain.For != "10m" || !plain.AbortInflight {
+		t.Fatalf("without a pause: %+v", plain)
+	}
+	end := now.Add(25 * time.Minute)
+	held := StopNow(status(func(s *nodeagent.Status) {
+		s.Level.Effective, s.Level.Source = 0, nodeagent.SourceOverride
+		s.Level.Override = &nodeagent.Override{Level: 0, Until: end}
+	}), now)
+	if held.For != "" || !held.Until.Equal(end) || !held.AbortInflight {
+		t.Fatalf("with a 25-minute pause: %+v", held)
 	}
 }

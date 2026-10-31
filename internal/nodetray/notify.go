@@ -38,7 +38,8 @@ func (n *Notifier) Next(s *nodeagent.Status, err error, now time.Time) []string 
 	}
 	n.silentSince, n.toldSilent = time.Time{}, false
 	if p := n.prev; p != nil {
-		if p.Level.Source == nodeagent.SourceOverride && p.Level.Effective == 0 &&
+		// Only a pause that ran out: the owner who pressed Resume needs no news.
+		if o := p.Level.Override; o != nil && p.Level.Effective == 0 && !now.Before(o.Until.Add(-5*time.Second)) &&
 			s.Level.Source != nodeagent.SourceOverride && s.Level.Effective > 0 {
 			out = append(out, "The pause is over: the node takes requests again.")
 		}

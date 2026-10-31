@@ -213,9 +213,14 @@ func (t *tray) clicks() {
 		case <-t.l10.ClickedCh:
 			limit(10)
 		case <-t.lOther.ClickedCh:
-			openURL(t.web.URL("status"))
+			t.open("status")
 		case <-t.stop.ClickedCh:
-			t.set(nodeagent.OverrideRequest{Level: 0, For: "10m", AbortInflight: true})
+			t.mu.Lock()
+			s := t.status
+			t.mu.Unlock()
+			if s != nil {
+				t.set(nodetray.StopNow(s, time.Now()))
+			}
 		case <-t.resume.ClickedCh:
 			t.call(func(ctx context.Context) error { _, err := t.client.ClearOverride(ctx); return err })
 		case <-t.ktms.ClickedCh:
@@ -225,11 +230,11 @@ func (t *tray) clicks() {
 			}
 			t.call(func(ctx context.Context) error { _, err := t.client.SetScheduleSource(ctx, src); return err })
 		case <-t.schedule.ClickedCh:
-			openURL(t.web.URL("schedule"))
+			t.open("schedule")
 		case <-t.stats.ClickedCh:
-			openURL(t.web.URL("stats"))
+			t.open("stats")
 		case <-t.settings.ClickedCh:
-			openURL(t.web.URL("settings"))
+			t.open("settings")
 		case <-t.openLog.ClickedCh:
 			openURL(filepath.Join(t.home, "logs", "node.log"))
 		case <-t.quit.ClickedCh:
@@ -252,6 +257,16 @@ func (t *tray) call(fn func(context.Context) error) {
 			_ = nodetray.Notify(ctx, err.Error())
 		}
 	}()
+}
+
+// open shows the window at a section through an owner-only file.
+func (t *tray) open(section string) {
+	path, err := t.web.OpenFile(section)
+	if err != nil {
+		_ = nodetray.Notify(context.Background(), "Cannot open the window: "+err.Error())
+		return
+	}
+	openURL(path)
 }
 
 func openURL(target string) {
