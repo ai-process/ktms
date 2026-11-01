@@ -78,7 +78,20 @@ reflection is on, so `grpcurl` works without the `.proto` files.
 
 ## Quick start (Docker Compose)
 
-The fastest way to run KTMS locally is with Docker Compose. With `AUTO_SEED` enabled (default in compose), the proxy automatically initializes default models, routing rules, and a ready-to-use client key (`ktms_dev_default_key`).
+The fastest way to try Keystone is one command. It needs Docker with the Compose plugin, runs the
+published images (no clone, no build) with Postgres and Redis on localhost only, asks for an
+OpenAI, Anthropic or Gemini key unless one is in the environment, and prints your first request:
+
+```bash
+curl -fsSL https://ai-process.dev/install.sh | sh
+```
+
+It keeps its files in `~/ktms` (a generated keyring, admin and client keys in `.env`), and a re-run
+keeps them while it adds new vendor keys or moves to a new release. Options such as `--port`,
+`--version` and `--uninstall` are in `sh -s -- --help`; the script is
+[`scripts/install.sh`](scripts/install.sh).
+
+From a clone instead, Docker Compose builds the image from source. With `AUTO_SEED` enabled (default in compose), the proxy automatically initializes default models, routing rules, and a ready-to-use client key (`ktms_dev_default_key`).
 
 ### 1. Launch the stack
 

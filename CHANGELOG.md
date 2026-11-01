@@ -8,6 +8,10 @@ All notable changes to KTMS are listed here. The format follows
 ## [Unreleased]
 
 ### Added
+- `scripts/install.sh`, served as `curl -fsSL https://ai-process.dev/install.sh | sh`: runs Keystone
+  with Postgres and Redis from the published images, no clone or build. It generates the keyring,
+  admin and client keys, takes vendor keys from the environment or asks for one, and keeps its
+  secrets on a re-run; `--uninstall` removes the stack and its data.
 - `data_classification: restricted` on a key's policy, a team, or a call (`GenerateTextRequest`,
   `ExplainRouteRequest`, `data_classification` on `/v1/chat/completions`, the
   `X-KTMS-Data-Classification` header or `x-ktms-data-classification` gRPC metadata) keeps calls on
