@@ -33,6 +33,7 @@ type GoogleAdapter struct {
 	ttsVoice     string
 	imageModel   string
 	softSchema   bool
+	sampling     llm.SamplingSupport
 }
 
 func NewGoogleAdapter(geminiClient *genai.Client, model string, throttle *llm.ThrottleControl) *GoogleAdapter {
@@ -47,6 +48,9 @@ func NewGoogleAdapter(geminiClient *genai.Client, model string, throttle *llm.Th
 func (a *GoogleAdapter) SetSoftSchema(s bool) {
 	a.softSchema = s
 }
+
+// SetSampling sets the sampling fields the model takes.
+func (a *GoogleAdapter) SetSampling(s llm.SamplingSupport) { a.sampling = s }
 
 func (a *GoogleAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
 	// Built once, not per attempt: buildSystemInstruction consumes the chat's
@@ -388,6 +392,18 @@ func (a *GoogleAdapter) buildGenerateConfig(chat *llm.ChatContext) *genai.Genera
 			max = math.MaxInt32
 		}
 		config.MaxOutputTokens = int32(max)
+	}
+	s, _ := a.sampling.Apply(chat.GetSampling())
+	if s.Temperature != nil {
+		config.Temperature = genai.Ptr(float32(*s.Temperature))
+	}
+	if s.TopP != nil {
+		config.TopP = genai.Ptr(float32(*s.TopP))
+	}
+	config.StopSequences = s.Stop
+	if s.Seed != nil {
+		// Gemini's seed is 32-bit; a wider one wraps, still the same per value.
+		config.Seed = genai.Ptr(int32(*s.Seed))
 	}
 
 	if chat.GetResponseSchema() != nil {
@@ -766,19 +782,31 @@ func (a *GoogleAdapter) SubmitBatch(ctx context.Context, batchID string, items [
 			lineReq := map[string]any{
 				"contents": inlineRequests[i].Contents,
 			}
-			if inlineRequests[i].Config != nil {
+			if c := inlineRequests[i].Config; c != nil {
 				cfgMap := map[string]any{}
-				if inlineRequests[i].Config.SystemInstruction != nil {
-					lineReq["system_instruction"] = inlineRequests[i].Config.SystemInstruction
+				if c.SystemInstruction != nil {
+					lineReq["system_instruction"] = c.SystemInstruction
 				}
-				if inlineRequests[i].Config.MaxOutputTokens > 0 {
-					cfgMap["max_output_tokens"] = inlineRequests[i].Config.MaxOutputTokens
+				if c.MaxOutputTokens > 0 {
+					cfgMap["max_output_tokens"] = c.MaxOutputTokens
 				}
-				if inlineRequests[i].Config.ResponseMIMEType != "" {
-					cfgMap["response_mime_type"] = inlineRequests[i].Config.ResponseMIMEType
+				if c.Temperature != nil {
+					cfgMap["temperature"] = *c.Temperature
 				}
-				if inlineRequests[i].Config.ResponseSchema != nil {
-					cfgMap["response_schema"] = inlineRequests[i].Config.ResponseSchema
+				if c.TopP != nil {
+					cfgMap["top_p"] = *c.TopP
+				}
+				if len(c.StopSequences) > 0 {
+					cfgMap["stop_sequences"] = c.StopSequences
+				}
+				if c.Seed != nil {
+					cfgMap["seed"] = *c.Seed
+				}
+				if c.ResponseMIMEType != "" {
+					cfgMap["response_mime_type"] = c.ResponseMIMEType
+				}
+				if c.ResponseSchema != nil {
+					cfgMap["response_schema"] = c.ResponseSchema
 				}
 				if len(cfgMap) > 0 {
 					lineReq["generation_config"] = cfgMap

@@ -25,7 +25,7 @@ func TestAPIKeyPolicyRoundTrip(t *testing.T) {
 	if !slices.Equal(k.AllowedModels, []string{"m1"}) || k.RPMLimit != 60 || k.TPMLimit != 100000 {
 		t.Fatalf("minted policy = %v %d %d", k.AllowedModels, k.RPMLimit, k.TPMLimit)
 	}
-	if err := d.SetAPIKeyPolicy(ctx, name, nil, 0, 5, nil); err != nil {
+	if err := d.SetAPIKeyPolicy(ctx, name, nil, 0, 5, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	k, err = d.GetAPIKeyByName(ctx, name)
@@ -35,7 +35,7 @@ func TestAPIKeyPolicyRoundTrip(t *testing.T) {
 	if len(k.AllowedModels) != 0 || k.RPMLimit != 0 || k.TPMLimit != 5 {
 		t.Fatalf("replaced policy = %v %d %d", k.AllowedModels, k.RPMLimit, k.TPMLimit)
 	}
-	if err := d.SetAPIKeyPolicy(ctx, "missing-"+name, nil, 0, 0, nil); !errors.Is(err, ErrNotFound) {
+	if err := d.SetAPIKeyPolicy(ctx, "missing-"+name, nil, 0, 0, nil, nil); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown key: %v, want ErrNotFound", err)
 	}
 }

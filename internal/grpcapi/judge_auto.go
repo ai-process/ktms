@@ -31,6 +31,7 @@ type routePlan struct {
 	shadowModel      *proxydb.Model
 	shadowPercentage float64
 	shadowEval       bool
+	restricted       bool // data_classification restricted: nodes only, judge calls included
 }
 
 // promptText extracts representative text from instructions and user messages for judge evaluation.
@@ -199,6 +200,14 @@ func (s *ProxyServer) judgeEffort(ctx context.Context, attrs map[string]string, 
 // With a trace it also records why each model was dropped, and never calls the judge.
 func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id *apikeys.Identity, req *pb.GenerateTextRequest, tr *routeTrace) (*routePlan, error) {
 	placement := router.NormalizePlacement(req.GetPlacement())
+	restricted := isRestricted(req)
+	if restricted {
+		var err error
+		if placement, err = restrictedPlacement(placement); err != nil {
+			return nil, err
+		}
+		ctx = withRestricted(ctx)
+	}
 	isAuto := req.GetAutoRoute()
 	effortSpecified := req.GetEffortSpecified()
 
@@ -239,10 +248,11 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 			}
 		}
 		return &routePlan{
-			effort:    effort,
-			models:    models,
-			routeMode: routeMode,
-			placement: placement,
+			effort:     effort,
+			models:     models,
+			routeMode:  routeMode,
+			placement:  placement,
+			restricted: restricted,
 		}, nil
 
 	case isAuto:
@@ -328,5 +338,6 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 		shadowModel:      shadowModel,
 		shadowPercentage: shadowPct,
 		shadowEval:       shadowEval,
+		restricted:       restricted,
 	}, nil
 }

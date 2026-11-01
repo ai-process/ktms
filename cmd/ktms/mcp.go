@@ -278,8 +278,9 @@ func (a *app) mcpServer(allowWrite bool) *mcp.Server {
 			Placement    string            `json:"placement,omitempty" jsonschema:"nodes_first, nodes_only, cloud_first or cloud_only"`
 			Model        string            `json:"model_override,omitempty" jsonschema:"a model instead of the rules"`
 			Capabilities []string          `json:"capabilities,omitempty" jsonschema:"capabilities the request needs, e.g. google_search"`
+			DataClass    string            `json:"data_classification,omitempty" jsonschema:"restricted: the request stays on self-hosted nodes"`
 		}) (any, error) {
-			req, err := explainRequest(in.Key, in.Effort, in.AutoRoute, in.Attributes, in.Placement, in.Model, in.Capabilities)
+			req, err := explainRequest(in.Key, in.Effort, in.AutoRoute, in.Attributes, in.Placement, in.Model, in.Capabilities, in.DataClass)
 			if err != nil {
 				return nil, err
 			}
@@ -558,6 +559,7 @@ func (a *app) addWriteTools(srv *mcp.Server, tool func(name, title, desc string,
 		RPMLimit      int32    `json:"rpm_limit,omitempty" jsonschema:"calls per minute, 0 unlimited"`
 		TPMLimit      int64    `json:"tpm_limit,omitempty" jsonschema:"tokens per minute, 0 unlimited"`
 		AllowedMCP    []string `json:"allowed_mcp,omitempty" jsonschema:"MCP servers (server) and tools (server/tool) a key with the mcp scope may use; empty means any"`
+		DataClass     string   `json:"data_classification,omitempty" jsonschema:"restricted keeps every call of the key on self-hosted nodes"`
 	}
 	mcp.AddTool(srv, tool("mint_key", "Mint a client key", "Mint a client API key. The key is returned once, for the user: do not repeat it later.", change),
 		func(ctx context.Context, _ *mcp.CallToolRequest, in mintIn) (*mcp.CallToolResult, any, error) {
@@ -567,7 +569,7 @@ func (a *app) addWriteTools(srv *mcp.Server, tool func(name, title, desc string,
 			}
 			var plain string
 			err := a.callCtx(ctx, func(ctx context.Context, c pb.AdminServiceClient) error {
-				req, err := mintRequest(ctx, c, in.Name, scopes, in.Organization, in.Team, policy(in.AllowedModels, in.RPMLimit, in.TPMLimit, in.AllowedMCP))
+				req, err := mintRequest(ctx, c, in.Name, scopes, in.Organization, in.Team, policy(in.AllowedModels, in.RPMLimit, in.TPMLimit, in.AllowedMCP, in.DataClass))
 				if err != nil {
 					return err
 				}
@@ -596,8 +598,9 @@ func (a *app) addWriteTools(srv *mcp.Server, tool func(name, title, desc string,
 			RPMLimit      int32    `json:"rpm_limit,omitempty" jsonschema:"calls per minute, 0 unlimited"`
 			TPMLimit      int64    `json:"tpm_limit,omitempty" jsonschema:"tokens per minute, 0 unlimited"`
 			AllowedMCP    []string `json:"allowed_mcp,omitempty" jsonschema:"MCP servers (server) and tools (server/tool) a key with the mcp scope may use; empty means any"`
+			DataClass     string   `json:"data_classification,omitempty" jsonschema:"restricted keeps every call of the key on self-hosted nodes; unrestricted lifts it; left out keeps the current one"`
 		}) (string, error) {
-			_, err := c.SetAPIKeyPolicy(ctx, &pb.SetAPIKeyPolicyRequest{Name: in.Name, Policy: policy(in.AllowedModels, in.RPMLimit, in.TPMLimit, in.AllowedMCP)})
+			_, err := c.SetAPIKeyPolicy(ctx, &pb.SetAPIKeyPolicyRequest{Name: in.Name, Policy: policy(in.AllowedModels, in.RPMLimit, in.TPMLimit, in.AllowedMCP, in.DataClass)})
 			return "Policy of " + in.Name + " replaced.", err
 		}))
 

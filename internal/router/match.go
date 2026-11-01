@@ -23,15 +23,16 @@ func CanaryKey(attrs map[string]string) string {
 	return attrs["user_id"]
 }
 
-// SanitizeAttributes strips reserved internal attributes (shadow, is_shadow, shadow_eval, org_id, team_id)
-// to prevent client forgery of billing exemption, automated evaluation, or tenant impersonation.
+// SanitizeAttributes strips reserved internal attributes (shadow, is_shadow, shadow_eval, org_id, team_id,
+// data_classification) to prevent client forgery of billing exemption, automated evaluation, tenant
+// impersonation, or a restricted mark on a call that was not.
 func SanitizeAttributes(attrs map[string]string) map[string]string {
 	if attrs == nil {
 		return nil
 	}
 	cleaned := make(map[string]string, len(attrs))
 	for k, v := range attrs {
-		if k == "shadow" || k == "is_shadow" || k == "shadow_eval" || k == "org_id" || k == "team_id" {
+		if k == "shadow" || k == "is_shadow" || k == "shadow_eval" || k == "org_id" || k == "team_id" || k == "data_classification" {
 			continue
 		}
 		cleaned[k] = v

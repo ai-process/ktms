@@ -19,8 +19,10 @@ description: Plan and prepare a migration to Keystone (KTMS) from LiteLLM Proxy 
 | Spend logs | Usage events in light-tokenmeter |
 
 Clients stop picking aliases: they send an effort (`auto`, `auto:low|medium|high`) and
-attributes. On `/v1`, `temperature`, `top_p`, `stop`, `seed` and penalties are accepted and
-ignored, and `n` must be 1: flag every client that depends on them.
+attributes. On `/v1`, penalties are accepted and ignored and `n` must be 1; `temperature`,
+`top_p`, `stop` and `seed` reach the model as far as it takes them (Keystone 1.4 and earlier
+ignore them, see [Sampling](https://github.com/ai-process/ktms/blob/main/README.md#sampling)).
+Flag every client that depends on them.
 
 ## Steps
 

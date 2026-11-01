@@ -135,6 +135,11 @@ func (s *ProxyServer) ExplainRoute(ctx context.Context, id *apikeys.Identity, in
 		Placement:          in.GetPlacement(),
 		ModelOverride:      in.GetModelOverride(),
 		EnableGoogleSearch: slices.Contains(in.GetCapabilities(), registry.CapabilityGoogleSearch),
+		DataClassification: in.GetDataClassification(),
+	}
+	if err := classify(ctx, id, req); err != nil {
+		out.Error = statusText(err)
+		return out
 	}
 	plan, err := s.planRoute(ctx, snap, id, req, tr)
 

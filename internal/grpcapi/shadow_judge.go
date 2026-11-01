@@ -27,8 +27,11 @@ func (j judgeThrottle) Reserve(context.Context, *proxydb.Model, string, string, 
 
 func (j judgeThrottle) Settle(*router.Reservation, llm.TokensUsage) {}
 
-func (s *ProxyServer) makeShadowEvaluator(id *apikeys.Identity, chat *llm.ChatContext, attrs map[string]string) func(context.Context, *proxydb.Model, *proxydb.Model, *llm.Response, *llm.Response) {
+func (s *ProxyServer) makeShadowEvaluator(id *apikeys.Identity, chat *llm.ChatContext, attrs map[string]string, restricted bool) func(context.Context, *proxydb.Model, *proxydb.Model, *llm.Response, *llm.Response) {
 	return func(ctx context.Context, primaryModel, shadowModel *proxydb.Model, primaryResp, shadowResp *llm.Response) {
+		if restricted {
+			ctx = withRestricted(ctx)
+		}
 		prompt := promptTextFromChat(chat)
 		s.evaluateShadowJudge(ctx, id, prompt, attrs, primaryModel, shadowModel, primaryResp, shadowResp)
 	}

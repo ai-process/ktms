@@ -25,6 +25,7 @@ type BedrockAdapter struct {
 	throttle   *llm.ThrottleControl
 	model      string
 	softSchema bool
+	sampling   llm.SamplingSupport
 }
 
 func NewBedrockAdapter(client BedrockRuntimeClient, model string, throttle *llm.ThrottleControl) *BedrockAdapter {
@@ -37,6 +38,9 @@ func NewBedrockAdapter(client BedrockRuntimeClient, model string, throttle *llm.
 
 // SetSoftSchema switches this adapter to prompt-described schemas.
 func (a *BedrockAdapter) SetSoftSchema(soft bool) { a.softSchema = soft }
+
+// SetSampling sets the sampling fields the model takes.
+func (a *BedrockAdapter) SetSampling(s llm.SamplingSupport) { a.sampling = s }
 
 func (a *BedrockAdapter) GenerateText(ctx context.Context, chat *llm.ChatContext) (*llm.Response, error) {
 	ceiling := chat.GetMaxOutputTokens()
@@ -477,10 +481,20 @@ func (a *BedrockAdapter) buildCommonConfig(chat *llm.ChatContext, ceiling int) (
 		}
 	}
 
+	inf := types.InferenceConfiguration{}
 	if ceiling > 0 {
-		infConfig = &types.InferenceConfiguration{
-			MaxTokens: aws.Int32(int32(ceiling)),
-		}
+		inf.MaxTokens = aws.Int32(int32(ceiling))
+	}
+	s, _ := a.sampling.Apply(chat.GetSampling())
+	if s.Temperature != nil {
+		inf.Temperature = aws.Float32(float32(*s.Temperature))
+	}
+	if s.TopP != nil {
+		inf.TopP = aws.Float32(float32(*s.TopP))
+	}
+	inf.StopSequences = s.Stop
+	if inf.MaxTokens != nil || inf.Temperature != nil || inf.TopP != nil || len(inf.StopSequences) > 0 {
+		infConfig = &inf
 	}
 
 	if chat.GetResponseSchema() != nil && !a.softSchema {

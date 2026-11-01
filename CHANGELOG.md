@@ -8,6 +8,15 @@ All notable changes to KTMS are listed here. The format follows
 ## [Unreleased]
 
 ### Added
+- `data_classification: restricted` on a key's policy, a team, or a call (`GenerateTextRequest`,
+  `ExplainRouteRequest`, `data_classification` on `/v1/chat/completions`, the
+  `X-KTMS-Data-Classification` header or `x-ktms-data-classification` gRPC metadata) keeps calls on
+  self-hosted nodes with no cloud fallback: chains keep only node models, the auto-effort and
+  shadow judges run only on nodes, the response cache is skipped, and embeddings, judgments,
+  speech, images and batches need a node model. Usage events carry it in meta. In
+  `SetAPIKeyPolicy` and `UpdateTeam` an empty value keeps the current one and `unrestricted` lifts
+  it. `ktms keys mint`, `ktms keys policy set` and `ktms route explain` take
+  `--data-classification`, and teams take it in the configuration file.
 - Anthropic Messages API (experimental): `POST /v1/messages`, so Claude Code
   (`ANTHROPIC_BASE_URL`) and the Anthropic SDKs run through Keystone with a KTMS key in
   `x-api-key` or `Authorization`, `model: "auto"` or a registry model id. It shares routing,
@@ -16,6 +25,13 @@ All notable changes to KTMS are listed here. The format follows
   events, and returns errors in the Messages shape. `POST /v1/messages/count_tokens` returns an
   estimate. Claude Code's session-scoped `metadata.user_id` becomes its account or device as the
   user, with the session in `attributes["session_id"]`.
+- Sampling: `temperature`, `top_p`, `stop` and `seed` on `GenerateTextRequest`, chat completions
+  and `/v1/messages` (`stop_sequences`) reach the serving model as far as its API takes them. A
+  field the model does not take is left out of its request, and the response names it, or a value
+  lowered to the vendor's cap, in `ignored_parameters` and the `X-KTMS-Ignored-Params` header;
+  `top_k` on `/v1/messages` is named there too. The new `no_sampling` and
+  `sampling` capabilities correct a model whose id misleads the per-vendor table. Sampling is part
+  of the response cache key.
 
 - Node owners override the schedule for a while: `ktms-node pause [10m | --until-next] [--now]`,
   `ktms-node level 30 --for 1h` and `ktms-node resume`, from 1 minute to 24 hours, ending by the
@@ -48,6 +64,10 @@ All notable changes to KTMS are listed here. The format follows
 - Token budget reservations count tool definitions and the tool calls in the conversation.
 - A node that ends a pause without having warmed its models (no time for `--warmup`) loads them
   right after the pause instead of on the first request.
+- Chat completions and `/v1/messages` no longer ignore `temperature`, `top_p` and stop sequences,
+  and chat completions no longer ignore `seed`: a client that sends them changes the answer. A
+  `temperature` outside 0..2, a `top_p` outside 0..1 or more than 16 stop sequences now gets
+  `400`.
 
 ## [1.4.0] - 2026-10-27
 

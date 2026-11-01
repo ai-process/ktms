@@ -14,6 +14,7 @@ import (
 	"math"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -100,10 +101,18 @@ func (a *OpenAIAPI) serve(fullMethod string, h apiHandler, writeErr func(http.Re
 		} else if key := r.Header.Get("X-Api-Key"); apiKeyHeader && key != "" {
 			md.Set(metadataKeyAuthorization, "Bearer "+key)
 		}
+		if v := r.Header.Get("X-KTMS-Data-Classification"); v != "" {
+			md.Set(metadataKeyDataClassification, v)
+		}
 		ctx := metadata.NewIncomingContext(r.Context(), md)
 		id, aerr := authorize(ctx, a.verifier, fullMethod)
 		if aerr != nil {
 			err = aerr
+			writeErr(w, err)
+			return
+		}
+		// A gateway in front can restrict any call; it cannot lift a key's restriction.
+		if ctx, err = restrictCall(ctx); err != nil {
 			writeErr(w, err)
 			return
 		}
@@ -124,6 +133,10 @@ type chatRequest struct {
 	MaxCompletionTokens int32             `json:"max_completion_tokens"`
 	ResponseFormat      *responseFormat   `json:"response_format"`
 	ReasoningEffort     string            `json:"reasoning_effort"`
+	Temperature         *float64          `json:"temperature"`
+	TopP                *float64          `json:"top_p"`
+	Stop                json.RawMessage   `json:"stop"` // a string or an array of them
+	Seed                *int64            `json:"seed"`
 	User                string            `json:"user"`
 	Metadata            map[string]string `json:"metadata"`
 	N                   *int              `json:"n"`
@@ -136,6 +149,8 @@ type chatRequest struct {
 	EnableCache *bool `json:"enable_cache,omitempty"`
 	// Proxy extension: infrastructure locality preference (nodes_first, nodes_only, cloud_first, cloud_only).
 	Placement string `json:"placement,omitempty"`
+	// Proxy extension: "restricted" keeps the request on self-hosted nodes.
+	DataClassification string `json:"data_classification,omitempty"`
 }
 
 type streamOptions struct {
@@ -606,9 +621,14 @@ func (req *chatRequest) toProto(ctx context.Context, headerPlacement string) (*p
 		Placement:          dec.Placement,
 		AutoRoute:          dec.IsAuto,
 		EffortSpecified:    dec.EffortSpecified,
+		DataClassification: req.DataClassification,
 	}
 	if out.MaxOutputTokens == 0 {
 		out.MaxOutputTokens = req.MaxTokens
+	}
+	out.Temperature, out.TopP, out.Seed = req.Temperature, req.TopP, req.Seed
+	if out.Stop, err = stopSequences(req.Stop); err != nil {
+		return nil, err
 	}
 	if out.MaxOutputTokens < 0 {
 		return nil, invalid("max_tokens must not be negative")
@@ -958,6 +978,7 @@ type routeInfo interface {
 	GetRouteMode() string
 	GetJudgeScore() float64
 	GetJudgeModel() string
+	GetIgnoredParameters() []string
 }
 
 func setRouteHeaders(w http.ResponseWriter, r routeInfo) {
@@ -968,6 +989,43 @@ func setRouteHeaders(w http.ResponseWriter, r routeInfo) {
 		setObservabilityHeader(w, "Judge-Score", fmt.Sprintf("%.2f", r.GetJudgeScore()))
 	}
 	setObservabilityHeader(w, "Judge-Model", r.GetJudgeModel())
+	// New with no X-LLM-Proxy- twin, so not through setObservabilityHeader.
+	if ignored := r.GetIgnoredParameters(); len(ignored) > 0 {
+		w.Header().Set(headerIgnoredParams, strings.Join(ignored, ","))
+	}
+}
+
+// headerIgnoredParams lists the sampling fields the serving model did not take.
+const headerIgnoredParams = "X-KTMS-Ignored-Params"
+
+// addIgnoredParam adds a field the HTTP layer itself drops to the header.
+func addIgnoredParam(w http.ResponseWriter, name string) {
+	if v := w.Header().Get(headerIgnoredParams); v != "" {
+		name = v + "," + name
+	}
+	w.Header().Set(headerIgnoredParams, name)
+}
+
+// stopSequences reads OpenAI's stop: one string, an array of them, or null.
+func stopSequences(raw json.RawMessage) ([]string, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var one string
+	if json.Unmarshal(raw, &one) == nil {
+		return nonEmpty([]string{one}), nil
+	}
+	var many []string
+	if err := json.Unmarshal(raw, &many); err != nil {
+		return nil, invalid("stop must be a string or an array of strings")
+	}
+	return nonEmpty(many), nil
+}
+
+// nonEmpty drops empty stop sequences: they stop nothing, and HTTP clients
+// sent them while the field was ignored.
+func nonEmpty(stop []string) []string {
+	return slices.DeleteFunc(slices.Clone(stop), func(s string) bool { return s == "" })
 }
 
 func setCacheHeader(w http.ResponseWriter, enabled, hit bool) {

@@ -199,6 +199,7 @@ type OpenAIAdapter struct {
 	// verifies the reply against the schema afterwards.
 	softSchema  bool
 	thinkingOff map[string]any
+	sampling    llm.SamplingSupport
 }
 
 func NewOpenAIAdapter(client *openai.Client, model string, throttle *llm.ThrottleControl) *OpenAIAdapter {
@@ -226,6 +227,9 @@ func (a *OpenAIAdapter) SetHTTPClient(client *http.Client) {
 
 // SetSoftSchema switches this adapter to prompt-described schemas.
 func (a *OpenAIAdapter) SetSoftSchema(soft bool) { a.softSchema = soft }
+
+// SetSampling sets the sampling fields the model takes.
+func (a *OpenAIAdapter) SetSampling(s llm.SamplingSupport) { a.sampling = s }
 
 // SetThinkingOff sets the request fields that turn the vendor's default
 // reasoning off.
@@ -405,6 +409,20 @@ func (a *OpenAIAdapter) buildCompletionParams(chat *llm.ChatContext, messages []
 			budget = math.MaxInt32
 		}
 		params.MaxCompletionTokens = openai.Int(budget)
+	}
+
+	s, _ := a.sampling.Apply(chat.GetSampling())
+	if s.Temperature != nil {
+		params.Temperature = openai.Float(*s.Temperature)
+	}
+	if s.TopP != nil {
+		params.TopP = openai.Float(*s.TopP)
+	}
+	if len(s.Stop) > 0 {
+		params.Stop = openai.ChatCompletionNewParamsStopUnion{OfStringArray: s.Stop}
+	}
+	if s.Seed != nil {
+		params.Seed = openai.Int(*s.Seed)
 	}
 
 	if chat.GetResponseSchema() != nil && !a.softSchema {

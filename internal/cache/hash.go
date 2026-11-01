@@ -42,6 +42,19 @@ func writeParams(h io.Writer, req *pb.GenerateTextRequest, withRequestInstructio
 	}
 	fmt.Fprintf(h, "max_tokens:%d\n", req.GetMaxOutputTokens())
 	fmt.Fprintf(h, "search:%t\n", req.GetEnableGoogleSearch())
+	// Written only when set, so keys of requests without sampling stay valid.
+	if req.Temperature != nil {
+		fmt.Fprintf(h, "temperature:%g\n", req.GetTemperature())
+	}
+	if req.TopP != nil {
+		fmt.Fprintf(h, "top_p:%g\n", req.GetTopP())
+	}
+	for _, s := range req.GetStop() {
+		fmt.Fprintf(h, "stop:%q\n", s)
+	}
+	if req.Seed != nil {
+		fmt.Fprintf(h, "seed:%d\n", req.GetSeed())
+	}
 
 	// Sorted attributes
 	if attrs := req.GetAttributes(); len(attrs) > 0 {

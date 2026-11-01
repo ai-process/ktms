@@ -19,12 +19,9 @@ Every 1.x release is additive: new RPCs, fields, endpoints and settings. Anythin
 ### Coding agents and API
 
 - OpenAI Responses API at `/v1/responses` for Codex CLI and the Agents SDK.
-- `temperature`, `top_p`, `stop` and `seed` passed through to the chosen model.
 
 ### Routing and providers
 
-- `data_classification: restricted`: requests stay on your own GPU nodes, with no fallback to a
-  cloud vendor.
 - A pool of keys per vendor, spread across requests and rotated around vendor rate limits.
 - An explicit `openai_compatible` vendor for any OpenAI-compatible endpoint.
 
