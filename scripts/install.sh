@@ -79,7 +79,9 @@ random_hex() { od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'; }
 random_b64() { head -c "$1" /dev/urandom | base64 | tr -d '\n'; }
 
 # Value of KEY in an existing .env, so a re-run keeps its secrets.
-env_get() { [ -f "$DIR/.env" ] && sed -n "s/^$1=//p" "$DIR/.env" | tail -n 1 || true; }
+env_get() {
+	if [ -f "$DIR/.env" ]; then sed -n "s/^$1=//p" "$DIR/.env" | tail -n 1; fi
+}
 
 # Asks on the terminal even when the script itself arrives on stdin from curl.
 ask() {
