@@ -38,8 +38,9 @@ jobs:
 
       - name: Installer script tests
         run: |
-          shellcheck -s sh scripts/install-node.sh scripts/install-node_test.sh
+          shellcheck -s sh scripts/install-node.sh scripts/install-node_test.sh scripts/install.sh scripts/install_test.sh
           sh scripts/install-node_test.sh
+          sh scripts/install_test.sh
 
   # A known vulnerability that our code reaches fails the build; one in a
   # dependency we never call is only reported.
