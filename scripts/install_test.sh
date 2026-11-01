@@ -59,7 +59,7 @@ has "no vendor key reported" "HAS_VENDOR=0" "$first"
 has "client key generated" "KTMS_CLIENT_KEY=ktms_local_" "$first"
 has "keyring generated" "KTMS_ENCRYPTION_KEYS=1:" "$first"
 has "tag pinned" "KTMS_TAG=1.4.0" "$first"
-eq ".env is private" "600" "$(stat -f %Lp "$D/.env" 2>/dev/null || stat -c %a "$D/.env")"
+eq ".env is private" "600" "$(stat -c %a "$D/.env" 2>/dev/null || stat -f %Lp "$D/.env")"
 
 compose=$(cat "$D/compose.yaml")
 hasnt "compose does not build" "build:" "$compose"
