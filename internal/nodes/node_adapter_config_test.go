@@ -63,6 +63,11 @@ func TestPoolAdapter_ThinkingOffFollowsNodeEngine(t *testing.T) {
 		t.Fatal("ollama node must not get the DeepSeek thinking switch")
 	}
 
+	got = captureNodeBody(t, registry.EngineFreeToken, []string{registry.CapabilityNoThinking})
+	if string(got["reasoning_effort"]) != `"none"` {
+		t.Fatalf("freetoken node: reasoning_effort = %s, want \"none\"", got["reasoning_effort"])
+	}
+
 	got = captureNodeBody(t, "vllm", []string{registry.CapabilityNoThinking})
 	if _, ok := got["reasoning_effort"]; ok {
 		t.Fatalf("vllm node got reasoning_effort: %s", got["reasoning_effort"])

@@ -8,6 +8,12 @@ All notable changes to KTMS are listed here. The format follows
 ## [Unreleased]
 
 ### Added
+- Nodes running [FreeToken](https://github.com/FlashML-org/FreeToken) (`--engine freetoken`):
+  the agent reads the model and its context length from `/v1/models`, whether it is loaded from
+  `/health`, and the queue from `/v1/stats`, so a busy node hands calls to the next model in the
+  chain. It defaults to `http://127.0.0.1:1919` and `--max-concurrent 4`, takes the engine key
+  from `FREETOKEN_API_KEY`, marks the models `no_structured_output` (and `vision` when the server
+  takes images), and `doctor` checks the `ft` binary, the server, its key and the model.
 - `scripts/install.sh`, served as `curl -fsSL https://ai-process.dev/install.sh | sh`: runs Keystone
   with Postgres and Redis from the published images, no clone or build. It generates the keyring,
   admin and client keys, takes vendor keys from the environment or asks for one, and keeps its

@@ -43,7 +43,7 @@ message RegisterNodeRequest {
   string node_id = 1;
   string name = 2;
   string endpoint = 3;
-  string engine = 4; // ollama | vllm | tgi | llamacpp | openai
+  string engine = 4; // ollama | vllm | tgi | llamacpp | freetoken | openai
   string node_auth_token = 5; // optional bearer token for the node's own endpoint; encrypted at rest
   NodeResources resources = 6;
   repeated NodeModelSpec models = 7;

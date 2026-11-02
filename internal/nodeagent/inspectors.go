@@ -31,6 +31,8 @@ func GetInspector(engine string) EngineInspector {
 		return &LlamaCppInspector{}
 	case "decisions":
 		return &DecisionsInspector{}
+	case registry.EngineFreeToken:
+		return &FreeTokenInspector{}
 	default:
 		return &GenericOpenAIInspector{}
 	}

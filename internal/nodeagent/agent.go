@@ -90,9 +90,13 @@ func ResolveURLs(engineURL, endpoint string) (poll, report string) {
 const DefaultEngineURL = "http://127.0.0.1:11434"
 
 func NewAgent(cfg AgentConfig) *Agent {
+	inspector := GetInspector(cfg.Engine)
+	if ft, ok := inspector.(*FreeTokenInspector); ok {
+		ft.MaxRunning = cfg.MaxConcurrent
+	}
 	return &Agent{
 		cfg:       cfg,
-		inspector: GetInspector(cfg.Engine),
+		inspector: inspector,
 		drainChan: make(chan struct{}, 1),
 		stopChan:  make(chan struct{}),
 		endpoint:  cfg.Endpoint,

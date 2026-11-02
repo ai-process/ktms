@@ -322,10 +322,10 @@ Or build the image yourself: `docker build -t ktms .`
 
 ### Node agent
 
-`bin/ktms-node` runs next to a local inference engine (`ollama`, `vllm`, `tgi`, `llamacpp`),
+`bin/ktms-node` runs next to a local inference engine (`ollama`, `vllm`, `tgi`, `llamacpp`, `freetoken`),
 registers it with Keystone and sends heartbeats with the loaded models, GPU metrics and the
 engine's load: running and waiting requests from the `/metrics` of vLLM, TGI and llama.cpp
-(start `llama-server` with `--metrics`). Ollama has no such API, so its nodes report no queue. It
+(start `llama-server` with `--metrics`), and from FreeToken's `/v1/stats`. Ollama has no such API, so its nodes report no queue. It
 authenticates with a node key minted with the `MintNodeKey` admin RPC. KTMS dials the node,
 so the node must be reachable; the agent can do that itself:
 
@@ -348,7 +348,7 @@ cloudflared older than 2026.10.3 trusts the eMudhra intermediates whose keys lea
 
 Flags: `--proxy-addr` (default `127.0.0.1:50051`), `--tls` (dial over TLS with the system CA
 roots, for a proxy behind a TLS load balancer; off by default), `--node-id` (defaults to the
-hostname), `--node-name`, `--engine` (`ollama`, `vllm`, `tgi`, `llamacpp`, `decisions`, `generic`),
+hostname), `--node-name`, `--engine` (`ollama`, `vllm`, `tgi`, `llamacpp`, `freetoken`, `decisions`, `generic`),
 `--base-weight`, `--max-concurrent`.
 `--judge-model` (repeat or comma-separate) tags specific models on the node with the `judge` capability
 for local JEPA / decision evaluation, routing `/v1/decisions` and `Judge` calls to them.
@@ -361,6 +361,31 @@ models and registers the node with the allowed ones; it refuses only when none i
 `--expose` is `none` (default; you supply `--endpoint`) or `cloudflared`, with
 `--cloudflared-path` to pick the binary. `NODE_AUTH_TOKEN` is the bearer the engine itself
 requires, if any.
+
+#### FreeToken
+
+[FreeToken](https://github.com/FlashML-org/FreeToken) runs large MoE models on one consumer
+NVIDIA RTX (30 to 50 series, Linux or Windows; not on a Mac, AMD or Intel): expert weights stay in
+RAM and the GPU caches the experts in use. `ft serve` runs one model per process:
+
+```bash
+export FREETOKEN_API_KEY=...              # optional; ft serve and the agent both read it
+ft serve --model <hf-id or path> --served-model-name qwen3.6-35b
+./bin/ktms-node --proxy-addr proxy.example.com:443 --tls --engine freetoken
+```
+
+With `--engine freetoken` the agent polls `http://127.0.0.1:1919`, FreeToken's default, and
+sends `FREETOKEN_API_KEY` as the engine's bearer when `NODE_AUTH_TOKEN` is not set. The model is
+reported with its context length from `/v1/models` and as loaded once `/health` says `ok`; while
+the weights load it is reported cold, and a server whose `/health` says `error` reports no models.
+FreeToken rejects `response_format`, so its models carry `no_structured_output` (the shape is asked
+for in the prompt and checked); a server that accepts images adds `vision`. The load comes from
+`requests.active` in `/v1/stats`: requests above `--max-concurrent`, which defaults to 4 like
+FreeToken's `--max-running-requests`, count as waiting, so a node busy with other clients sends
+calls to the next model in the chain. Keep the two values equal. `no_thinking` sends
+`reasoning_effort: none`. `ktms-node doctor` checks that `ft` is installed, the server answers and
+takes the key, and the model is loaded. `install-node.sh` installs Ollama only; install FreeToken
+yourself.
 
 The agent keeps a usage log for the machine's owner in `--stats-dir` (default
 `~/.ktms-node/stats`, or `$KTMS_HOME/stats`): every minute it pulls the requests the proxy sent

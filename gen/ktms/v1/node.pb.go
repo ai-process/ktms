@@ -296,7 +296,7 @@ type RegisterNodeRequest struct {
 	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Endpoint      string                 `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
-	Engine        string                 `protobuf:"bytes,4,opt,name=engine,proto3" json:"engine,omitempty"`                                      // ollama | vllm | tgi | llamacpp | openai
+	Engine        string                 `protobuf:"bytes,4,opt,name=engine,proto3" json:"engine,omitempty"`                                      // ollama | vllm | tgi | llamacpp | freetoken | openai
 	NodeAuthToken string                 `protobuf:"bytes,5,opt,name=node_auth_token,json=nodeAuthToken,proto3" json:"node_auth_token,omitempty"` // optional bearer token for the node's own endpoint; encrypted at rest
 	Resources     *NodeResources         `protobuf:"bytes,6,opt,name=resources,proto3" json:"resources,omitempty"`
 	Models        []*NodeModelSpec       `protobuf:"bytes,7,rep,name=models,proto3" json:"models,omitempty"`

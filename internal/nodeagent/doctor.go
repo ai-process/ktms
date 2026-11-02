@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 // Level ranks a finding. Only a problem makes the doctor exit non-zero.
@@ -208,17 +209,29 @@ func (d *Doctor) checkEngine(ctx context.Context) (models []*pb.NodeModelSpec, f
 	if d.Cfg.EngineToken != "" {
 		req.Header.Set("Authorization", "Bearer "+d.Cfg.EngineToken)
 	}
+	freeToken := d.freeToken()
 	resp, err := d.HTTP.Do(req)
 	if err != nil {
+		fix := "Start it, or point --engine-url at it. With install-node.sh: macOS `launchctl print gui/$(id -u)/com.ktms.ollama`, Linux `systemctl --user status ktms-ollama`; its Ollama listens on 127.0.0.1:11435, a stock Ollama on 11434."
+		if freeToken {
+			fix = "Start it: ft serve --model <model> (it listens on 127.0.0.1:1919), or point --engine-url at it."
+			if _, lerr := d.LookPath("ft"); lerr != nil {
+				fix = "Install FreeToken (https://github.com/FlashML-org/FreeToken; NVIDIA RTX 30-50 on Linux or Windows), then start it: ft serve --model <model>."
+			}
+		}
 		return nil, []Finding{{"Engine", LevelProblem,
 			fmt.Sprintf("The inference engine does not answer at %s.", d.Cfg.EngineURL),
-			"Start it, or point --engine-url at it. With install-node.sh: macOS `launchctl print gui/$(id -u)/com.ktms.ollama`, Linux `systemctl --user status ktms-ollama`; its Ollama listens on 127.0.0.1:11435, a stock Ollama on 11434. (" + shortErr(err) + ")"}}, false
+			fix + " (" + shortErr(err) + ")"}}, false
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return nil, []Finding{{"Engine", LevelProblem, fmt.Sprintf("The engine at %s refuses this agent (HTTP %d).", d.Cfg.EngineURL, resp.StatusCode), "Set NODE_AUTH_TOKEN to the token the engine expects."}}, false
+		fix := "Set NODE_AUTH_TOKEN to the token the engine expects."
+		if freeToken {
+			fix = "Set NODE_AUTH_TOKEN or FREETOKEN_API_KEY to the key `ft serve` was started with (--api-key)."
+		}
+		return nil, []Finding{{"Engine", LevelProblem, fmt.Sprintf("The engine at %s refuses this agent (HTTP %d).", d.Cfg.EngineURL, resp.StatusCode), fix}}, false
 	case resp.StatusCode >= 500:
 		return nil, []Finding{{"Engine", LevelProblem, fmt.Sprintf("The engine at %s is failing (HTTP %d).", d.Cfg.EngineURL, resp.StatusCode), "Check the engine's own log."}}, false
 	}
@@ -251,6 +264,10 @@ func (d *Doctor) checkModel(models []*pb.NodeModelSpec, paused bool) []Finding {
 			if !m.GetIsWarm() && paused {
 				return []Finding{{"Model", LevelOK, fmt.Sprintf("%s is installed; not loaded while the schedule pauses the node.", d.Model), ""}}
 			}
+			if !m.GetIsWarm() && d.freeToken() {
+				return []Finding{{"Model", LevelWarn, fmt.Sprintf("FreeToken is still loading %s; the proxy prefers other nodes until it is ready.", d.Model),
+					"Wait for " + engineBaseURL(d.Cfg.EngineURL) + "/health to report status ok."}}
+			}
 			if !m.GetIsWarm() {
 				return []Finding{{"Model", LevelWarn, fmt.Sprintf("%s is installed but not loaded in memory. The first request will be slow and the proxy may prefer other nodes.", d.Model),
 					`Load it and keep it loaded: curl ` + d.Cfg.EngineURL + `/api/generate -d '{"model":"` + d.Model + `","keep_alive":-1}'`}}
@@ -258,8 +275,14 @@ func (d *Doctor) checkModel(models []*pb.NodeModelSpec, paused bool) []Finding {
 			return []Finding{{"Model", LevelOK, fmt.Sprintf("%s is installed and loaded.", d.Model), ""}}
 		}
 	}
-	return []Finding{{"Model", LevelProblem, fmt.Sprintf("The model %q is not installed on this engine.", d.Model), "Download it: ollama pull " + d.Model + "."}}
+	fix := "Download it: ollama pull " + d.Model + "."
+	if d.freeToken() {
+		fix = "A FreeToken server serves one model: restart ft serve with --model for it, or --served-model-name " + d.Model + "."
+	}
+	return []Finding{{"Model", LevelProblem, fmt.Sprintf("The model %q is not installed on this engine.", d.Model), fix}}
 }
+
+func (d *Doctor) freeToken() bool { return strings.EqualFold(d.Cfg.Engine, registry.EngineFreeToken) }
 
 func sameModel(a, b string) bool {
 	if a == "" || b == "" {
