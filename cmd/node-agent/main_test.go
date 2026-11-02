@@ -94,19 +94,19 @@ func TestFreeTokenDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.EngineURL != nodeagent.FreeTokenEngineURL || cfg.MaxConcurrent != nodeagent.FreeTokenMaxRunning || cfg.EngineToken != "ft-key" || cfg.NodeAuthToken != "ft-key" {
+	if cfg.EngineURL != nodeagent.FreeTokenEngineURL || cfg.MaxConcurrent != nodeagent.FreeTokenMaxRunning || cfg.EngineMaxRunning != 0 || cfg.EngineToken != "ft-key" || cfg.NodeAuthToken != "ft-key" {
 		t.Fatalf("defaults %+v", cfg)
 	}
 
 	t.Setenv("NODE_AUTH_TOKEN", "node-token")
 	s = newSettings("test")
-	if err := s.fs.Parse([]string{"--engine", "freetoken", "--max-concurrent", "16", "--engine-url", "http://gpu:2000"}); err != nil {
+	if err := s.fs.Parse([]string{"--engine", "freetoken", "--max-concurrent", "16", "--engine-url", "http://gpu:2000", "--engine-max-running", "8"}); err != nil {
 		t.Fatal(err)
 	}
 	if cfg, err = s.config(); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.EngineURL != "http://gpu:2000" || cfg.MaxConcurrent != 16 || cfg.EngineToken != "node-token" {
+	if cfg.EngineURL != "http://gpu:2000" || cfg.MaxConcurrent != 16 || cfg.EngineMaxRunning != 8 || cfg.EngineToken != "node-token" {
 		t.Fatalf("flags must win: %+v", cfg)
 	}
 }

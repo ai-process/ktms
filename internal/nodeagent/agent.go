@@ -38,10 +38,13 @@ type AgentConfig struct {
 	CloudflaredBin string
 	BaseWeight     float64
 	MaxConcurrent  uint32
-	ScheduleFile   string        // capacity levels by local time; missing = 100%
-	Warmup         time.Duration // load the model this long before a paused window ends
-	StatsDir       string        // where the usage log is kept for the owner; "" = none
-	StatsRetention time.Duration // days of usage log kept; 0 = all
+	// EngineMaxRunning is how many requests the engine runs at once, for
+	// engines that report only a total (FreeToken); 0 is the engine default.
+	EngineMaxRunning uint32
+	ScheduleFile     string        // capacity levels by local time; missing = 100%
+	Warmup           time.Duration // load the model this long before a paused window ends
+	StatsDir         string        // where the usage log is kept for the owner; "" = none
+	StatsRetention   time.Duration // days of usage log kept; 0 = all
 }
 
 type Agent struct {
@@ -90,13 +93,9 @@ func ResolveURLs(engineURL, endpoint string) (poll, report string) {
 const DefaultEngineURL = "http://127.0.0.1:11434"
 
 func NewAgent(cfg AgentConfig) *Agent {
-	inspector := GetInspector(cfg.Engine)
-	if ft, ok := inspector.(*FreeTokenInspector); ok {
-		ft.MaxRunning = cfg.MaxConcurrent
-	}
 	return &Agent{
 		cfg:       cfg,
-		inspector: inspector,
+		inspector: InspectorFor(cfg),
 		drainChan: make(chan struct{}, 1),
 		stopChan:  make(chan struct{}),
 		endpoint:  cfg.Endpoint,

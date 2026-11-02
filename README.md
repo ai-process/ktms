@@ -438,14 +438,14 @@ With `--engine freetoken` the agent polls `http://127.0.0.1:1919`, FreeToken's d
 sends `FREETOKEN_API_KEY` as the engine's bearer when `NODE_AUTH_TOKEN` is not set. The model is
 reported with its context length from `/v1/models` and as loaded once `/health` says `ok`; while
 the weights load it is reported cold, and a server whose `/health` says `error` reports no models.
-FreeToken rejects `response_format`, so its models carry `no_structured_output` (the shape is asked
-for in the prompt and checked); a server that accepts images adds `vision`. The load comes from
-`requests.active` in `/v1/stats`: requests above `--max-concurrent`, which defaults to 4 like
-FreeToken's `--max-running-requests`, count as waiting, so a node busy with other clients sends
-calls to the next model in the chain. Keep the two values equal. `no_thinking` sends
-`reasoning_effort: none`. `ktms-node doctor` checks that `ft` is installed, the server answers and
-takes the key, and the model is loaded. `install-node.sh` installs Ollama only; install FreeToken
-yourself.
+The load comes from `requests.active` in `/v1/stats`, which counts every admitted request: those
+above `--engine-max-running` (FreeToken's `--max-running-requests`, default 4) count as waiting, so
+a node busy with other clients hands calls to the next model in the chain. `--max-concurrent`,
+what the proxy sends here, defaults to 4 too. FreeToken rejects `response_format`, so its nodes get
+the schema in the prompt; declare `no_structured_output` on the model as well, and the router
+checks the reply and retries a wrong shape. `no_thinking` sends `reasoning_effort: none`.
+`ktms-node doctor` checks that `ft` is installed, the server answers and takes the key, and the
+model is loaded. `install-node.sh` installs Ollama only; install FreeToken yourself.
 
 ### Production checklist
 

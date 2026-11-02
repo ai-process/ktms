@@ -3,13 +3,14 @@ package nodeagent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"slices"
 	"time"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
-	"github.com/ai-process/ktms/internal/registry"
 )
 
 // FreeToken defaults: `ft serve` listens on 1919 and runs 4 requests at once
@@ -27,6 +28,9 @@ type FreeTokenInspector struct {
 	MaxRunning uint32
 }
 
+// ErrFreeTokenFailed is a server whose /health reports a dead backend.
+var ErrFreeTokenFailed = errors.New("freetoken server failed")
+
 type freeTokenModels struct {
 	Data []struct {
 		ID            string `json:"id"`
@@ -40,9 +44,6 @@ type freeTokenHealth struct {
 }
 
 type freeTokenStats struct {
-	Model struct {
-		InputModalities []string `json:"input_modalities"`
-	} `json:"model"`
 	Requests *struct {
 		Active uint32 `json:"active"`
 	} `json:"requests"`
@@ -54,18 +55,13 @@ func (fi *FreeTokenInspector) Inspect(ctx context.Context, endpoint, authToken s
 	if err := getJSON(ctx, base+"/v1/models", authToken, 5*time.Second, &models); err != nil {
 		return nil, fmt.Errorf("freetoken /v1/models: %w", err)
 	}
+	// /health needs no key; a server still loading may answer it with 503.
 	var health freeTokenHealth
-	if err := getJSON(ctx, base+"/health", "", 5*time.Second, &health); err != nil {
+	if err := getJSON(ctx, base+"/health", "", 5*time.Second, &health, http.StatusServiceUnavailable); err != nil {
 		return nil, fmt.Errorf("freetoken /health: %w", err)
 	}
 	if health.Status == "error" {
-		return nil, fmt.Errorf("freetoken /health: %s", health.Message)
-	}
-	// response_format json_object/json_schema is rejected: the router asks in the prompt.
-	caps := []string{registry.CapabilityNoStructuredOutput}
-	var stats freeTokenStats
-	if getJSON(ctx, base+"/v1/stats", authToken, 5*time.Second, &stats) == nil && slices.Contains(stats.Model.InputModalities, "image") {
-		caps = append(caps, registry.CapabilityVision)
+		return nil, fmt.Errorf("%w: %s", ErrFreeTokenFailed, health.Message)
 	}
 
 	specs := make([]*pb.NodeModelSpec, 0, len(models.Data))
@@ -79,7 +75,6 @@ func (fi *FreeTokenInspector) Inspect(ctx context.Context, endpoint, authToken s
 			RemoteModelName: m.ID,
 			ContextLength:   ctxLen,
 			IsWarm:          health.Status == "ok", // "loading" while weights are read
-			Capabilities:    slices.Clone(caps),
 		})
 	}
 	return specs, nil
@@ -106,7 +101,8 @@ func (fi *FreeTokenInspector) Load(ctx context.Context, endpoint, authToken stri
 	return EngineLoad{Running: limit, Waiting: active - limit}, nil
 }
 
-func getJSON(ctx context.Context, url, authToken string, timeout time.Duration, into any) error {
+// getJSON decodes the body of a 200, or of one of the other statuses given.
+func getJSON(ctx context.Context, url, authToken string, timeout time.Duration, into any, alsoOK ...int) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -121,7 +117,8 @@ func getJSON(ctx context.Context, url, authToken string, timeout time.Duration, 
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && !slices.Contains(alsoOK, resp.StatusCode) {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10)) // keeps the connection reusable
 		return fmt.Errorf("unexpected status %s", resp.Status)
 	}
 	return json.NewDecoder(resp.Body).Decode(into)

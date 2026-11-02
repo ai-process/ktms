@@ -21,7 +21,8 @@ description: Add a local inference node (Ollama, vLLM, llama.cpp on a Mac or a G
 6. A large MoE model (DeepSeek-V4-Flash, Qwen3.6-35B) on one NVIDIA RTX 30-50 under Linux or
    Windows: suggest FreeToken instead of Ollama; it does not run on a Mac, AMD or Intel. Start
    `ft serve --model HF_ID --served-model-name TAG` and the agent with `--engine freetoken`
-   (`FREETOKEN_API_KEY` for both); the installer does not set FreeToken up.
+   (`FREETOKEN_API_KEY` for both); the installer does not set FreeToken up. Give the model
+   `no_structured_output`: FreeToken rejects `response_format`, and the router then checks replies.
 
 ## Check
 

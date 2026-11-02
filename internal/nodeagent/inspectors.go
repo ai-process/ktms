@@ -38,6 +38,15 @@ func GetInspector(engine string) EngineInspector {
 	}
 }
 
+// InspectorFor is GetInspector with the engine settings the config carries.
+func InspectorFor(cfg AgentConfig) EngineInspector {
+	in := GetInspector(cfg.Engine)
+	if ft, ok := in.(*FreeTokenInspector); ok {
+		ft.MaxRunning = cfg.EngineMaxRunning
+	}
+	return in
+}
+
 // Ollama Inspector
 type OllamaInspector struct{}
 

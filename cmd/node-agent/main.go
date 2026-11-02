@@ -53,6 +53,7 @@ type settings struct {
 	keyFile       *string
 	baseWeight    *float64
 	maxConcurrent *uint
+	maxRunning    *uint
 	scheduleFile  *string
 	warmup        *time.Duration
 	stats         *bool
@@ -91,7 +92,8 @@ func newSettings(name string) *settings {
 		engine:        fs.String("engine", "ollama", "Inference engine (ollama, vllm, tgi, llamacpp, freetoken, decisions)"),
 		keyFile:       fs.String("node-key-file", "", "Path to file containing node authentication key"),
 		baseWeight:    fs.Float64("base-weight", 100.0, "Base routing weight"),
-		maxConcurrent: fs.Uint("max-concurrent", 16, "Maximum concurrent requests (freetoken: 4, its --max-running-requests)"),
+		maxConcurrent: fs.Uint("max-concurrent", 16, "Maximum concurrent requests the proxy sends here (freetoken: 4)"),
+		maxRunning:    fs.Uint("engine-max-running", 0, "freetoken: its --max-running-requests; admitted requests above it count as waiting (default 4)"),
 		scheduleFile:  fs.String("schedule-file", "", "Capacity levels by local time, one \"[days] HH:MM-HH:MM level\" rule per line; re-read when it changes, a missing file means 100%"),
 		warmup:        fs.Duration("warmup", 5*time.Minute, "Load the model this long before a paused window ends"),
 		stats:         fs.Bool("stats", true, "Keep a local log of the requests the proxy sends here, for `stats`"),
@@ -154,26 +156,27 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 	}
 
 	return nodeagent.AgentConfig{
-		ProxyAddr:      *s.proxyAddr,
-		TLS:            *s.useTLS,
-		NodeKey:        nodeKey,
-		NodeID:         id,
-		NodeName:       name,
-		EngineURL:      pollURL,
-		Endpoint:       reportURL,
-		Engine:         *s.engine,
-		NodeAuthToken:  engineToken,
-		EngineToken:    engineToken,
-		OnlyModels:     s.onlyModels,
-		JudgeModels:    s.judgeModels,
-		Expose:         *s.expose,
-		CloudflaredBin: *s.cloudflared,
-		BaseWeight:     *s.baseWeight,
-		MaxConcurrent:  uint32(maxConcurrent),
-		ScheduleFile:   *s.scheduleFile,
-		Warmup:         *s.warmup,
-		StatsDir:       statsDir,
-		StatsRetention: keep,
+		ProxyAddr:        *s.proxyAddr,
+		TLS:              *s.useTLS,
+		NodeKey:          nodeKey,
+		NodeID:           id,
+		NodeName:         name,
+		EngineURL:        pollURL,
+		Endpoint:         reportURL,
+		Engine:           *s.engine,
+		NodeAuthToken:    engineToken,
+		EngineToken:      engineToken,
+		OnlyModels:       s.onlyModels,
+		JudgeModels:      s.judgeModels,
+		Expose:           *s.expose,
+		CloudflaredBin:   *s.cloudflared,
+		BaseWeight:       *s.baseWeight,
+		MaxConcurrent:    uint32(maxConcurrent),
+		EngineMaxRunning: uint32(*s.maxRunning),
+		ScheduleFile:     *s.scheduleFile,
+		Warmup:           *s.warmup,
+		StatsDir:         statsDir,
+		StatsRetention:   keep,
 	}, nil
 }
 

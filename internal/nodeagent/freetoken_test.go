@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -66,7 +65,8 @@ func TestFreeTokenInspect(t *testing.T) {
 	if m.GetModelId() != "qwen3.6-35b" || m.GetContextLength() != 32768 || !m.GetIsWarm() {
 		t.Fatalf("model %+v", m)
 	}
-	if !slices.Equal(m.GetCapabilities(), []string{registry.CapabilityNoStructuredOutput, registry.CapabilityVision}) {
+	// Capabilities belong to the registry model: any here would make a --judge-model one not judge-only.
+	if len(m.GetCapabilities()) != 0 {
 		t.Fatalf("capabilities %v", m.GetCapabilities())
 	}
 
@@ -81,13 +81,23 @@ func TestFreeTokenInspectLoadingAndError(t *testing.T) {
 	if err != nil || len(ms) != 1 || ms[0].GetIsWarm() {
 		t.Fatalf("loading: %v, %v", ms, err)
 	}
-	if slices.Contains(ms[0].GetCapabilities(), registry.CapabilityVision) {
-		t.Fatalf("text-only model got vision: %v", ms[0].GetCapabilities())
+	url = freeTokenServer(t, ftHealthError, ftStats(0, `["text"]`))
+	if _, err := (&FreeTokenInspector{}).Inspect(context.Background(), url, freeTokenKey); !errors.Is(err, ErrFreeTokenFailed) || !strings.Contains(err.Error(), "backend worker died") {
+		t.Fatalf("a failed server must report no models: %v", err)
 	}
 
-	url = freeTokenServer(t, ftHealthError, ftStats(0, `["text"]`))
-	if _, err := (&FreeTokenInspector{}).Inspect(context.Background(), url, freeTokenKey); err == nil || !strings.Contains(err.Error(), "backend worker died") {
-		t.Fatalf("a failed server must report no models: %v", err)
+	// A loading server that answers /health with 503 is cold, not gone.
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(ftHealthLoading))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"m","context_length":8192}]}`))
+	}))
+	t.Cleanup(s.Close)
+	if ms, err := (&FreeTokenInspector{}).Inspect(context.Background(), s.URL, ""); err != nil || len(ms) != 1 || ms[0].GetIsWarm() {
+		t.Fatalf("503 loading: %v, %v", ms, err)
 	}
 }
 
@@ -114,9 +124,9 @@ func TestFreeTokenLoad(t *testing.T) {
 	}
 }
 
-// The agent splits the queue at --max-concurrent, which defaults to FreeToken's own limit.
+// The queue splits at the engine's own limit, not at what the proxy may send.
 func TestNewAgentFreeTokenLimit(t *testing.T) {
-	a := NewAgent(AgentConfig{Engine: registry.EngineFreeToken, MaxConcurrent: 2})
+	a := NewAgent(AgentConfig{Engine: registry.EngineFreeToken, MaxConcurrent: 16, EngineMaxRunning: 2})
 	if ft, ok := a.inspector.(*FreeTokenInspector); !ok || ft.MaxRunning != 2 {
 		t.Fatalf("inspector %#v", a.inspector)
 	}
@@ -155,6 +165,12 @@ func TestDoctorFreeToken(t *testing.T) {
 	if f := one(t, d.checkModel(models, false), "Model"); f.Level != LevelWarn || !strings.Contains(f.Fix, "/health") {
 		t.Fatalf("loading: %+v", f)
 	}
+	failed := freeTokenServer(t, ftHealthError, ftStats(0, `["text"]`))
+	_, fs, up = newDoctor(AgentConfig{Engine: registry.EngineFreeToken, EngineURL: failed, EngineToken: freeTokenKey}).checkEngine(ctx)
+	if f := one(t, fs, "Engine"); up || !strings.Contains(f.Fix, "Restart ft serve") {
+		t.Fatalf("failed backend: %+v", f)
+	}
+
 	d.Model = "llama"
 	if f := one(t, d.checkModel(models, false), "Model"); f.Level != LevelProblem || !strings.Contains(f.Fix, "--served-model-name") {
 		t.Fatalf("other model: %+v", f)

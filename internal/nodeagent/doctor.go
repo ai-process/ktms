@@ -236,8 +236,11 @@ func (d *Doctor) checkEngine(ctx context.Context) (models []*pb.NodeModelSpec, f
 		return nil, []Finding{{"Engine", LevelProblem, fmt.Sprintf("The engine at %s is failing (HTTP %d).", d.Cfg.EngineURL, resp.StatusCode), "Check the engine's own log."}}, false
 	}
 
-	models, err = GetInspector(d.Cfg.Engine).Inspect(ctx, d.Cfg.EngineURL, d.Cfg.EngineToken)
+	models, err = InspectorFor(d.Cfg).Inspect(ctx, d.Cfg.EngineURL, d.Cfg.EngineToken)
 	models = FilterModels(models, d.Cfg.OnlyModels)
+	if errors.Is(err, ErrFreeTokenFailed) {
+		return nil, []Finding{{"Engine", LevelProblem, "FreeToken answers but its backend has failed: " + shortErr(err), "Restart ft serve and check its log."}}, false
+	}
 	if err != nil {
 		return nil, []Finding{{"Engine", LevelProblem, "The engine answers but its model list cannot be read: " + shortErr(err), "Check that --engine matches what is running at " + d.Cfg.EngineURL + "."}}, false
 	}
@@ -249,6 +252,9 @@ func (d *Doctor) checkModel(models []*pb.NodeModelSpec, paused bool) []Finding {
 		fix := "Download one, for example: ollama pull <model>."
 		if d.Model != "" {
 			fix = "Download it: ollama pull " + d.Model + "."
+		}
+		if d.freeToken() {
+			fix = "Start ft serve with --model."
 		}
 		return []Finding{{"Model", LevelProblem, "The engine is running but has no models, so the proxy has nothing to route here.", fix}}
 	}
