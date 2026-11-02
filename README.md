@@ -362,31 +362,6 @@ models and registers the node with the allowed ones; it refuses only when none i
 `--cloudflared-path` to pick the binary. `NODE_AUTH_TOKEN` is the bearer the engine itself
 requires, if any.
 
-#### FreeToken
-
-[FreeToken](https://github.com/FlashML-org/FreeToken) runs large MoE models on one consumer
-NVIDIA RTX (30 to 50 series, Linux or Windows; not on a Mac, AMD or Intel): expert weights stay in
-RAM and the GPU caches the experts in use. `ft serve` runs one model per process:
-
-```bash
-export FREETOKEN_API_KEY=...              # optional; ft serve and the agent both read it
-ft serve --model <hf-id or path> --served-model-name qwen3.6-35b
-./bin/ktms-node --proxy-addr proxy.example.com:443 --tls --engine freetoken
-```
-
-With `--engine freetoken` the agent polls `http://127.0.0.1:1919`, FreeToken's default, and
-sends `FREETOKEN_API_KEY` as the engine's bearer when `NODE_AUTH_TOKEN` is not set. The model is
-reported with its context length from `/v1/models` and as loaded once `/health` says `ok`; while
-the weights load it is reported cold, and a server whose `/health` says `error` reports no models.
-FreeToken rejects `response_format`, so its models carry `no_structured_output` (the shape is asked
-for in the prompt and checked); a server that accepts images adds `vision`. The load comes from
-`requests.active` in `/v1/stats`: requests above `--max-concurrent`, which defaults to 4 like
-FreeToken's `--max-running-requests`, count as waiting, so a node busy with other clients sends
-calls to the next model in the chain. Keep the two values equal. `no_thinking` sends
-`reasoning_effort: none`. `ktms-node doctor` checks that `ft` is installed, the server answers and
-takes the key, and the model is loaded. `install-node.sh` installs Ollama only; install FreeToken
-yourself.
-
 The agent keeps a usage log for the machine's owner in `--stats-dir` (default
 `~/.ktms-node/stats`, or `$KTMS_HOME/stats`): every minute it pulls the requests the proxy sent
 here with `PullNodeUsage` (time, model, tokens, outcome, level; no user, key or text) into
@@ -446,6 +421,31 @@ While the proxy refuses the node (wrong key, other node id, no allowed model) th
 exit and does not open a tunnel: it checks with the proxy first, then retries with a pause that
 grows to five minutes and says why in the log, so a supervisor never restarts it into a fresh
 Cloudflare tunnel per attempt.
+
+#### FreeToken
+
+[FreeToken](https://github.com/FlashML-org/FreeToken) runs large MoE models on one consumer
+NVIDIA RTX (30 to 50 series, Linux or Windows; not on a Mac, AMD or Intel): expert weights stay in
+RAM and the GPU caches the experts in use. `ft serve` runs one model per process:
+
+```bash
+export FREETOKEN_API_KEY=...              # optional; ft serve and the agent both read it
+ft serve --model <hf-id or path> --served-model-name qwen3.6-35b
+./bin/ktms-node --proxy-addr proxy.example.com:443 --tls --engine freetoken
+```
+
+With `--engine freetoken` the agent polls `http://127.0.0.1:1919`, FreeToken's default, and
+sends `FREETOKEN_API_KEY` as the engine's bearer when `NODE_AUTH_TOKEN` is not set. The model is
+reported with its context length from `/v1/models` and as loaded once `/health` says `ok`; while
+the weights load it is reported cold, and a server whose `/health` says `error` reports no models.
+FreeToken rejects `response_format`, so its models carry `no_structured_output` (the shape is asked
+for in the prompt and checked); a server that accepts images adds `vision`. The load comes from
+`requests.active` in `/v1/stats`: requests above `--max-concurrent`, which defaults to 4 like
+FreeToken's `--max-running-requests`, count as waiting, so a node busy with other clients sends
+calls to the next model in the chain. Keep the two values equal. `no_thinking` sends
+`reasoning_effort: none`. `ktms-node doctor` checks that `ft` is installed, the server answers and
+takes the key, and the model is loaded. `install-node.sh` installs Ollama only; install FreeToken
+yourself.
 
 ### Production checklist
 
