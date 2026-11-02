@@ -165,6 +165,12 @@ func TestWebGuardsAndRelays(t *testing.T) {
 	if r, _ := c.Get(base + "/?t=wrong"); r.StatusCode != http.StatusForbidden {
 		t.Fatalf("wrong token: %d", r.StatusCode)
 	}
+	// Strict would be withheld on the redirect from the tray's file:// page.
+	peek, _ := w.URL("status")
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	if r, err := noFollow.Get(peek); err != nil || len(r.Cookies()) != 1 || r.Cookies()[0].SameSite != http.SameSiteLaxMode {
+		t.Fatalf("session cookie: %v %+v", err, r.Cookies())
+	}
 	link, _ := w.URL("status")
 	r, err := c.Get(link)
 	if err != nil || r.StatusCode != http.StatusOK || r.Request.URL.RawQuery != "" {

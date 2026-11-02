@@ -160,7 +160,9 @@ func (w *Web) Handler() http.Handler {
 				http.Error(rw, "this link was used or has expired; open the window from the tray menu again", http.StatusForbidden)
 				return
 			}
-			http.SetCookie(rw, &http.Cookie{Name: cookieName, Value: w.session, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+			// Lax, not Strict: the window opens from a file:// page, and browsers
+			// withhold Strict cookies on the redirect such a page starts.
+			http.SetCookie(rw, &http.Cookie{Name: cookieName, Value: w.session, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode})
 			http.Redirect(rw, r, "/", http.StatusSeeOther) // the token leaves the address bar and history
 			return
 		}
