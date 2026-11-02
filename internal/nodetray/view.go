@@ -25,7 +25,7 @@ const (
 // View is everything the menu shows for one status.
 type View struct {
 	Icon    IconKind
-	Title   string // next to the icon: "80%", "⏸ 9:41", "⏸ until 07:00", "⏳ 2"
+	Title   string // next to the icon, which already shows the state: "80%", "9:41", "until 07:00", "2"
 	Tooltip string
 	Header  string // "Keystone node · mac-studio"
 	Level   string // "Running at 80% (schedule) · 18:00 → 0%"
@@ -69,13 +69,13 @@ func Build(s *nodeagent.Status, err error, now time.Time) View {
 
 	switch {
 	case lvl == 0 && s.Requests.ProxyActive > 0:
-		v.Icon, v.Title = IconWaiting, fmt.Sprintf("⏳ %d", s.Requests.ProxyActive)
+		v.Icon, v.Title = IconWaiting, fmt.Sprintf("%d", s.Requests.ProxyActive)
 	case lvl == 0 && s.Level.Source == nodeagent.SourceOverride && s.Level.Override != nil:
-		v.Icon, v.Title, v.Ticking = IconPaused, "⏸ "+countdown(s.Level.Override.Until.Sub(now)), true
+		v.Icon, v.Title, v.Ticking = IconPaused, countdown(s.Level.Override.Until.Sub(now)), true
 	case lvl == 0 && s.Level.Next != nil:
-		v.Icon, v.Title = IconPaused, "⏸ until "+clock(s.Level.Next.At, now)
+		v.Icon, v.Title = IconPaused, "until "+clock(s.Level.Next.At, now)
 	case lvl == 0:
-		v.Icon, v.Title = IconPaused, "⏸"
+		v.Icon, v.Title = IconPaused, ""
 	case lvl < 100:
 		v.Icon, v.Title = IconPartial, fmt.Sprintf("%d%%", lvl)
 	default:

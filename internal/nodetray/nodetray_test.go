@@ -54,14 +54,14 @@ func TestBuildView(t *testing.T) {
 			s.Level.Effective, s.Level.Source = 0, nodeagent.SourceOverride
 			s.Level.Override = &nodeagent.Override{Until: now.Add(9*time.Minute + 41*time.Second)}
 			s.Requests.ProxyActive = 0
-		}), icon: IconPaused, title: "⏸ 9:41", level: "Paused (by hand until 09:09)", resume: true, ticking: true},
+		}), icon: IconPaused, title: "9:41", level: "Paused (by hand until 09:09)", resume: true, ticking: true},
 		"schedule pause": {s: status(func(s *nodeagent.Status) {
 			s.Level.Effective = 0
 			s.Level.Next = &nodeagent.StatusNext{At: now.Add(22 * time.Hour), Level: 100}
-		}), icon: IconPaused, title: "⏸ until Wed 07:00"},
+		}), icon: IconPaused, title: "until Wed 07:00"},
 		"waiting for requests": {s: status(func(s *nodeagent.Status) {
 			s.Level.Effective, s.Requests.ProxyActive, s.CanAbort = 0, 2, true
-		}), icon: IconWaiting, title: "⏳ 2", level: "Pausing: waiting for 2 requests (schedule)", stop: "Stop now (cuts 2 requests)"},
+		}), icon: IconWaiting, title: "2", level: "Pausing: waiting for 2 requests (schedule)", stop: "Stop now (cuts 2 requests)"},
 		"agent down":    {err: errors.New("dial unix: no such file"), icon: IconWarn, level: "The node agent does not answer"},
 		"proxy down":    {s: status(func(s *nodeagent.Status) { s.Connection.LastError = "unavailable" }), icon: IconWarn, title: "100%"},
 		"ktms override": {s: status(func(s *nodeagent.Status) { s.Level.Effective, s.Level.Source = 30, nodeagent.SourceKTMSOverride }), icon: IconPartial, title: "30%", level: "Running at 30% (set in KTMS)"},
