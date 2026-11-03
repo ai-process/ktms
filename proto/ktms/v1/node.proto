@@ -77,6 +77,28 @@ message HeartbeatRequest {
   // Share of time the node may spend on proxy requests, 0-100, from its local
   // schedule. Unset means 100, so agents that predate it keep full capacity.
   optional uint32 capacity_percent = 7;
+  // Where the agent takes its levels from: "local" (its own schedule file) or
+  // "ktms" (HeartbeatResponse.schedule). Empty from agents that predate it.
+  string schedule_source = 8;
+  // What set capacity_percent: schedule, override (by the owner, on the machine),
+  // ktms_schedule, ktms_override or default (no schedule, 100%).
+  string capacity_source = 9;
+  // When the override behind capacity_percent ends; unset without one.
+  google.protobuf.Timestamp capacity_until = 10;
+}
+
+// NodeSchedule is the schedule KTMS keeps for a node whose agent takes its
+// levels from KTMS.
+message NodeSchedule {
+  string text = 1; // rules in the agent's format, "[days] HH:MM-HH:MM level" per line; empty = 100%
+  int64 version = 2; // bumps on every change of text or override; 0 = none set yet
+  NodeCapacityOverride override = 3; // unset = none
+}
+
+// NodeCapacityOverride holds a node at a level until a moment, over its schedule.
+message NodeCapacityOverride {
+  uint32 level = 1; // 0-100
+  google.protobuf.Timestamp until = 2;
 }
 
 message HeartbeatResponse {
@@ -85,6 +107,9 @@ message HeartbeatResponse {
   bool drain_requested = 3;
   int32 active_proxy_requests = 4; // requests still running, not counting post-request cooldown
   bool capacity_applied = 5; // false from proxies that ignore capacity_percent
+  // The node's schedule in KTMS, sent only to agents with schedule_source "ktms".
+  // Unset when the proxy could not read it: the agent keeps the last one it got.
+  NodeSchedule schedule = 6;
 }
 
 // NodeUsageRecord is one request the proxy sent to a node, as the node's owner

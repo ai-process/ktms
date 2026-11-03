@@ -75,7 +75,7 @@ func env(m map[string]string) func(string) (string, bool) {
 }
 
 func TestParseExample(t *testing.T) {
-	c := mustParse(t, example+mcpExample)
+	c := mustParse(t, example+mcpExample+nodeScheduleExample)
 	if len(c.Models) != 2 || !c.Models[0].GetEnabled() {
 		t.Fatalf("models = %v; a model without enabled must be enabled", c.Models)
 	}

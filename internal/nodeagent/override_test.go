@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
 )
 
 func TestOverrideRequestResolve(t *testing.T) {
@@ -45,7 +47,7 @@ func TestOverrideRequestResolve(t *testing.T) {
 	}
 	// A schedule switch more than a day off still caps the pause at 24h.
 	o, err := OverrideRequest{UntilNextWindow: true}.resolve(now, now.Add(72*time.Hour), true)
-	if err != nil || !o.Until.Equal(now.Add(maxOverride)) {
+	if err != nil || !o.Until.Equal(now.Add(MaxOverride)) {
 		t.Errorf("far next window: %+v, %v", o, err)
 	}
 }
@@ -84,6 +86,12 @@ func TestLoadOverride(t *testing.T) {
 // startControlled runs an agent with a control socket and a state directory.
 func startControlled(t *testing.T, schedule string, clock *fakeClock, opts ...func(*AgentConfig)) (*Agent, *levelRegistry, *residentOllama, *ControlClient) {
 	t.Helper()
+	return startControlledWith(t, schedule, clock, nil, opts...)
+}
+
+// startControlledWith also has the fake proxy send sched to ktms-mode agents.
+func startControlledWith(t *testing.T, schedule string, clock *fakeClock, sched *pb.NodeSchedule, opts ...func(*AgentConfig)) (*Agent, *levelRegistry, *residentOllama, *ControlClient) {
+	t.Helper()
 	dir, err := os.MkdirTemp("", "kn") // t.TempDir() paths overflow a Unix socket name on macOS
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +101,7 @@ func startControlled(t *testing.T, schedule string, clock *fakeClock, opts ...fu
 	opts = append([]func(*AgentConfig){func(c *AgentConfig) {
 		c.StateDir, c.ControlSocket, c.Version = dir, sock, "test"
 	}}, opts...)
-	a, reg, ollama := startAgent(t, schedule, clock, opts...)
+	a, reg, ollama := startAgentReg(t, schedule, clock, &levelRegistry{beats: make(chan uint32, 64), schedule: sched}, opts...)
 	c := NewControlClient(sock)
 	waitFor(t, "control socket", func() bool { _, err := c.Status(context.Background()); return err == nil })
 	return a, reg, ollama, c
@@ -225,7 +233,7 @@ func TestOverrideRefusalsAreBadRequests(t *testing.T) {
 	waitLevel(t, reg, 100, 5*time.Second)
 	ctx := context.Background()
 	for _, req := range []OverrideRequest{
-		{Level: 0, UntilNextWindow: true}, // no switches in an empty schedule
+		{Level: 0, UntilNextWindow: true},           // no switches in an empty schedule
 		{Level: 0, For: "10m", AbortInflight: true}, // no built-in gateway
 		{Level: 30, For: "48h"},
 	} {
