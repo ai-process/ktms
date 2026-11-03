@@ -7,6 +7,8 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-03
+
 ### Added
 - Nodes running [FreeToken](https://github.com/FlashML-org/FreeToken) (`--engine freetoken`):
   the agent reads the model and its context length from `/v1/models`, whether it is loaded from
@@ -43,7 +45,6 @@ All notable changes to KTMS are listed here. The format follows
   `top_k` on `/v1/messages` is named there too. The new `no_sampling` and
   `sampling` capabilities correct a model whose id misleads the per-vendor table. Sampling is part
   of the response cache key.
-
 - Node owners override the schedule for a while: `ktms-node pause [10m | --until-next] [--now]`,
   `ktms-node level 30 --for 1h` and `ktms-node resume`, from 1 minute to 24 hours, ending by the
   wall clock and kept across agent restarts; a manual pause skips the warm-up, so the models load
@@ -52,7 +53,6 @@ All notable changes to KTMS are listed here. The format follows
   Unix socket (`--control-socket`, `--state-dir`), whose HTTP/JSON API also serves the schedule
   (read, validate, preview, save), the usage report and a server-sent event stream of the
   status. `doctor` shows a manual level.
-
 - "Schedule set by KTMS": a node started with `--schedule-source=ktms` (or switched at run time
   with `ktms-node settings`) takes its schedule and load from KTMS with each heartbeat and ignores
   its local file. KTMS keeps one schedule per node in Postgres, validated with the agent's parser,
@@ -62,7 +62,6 @@ All notable changes to KTMS are listed here. The format follows
   across restarts; the owner's pause on the machine still wins. Heartbeats report
   `schedule_source`, `capacity_source` and `capacity_until`, which `ListNodes` and `ktms nodes
   list` show.
-
 - Desktop tray for local nodes, `ktms-node-tray`: a macOS menu bar app (universal, no Dock icon)
   and a Linux tray icon showing the level, its source and a pause countdown, with pause, limit,
   stop-now, resume and "Schedule set by KTMS" in the menu. Its window edits the schedule as a week
@@ -412,7 +411,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/ai-process/ktms/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/ai-process/ktms/compare/v1.3.6...v1.4.0
 [1.3.6]: https://github.com/ai-process/ktms/compare/v1.3.5...v1.3.6
 [1.3.5]: https://github.com/ai-process/ktms/compare/v1.3.4...v1.3.5
