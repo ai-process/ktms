@@ -81,3 +81,36 @@ func TestStatsCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestFreeTokenDefaults(t *testing.T) {
+	t.Setenv("NODE_KEY", "k")
+	t.Setenv("NODE_AUTH_TOKEN", "")
+	t.Setenv("FREETOKEN_API_KEY", "ft-key")
+	s := newSettings("test")
+	if err := s.fs.Parse([]string{"--engine", "freetoken"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := s.config()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.EngineURL != nodeagent.FreeTokenEngineURL || cfg.MaxConcurrent != nodeagent.FreeTokenMaxRunning || cfg.EngineMaxRunning != 0 || cfg.EngineToken != "ft-key" || cfg.NodeAuthToken != "ft-key" {
+		t.Fatalf("defaults %+v", cfg)
+	}
+
+	t.Setenv("NODE_AUTH_TOKEN", "node-token")
+	s = newSettings("test")
+	if err := s.fs.Parse([]string{"--engine", "freetoken", "--max-concurrent", "16", "--engine-url", "http://gpu:2000", "--engine-max-running", "8"}); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err = s.config(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.EngineURL != "http://gpu:2000" || cfg.MaxConcurrent != 16 || cfg.EngineMaxRunning != 8 {
+		t.Fatalf("flags must win: %+v", cfg)
+	}
+	// The agent polls ft serve with its key; NODE_AUTH_TOKEN stays for the proxy's dials.
+	if cfg.EngineToken != "ft-key" || cfg.NodeAuthToken != "node-token" {
+		t.Fatalf("tokens: engine %q, node %q", cfg.EngineToken, cfg.NodeAuthToken)
+	}
+}

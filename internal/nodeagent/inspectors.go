@@ -31,9 +31,20 @@ func GetInspector(engine string) EngineInspector {
 		return &LlamaCppInspector{}
 	case "decisions":
 		return &DecisionsInspector{}
+	case registry.EngineFreeToken:
+		return &FreeTokenInspector{}
 	default:
 		return &GenericOpenAIInspector{}
 	}
+}
+
+// InspectorFor is GetInspector with the engine settings the config carries.
+func InspectorFor(cfg AgentConfig) EngineInspector {
+	in := GetInspector(cfg.Engine)
+	if ft, ok := in.(*FreeTokenInspector); ok {
+		ft.MaxRunning = cfg.EngineMaxRunning
+	}
+	return in
 }
 
 // Ollama Inspector

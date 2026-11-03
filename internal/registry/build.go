@@ -86,7 +86,9 @@ const (
 // ConfigureOpenAI applies the model's capabilities to an OpenAI-compatible
 // adapter. Pool adapters pass the node's engine; direct vendors pass "".
 func ConfigureOpenAI(a *adapters.OpenAIAdapter, m *proxydb.Model, engine string) {
-	a.SetSoftSchema(SoftSchema(m))
+	// FreeToken rejects response_format: the schema goes in the prompt. The
+	// router checks the reply only when the model declares no_structured_output.
+	a.SetSoftSchema(SoftSchema(m) || strings.EqualFold(engine, EngineFreeToken))
 	a.SetSampling(SamplingSupport(m))
 	if HasCapability(m, CapabilityNoThinking) {
 		a.SetThinkingOff(ThinkingOff(m.Vendor, engine))

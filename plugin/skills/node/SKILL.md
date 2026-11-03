@@ -1,6 +1,6 @@
 ---
 name: node
-description: Add a local inference node (Ollama, vLLM, llama.cpp on a Mac or a GPU box) to Keystone (KTMS) and route to it with cloud fallback. Use when asked to run models locally, add a GPU machine or keep traffic on private hardware.
+description: Add a local inference node (Ollama, vLLM, llama.cpp on a Mac or a GPU box; FreeToken on an NVIDIA RTX) to Keystone (KTMS) and route to it with cloud fallback. Use when asked to run models locally, add a GPU machine or keep traffic on private hardware.
 ---
 
 # Add a local node
@@ -18,6 +18,11 @@ description: Add a local inference node (Ollama, vLLM, llama.cpp on a Mac or a G
    registration (it asks for the node key with hidden input):
    `curl -fsSL https://raw.githubusercontent.com/ai-process/ktms/main/scripts/install-node.sh | sh -s -- --proxy GATEWAY --node-id ID --model TAG`
    `--doctor` explains failures, `--dry-run` changes nothing, `--uninstall` removes it.
+6. A large MoE model (DeepSeek-V4-Flash, Qwen3.6-35B) on one NVIDIA RTX 30-50 under Linux or
+   Windows: suggest FreeToken instead of Ollama; it does not run on a Mac, AMD or Intel. Start
+   `ft serve --model HF_ID --served-model-name TAG` and the agent with `--engine freetoken`
+   (`FREETOKEN_API_KEY` for both); the installer does not set FreeToken up. Give the model
+   `no_structured_output`: FreeToken rejects `response_format`, and the router then checks replies.
 
 ## Check
 
@@ -27,5 +32,5 @@ description: Add a local inference node (Ollama, vLLM, llama.cpp on a Mac or a G
 - `ktms chat --model auto:nodes-only:low "hello"` reports vendor `local`; with the node
   stopped, a normal call falls back to the cloud (`ktms nodes drain ID` to stop sending it work).
 
-Sources: [Run a node](https://github.com/ai-process/ktms/blob/main/README.md#run-a-node), [If the node does not show up](https://github.com/ai-process/ktms/blob/main/README.md#if-the-node-does-not-show-up),
+Sources: [Run a node](https://github.com/ai-process/ktms/blob/main/README.md#run-a-node), [FreeToken](https://github.com/ai-process/ktms/blob/main/README.md#freetoken), [If the node does not show up](https://github.com/ai-process/ktms/blob/main/README.md#if-the-node-does-not-show-up),
 [Choosing a model and placement](https://github.com/ai-process/ktms/blob/main/README.md#choosing-a-model-and-placement).

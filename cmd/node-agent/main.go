@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/ai-process/ktms/internal/nodeagent"
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 func main() {
@@ -52,6 +53,7 @@ type settings struct {
 	keyFile       *string
 	baseWeight    *float64
 	maxConcurrent *uint
+	maxRunning    *uint
 	scheduleFile  *string
 	warmup        *time.Duration
 	stats         *bool
@@ -87,10 +89,11 @@ func newSettings(name string) *settings {
 		nodeName:      fs.String("node-name", "", "Human-readable node name"),
 		engineURL:     fs.String("engine-url", "", "Local engine URL the agent polls (default "+nodeagent.DefaultEngineURL+", or --endpoint if only that is set)"),
 		endpoint:      fs.String("endpoint", "", "Address the proxy dials to reach the engine (default: --engine-url)"),
-		engine:        fs.String("engine", "ollama", "Inference engine (ollama, vllm, tgi, llamacpp, decisions)"),
+		engine:        fs.String("engine", "ollama", "Inference engine (ollama, vllm, tgi, llamacpp, freetoken, decisions)"),
 		keyFile:       fs.String("node-key-file", "", "Path to file containing node authentication key"),
 		baseWeight:    fs.Float64("base-weight", 100.0, "Base routing weight"),
-		maxConcurrent: fs.Uint("max-concurrent", 16, "Maximum concurrent requests"),
+		maxConcurrent: fs.Uint("max-concurrent", 16, "Maximum concurrent requests the proxy sends here (freetoken: 4)"),
+		maxRunning:    fs.Uint("engine-max-running", 0, "freetoken: its --max-running-requests; admitted requests above it count as waiting (default 4)"),
 		scheduleFile:  fs.String("schedule-file", "", "Capacity levels by local time, one \"[days] HH:MM-HH:MM level\" rule per line; re-read when it changes, a missing file means 100%"),
 		warmup:        fs.Duration("warmup", 5*time.Minute, "Load the model this long before a paused window ends"),
 		stats:         fs.Bool("stats", true, "Keep a local log of the requests the proxy sends here, for `stats`"),
@@ -128,7 +131,27 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 	if name == "" {
 		name = id
 	}
-	pollURL, reportURL := nodeagent.ResolveURLs(*s.engineURL, *s.endpoint)
+	nodeToken := os.Getenv("NODE_AUTH_TOKEN")
+	engineURL, maxConcurrent, engineToken := *s.engineURL, *s.maxConcurrent, nodeToken
+	if strings.EqualFold(*s.engine, registry.EngineFreeToken) {
+		set := map[string]bool{}
+		s.fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+		if engineURL == "" && *s.endpoint == "" {
+			engineURL = nodeagent.FreeTokenEngineURL
+		}
+		if !set["max-concurrent"] {
+			maxConcurrent = nodeagent.FreeTokenMaxRunning
+		}
+		// The agent polls `ft serve` itself, which reads its --api-key from this
+		// variable; NODE_AUTH_TOKEN may belong to a proxy in front of it.
+		if key := os.Getenv("FREETOKEN_API_KEY"); key != "" {
+			engineToken = key
+			if nodeToken == "" {
+				nodeToken = key
+			}
+		}
+	}
+	pollURL, reportURL := nodeagent.ResolveURLs(engineURL, *s.endpoint)
 	keep, err := nodeagent.ParseRetention(*s.statsKeep)
 	if err != nil {
 		return nodeagent.AgentConfig{}, fmt.Errorf("--stats-retention: %w", err)
@@ -139,26 +162,27 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 	}
 
 	return nodeagent.AgentConfig{
-		ProxyAddr:      *s.proxyAddr,
-		TLS:            *s.useTLS,
-		NodeKey:        nodeKey,
-		NodeID:         id,
-		NodeName:       name,
-		EngineURL:      pollURL,
-		Endpoint:       reportURL,
-		Engine:         *s.engine,
-		NodeAuthToken:  os.Getenv("NODE_AUTH_TOKEN"),
-		EngineToken:    os.Getenv("NODE_AUTH_TOKEN"),
-		OnlyModels:     s.onlyModels,
-		JudgeModels:    s.judgeModels,
-		Expose:         *s.expose,
-		CloudflaredBin: *s.cloudflared,
-		BaseWeight:     *s.baseWeight,
-		MaxConcurrent:  uint32(*s.maxConcurrent),
-		ScheduleFile:   *s.scheduleFile,
-		Warmup:         *s.warmup,
-		StatsDir:       statsDir,
-		StatsRetention: keep,
+		ProxyAddr:        *s.proxyAddr,
+		TLS:              *s.useTLS,
+		NodeKey:          nodeKey,
+		NodeID:           id,
+		NodeName:         name,
+		EngineURL:        pollURL,
+		Endpoint:         reportURL,
+		Engine:           *s.engine,
+		NodeAuthToken:    nodeToken,
+		EngineToken:      engineToken,
+		OnlyModels:       s.onlyModels,
+		JudgeModels:      s.judgeModels,
+		Expose:           *s.expose,
+		CloudflaredBin:   *s.cloudflared,
+		BaseWeight:       *s.baseWeight,
+		MaxConcurrent:    uint32(maxConcurrent),
+		EngineMaxRunning: uint32(*s.maxRunning),
+		ScheduleFile:     *s.scheduleFile,
+		Warmup:           *s.warmup,
+		StatsDir:         statsDir,
+		StatsRetention:   keep,
 	}, nil
 }
 

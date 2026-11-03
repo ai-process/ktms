@@ -8,6 +8,13 @@ All notable changes to KTMS are listed here. The format follows
 ## [Unreleased]
 
 ### Added
+- Nodes running [FreeToken](https://github.com/FlashML-org/FreeToken) (`--engine freetoken`):
+  the agent reads the model and its context length from `/v1/models`, whether it is loaded from
+  `/health`, and the queue from `/v1/stats`, splitting it at `--engine-max-running` (default 4), so
+  a busy node hands calls to the next model in the chain. It defaults to `http://127.0.0.1:1919`
+  and `--max-concurrent 4` and takes the engine key from `FREETOKEN_API_KEY`. FreeToken nodes get a
+  response schema in the prompt, since FreeToken rejects `response_format`. `doctor` checks the `ft`
+  binary, the server, its key and the model.
 - `scripts/install.sh`, served as `curl -fsSL https://ai-process.dev/install.sh | sh`: runs Keystone
   with Postgres and Redis from the published images, no clone or build. It generates the keyring,
   admin and client keys, takes vendor keys from the environment or asks for one, and keeps its
@@ -43,6 +50,8 @@ All notable changes to KTMS are listed here. The format follows
   and chat completions no longer ignore `seed`: a client that sends them changes the answer. A
   `temperature` outside 0..2, a `top_p` outside 0..1 or more than 16 stop sequences now gets
   `400`.
+- A node whose engine queues counts other clients' running requests as load too, not only those
+  waiting beyond KTMS's own, so a node full of foreign work hands calls to the next model.
 
 ## [1.4.0] - 2026-10-27
 

@@ -70,7 +70,7 @@ OpenAI-compatible API: %s#openai-compatible-http-api`, args["service"], or(args[
 	},
 	{
 		name: "local_node", title: "Add a local inference node",
-		desc: "Register a machine with a local engine (Ollama, vLLM, llama.cpp) as a Keystone node.",
+		desc: "Register a machine with a local engine (Ollama, vLLM, llama.cpp, FreeToken) as a Keystone node.",
 		args: []*mcp.PromptArgument{{Name: "machine", Description: "the machine, its GPU and the engine and models on it", Required: true}},
 		text: func(args map[string]string, write bool) string {
 			step := "Ask the user to mint a node key with `ktms node-keys mint NAME --node-id ID`."

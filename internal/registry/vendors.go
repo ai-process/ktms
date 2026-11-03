@@ -73,12 +73,15 @@ const CapabilityNoThinking = "no_thinking"
 // prompt: worth it for long instructions that repeat across calls.
 const CapabilityPromptCache = "prompt_cache"
 
+// EngineFreeToken is the node engine name of a FreeToken server (`ft serve`).
+const EngineFreeToken = "freetoken"
+
 // ThinkingOff returns the request fields that turn a vendor's default
-// reasoning off: Ollama takes reasoning_effort, DeepSeek a thinking switch.
+// reasoning off: Ollama and FreeToken take reasoning_effort, DeepSeek a thinking switch.
 // A local node is judged by its engine; engines without a known switch get none.
 func ThinkingOff(vendor, engine string) map[string]any {
 	if vendor == VendorLocal {
-		if strings.EqualFold(engine, VendorOllama) {
+		if strings.EqualFold(engine, VendorOllama) || strings.EqualFold(engine, EngineFreeToken) {
 			return map[string]any{"reasoning_effort": "none"}
 		}
 		return nil

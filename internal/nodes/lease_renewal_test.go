@@ -79,8 +79,8 @@ func TestUnaryGenerationKeepsItsLease(t *testing.T) {
 }
 
 // The engine's queue includes requests KTMS itself sent and already holds
-// leases for; only waiting requests beyond those are other clients' load.
-// Other clients' running requests share the batch and add no wait.
+// leases for. Once the engine queues, other clients' requests count whether
+// they run or wait; without a queue their running requests add no wait.
 func TestExternalLoadCountsOnlyForeignWaiting(t *testing.T) {
 	cases := []struct {
 		name                 string
@@ -88,7 +88,8 @@ func TestExternalLoadCountsOnlyForeignWaiting(t *testing.T) {
 		want                 int64
 	}{
 		{"all ours, oversubscribed engine", 4, 4, 8, 0},
-		{"other clients waiting", 4, 10, 8, 2},
+		{"other clients waiting", 4, 10, 8, 6},
+		{"ours run, other clients queue", 4, 4, 4, 4},
 		{"other clients only running", 30, 0, 4, 0},
 		{"huge gauges do not wrap", math.MaxInt32, math.MaxInt32, 0, math.MaxInt32},
 	}

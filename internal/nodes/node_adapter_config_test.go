@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 
 // captureNodeBody runs one completion through a PoolAdapter against a fake node
 // and returns the JSON body the node received.
-func captureNodeBody(t *testing.T, engine string, capabilities []string) map[string]json.RawMessage {
+func captureNodeBody(t *testing.T, engine string, capabilities []string, schema ...*llm.ResponseSchema) map[string]json.RawMessage {
 	t.Helper()
 	ctx := context.Background()
 	var body []byte
@@ -43,6 +44,9 @@ func captureNodeBody(t *testing.T, engine string, capabilities []string) map[str
 	m := &proxydb.Model{ID: modelID, Vendor: registry.VendorLocal, Capabilities: capabilities}
 	pa := NewPoolAdapter(NewSelector(mgr), nil, m, time.Minute, nil)
 	chat := llm.NewChatContext()
+	if len(schema) > 0 {
+		chat.SetResponseSchema(schema[0])
+	}
 	chat.AddUserMessage("go")
 	if _, err := pa.GenerateText(ctx, chat); err != nil {
 		t.Fatalf("GenerateText: %v", err)
@@ -63,6 +67,11 @@ func TestPoolAdapter_ThinkingOffFollowsNodeEngine(t *testing.T) {
 		t.Fatal("ollama node must not get the DeepSeek thinking switch")
 	}
 
+	got = captureNodeBody(t, registry.EngineFreeToken, []string{registry.CapabilityNoThinking})
+	if string(got["reasoning_effort"]) != `"none"` {
+		t.Fatalf("freetoken node: reasoning_effort = %s, want \"none\"", got["reasoning_effort"])
+	}
+
 	got = captureNodeBody(t, "vllm", []string{registry.CapabilityNoThinking})
 	if _, ok := got["reasoning_effort"]; ok {
 		t.Fatalf("vllm node got reasoning_effort: %s", got["reasoning_effort"])
@@ -76,5 +85,21 @@ func TestPoolAdapter_NoCapabilityNoSwitch(t *testing.T) {
 	got := captureNodeBody(t, "ollama", nil)
 	if _, ok := got["reasoning_effort"]; ok {
 		t.Fatalf("model without no_thinking got reasoning_effort: %s", got["reasoning_effort"])
+	}
+}
+
+// FreeToken rejects response_format, so its nodes get the schema in the prompt
+// whatever the model declares; other engines keep response_format.
+func TestPoolAdapter_FreeTokenSoftSchema(t *testing.T) {
+	schema := &llm.ResponseSchema{
+		Type:       llm.SchemaPropertyTypeObject,
+		Properties: map[string]*llm.SchemaProperty{"name": {Type: llm.SchemaPropertyTypeString}},
+		Required:   []string{"name"},
+	}
+	if got := captureNodeBody(t, registry.EngineFreeToken, nil, schema); got["response_format"] != nil || !strings.Contains(string(got["messages"]), "name") {
+		t.Fatalf("freetoken node: response_format %s, messages %s", got["response_format"], got["messages"])
+	}
+	if got := captureNodeBody(t, "vllm", nil, schema); got["response_format"] == nil {
+		t.Fatal("vllm node lost response_format")
 	}
 }

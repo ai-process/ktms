@@ -237,15 +237,17 @@ func poolUnavailable(op string, err error) error {
 	return &poolStateError{op: op, err: err}
 }
 
-// externalLoad is the engine queue KTMS did not cause: requests the heartbeat
-// saw waiting beyond KTMS's own leases on the node. Other clients' running
-// requests share the engine's batch with ours and are not counted. The
+// externalLoad is the engine queue KTMS did not cause. With a queue the engine
+// is full, so every request of other clients, running or waiting, delays ours;
+// without one their running requests share the batch and are not counted. The
 // heartbeat may be one interval old, which errs towards caution after bursts.
 func externalLoad(n *NodeSnapshot) int64 {
 	if n.Heartbeat == nil {
 		return 0
 	}
-	if ext := int64(n.Heartbeat.QueueDepth) - int64(n.Active); ext > 0 {
+	waiting := int64(n.Heartbeat.QueueDepth)
+	foreign := int64(n.Heartbeat.ActiveRequests) + waiting - int64(n.Active)
+	if ext := min(waiting, foreign); ext > 0 {
 		return ext
 	}
 	return 0
