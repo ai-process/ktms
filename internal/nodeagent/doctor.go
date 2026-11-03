@@ -255,8 +255,15 @@ func (d *Doctor) checkModel(models []*pb.NodeModelSpec, paused bool) []Finding {
 		}
 		if d.freeToken() {
 			fix = "Start ft serve with --model."
+			if d.Model != "" {
+				fix = "Start ft serve with --model and --served-model-name " + d.Model + "."
+			}
 		}
 		return []Finding{{"Model", LevelProblem, "The engine is running but has no models, so the proxy has nothing to route here.", fix}}
+	}
+	if d.Model == "" && d.freeToken() && len(models) == 1 && !models[0].GetIsWarm() && !paused {
+		return []Finding{{"Model", LevelWarn, fmt.Sprintf("FreeToken is still loading %s; the proxy prefers other nodes until it is ready.", models[0].GetModelId()),
+			"Wait for " + engineBaseURL(d.Cfg.EngineURL) + "/health to report status ok."}}
 	}
 	if d.Model == "" {
 		names := make([]string, 0, len(models))

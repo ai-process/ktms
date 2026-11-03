@@ -131,7 +131,8 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 	if name == "" {
 		name = id
 	}
-	engineURL, maxConcurrent, engineToken := *s.engineURL, *s.maxConcurrent, os.Getenv("NODE_AUTH_TOKEN")
+	nodeToken := os.Getenv("NODE_AUTH_TOKEN")
+	engineURL, maxConcurrent, engineToken := *s.engineURL, *s.maxConcurrent, nodeToken
 	if strings.EqualFold(*s.engine, registry.EngineFreeToken) {
 		set := map[string]bool{}
 		s.fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
@@ -141,8 +142,13 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 		if !set["max-concurrent"] {
 			maxConcurrent = nodeagent.FreeTokenMaxRunning
 		}
-		if engineToken == "" {
-			engineToken = os.Getenv("FREETOKEN_API_KEY") // what `ft serve` reads its --api-key from
+		// The agent polls `ft serve` itself, which reads its --api-key from this
+		// variable; NODE_AUTH_TOKEN may belong to a proxy in front of it.
+		if key := os.Getenv("FREETOKEN_API_KEY"); key != "" {
+			engineToken = key
+			if nodeToken == "" {
+				nodeToken = key
+			}
 		}
 	}
 	pollURL, reportURL := nodeagent.ResolveURLs(engineURL, *s.endpoint)
@@ -164,7 +170,7 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 		EngineURL:        pollURL,
 		Endpoint:         reportURL,
 		Engine:           *s.engine,
-		NodeAuthToken:    engineToken,
+		NodeAuthToken:    nodeToken,
 		EngineToken:      engineToken,
 		OnlyModels:       s.onlyModels,
 		JudgeModels:      s.judgeModels,

@@ -55,9 +55,10 @@ func (fi *FreeTokenInspector) Inspect(ctx context.Context, endpoint, authToken s
 	if err := getJSON(ctx, base+"/v1/models", authToken, 5*time.Second, &models); err != nil {
 		return nil, fmt.Errorf("freetoken /v1/models: %w", err)
 	}
-	// /health needs no key; a server still loading may answer it with 503.
+	// ft serve answers /health with 200 even while loading and needs no key; a
+	// proxy in front of it may want the key and answer 503 while it starts.
 	var health freeTokenHealth
-	if err := getJSON(ctx, base+"/health", "", 5*time.Second, &health, http.StatusServiceUnavailable); err != nil {
+	if err := getJSON(ctx, base+"/health", authToken, 5*time.Second, &health, http.StatusServiceUnavailable); err != nil {
 		return nil, fmt.Errorf("freetoken /health: %w", err)
 	}
 	if health.Status == "error" {

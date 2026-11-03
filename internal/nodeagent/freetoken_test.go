@@ -86,7 +86,7 @@ func TestFreeTokenInspectLoadingAndError(t *testing.T) {
 		t.Fatalf("a failed server must report no models: %v", err)
 	}
 
-	// A loading server that answers /health with 503 is cold, not gone.
+	// A proxy in front of ft serve may answer /health with 503 while it loads: cold, not gone.
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/health" {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -160,6 +160,9 @@ func TestDoctorFreeToken(t *testing.T) {
 	models, fs, up := d.checkEngine(ctx)
 	if !up {
 		t.Fatalf("engine: %+v", fs)
+	}
+	if f := one(t, d.checkModel(models, false), "Model"); f.Level != LevelWarn || !strings.Contains(f.Fix, "/health") {
+		t.Fatalf("loading, no --model: %+v", f)
 	}
 	d.Model = "qwen3.6-35b"
 	if f := one(t, d.checkModel(models, false), "Model"); f.Level != LevelWarn || !strings.Contains(f.Fix, "/health") {

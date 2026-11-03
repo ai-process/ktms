@@ -50,6 +50,8 @@ All notable changes to KTMS are listed here. The format follows
   and chat completions no longer ignore `seed`: a client that sends them changes the answer. A
   `temperature` outside 0..2, a `top_p` outside 0..1 or more than 16 stop sequences now gets
   `400`.
+- A node whose engine queues counts other clients' running requests as load too, not only those
+  waiting beyond KTMS's own, so a node full of foreign work hands calls to the next model.
 
 ## [1.4.0] - 2026-10-27
 

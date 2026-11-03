@@ -435,7 +435,7 @@ ft serve --model <hf-id or path> --served-model-name qwen3.6-35b
 ```
 
 With `--engine freetoken` the agent polls `http://127.0.0.1:1919`, FreeToken's default, and
-sends `FREETOKEN_API_KEY` as the engine's bearer when `NODE_AUTH_TOKEN` is not set. The model is
+sends `FREETOKEN_API_KEY` as its bearer; the proxy uses it too unless `NODE_AUTH_TOKEN` is set. The model is
 reported with its context length from `/v1/models` and as loaded once `/health` says `ok`; while
 the weights load it is reported cold, and a server whose `/health` says `error` reports no models.
 The load comes from `requests.active` in `/v1/stats`, which counts every admitted request: those

@@ -106,7 +106,11 @@ func TestFreeTokenDefaults(t *testing.T) {
 	if cfg, err = s.config(); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.EngineURL != "http://gpu:2000" || cfg.MaxConcurrent != 16 || cfg.EngineMaxRunning != 8 || cfg.EngineToken != "node-token" {
+	if cfg.EngineURL != "http://gpu:2000" || cfg.MaxConcurrent != 16 || cfg.EngineMaxRunning != 8 {
 		t.Fatalf("flags must win: %+v", cfg)
+	}
+	// The agent polls ft serve with its key; NODE_AUTH_TOKEN stays for the proxy's dials.
+	if cfg.EngineToken != "ft-key" || cfg.NodeAuthToken != "node-token" {
+		t.Fatalf("tokens: engine %q, node %q", cfg.EngineToken, cfg.NodeAuthToken)
 	}
 }
