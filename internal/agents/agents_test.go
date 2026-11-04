@@ -222,6 +222,20 @@ func TestPolicy(t *testing.T) {
 		t.Fatalf("message beyond max_messages: %v", err)
 	}
 
+	// A key minted for agents is reachable before its agent first connects;
+	// a generate-only key is not.
+	fresh := key(t, pool, "fresh", "", nil)
+	if _, err := s.Send(ctx, a, strings.ToLower(fresh.Name), "welcome", ""); err != nil {
+		t.Fatalf("send to a key that has not connected yet: %v", err)
+	}
+	gen := key(t, pool, "gen", "", nil)
+	if _, err := pool.Exec(ctx, `UPDATE api_key SET scopes = '{generate}' WHERE id = $1`, gen.KeyID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Send(ctx, a, strings.ToLower(gen.Name), "hi", ""); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a generate key became an agent: %v", err)
+	}
+
 	org := uuid.NewString()
 	if _, err := pool.Exec(ctx, `INSERT INTO organization (id, name) VALUES ($1, $2)`, org, "org-"+org[:8]); err != nil {
 		t.Fatal(err)

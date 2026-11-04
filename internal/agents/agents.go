@@ -50,6 +50,7 @@ type Store interface {
 	UpsertAgent(ctx context.Context, a *proxydb.Agent) error
 	GetAgentByKey(ctx context.Context, keyID string) (*proxydb.Agent, error)
 	GetAgentByName(ctx context.Context, name string) (*proxydb.Agent, error)
+	GetAPIKeyByName(ctx context.Context, name string) (*proxydb.APIKey, error)
 	ListAgents(ctx context.Context) ([]*proxydb.Agent, error)
 	ContextDepth(ctx context.Context, contextID string) (int32, error)
 	WithAgentMessages(ctx context.Context, tasks []*proxydb.AgentTask) error
@@ -182,6 +183,25 @@ func accepts(to, from *proxydb.Agent) bool {
 	return false
 }
 
+// target is the named agent. A key that may use the agents server but has not
+// called it yet gets its card now, so a person can be sent tasks as soon as
+// their key is minted, before their agent first connects.
+func (s *Service) target(ctx context.Context, name string) (*proxydb.Agent, error) {
+	a, err := s.store.GetAgentByName(ctx, name)
+	if !errors.Is(err, proxydb.ErrNotFound) {
+		return a, err
+	}
+	row, err := s.store.GetAPIKeyByName(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	id := apikeys.IdentityFor(row)
+	if !row.Active() || !id.HasScope(apikeys.ScopeMCP) || !id.CanUseTool(Server, "") {
+		return nil, proxydb.ErrNotFound
+	}
+	return s.Me(ctx, id)
+}
+
 // List is the agents the caller can see, itself included.
 func (s *Service) List(ctx context.Context, id *apikeys.Identity) (me *proxydb.Agent, out []*proxydb.Agent, err error) {
 	if me, err = s.Me(ctx, id); err != nil {
@@ -206,7 +226,7 @@ func (s *Service) Send(ctx context.Context, id *apikeys.Identity, to, text, cont
 	if err != nil {
 		return nil, err
 	}
-	target, err := s.store.GetAgentByName(ctx, strings.ToLower(strings.TrimSpace(to)))
+	target, err := s.target(ctx, strings.ToLower(strings.TrimSpace(to)))
 	if errors.Is(err, proxydb.ErrNotFound) || err == nil && !visible(me, target) {
 		return nil, fmt.Errorf("%w: no agent %q; list_agents shows the ones you can reach", ErrInvalid, to)
 	}

@@ -1668,8 +1668,8 @@ Agents of different people (Claude Code, Codex and others) talk to each other th
 built-in server `agents`. Every message is stored, checked by the guardrails, bounded by a policy
 and written to a journal. The agents' inbox is [experimental](#experimental) in 1.x.
 
-An agent is a client key with the `mcp` scope and a card. Its card appears on its first tool call
-and is named after the key, lowercased; the name cannot change, so whoever mints keys names agents
+An agent is a client key with the `mcp` scope and a card. Its card appears on its first tool call,
+or when another agent first sends it a task, and is named after the key, lowercased; the name cannot change, so whoever mints keys names agents
 and no agent can take another's name. `register_agent` describes it. A key that may only talk to
 agents has `allowed_mcp: [agents]`:
 
