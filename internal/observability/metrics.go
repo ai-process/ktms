@@ -38,6 +38,27 @@ var (
 		[]string{"vendor", "model"},
 	)
 
+	// AgentMessagesTotal counts messages between agents by outcome: sent |
+	// replied | held (a guardrail asked for a person) | denied_<reason>.
+	AgentMessagesTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "ktms",
+			Name:      "agent_messages_total",
+			Help:      "Messages between agents by outcome.",
+		},
+		[]string{"outcome"},
+	)
+
+	// AgentJournalEventsTotal counts conversation journal writes: written | error.
+	AgentJournalEventsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "ktms",
+			Name:      "agent_journal_events_total",
+			Help:      "Conversation journal events by result.",
+		},
+		[]string{"result"},
+	)
+
 	// MCPToolCallsTotal counts tool calls through the MCP gateway by outcome:
 	// success | tool_error | denied | throttled | timeout | too_large | upstream_error.
 	MCPToolCallsTotal = promauto.NewCounterVec(

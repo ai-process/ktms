@@ -52,6 +52,8 @@ type APIKey struct {
 	// "restricted" on the key or its team keeps its calls on self-hosted nodes.
 	DataClassification     string
 	TeamDataClassification string
+	// Owner is the person the key belongs to (an e-mail); "" for a service key.
+	Owner string
 }
 
 func (k *APIKey) Active() bool { return k.DisabledAt == nil }

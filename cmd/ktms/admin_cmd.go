@@ -206,7 +206,7 @@ func (a *app) rulesCmd() *cobra.Command {
 func (a *app) keysCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "keys", Short: "Client API keys"}
 
-	var format string
+	var format, lsOwner string
 	var all bool
 	ls := &cobra.Command{
 		Use: "list", Short: "List client keys (never the keys themselves)", Args: cobra.NoArgs,
@@ -216,7 +216,7 @@ func (a *app) keysCmd() *cobra.Command {
 				return err
 			}
 			return a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
-				keys, err := c.ListAPIKeys(ctx, &pb.ListAPIKeysRequest{})
+				keys, err := c.ListAPIKeys(ctx, &pb.ListAPIKeysRequest{Owner: lsOwner})
 				if err != nil {
 					return err
 				}
@@ -240,19 +240,20 @@ func (a *app) keysCmd() *cobra.Command {
 						tenant = t.orgName[k.GetOrgId()]
 					}
 					pol := k.GetPolicy()
-					rows = append(rows, []string{k.GetName(), list(k.GetScopes()), tenant, list(pol.GetAllowedModels()),
+					rows = append(rows, []string{k.GetName(), list(k.GetScopes()), tenant, orDash(k.GetOwner()), list(pol.GetAllowedModels()),
 						limit(int64(pol.GetRpmLimit())), limit(pol.GetTpmLimit()), list(pol.GetAllowedMcp()), t.dataClass(k),
 						when(k.GetCreatedAt()), yesNo(k.GetDisabled())})
 				}
-				return p.rows([]string{"NAME", "SCOPES", "TENANT", "MODELS", "RPM", "TPM", "MCP", "DATA", "CREATED", "REVOKED"}, rows)
+				return p.rows([]string{"NAME", "SCOPES", "TENANT", "OWNER", "MODELS", "RPM", "TPM", "MCP", "DATA", "CREATED", "REVOKED"}, rows)
 			})
 		},
 	}
 	outputFlag(ls, &format)
 	ls.Flags().BoolVar(&all, "all", false, "include revoked keys")
+	ls.Flags().StringVar(&lsOwner, "owner", "", "only this person's keys")
 
 	var scopes, models, mcpAllow []string
-	var org, team, dataClass string
+	var org, team, dataClass, owner string
 	var rpm int32
 	var tpm int64
 	mint := &cobra.Command{
@@ -269,6 +270,7 @@ func (a *app) keysCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
+				req.Owner = owner
 				res, err := c.MintAPIKey(ctx, req)
 				if err != nil {
 					return err
@@ -286,6 +288,7 @@ func (a *app) keysCmd() *cobra.Command {
 	mint.Flags().StringSliceVar(&scopes, "scopes", []string{"generate"}, "generate, mcp, admin or admin:read")
 	mint.Flags().StringVar(&org, "org", "", "organization name")
 	mint.Flags().StringVar(&team, "team", "", "team as org/team")
+	mint.Flags().StringVar(&owner, "owner", "", "the person the key belongs to, an e-mail (an agent's card shows it)")
 	policyFlags(mint, &models, &rpm, &tpm, &mcpAllow, &dataClass)
 
 	var yes bool

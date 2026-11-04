@@ -397,6 +397,10 @@ func (s *AdminServer) MintAPIKey(ctx context.Context, req *pb.MintAPIKeyRequest)
 	}
 	row.AllowedModels, row.RPMLimit, row.TPMLimit, row.AllowedMCP = allowed, rpm, tpm, allowedMCP
 	row.DataClassification = dataClass
+	row.Owner = strings.ToLower(strings.TrimSpace(req.GetOwner()))
+	if len(row.Owner) > 254 {
+		return nil, status.Error(codes.InvalidArgument, "owner is longer than 254 characters")
+	}
 
 	var orgID, teamID *string
 	if req.GetOrgId() != "" {
@@ -444,6 +448,9 @@ func (s *AdminServer) MintAPIKey(ctx context.Context, req *pb.MintAPIKeyRequest)
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
 			return nil, status.Error(codes.InvalidArgument, "team or organization not found")
 		}
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, status.Errorf(codes.AlreadyExists, "a key named %q exists", req.GetName())
+		}
 		return nil, dbStatus(err)
 	}
 	// The plain key exists only in this response.
@@ -457,18 +464,23 @@ func (s *AdminServer) RevokeAPIKey(ctx context.Context, req *pb.RevokeAPIKeyRequ
 	return &pb.RevokeAPIKeyResponse{}, nil
 }
 
-func (s *AdminServer) ListAPIKeys(ctx context.Context, _ *pb.ListAPIKeysRequest) (*pb.ListAPIKeysResponse, error) {
+func (s *AdminServer) ListAPIKeys(ctx context.Context, req *pb.ListAPIKeysRequest) (*pb.ListAPIKeysResponse, error) {
+	owner := strings.ToLower(strings.TrimSpace(req.GetOwner()))
 	keys, err := s.db.ListAPIKeys(ctx)
 	if err != nil {
 		return nil, dbStatus(err)
 	}
 	out := make([]*pb.APIKeyInfo, 0, len(keys))
 	for _, k := range keys {
+		if owner != "" && k.Owner != owner {
+			continue
+		}
 		info := &pb.APIKeyInfo{
 			Name:      k.Name,
 			Scopes:    k.Scopes,
 			CreatedAt: timestamppb.New(k.CreatedAt),
 			Disabled:  !k.Active(),
+			Owner:     k.Owner,
 		}
 		if k.OrgID != nil {
 			info.OrgId = *k.OrgID

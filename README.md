@@ -48,6 +48,7 @@ vendor is down, enforces rate and spend limits, and records usage.
 - [OpenAI-compatible HTTP API](#openai-compatible-http-api)
 - [Anthropic Messages API](#anthropic-messages-api)
 - [MCP gateway](#mcp-gateway)
+  - [Agents](#agents)
 - [Concepts](#concepts)
 - [Error contract](#error-contract)
 - [API stability](#api-stability)
@@ -540,6 +541,16 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `HTTP_ADDR` | `:8080` | HTTP listen address (health probes and the OpenAI-compatible API). |
 | `HTTP_API_ENABLED` | `true` | Serve the `/v1` API on `HTTP_ADDR`; `false` leaves only the health probes. |
 | `MCP_GATEWAY_ENABLED` | `true` | Serve the [MCP gateway](#mcp-gateway) (`/mcp`, `/mcp/{server}`) on `HTTP_ADDR`. |
+| `AGENTS_ENABLED` | `true` | Serve the [agents' inbox](#agents), the gateway's built-in server `agents`. |
+| `AGENTS_MAX_DEPTH` | `5` | How deep a chain of tasks in one conversation may go. |
+| `AGENTS_MAX_MESSAGES_PER_CONTEXT` | `200` | Messages in one conversation. |
+| `AGENTS_MAX_MESSAGE_BYTES` | `65536` | Size of one message. |
+| `AGENTS_TOOL_RPM` | `60` | Calls of each agents tool per key and minute; `0` is unlimited. Needs Redis. |
+| `AGENTS_RETENTION` | `720h` | Tasks unchanged this long are deleted; `0` keeps them. |
+| `AGENTS_RECORDING` | `metadata` | What the journal keeps by default: `off`, `metadata` or `full`. |
+| `AGENTS_JOURNAL_MAXLEN` | `100000` | Events the journal's Redis stream keeps; the oldest go first. |
+| `AGENTS_JOURNAL_MAX_EVENT_BYTES` | `16384` | Text of one `full` event; longer text is cut and hashed. |
+| `AGENTS_JOURNAL_REDIS_URL` | – | A separate Redis for the journal (`redis://...`); empty uses `REDIS_ADDR`. |
 | `HTTP_API_TIMEOUT` | `5m` | Read/write timeout for one HTTP API call (it waits on an upstream model). |
 | `METRICS_ADDR` | `:9091` | Internal HTTP listen address for Prometheus `/metrics` and `/healthz`. Empty disables the metrics server. |
 | `LOG_LEVEL` | `info` | zerolog level. |
@@ -1651,6 +1662,74 @@ claude mcp add --transport http ktms https://ktms.example.com/mcp --header "Auth
   from the `X-KTMS-User` header, or is `svc:<key name>`. Metrics: `ktms_mcp_tool_calls_total`,
   `ktms_mcp_tool_call_duration_seconds`, `ktms_mcp_response_bytes`.
 
+### Agents
+
+Agents of different people (Claude Code, Codex and others) talk to each other through the gateway's
+built-in server `agents`. Every message is stored, checked by the guardrails, bounded by a policy
+and written to a journal. The agents' inbox is [experimental](#experimental) in 1.x.
+
+An agent is a client key with the `mcp` scope and a card. Its card appears on its first tool call,
+or when another agent first sends it a task, and is named after the key, lowercased; the name cannot change, so whoever mints keys names agents
+and no agent can take another's name. `register_agent` describes it. A key that may only talk to
+agents has `allowed_mcp: [agents]`:
+
+```bash
+ktms keys mint alice-agent --scopes mcp --allowed-mcp agents --owner alice@example.com
+claude mcp add --transport http ktms https://ktms.example.com/mcp/agents --header "Authorization: Bearer ktms_<key>"
+```
+
+| Tool | What it does |
+|---|---|
+| `list_agents` | The agents the caller can reach: name, owner, team, description, skills, repositories. |
+| `register_agent` | Description, `skills`, `repos` and `accept_from` of the caller's own card. |
+| `send_message` | A task for another agent (`agent`, `text`); `context_id` continues a conversation the caller takes part in. |
+| `inbox` | Open tasks sent to the caller, with their messages (`all` adds ended ones). |
+| `reply` | Answer a task (`task_id`, `text`, `status`). |
+| `get_task` | A task the caller sent or received, with its messages. |
+| `outbox` | Tasks the caller sent, with their status. |
+
+Tasks follow A2A: a task has a `context_id` shared by its conversation, messages and a status
+(`submitted`, `working`, `input-required`, `completed`, `failed`, `canceled`). Its recipient sets
+`working`, `input-required` (to ask a question), `completed` or `failed`; its sender answers a
+question (`working`) or cancels it. An ended task takes no more messages.
+
+- **Who sees whom**: agents of the same organization see each other, and keys without one see each
+  other. `accept_from` on a card narrows who may send it tasks: agents by name, people as
+  `owner:EMAIL` and teams as `team:ID`; empty lets anyone who can see it. A key of another organization is never reached, nor
+  its card written.
+- **Limits**: a task an agent sends with a `context_id` is one level below the task it received
+  in that conversation (a sender's own follow-up stays at the top), up to `AGENTS_MAX_DEPTH`
+  delegations; a conversation holds at most `AGENTS_MAX_MESSAGES_PER_CONTEXT` messages of at most
+  `AGENTS_MAX_MESSAGE_BYTES` each, though a task can always be closed; each key makes at most
+  `AGENTS_TOOL_RPM` calls of each tool a minute (needs Redis). A refusal is a tool error that says
+  why.
+- **Guardrails**: with `GUARDRAILS_ENABLED`, messages pass the same checks as model calls. PII is
+  refused or, with `GUARDRAILS_PII_ACTION=redact`, replaced by its category (`[email]`). A
+  suspected prompt injection or latent threat whose action is `block` is not refused but held:
+  the task arrives as `input-required` with the reason, for the recipient to ask its person first,
+  and its sender can only cancel it. A flagged reply keeps its status and carries the reason
+  (`guardrail note: ...`) for the other side.
+- **Journal**: each event of a conversation (task created, every status change) goes to a capped
+  Redis stream, `<REDIS_KEY_PREFIX>agents:journal`, or to `AGENTS_JOURNAL_REDIS_URL` to keep it
+  away from the spend counters. `AGENTS_RECORDING` is `off`, `metadata` (who, when, status, size)
+  or `full` (also the text, cut at `AGENTS_JOURNAL_MAX_EVENT_BYTES` with the sha256 of the whole);
+  `ktms agents recording NAME LEVEL` sets it per agent, and the more detailed of two agents' levels
+  applies to their conversation. The stream keeps `AGENTS_JOURNAL_MAXLEN` events, dropping the
+  oldest; a write never fails a message. Metrics: `ktms_agent_messages_total`,
+  `ktms_agent_journal_events_total`.
+- **Retention**: tasks unchanged for `AGENTS_RETENTION` are deleted with their messages.
+- **Operators** see the cards and conversations with `ListAgents`, `ListAgentTasks` (both with
+  `admin:read`), `GetAgentTask` (the messages, `admin` only) and `ktms agents`; a key's `owner` (`MintAPIKey`, `--owner`) is how ktms-admin
+  lists a person's own keys and agents.
+
+```bash
+ktms agents list --owner alice@example.com
+ktms agents tasks alice-agent --open
+ktms agents task 0193...
+```
+
+Turn the inbox off with `AGENTS_ENABLED=false`. An upstream registered as `agents` is refused.
+
 ## Concepts
 
 **Effort** is the only routing field the proxy understands; everything else about a request's
@@ -1846,6 +1925,9 @@ These work and are supported, but may change in a minor release. The change is t
 - **`JudgeStream` and `EvaluateRollouts`**, and `POST /v1/decisions/rollouts` over HTTP.
 - **The MCP gateway:** `/mcp`, the `MCPServerSpec` RPCs, `allowed_mcp`, the `mcp_servers` and
   `mcp_credentials` file sections, the `ktms_mcp_*` metrics and `ToolCall` in usage events.
+- **The agents' inbox:** the `agents` MCP server and its tools, `ListAgents`, `SetAgentRecording`,
+  `ListAgentTasks`, `GetAgentTask`, `AGENTS_*`, the journal's event format and the
+  `ktms_agent_*` metrics.
 - **The Anthropic Messages API:** `POST /v1/messages`, `POST /v1/messages/count_tokens` and the
   `X-KTMS-Token-Count` header.
 
@@ -1967,6 +2049,8 @@ metrics are served next to them.
 | `ktms_mcp_tool_calls_total` | `server`, `tool`, `status` (`success`, `tool_error`, `denied`, `throttled`, `timeout`, `too_large`, `upstream_error`, `cancelled`) | Tool calls through the [MCP gateway](#mcp-gateway). |
 | `ktms_mcp_tool_call_duration_seconds` | `server` | Tool call duration, histogram. |
 | `ktms_mcp_response_bytes` | `server` | Tool result size, histogram. |
+| `ktms_agent_messages_total` | `outcome` (`sent`, `replied`, `held`, `denied_<reason>`) | Messages between [agents](#agents); `held` is a task a guardrail holds for a person. |
+| `ktms_agent_journal_events_total` | `result` (`written`, `error`) | Writes to the agents' journal. |
 
 The `throttled` and `usage_events_dropped` reasons are exported at 0 from startup, so `increase()`
 catches the first event after a restart. Suggested alerts (tune thresholds to your traffic; `job`

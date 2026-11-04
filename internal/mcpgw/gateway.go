@@ -17,6 +17,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/rs/zerolog/log"
 
+	"github.com/ai-process/ktms/internal/agents"
 	"github.com/ai-process/ktms/internal/apikeys"
 	"github.com/ai-process/ktms/internal/observability"
 	"github.com/ai-process/ktms/internal/registry"
@@ -54,16 +55,33 @@ type Recorder interface {
 	RecordToolCall(usagereport.ToolCall) error
 }
 
+// Builtin is a server KTMS answers itself (agents.Service), named agents.Server.
+type Builtin interface {
+	Tools() []*mcp.Tool
+	Call(ctx context.Context, id *apikeys.Identity, tool string, args json.RawMessage) (*mcp.CallToolResult, error)
+}
+
 // Gateway serves /mcp and /mcp/{server}.
 type Gateway struct {
-	snaps    Snapshots
-	verifier Verifier
-	limiter  ToolLimiter
-	recorder Recorder
-	version  string
-	pool     pool
-	sdk      *mcp.StreamableHTTPHandler
+	snaps     Snapshots
+	verifier  Verifier
+	limiter   ToolLimiter
+	recorder  Recorder
+	version   string
+	pool      pool
+	sdk       *mcp.StreamableHTTPHandler
+	agents    Builtin
+	agentsRPM int32
 }
+
+// WithAgents serves the agents' inbox as the server agents.Server, rpm calls a
+// minute per key (0 = unlimited); it shadows an upstream of the same name.
+func (g *Gateway) WithAgents(b Builtin, rpm int32) *Gateway {
+	g.agents, g.agentsRPM = b, rpm
+	return g
+}
+
+func (g *Gateway) builtin(server string) bool { return g.agents != nil && server == agents.Server }
 
 // New builds a gateway; limiter and recorder may be nil.
 func New(snaps Snapshots, verifier Verifier, limiter ToolLimiter, recorder Recorder, version string) *Gateway {
@@ -117,7 +135,7 @@ func (g *Gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	c := &caller{id: id, server: r.PathValue("server"), user: r.Header.Get(UserHeader)}
 	if c.server != "" {
-		if g.snaps.Snapshot().MCPServers[c.server] == nil {
+		if !g.builtin(c.server) && g.snaps.Snapshot().MCPServers[c.server] == nil {
 			http.Error(w, "not_found: no mcp server "+c.server, http.StatusNotFound)
 			return
 		}
@@ -137,6 +155,10 @@ func (g *Gateway) server(r *http.Request) *mcp.Server {
 	name, instructions := "ktms", "Tools of the MCP servers registered in Keystone (KTMS), named server__tool."
 	if c != nil && c.server != "" {
 		name, instructions = "ktms-"+c.server, ""
+	}
+	if g.agents != nil && c != nil && (c.server == "" || g.builtin(c.server)) && c.id.CanUseTool(agents.Server, "") {
+		instructions = strings.TrimSpace(instructions + " The agents tools are an inbox for talking to other people's agents: " +
+			"list_agents, send_message, then get_task or outbox for the answer; check inbox for tasks sent to you and answer them with reply.")
 	}
 	s := mcp.NewServer(&mcp.Implementation{Name: name, Version: g.version}, &mcp.ServerOptions{
 		Instructions: instructions,
@@ -178,7 +200,7 @@ func (g *Gateway) servers(c *caller) []*registry.MCPServer {
 	g.pool.prune(all)
 	var out []*registry.MCPServer
 	for name, srv := range all {
-		if (c.server == "" || c.server == name) && c.id.CanUseTool(name, "") {
+		if (c.server == "" || c.server == name) && !g.builtin(name) && c.id.CanUseTool(name, "") {
 			out = append(out, srv)
 		}
 	}
@@ -210,6 +232,18 @@ func (g *Gateway) listTools(ctx context.Context, c *caller) (*mcp.ListToolsResul
 	}
 	// The list depends on the key: no intermediary may serve it to another.
 	res := &mcp.ListToolsResult{Tools: []*mcp.Tool{}, Cacheable: mcp.Cacheable{CacheScope: "private"}}
+	if g.agents != nil && (c.server == "" || g.builtin(c.server)) {
+		for _, t := range g.agents.Tools() {
+			if !c.id.CanUseTool(agents.Server, t.Name) {
+				continue
+			}
+			out := *t
+			if c.server == "" {
+				out.Name = agents.Server + Separator + t.Name
+			}
+			res.Tools = append(res.Tools, &out)
+		}
+	}
 	for i, srv := range servers {
 		for _, t := range lists[i] {
 			if !c.id.CanUseTool(srv.Name, t.Name) {
@@ -233,6 +267,9 @@ func (g *Gateway) callTool(ctx context.Context, c *caller, p *mcp.CallToolParams
 			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q: tools here are named server%stool", p.Name, Separator)}
 		}
 	}
+	if g.builtin(server) {
+		return g.callAgents(ctx, c, tool, p)
+	}
 	srv := g.snaps.Snapshot().MCPServers[server]
 	if srv == nil {
 		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q: no mcp server %s", p.Name, server)}
@@ -241,16 +278,8 @@ func (g *Gateway) callTool(ctx context.Context, c *caller, p *mcp.CallToolParams
 	if known, err := g.pool.get(srv).listTools(ctx, g.version); err == nil && !slices.ContainsFunc(known, func(t *mcp.Tool) bool { return t.Name == tool }) {
 		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q", p.Name)}
 	}
-	if !c.id.CanUseTool(server, tool) {
-		observability.MCPToolCallsTotal.WithLabelValues(server, tool, "denied").Inc()
-		return nil, &jsonrpc.Error{Code: CodeForbidden, Message: fmt.Sprintf("permission_denied: tool %s of mcp server %s is not in the %s's allowed_mcp", tool, server, c.id.MCPDeniedBy(server, tool))}
-	}
-	if g.limiter != nil && srv.ToolRPM > 0 {
-		if ok, retry := g.limiter.AdmitTool(ctx, c.id.Name, server, tool, srv.ToolRPM); !ok {
-			observability.MCPToolCallsTotal.WithLabelValues(server, tool, "throttled").Inc()
-			observability.ThrottledTotal.WithLabelValues("mcp_tool_rpm").Inc()
-			return toolError(fmt.Sprintf("throttled: %s allows %d calls a minute per key; retry in %ds", p.Name, srv.ToolRPM, int(retry.Seconds()+0.999))), nil
-		}
+	if res, err := g.admit(ctx, c, server, tool, p.Name, srv.ToolRPM); res != nil || err != nil {
+		return res, err
 	}
 
 	start := time.Now()
@@ -290,6 +319,47 @@ func (g *Gateway) callTool(ctx context.Context, c *caller, p *mcp.CallToolParams
 		res, err = toolError(fmt.Sprintf("mcp server %s is unavailable", server)), nil
 	}
 	g.account(c, server, tool, st, class, elapsed, size)
+	return res, err
+}
+
+// admit refuses a tool outside the key's allowed_mcp and throttles one past
+// rpm calls a minute; nil, nil lets the call go on.
+func (g *Gateway) admit(ctx context.Context, c *caller, server, tool, name string, rpm int32) (*mcp.CallToolResult, error) {
+	if !c.id.CanUseTool(server, tool) {
+		observability.MCPToolCallsTotal.WithLabelValues(server, tool, "denied").Inc()
+		return nil, &jsonrpc.Error{Code: CodeForbidden, Message: fmt.Sprintf("permission_denied: tool %s of mcp server %s is not in the %s's allowed_mcp", tool, server, c.id.MCPDeniedBy(server, tool))}
+	}
+	if g.limiter != nil && rpm > 0 {
+		if ok, retry := g.limiter.AdmitTool(ctx, c.id.Name, server, tool, rpm); !ok {
+			observability.MCPToolCallsTotal.WithLabelValues(server, tool, "throttled").Inc()
+			observability.ThrottledTotal.WithLabelValues("mcp_tool_rpm").Inc()
+			return toolError(fmt.Sprintf("throttled: %s allows %d calls a minute per key; retry in %ds", name, rpm, int(retry.Seconds()+0.999))), nil
+		}
+	}
+	return nil, nil
+}
+
+func (g *Gateway) callAgents(ctx context.Context, c *caller, tool string, p *mcp.CallToolParamsRaw) (*mcp.CallToolResult, error) {
+	if !slices.ContainsFunc(g.agents.Tools(), func(t *mcp.Tool) bool { return t.Name == tool }) {
+		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q", p.Name)}
+	}
+	server := agents.Server
+	// A pair of agents answering each other in a loop is stopped here too.
+	if res, err := g.admit(ctx, c, server, tool, p.Name, g.agentsRPM); res != nil || err != nil {
+		return res, err
+	}
+	start := time.Now()
+	res, err := g.agents.Call(ctx, c.id, tool, p.Arguments)
+	st, class := usagev1.Status_STATUS_SUCCESS, ""
+	switch {
+	case err != nil && ctx.Err() != nil:
+		st, class = usagev1.Status_STATUS_CANCELLED, "cancelled"
+	case err != nil:
+		st, class = usagev1.Status_STATUS_ERROR, "upstream_error"
+	case res.IsError:
+		st, class = usagev1.Status_STATUS_ERROR, "tool_error"
+	}
+	g.account(c, server, tool, st, class, time.Since(start), 0)
 	return res, err
 }
 

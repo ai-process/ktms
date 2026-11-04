@@ -984,12 +984,15 @@ func (x *GetConfigResponse) GetMcpCredentials() []*MCPCredentialInfo {
 }
 
 type MintAPIKeyRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Scopes        []string               `protobuf:"bytes,2,rep,name=scopes,proto3" json:"scopes,omitempty"` // "generate" | "mcp" | "admin" | "admin:read"
-	OrgId         string                 `protobuf:"bytes,3,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
-	TeamId        string                 `protobuf:"bytes,4,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
-	Policy        *APIKeyPolicy          `protobuf:"bytes,5,opt,name=policy,proto3" json:"policy,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Name   string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Scopes []string               `protobuf:"bytes,2,rep,name=scopes,proto3" json:"scopes,omitempty"` // "generate" | "mcp" | "admin" | "admin:read"
+	OrgId  string                 `protobuf:"bytes,3,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	TeamId string                 `protobuf:"bytes,4,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	Policy *APIKeyPolicy          `protobuf:"bytes,5,opt,name=policy,proto3" json:"policy,omitempty"`
+	// The person the key belongs to, an e-mail; empty for a service key. An agent's
+	// card shows it, and ktms-admin lists and revokes a person's own keys by it.
+	Owner         string `protobuf:"bytes,6,opt,name=owner,proto3" json:"owner,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1057,6 +1060,13 @@ func (x *MintAPIKeyRequest) GetPolicy() *APIKeyPolicy {
 		return x.Policy
 	}
 	return nil
+}
+
+func (x *MintAPIKeyRequest) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
 }
 
 // APIKeyPolicy limits one key on top of its team and each model's rpm. Refusals:
@@ -1360,6 +1370,7 @@ func (*RevokeAPIKeyResponse) Descriptor() ([]byte, []int) {
 
 type ListAPIKeysRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Owner         string                 `protobuf:"bytes,1,opt,name=owner,proto3" json:"owner,omitempty"` // only this person's keys; empty lists all
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1394,6 +1405,13 @@ func (*ListAPIKeysRequest) Descriptor() ([]byte, []int) {
 	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{22}
 }
 
+func (x *ListAPIKeysRequest) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
 type APIKeyInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -1403,6 +1421,7 @@ type APIKeyInfo struct {
 	OrgId         string                 `protobuf:"bytes,5,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
 	TeamId        string                 `protobuf:"bytes,6,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
 	Policy        *APIKeyPolicy          `protobuf:"bytes,7,opt,name=policy,proto3" json:"policy,omitempty"`
+	Owner         string                 `protobuf:"bytes,8,opt,name=owner,proto3" json:"owner,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1484,6 +1503,13 @@ func (x *APIKeyInfo) GetPolicy() *APIKeyPolicy {
 		return x.Policy
 	}
 	return nil
+}
+
+func (x *APIKeyInfo) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
 }
 
 type ListAPIKeysResponse struct {
@@ -5670,6 +5696,656 @@ func (x *ExplainRouteResponse) GetError() string {
 	return ""
 }
 
+type ListAgentsRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Owner          string                 `protobuf:"bytes,1,opt,name=owner,proto3" json:"owner,omitempty"`                                          // only the agents of this person's keys; empty lists all
+	IncludeRevoked bool                   `protobuf:"varint,2,opt,name=include_revoked,json=includeRevoked,proto3" json:"include_revoked,omitempty"` // also the agents of revoked keys, whose conversations stay until AGENTS_RETENTION
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ListAgentsRequest) Reset() {
+	*x = ListAgentsRequest{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[100]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAgentsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAgentsRequest) ProtoMessage() {}
+
+func (x *ListAgentsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[100]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAgentsRequest.ProtoReflect.Descriptor instead.
+func (*ListAgentsRequest) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{100}
+}
+
+func (x *ListAgentsRequest) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+func (x *ListAgentsRequest) GetIncludeRevoked() bool {
+	if x != nil {
+		return x.IncludeRevoked
+	}
+	return false
+}
+
+type AgentInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	ApiKeyName    string                 `protobuf:"bytes,2,opt,name=api_key_name,json=apiKeyName,proto3" json:"api_key_name,omitempty"`
+	Owner         string                 `protobuf:"bytes,3,opt,name=owner,proto3" json:"owner,omitempty"`
+	OrgId         string                 `protobuf:"bytes,4,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	TeamId        string                 `protobuf:"bytes,5,opt,name=team_id,json=teamId,proto3" json:"team_id,omitempty"`
+	Description   string                 `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
+	Skills        []string               `protobuf:"bytes,7,rep,name=skills,proto3" json:"skills,omitempty"`
+	Repos         []string               `protobuf:"bytes,8,rep,name=repos,proto3" json:"repos,omitempty"`
+	AcceptFrom    []string               `protobuf:"bytes,9,rep,name=accept_from,json=acceptFrom,proto3" json:"accept_from,omitempty"` // agents ("name"), people ("owner:EMAIL") and teams ("team:ID") it takes tasks from; empty = any
+	Recording     string                 `protobuf:"bytes,10,opt,name=recording,proto3" json:"recording,omitempty"`                    // off | metadata | full; empty takes AGENTS_RECORDING
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Revoked       bool                   `protobuf:"varint,12,opt,name=revoked,proto3" json:"revoked,omitempty"` // its key is revoked; with include_revoked only
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentInfo) Reset() {
+	*x = AgentInfo{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[101]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentInfo) ProtoMessage() {}
+
+func (x *AgentInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[101]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentInfo.ProtoReflect.Descriptor instead.
+func (*AgentInfo) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{101}
+}
+
+func (x *AgentInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AgentInfo) GetApiKeyName() string {
+	if x != nil {
+		return x.ApiKeyName
+	}
+	return ""
+}
+
+func (x *AgentInfo) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+func (x *AgentInfo) GetOrgId() string {
+	if x != nil {
+		return x.OrgId
+	}
+	return ""
+}
+
+func (x *AgentInfo) GetTeamId() string {
+	if x != nil {
+		return x.TeamId
+	}
+	return ""
+}
+
+func (x *AgentInfo) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *AgentInfo) GetSkills() []string {
+	if x != nil {
+		return x.Skills
+	}
+	return nil
+}
+
+func (x *AgentInfo) GetRepos() []string {
+	if x != nil {
+		return x.Repos
+	}
+	return nil
+}
+
+func (x *AgentInfo) GetAcceptFrom() []string {
+	if x != nil {
+		return x.AcceptFrom
+	}
+	return nil
+}
+
+func (x *AgentInfo) GetRecording() string {
+	if x != nil {
+		return x.Recording
+	}
+	return ""
+}
+
+func (x *AgentInfo) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *AgentInfo) GetRevoked() bool {
+	if x != nil {
+		return x.Revoked
+	}
+	return false
+}
+
+type ListAgentsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Agents        []*AgentInfo           `protobuf:"bytes,1,rep,name=agents,proto3" json:"agents,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAgentsResponse) Reset() {
+	*x = ListAgentsResponse{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[102]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAgentsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAgentsResponse) ProtoMessage() {}
+
+func (x *ListAgentsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[102]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAgentsResponse.ProtoReflect.Descriptor instead.
+func (*ListAgentsResponse) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{102}
+}
+
+func (x *ListAgentsResponse) GetAgents() []*AgentInfo {
+	if x != nil {
+		return x.Agents
+	}
+	return nil
+}
+
+type SetAgentRecordingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Recording     string                 `protobuf:"bytes,2,opt,name=recording,proto3" json:"recording,omitempty"` // off | metadata | full, or empty for AGENTS_RECORDING
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetAgentRecordingRequest) Reset() {
+	*x = SetAgentRecordingRequest{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[103]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetAgentRecordingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetAgentRecordingRequest) ProtoMessage() {}
+
+func (x *SetAgentRecordingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[103]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetAgentRecordingRequest.ProtoReflect.Descriptor instead.
+func (*SetAgentRecordingRequest) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{103}
+}
+
+func (x *SetAgentRecordingRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *SetAgentRecordingRequest) GetRecording() string {
+	if x != nil {
+		return x.Recording
+	}
+	return ""
+}
+
+type SetAgentRecordingResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetAgentRecordingResponse) Reset() {
+	*x = SetAgentRecordingResponse{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[104]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetAgentRecordingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetAgentRecordingResponse) ProtoMessage() {}
+
+func (x *SetAgentRecordingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[104]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetAgentRecordingResponse.ProtoReflect.Descriptor instead.
+func (*SetAgentRecordingResponse) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{104}
+}
+
+type ListAgentTasksRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Agent         string                 `protobuf:"bytes,1,opt,name=agent,proto3" json:"agent,omitempty"`                        // tasks this agent sent or received; required
+	OpenOnly      bool                   `protobuf:"varint,2,opt,name=open_only,json=openOnly,proto3" json:"open_only,omitempty"` // submitted, working and input-required only
+	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`                       // default 100, at most 500
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAgentTasksRequest) Reset() {
+	*x = ListAgentTasksRequest{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[105]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAgentTasksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAgentTasksRequest) ProtoMessage() {}
+
+func (x *ListAgentTasksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[105]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAgentTasksRequest.ProtoReflect.Descriptor instead.
+func (*ListAgentTasksRequest) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{105}
+}
+
+func (x *ListAgentTasksRequest) GetAgent() string {
+	if x != nil {
+		return x.Agent
+	}
+	return ""
+}
+
+func (x *ListAgentTasksRequest) GetOpenOnly() bool {
+	if x != nil {
+		return x.OpenOnly
+	}
+	return false
+}
+
+func (x *ListAgentTasksRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type AgentMessage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	From          string                 `protobuf:"bytes,1,opt,name=from,proto3" json:"from,omitempty"`
+	Role          string                 `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"` // user: the task's sender; agent: its recipient
+	Text          string                 `protobuf:"bytes,3,opt,name=text,proto3" json:"text,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentMessage) Reset() {
+	*x = AgentMessage{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[106]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentMessage) ProtoMessage() {}
+
+func (x *AgentMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[106]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentMessage.ProtoReflect.Descriptor instead.
+func (*AgentMessage) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{106}
+}
+
+func (x *AgentMessage) GetFrom() string {
+	if x != nil {
+		return x.From
+	}
+	return ""
+}
+
+func (x *AgentMessage) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *AgentMessage) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *AgentMessage) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+// AgentTask follows A2A: status is submitted, working, input-required,
+// completed, failed or canceled; context_id groups the tasks of one conversation.
+type AgentTask struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	ContextId     string                 `protobuf:"bytes,2,opt,name=context_id,json=contextId,proto3" json:"context_id,omitempty"`
+	From          string                 `protobuf:"bytes,3,opt,name=from,proto3" json:"from,omitempty"`
+	To            string                 `protobuf:"bytes,4,opt,name=to,proto3" json:"to,omitempty"`
+	Status        string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	StatusReason  string                 `protobuf:"bytes,6,opt,name=status_reason,json=statusReason,proto3" json:"status_reason,omitempty"` // why a guardrail holds it for a person, among others
+	Depth         int32                  `protobuf:"varint,7,opt,name=depth,proto3" json:"depth,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Messages      []*AgentMessage        `protobuf:"bytes,10,rep,name=messages,proto3" json:"messages,omitempty"` // GetAgentTask only
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AgentTask) Reset() {
+	*x = AgentTask{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[107]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AgentTask) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgentTask) ProtoMessage() {}
+
+func (x *AgentTask) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[107]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AgentTask.ProtoReflect.Descriptor instead.
+func (*AgentTask) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{107}
+}
+
+func (x *AgentTask) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *AgentTask) GetContextId() string {
+	if x != nil {
+		return x.ContextId
+	}
+	return ""
+}
+
+func (x *AgentTask) GetFrom() string {
+	if x != nil {
+		return x.From
+	}
+	return ""
+}
+
+func (x *AgentTask) GetTo() string {
+	if x != nil {
+		return x.To
+	}
+	return ""
+}
+
+func (x *AgentTask) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *AgentTask) GetStatusReason() string {
+	if x != nil {
+		return x.StatusReason
+	}
+	return ""
+}
+
+func (x *AgentTask) GetDepth() int32 {
+	if x != nil {
+		return x.Depth
+	}
+	return 0
+}
+
+func (x *AgentTask) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *AgentTask) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *AgentTask) GetMessages() []*AgentMessage {
+	if x != nil {
+		return x.Messages
+	}
+	return nil
+}
+
+type ListAgentTasksResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Tasks         []*AgentTask           `protobuf:"bytes,1,rep,name=tasks,proto3" json:"tasks,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAgentTasksResponse) Reset() {
+	*x = ListAgentTasksResponse{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[108]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAgentTasksResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAgentTasksResponse) ProtoMessage() {}
+
+func (x *ListAgentTasksResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[108]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAgentTasksResponse.ProtoReflect.Descriptor instead.
+func (*ListAgentTasksResponse) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{108}
+}
+
+func (x *ListAgentTasksResponse) GetTasks() []*AgentTask {
+	if x != nil {
+		return x.Tasks
+	}
+	return nil
+}
+
+type GetAgentTaskRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAgentTaskRequest) Reset() {
+	*x = GetAgentTaskRequest{}
+	mi := &file_ktms_v1_admin_proto_msgTypes[109]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAgentTaskRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAgentTaskRequest) ProtoMessage() {}
+
+func (x *GetAgentTaskRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_admin_proto_msgTypes[109]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAgentTaskRequest.ProtoReflect.Descriptor instead.
+func (*GetAgentTaskRequest) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_admin_proto_rawDescGZIP(), []int{109}
+}
+
+func (x *GetAgentTaskRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
 var File_ktms_v1_admin_proto protoreflect.FileDescriptor
 
 const file_ktms_v1_admin_proto_rawDesc = "" +
@@ -5755,13 +6431,14 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\fspend_limits\x18\x06 \x03(\v2\x17.ktms.v1.SpendLimitSpecR\vspendLimits\x127\n" +
 	"\vmcp_servers\x18\a \x03(\v2\x16.ktms.v1.MCPServerSpecR\n" +
 	"mcpServers\x12C\n" +
-	"\x0fmcp_credentials\x18\b \x03(\v2\x1a.ktms.v1.MCPCredentialInfoR\x0emcpCredentials\"\x9e\x01\n" +
+	"\x0fmcp_credentials\x18\b \x03(\v2\x1a.ktms.v1.MCPCredentialInfoR\x0emcpCredentials\"\xb4\x01\n" +
 	"\x11MintAPIKeyRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06scopes\x18\x02 \x03(\tR\x06scopes\x12\x15\n" +
 	"\x06org_id\x18\x03 \x01(\tR\x05orgId\x12\x17\n" +
 	"\ateam_id\x18\x04 \x01(\tR\x06teamId\x12-\n" +
-	"\x06policy\x18\x05 \x01(\v2\x15.ktms.v1.APIKeyPolicyR\x06policy\"\xc1\x01\n" +
+	"\x06policy\x18\x05 \x01(\v2\x15.ktms.v1.APIKeyPolicyR\x06policy\x12\x14\n" +
+	"\x05owner\x18\x06 \x01(\tR\x05owner\"\xc1\x01\n" +
 	"\fAPIKeyPolicy\x12%\n" +
 	"\x0eallowed_models\x18\x01 \x03(\tR\rallowedModels\x12\x1b\n" +
 	"\trpm_limit\x18\x02 \x01(\x05R\brpmLimit\x12\x1b\n" +
@@ -5777,8 +6454,9 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\tplain_key\x18\x01 \x01(\tR\bplainKey\")\n" +
 	"\x13RevokeAPIKeyRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x16\n" +
-	"\x14RevokeAPIKeyResponse\"\x14\n" +
-	"\x12ListAPIKeysRequest\"\xee\x01\n" +
+	"\x14RevokeAPIKeyResponse\"*\n" +
+	"\x12ListAPIKeysRequest\x12\x14\n" +
+	"\x05owner\x18\x01 \x01(\tR\x05owner\"\x84\x02\n" +
 	"\n" +
 	"APIKeyInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
@@ -5788,7 +6466,8 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\bdisabled\x18\x04 \x01(\bR\bdisabled\x12\x15\n" +
 	"\x06org_id\x18\x05 \x01(\tR\x05orgId\x12\x17\n" +
 	"\ateam_id\x18\x06 \x01(\tR\x06teamId\x12-\n" +
-	"\x06policy\x18\a \x01(\v2\x15.ktms.v1.APIKeyPolicyR\x06policy\">\n" +
+	"\x06policy\x18\a \x01(\v2\x15.ktms.v1.APIKeyPolicyR\x06policy\x12\x14\n" +
+	"\x05owner\x18\b \x01(\tR\x05owner\">\n" +
 	"\x13ListAPIKeysResponse\x12'\n" +
 	"\x04keys\x18\x01 \x03(\v2\x13.ktms.v1.APIKeyInfoR\x04keys\"\x19\n" +
 	"\x17RotateEncryptionRequest\"<\n" +
@@ -6075,7 +6754,62 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x11shadow_percentage\x18\t \x01(\x01R\x10shadowPercentage\x12#\n" +
 	"\rjudge_skipped\x18\n" +
 	" \x01(\bR\fjudgeSkipped\x12\x14\n" +
-	"\x05error\x18\v \x01(\tR\x05error2\xa3\x1b\n" +
+	"\x05error\x18\v \x01(\tR\x05error\"R\n" +
+	"\x11ListAgentsRequest\x12\x14\n" +
+	"\x05owner\x18\x01 \x01(\tR\x05owner\x12'\n" +
+	"\x0finclude_revoked\x18\x02 \x01(\bR\x0eincludeRevoked\"\xeb\x02\n" +
+	"\tAgentInfo\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
+	"\fapi_key_name\x18\x02 \x01(\tR\n" +
+	"apiKeyName\x12\x14\n" +
+	"\x05owner\x18\x03 \x01(\tR\x05owner\x12\x15\n" +
+	"\x06org_id\x18\x04 \x01(\tR\x05orgId\x12\x17\n" +
+	"\ateam_id\x18\x05 \x01(\tR\x06teamId\x12 \n" +
+	"\vdescription\x18\x06 \x01(\tR\vdescription\x12\x16\n" +
+	"\x06skills\x18\a \x03(\tR\x06skills\x12\x14\n" +
+	"\x05repos\x18\b \x03(\tR\x05repos\x12\x1f\n" +
+	"\vaccept_from\x18\t \x03(\tR\n" +
+	"acceptFrom\x12\x1c\n" +
+	"\trecording\x18\n" +
+	" \x01(\tR\trecording\x129\n" +
+	"\n" +
+	"updated_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x18\n" +
+	"\arevoked\x18\f \x01(\bR\arevoked\"@\n" +
+	"\x12ListAgentsResponse\x12*\n" +
+	"\x06agents\x18\x01 \x03(\v2\x12.ktms.v1.AgentInfoR\x06agents\"L\n" +
+	"\x18SetAgentRecordingRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
+	"\trecording\x18\x02 \x01(\tR\trecording\"\x1b\n" +
+	"\x19SetAgentRecordingResponse\"`\n" +
+	"\x15ListAgentTasksRequest\x12\x14\n" +
+	"\x05agent\x18\x01 \x01(\tR\x05agent\x12\x1b\n" +
+	"\topen_only\x18\x02 \x01(\bR\bopenOnly\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\"\x85\x01\n" +
+	"\fAgentMessage\x12\x12\n" +
+	"\x04from\x18\x01 \x01(\tR\x04from\x12\x12\n" +
+	"\x04role\x18\x02 \x01(\tR\x04role\x12\x12\n" +
+	"\x04text\x18\x03 \x01(\tR\x04text\x129\n" +
+	"\n" +
+	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xe3\x02\n" +
+	"\tAgentTask\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
+	"\n" +
+	"context_id\x18\x02 \x01(\tR\tcontextId\x12\x12\n" +
+	"\x04from\x18\x03 \x01(\tR\x04from\x12\x0e\n" +
+	"\x02to\x18\x04 \x01(\tR\x02to\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x12#\n" +
+	"\rstatus_reason\x18\x06 \x01(\tR\fstatusReason\x12\x14\n" +
+	"\x05depth\x18\a \x01(\x05R\x05depth\x129\n" +
+	"\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x121\n" +
+	"\bmessages\x18\n" +
+	" \x03(\v2\x15.ktms.v1.AgentMessageR\bmessages\"B\n" +
+	"\x16ListAgentTasksResponse\x12(\n" +
+	"\x05tasks\x18\x01 \x03(\v2\x12.ktms.v1.AgentTaskR\x05tasks\".\n" +
+	"\x13GetAgentTaskRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId2\xdb\x1d\n" +
 	"\fAdminService\x12H\n" +
 	"\vUpsertModel\x12\x1b.ktms.v1.UpsertModelRequest\x1a\x1c.ktms.v1.UpsertModelResponse\x12H\n" +
 	"\vDeleteModel\x12\x1b.ktms.v1.DeleteModelRequest\x1a\x1c.ktms.v1.DeleteModelResponse\x12K\n" +
@@ -6123,7 +6857,12 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x0fDeleteMCPServer\x12\x1f.ktms.v1.DeleteMCPServerRequest\x1a .ktms.v1.DeleteMCPServerResponse\x12W\n" +
 	"\x10SetMCPCredential\x12 .ktms.v1.SetMCPCredentialRequest\x1a!.ktms.v1.SetMCPCredentialResponse\x12`\n" +
 	"\x13DeleteMCPCredential\x12#.ktms.v1.DeleteMCPCredentialRequest\x1a$.ktms.v1.DeleteMCPCredentialResponse\x12K\n" +
-	"\fListMCPTools\x12\x1c.ktms.v1.ListMCPToolsRequest\x1a\x1d.ktms.v1.ListMCPToolsResponseB\x85\x01\n" +
+	"\fListMCPTools\x12\x1c.ktms.v1.ListMCPToolsRequest\x1a\x1d.ktms.v1.ListMCPToolsResponse\x12E\n" +
+	"\n" +
+	"ListAgents\x12\x1a.ktms.v1.ListAgentsRequest\x1a\x1b.ktms.v1.ListAgentsResponse\x12Z\n" +
+	"\x11SetAgentRecording\x12!.ktms.v1.SetAgentRecordingRequest\x1a\".ktms.v1.SetAgentRecordingResponse\x12Q\n" +
+	"\x0eListAgentTasks\x12\x1e.ktms.v1.ListAgentTasksRequest\x1a\x1f.ktms.v1.ListAgentTasksResponse\x12@\n" +
+	"\fGetAgentTask\x12\x1c.ktms.v1.GetAgentTaskRequest\x1a\x12.ktms.v1.AgentTaskB\x85\x01\n" +
 	"\vcom.ktms.v1B\n" +
 	"AdminProtoP\x01Z-github.com/ai-process/ktms/gen/ktms/v1;ktmsv1\xa2\x02\x03KXX\xaa\x02\aKtms.V1\xca\x02\aKtms\\V1\xe2\x02\x13Ktms\\V1\\GPBMetadata\xea\x02\bKtms::V1b\x06proto3"
 
@@ -6139,7 +6878,7 @@ func file_ktms_v1_admin_proto_rawDescGZIP() []byte {
 	return file_ktms_v1_admin_proto_rawDescData
 }
 
-var file_ktms_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 102)
+var file_ktms_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 112)
 var file_ktms_v1_admin_proto_goTypes = []any{
 	(*ModelSpec)(nil),                      // 0: ktms.v1.ModelSpec
 	(*RuleSpec)(nil),                       // 1: ktms.v1.RuleSpec
@@ -6241,20 +6980,30 @@ var file_ktms_v1_admin_proto_goTypes = []any{
 	(*ExplainRouteRequest)(nil),            // 97: ktms.v1.ExplainRouteRequest
 	(*RouteCandidate)(nil),                 // 98: ktms.v1.RouteCandidate
 	(*ExplainRouteResponse)(nil),           // 99: ktms.v1.ExplainRouteResponse
-	nil,                                    // 100: ktms.v1.RuleSpec.AttributesEntry
-	nil,                                    // 101: ktms.v1.ExplainRouteRequest.AttributesEntry
-	(Effort)(0),                            // 102: ktms.v1.Effort
-	(*timestamppb.Timestamp)(nil),          // 103: google.protobuf.Timestamp
-	(*NodeCapacityOverride)(nil),           // 104: ktms.v1.NodeCapacityOverride
-	(*durationpb.Duration)(nil),            // 105: google.protobuf.Duration
+	(*ListAgentsRequest)(nil),              // 100: ktms.v1.ListAgentsRequest
+	(*AgentInfo)(nil),                      // 101: ktms.v1.AgentInfo
+	(*ListAgentsResponse)(nil),             // 102: ktms.v1.ListAgentsResponse
+	(*SetAgentRecordingRequest)(nil),       // 103: ktms.v1.SetAgentRecordingRequest
+	(*SetAgentRecordingResponse)(nil),      // 104: ktms.v1.SetAgentRecordingResponse
+	(*ListAgentTasksRequest)(nil),          // 105: ktms.v1.ListAgentTasksRequest
+	(*AgentMessage)(nil),                   // 106: ktms.v1.AgentMessage
+	(*AgentTask)(nil),                      // 107: ktms.v1.AgentTask
+	(*ListAgentTasksResponse)(nil),         // 108: ktms.v1.ListAgentTasksResponse
+	(*GetAgentTaskRequest)(nil),            // 109: ktms.v1.GetAgentTaskRequest
+	nil,                                    // 110: ktms.v1.RuleSpec.AttributesEntry
+	nil,                                    // 111: ktms.v1.ExplainRouteRequest.AttributesEntry
+	(Effort)(0),                            // 112: ktms.v1.Effort
+	(*timestamppb.Timestamp)(nil),          // 113: google.protobuf.Timestamp
+	(*NodeCapacityOverride)(nil),           // 114: ktms.v1.NodeCapacityOverride
+	(*durationpb.Duration)(nil),            // 115: google.protobuf.Duration
 }
 var file_ktms_v1_admin_proto_depIdxs = []int32{
-	102, // 0: ktms.v1.ModelSpec.efforts:type_name -> ktms.v1.Effort
-	102, // 1: ktms.v1.RuleSpec.effort:type_name -> ktms.v1.Effort
-	100, // 2: ktms.v1.RuleSpec.attributes:type_name -> ktms.v1.RuleSpec.AttributesEntry
+	112, // 0: ktms.v1.ModelSpec.efforts:type_name -> ktms.v1.Effort
+	112, // 1: ktms.v1.RuleSpec.effort:type_name -> ktms.v1.Effort
+	110, // 2: ktms.v1.RuleSpec.attributes:type_name -> ktms.v1.RuleSpec.AttributesEntry
 	0,   // 3: ktms.v1.UpsertModelRequest.model:type_name -> ktms.v1.ModelSpec
 	1,   // 4: ktms.v1.ReplaceRulesRequest.rules:type_name -> ktms.v1.RuleSpec
-	103, // 5: ktms.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	113, // 5: ktms.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
 	0,   // 6: ktms.v1.GetConfigResponse.models:type_name -> ktms.v1.ModelSpec
 	1,   // 7: ktms.v1.GetConfigResponse.rules:type_name -> ktms.v1.RuleSpec
 	12,  // 8: ktms.v1.GetConfigResponse.vendor_keys:type_name -> ktms.v1.VendorKeyInfo
@@ -6264,131 +7013,146 @@ var file_ktms_v1_admin_proto_depIdxs = []int32{
 	93,  // 12: ktms.v1.GetConfigResponse.mcp_credentials:type_name -> ktms.v1.MCPCredentialInfo
 	16,  // 13: ktms.v1.MintAPIKeyRequest.policy:type_name -> ktms.v1.APIKeyPolicy
 	16,  // 14: ktms.v1.SetAPIKeyPolicyRequest.policy:type_name -> ktms.v1.APIKeyPolicy
-	103, // 15: ktms.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	113, // 15: ktms.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
 	16,  // 16: ktms.v1.APIKeyInfo.policy:type_name -> ktms.v1.APIKeyPolicy
 	23,  // 17: ktms.v1.ListAPIKeysResponse.keys:type_name -> ktms.v1.APIKeyInfo
-	103, // 18: ktms.v1.NodeKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	113, // 18: ktms.v1.NodeKeyInfo.created_at:type_name -> google.protobuf.Timestamp
 	32,  // 19: ktms.v1.ListNodeKeysResponse.keys:type_name -> ktms.v1.NodeKeyInfo
-	103, // 20: ktms.v1.NodeInfo.last_heartbeat:type_name -> google.protobuf.Timestamp
-	103, // 21: ktms.v1.NodeInfo.capacity_until:type_name -> google.protobuf.Timestamp
+	113, // 20: ktms.v1.NodeInfo.last_heartbeat:type_name -> google.protobuf.Timestamp
+	113, // 21: ktms.v1.NodeInfo.capacity_until:type_name -> google.protobuf.Timestamp
 	35,  // 22: ktms.v1.ListNodesResponse.nodes:type_name -> ktms.v1.NodeInfo
-	104, // 23: ktms.v1.NodeScheduleInfo.override:type_name -> ktms.v1.NodeCapacityOverride
-	103, // 24: ktms.v1.NodeScheduleInfo.updated_at:type_name -> google.protobuf.Timestamp
-	103, // 25: ktms.v1.SetNodeCapacityOverrideRequest.until:type_name -> google.protobuf.Timestamp
+	114, // 23: ktms.v1.NodeScheduleInfo.override:type_name -> ktms.v1.NodeCapacityOverride
+	113, // 24: ktms.v1.NodeScheduleInfo.updated_at:type_name -> google.protobuf.Timestamp
+	113, // 25: ktms.v1.SetNodeCapacityOverrideRequest.until:type_name -> google.protobuf.Timestamp
 	40,  // 26: ktms.v1.ListNodeSchedulesResponse.schedules:type_name -> ktms.v1.NodeScheduleInfo
 	47,  // 27: ktms.v1.SetUserRateLimitRequest.rate_limit:type_name -> ktms.v1.UserRateLimitSpec
 	47,  // 28: ktms.v1.ListUserRateLimitsResponse.rate_limits:type_name -> ktms.v1.UserRateLimitSpec
 	54,  // 29: ktms.v1.SetSpendLimitRequest.spend_limit:type_name -> ktms.v1.SpendLimitSpec
 	54,  // 30: ktms.v1.ListSpendLimitsResponse.spend_limits:type_name -> ktms.v1.SpendLimitSpec
-	103, // 31: ktms.v1.Organization.created_at:type_name -> google.protobuf.Timestamp
-	103, // 32: ktms.v1.Team.created_at:type_name -> google.protobuf.Timestamp
+	113, // 31: ktms.v1.Organization.created_at:type_name -> google.protobuf.Timestamp
+	113, // 32: ktms.v1.Team.created_at:type_name -> google.protobuf.Timestamp
 	61,  // 33: ktms.v1.CreateOrganizationResponse.organization:type_name -> ktms.v1.Organization
 	61,  // 34: ktms.v1.ListOrganizationsResponse.organizations:type_name -> ktms.v1.Organization
 	62,  // 35: ktms.v1.CreateTeamResponse.team:type_name -> ktms.v1.Team
 	62,  // 36: ktms.v1.GetTeamResponse.team:type_name -> ktms.v1.Team
 	62,  // 37: ktms.v1.ListTeamsResponse.teams:type_name -> ktms.v1.Team
 	62,  // 38: ktms.v1.UpdateTeamResponse.team:type_name -> ktms.v1.Team
-	103, // 39: ktms.v1.GetTeamSpendResponse.resets_at:type_name -> google.protobuf.Timestamp
-	103, // 40: ktms.v1.SpendWindow.resets_at:type_name -> google.protobuf.Timestamp
+	113, // 39: ktms.v1.GetTeamSpendResponse.resets_at:type_name -> google.protobuf.Timestamp
+	113, // 40: ktms.v1.SpendWindow.resets_at:type_name -> google.protobuf.Timestamp
 	82,  // 41: ktms.v1.GetSpendResponse.windows:type_name -> ktms.v1.SpendWindow
 	84,  // 42: ktms.v1.UpsertMCPServerRequest.server:type_name -> ktms.v1.MCPServerSpec
-	103, // 43: ktms.v1.MCPCredentialInfo.created_at:type_name -> google.protobuf.Timestamp
+	113, // 43: ktms.v1.MCPCredentialInfo.created_at:type_name -> google.protobuf.Timestamp
 	95,  // 44: ktms.v1.ListMCPToolsResponse.tools:type_name -> ktms.v1.MCPToolInfo
-	102, // 45: ktms.v1.ExplainRouteRequest.effort:type_name -> ktms.v1.Effort
-	101, // 46: ktms.v1.ExplainRouteRequest.attributes:type_name -> ktms.v1.ExplainRouteRequest.AttributesEntry
-	105, // 47: ktms.v1.RouteCandidate.paused_for:type_name -> google.protobuf.Duration
+	112, // 45: ktms.v1.ExplainRouteRequest.effort:type_name -> ktms.v1.Effort
+	111, // 46: ktms.v1.ExplainRouteRequest.attributes:type_name -> ktms.v1.ExplainRouteRequest.AttributesEntry
+	115, // 47: ktms.v1.RouteCandidate.paused_for:type_name -> google.protobuf.Duration
 	98,  // 48: ktms.v1.ExplainRouteResponse.candidates:type_name -> ktms.v1.RouteCandidate
-	2,   // 49: ktms.v1.AdminService.UpsertModel:input_type -> ktms.v1.UpsertModelRequest
-	4,   // 50: ktms.v1.AdminService.DeleteModel:input_type -> ktms.v1.DeleteModelRequest
-	6,   // 51: ktms.v1.AdminService.ReplaceRules:input_type -> ktms.v1.ReplaceRulesRequest
-	8,   // 52: ktms.v1.AdminService.SetVendorKey:input_type -> ktms.v1.SetVendorKeyRequest
-	10,  // 53: ktms.v1.AdminService.DeleteVendorKey:input_type -> ktms.v1.DeleteVendorKeyRequest
-	13,  // 54: ktms.v1.AdminService.GetConfig:input_type -> ktms.v1.GetConfigRequest
-	15,  // 55: ktms.v1.AdminService.MintAPIKey:input_type -> ktms.v1.MintAPIKeyRequest
-	20,  // 56: ktms.v1.AdminService.RevokeAPIKey:input_type -> ktms.v1.RevokeAPIKeyRequest
-	22,  // 57: ktms.v1.AdminService.ListAPIKeys:input_type -> ktms.v1.ListAPIKeysRequest
-	17,  // 58: ktms.v1.AdminService.SetAPIKeyPolicy:input_type -> ktms.v1.SetAPIKeyPolicyRequest
-	25,  // 59: ktms.v1.AdminService.RotateEncryption:input_type -> ktms.v1.RotateEncryptionRequest
-	27,  // 60: ktms.v1.AdminService.MintNodeKey:input_type -> ktms.v1.MintNodeKeyRequest
-	29,  // 61: ktms.v1.AdminService.RevokeNodeKey:input_type -> ktms.v1.RevokeNodeKeyRequest
-	31,  // 62: ktms.v1.AdminService.ListNodeKeys:input_type -> ktms.v1.ListNodeKeysRequest
-	34,  // 63: ktms.v1.AdminService.ListNodes:input_type -> ktms.v1.ListNodesRequest
-	37,  // 64: ktms.v1.AdminService.DrainNode:input_type -> ktms.v1.DrainNodeRequest
-	39,  // 65: ktms.v1.AdminService.GetNodeSchedule:input_type -> ktms.v1.GetNodeScheduleRequest
-	43,  // 66: ktms.v1.AdminService.ListNodeSchedules:input_type -> ktms.v1.ListNodeSchedulesRequest
-	41,  // 67: ktms.v1.AdminService.SetNodeSchedule:input_type -> ktms.v1.SetNodeScheduleRequest
-	42,  // 68: ktms.v1.AdminService.SetNodeCapacityOverride:input_type -> ktms.v1.SetNodeCapacityOverrideRequest
-	45,  // 69: ktms.v1.AdminService.DeleteNodeSchedule:input_type -> ktms.v1.DeleteNodeScheduleRequest
-	48,  // 70: ktms.v1.AdminService.SetUserRateLimit:input_type -> ktms.v1.SetUserRateLimitRequest
-	50,  // 71: ktms.v1.AdminService.DeleteUserRateLimit:input_type -> ktms.v1.DeleteUserRateLimitRequest
-	52,  // 72: ktms.v1.AdminService.ListUserRateLimits:input_type -> ktms.v1.ListUserRateLimitsRequest
-	55,  // 73: ktms.v1.AdminService.SetSpendLimit:input_type -> ktms.v1.SetSpendLimitRequest
-	57,  // 74: ktms.v1.AdminService.DeleteSpendLimit:input_type -> ktms.v1.DeleteSpendLimitRequest
-	59,  // 75: ktms.v1.AdminService.ListSpendLimits:input_type -> ktms.v1.ListSpendLimitsRequest
-	63,  // 76: ktms.v1.AdminService.CreateOrganization:input_type -> ktms.v1.CreateOrganizationRequest
-	65,  // 77: ktms.v1.AdminService.ListOrganizations:input_type -> ktms.v1.ListOrganizationsRequest
-	67,  // 78: ktms.v1.AdminService.DeleteOrganization:input_type -> ktms.v1.DeleteOrganizationRequest
-	69,  // 79: ktms.v1.AdminService.CreateTeam:input_type -> ktms.v1.CreateTeamRequest
-	71,  // 80: ktms.v1.AdminService.GetTeam:input_type -> ktms.v1.GetTeamRequest
-	73,  // 81: ktms.v1.AdminService.ListTeams:input_type -> ktms.v1.ListTeamsRequest
-	75,  // 82: ktms.v1.AdminService.UpdateTeam:input_type -> ktms.v1.UpdateTeamRequest
-	77,  // 83: ktms.v1.AdminService.DeleteTeam:input_type -> ktms.v1.DeleteTeamRequest
-	79,  // 84: ktms.v1.AdminService.GetTeamSpend:input_type -> ktms.v1.GetTeamSpendRequest
-	81,  // 85: ktms.v1.AdminService.GetSpend:input_type -> ktms.v1.GetSpendRequest
-	97,  // 86: ktms.v1.AdminService.ExplainRoute:input_type -> ktms.v1.ExplainRouteRequest
-	85,  // 87: ktms.v1.AdminService.UpsertMCPServer:input_type -> ktms.v1.UpsertMCPServerRequest
-	87,  // 88: ktms.v1.AdminService.DeleteMCPServer:input_type -> ktms.v1.DeleteMCPServerRequest
-	89,  // 89: ktms.v1.AdminService.SetMCPCredential:input_type -> ktms.v1.SetMCPCredentialRequest
-	91,  // 90: ktms.v1.AdminService.DeleteMCPCredential:input_type -> ktms.v1.DeleteMCPCredentialRequest
-	94,  // 91: ktms.v1.AdminService.ListMCPTools:input_type -> ktms.v1.ListMCPToolsRequest
-	3,   // 92: ktms.v1.AdminService.UpsertModel:output_type -> ktms.v1.UpsertModelResponse
-	5,   // 93: ktms.v1.AdminService.DeleteModel:output_type -> ktms.v1.DeleteModelResponse
-	7,   // 94: ktms.v1.AdminService.ReplaceRules:output_type -> ktms.v1.ReplaceRulesResponse
-	9,   // 95: ktms.v1.AdminService.SetVendorKey:output_type -> ktms.v1.SetVendorKeyResponse
-	11,  // 96: ktms.v1.AdminService.DeleteVendorKey:output_type -> ktms.v1.DeleteVendorKeyResponse
-	14,  // 97: ktms.v1.AdminService.GetConfig:output_type -> ktms.v1.GetConfigResponse
-	19,  // 98: ktms.v1.AdminService.MintAPIKey:output_type -> ktms.v1.MintAPIKeyResponse
-	21,  // 99: ktms.v1.AdminService.RevokeAPIKey:output_type -> ktms.v1.RevokeAPIKeyResponse
-	24,  // 100: ktms.v1.AdminService.ListAPIKeys:output_type -> ktms.v1.ListAPIKeysResponse
-	18,  // 101: ktms.v1.AdminService.SetAPIKeyPolicy:output_type -> ktms.v1.SetAPIKeyPolicyResponse
-	26,  // 102: ktms.v1.AdminService.RotateEncryption:output_type -> ktms.v1.RotateEncryptionResponse
-	28,  // 103: ktms.v1.AdminService.MintNodeKey:output_type -> ktms.v1.MintNodeKeyResponse
-	30,  // 104: ktms.v1.AdminService.RevokeNodeKey:output_type -> ktms.v1.RevokeNodeKeyResponse
-	33,  // 105: ktms.v1.AdminService.ListNodeKeys:output_type -> ktms.v1.ListNodeKeysResponse
-	36,  // 106: ktms.v1.AdminService.ListNodes:output_type -> ktms.v1.ListNodesResponse
-	38,  // 107: ktms.v1.AdminService.DrainNode:output_type -> ktms.v1.DrainNodeResponse
-	40,  // 108: ktms.v1.AdminService.GetNodeSchedule:output_type -> ktms.v1.NodeScheduleInfo
-	44,  // 109: ktms.v1.AdminService.ListNodeSchedules:output_type -> ktms.v1.ListNodeSchedulesResponse
-	40,  // 110: ktms.v1.AdminService.SetNodeSchedule:output_type -> ktms.v1.NodeScheduleInfo
-	40,  // 111: ktms.v1.AdminService.SetNodeCapacityOverride:output_type -> ktms.v1.NodeScheduleInfo
-	46,  // 112: ktms.v1.AdminService.DeleteNodeSchedule:output_type -> ktms.v1.DeleteNodeScheduleResponse
-	49,  // 113: ktms.v1.AdminService.SetUserRateLimit:output_type -> ktms.v1.SetUserRateLimitResponse
-	51,  // 114: ktms.v1.AdminService.DeleteUserRateLimit:output_type -> ktms.v1.DeleteUserRateLimitResponse
-	53,  // 115: ktms.v1.AdminService.ListUserRateLimits:output_type -> ktms.v1.ListUserRateLimitsResponse
-	56,  // 116: ktms.v1.AdminService.SetSpendLimit:output_type -> ktms.v1.SetSpendLimitResponse
-	58,  // 117: ktms.v1.AdminService.DeleteSpendLimit:output_type -> ktms.v1.DeleteSpendLimitResponse
-	60,  // 118: ktms.v1.AdminService.ListSpendLimits:output_type -> ktms.v1.ListSpendLimitsResponse
-	64,  // 119: ktms.v1.AdminService.CreateOrganization:output_type -> ktms.v1.CreateOrganizationResponse
-	66,  // 120: ktms.v1.AdminService.ListOrganizations:output_type -> ktms.v1.ListOrganizationsResponse
-	68,  // 121: ktms.v1.AdminService.DeleteOrganization:output_type -> ktms.v1.DeleteOrganizationResponse
-	70,  // 122: ktms.v1.AdminService.CreateTeam:output_type -> ktms.v1.CreateTeamResponse
-	72,  // 123: ktms.v1.AdminService.GetTeam:output_type -> ktms.v1.GetTeamResponse
-	74,  // 124: ktms.v1.AdminService.ListTeams:output_type -> ktms.v1.ListTeamsResponse
-	76,  // 125: ktms.v1.AdminService.UpdateTeam:output_type -> ktms.v1.UpdateTeamResponse
-	78,  // 126: ktms.v1.AdminService.DeleteTeam:output_type -> ktms.v1.DeleteTeamResponse
-	80,  // 127: ktms.v1.AdminService.GetTeamSpend:output_type -> ktms.v1.GetTeamSpendResponse
-	83,  // 128: ktms.v1.AdminService.GetSpend:output_type -> ktms.v1.GetSpendResponse
-	99,  // 129: ktms.v1.AdminService.ExplainRoute:output_type -> ktms.v1.ExplainRouteResponse
-	86,  // 130: ktms.v1.AdminService.UpsertMCPServer:output_type -> ktms.v1.UpsertMCPServerResponse
-	88,  // 131: ktms.v1.AdminService.DeleteMCPServer:output_type -> ktms.v1.DeleteMCPServerResponse
-	90,  // 132: ktms.v1.AdminService.SetMCPCredential:output_type -> ktms.v1.SetMCPCredentialResponse
-	92,  // 133: ktms.v1.AdminService.DeleteMCPCredential:output_type -> ktms.v1.DeleteMCPCredentialResponse
-	96,  // 134: ktms.v1.AdminService.ListMCPTools:output_type -> ktms.v1.ListMCPToolsResponse
-	92,  // [92:135] is the sub-list for method output_type
-	49,  // [49:92] is the sub-list for method input_type
-	49,  // [49:49] is the sub-list for extension type_name
-	49,  // [49:49] is the sub-list for extension extendee
-	0,   // [0:49] is the sub-list for field type_name
+	113, // 49: ktms.v1.AgentInfo.updated_at:type_name -> google.protobuf.Timestamp
+	101, // 50: ktms.v1.ListAgentsResponse.agents:type_name -> ktms.v1.AgentInfo
+	113, // 51: ktms.v1.AgentMessage.created_at:type_name -> google.protobuf.Timestamp
+	113, // 52: ktms.v1.AgentTask.created_at:type_name -> google.protobuf.Timestamp
+	113, // 53: ktms.v1.AgentTask.updated_at:type_name -> google.protobuf.Timestamp
+	106, // 54: ktms.v1.AgentTask.messages:type_name -> ktms.v1.AgentMessage
+	107, // 55: ktms.v1.ListAgentTasksResponse.tasks:type_name -> ktms.v1.AgentTask
+	2,   // 56: ktms.v1.AdminService.UpsertModel:input_type -> ktms.v1.UpsertModelRequest
+	4,   // 57: ktms.v1.AdminService.DeleteModel:input_type -> ktms.v1.DeleteModelRequest
+	6,   // 58: ktms.v1.AdminService.ReplaceRules:input_type -> ktms.v1.ReplaceRulesRequest
+	8,   // 59: ktms.v1.AdminService.SetVendorKey:input_type -> ktms.v1.SetVendorKeyRequest
+	10,  // 60: ktms.v1.AdminService.DeleteVendorKey:input_type -> ktms.v1.DeleteVendorKeyRequest
+	13,  // 61: ktms.v1.AdminService.GetConfig:input_type -> ktms.v1.GetConfigRequest
+	15,  // 62: ktms.v1.AdminService.MintAPIKey:input_type -> ktms.v1.MintAPIKeyRequest
+	20,  // 63: ktms.v1.AdminService.RevokeAPIKey:input_type -> ktms.v1.RevokeAPIKeyRequest
+	22,  // 64: ktms.v1.AdminService.ListAPIKeys:input_type -> ktms.v1.ListAPIKeysRequest
+	17,  // 65: ktms.v1.AdminService.SetAPIKeyPolicy:input_type -> ktms.v1.SetAPIKeyPolicyRequest
+	25,  // 66: ktms.v1.AdminService.RotateEncryption:input_type -> ktms.v1.RotateEncryptionRequest
+	27,  // 67: ktms.v1.AdminService.MintNodeKey:input_type -> ktms.v1.MintNodeKeyRequest
+	29,  // 68: ktms.v1.AdminService.RevokeNodeKey:input_type -> ktms.v1.RevokeNodeKeyRequest
+	31,  // 69: ktms.v1.AdminService.ListNodeKeys:input_type -> ktms.v1.ListNodeKeysRequest
+	34,  // 70: ktms.v1.AdminService.ListNodes:input_type -> ktms.v1.ListNodesRequest
+	37,  // 71: ktms.v1.AdminService.DrainNode:input_type -> ktms.v1.DrainNodeRequest
+	39,  // 72: ktms.v1.AdminService.GetNodeSchedule:input_type -> ktms.v1.GetNodeScheduleRequest
+	43,  // 73: ktms.v1.AdminService.ListNodeSchedules:input_type -> ktms.v1.ListNodeSchedulesRequest
+	41,  // 74: ktms.v1.AdminService.SetNodeSchedule:input_type -> ktms.v1.SetNodeScheduleRequest
+	42,  // 75: ktms.v1.AdminService.SetNodeCapacityOverride:input_type -> ktms.v1.SetNodeCapacityOverrideRequest
+	45,  // 76: ktms.v1.AdminService.DeleteNodeSchedule:input_type -> ktms.v1.DeleteNodeScheduleRequest
+	48,  // 77: ktms.v1.AdminService.SetUserRateLimit:input_type -> ktms.v1.SetUserRateLimitRequest
+	50,  // 78: ktms.v1.AdminService.DeleteUserRateLimit:input_type -> ktms.v1.DeleteUserRateLimitRequest
+	52,  // 79: ktms.v1.AdminService.ListUserRateLimits:input_type -> ktms.v1.ListUserRateLimitsRequest
+	55,  // 80: ktms.v1.AdminService.SetSpendLimit:input_type -> ktms.v1.SetSpendLimitRequest
+	57,  // 81: ktms.v1.AdminService.DeleteSpendLimit:input_type -> ktms.v1.DeleteSpendLimitRequest
+	59,  // 82: ktms.v1.AdminService.ListSpendLimits:input_type -> ktms.v1.ListSpendLimitsRequest
+	63,  // 83: ktms.v1.AdminService.CreateOrganization:input_type -> ktms.v1.CreateOrganizationRequest
+	65,  // 84: ktms.v1.AdminService.ListOrganizations:input_type -> ktms.v1.ListOrganizationsRequest
+	67,  // 85: ktms.v1.AdminService.DeleteOrganization:input_type -> ktms.v1.DeleteOrganizationRequest
+	69,  // 86: ktms.v1.AdminService.CreateTeam:input_type -> ktms.v1.CreateTeamRequest
+	71,  // 87: ktms.v1.AdminService.GetTeam:input_type -> ktms.v1.GetTeamRequest
+	73,  // 88: ktms.v1.AdminService.ListTeams:input_type -> ktms.v1.ListTeamsRequest
+	75,  // 89: ktms.v1.AdminService.UpdateTeam:input_type -> ktms.v1.UpdateTeamRequest
+	77,  // 90: ktms.v1.AdminService.DeleteTeam:input_type -> ktms.v1.DeleteTeamRequest
+	79,  // 91: ktms.v1.AdminService.GetTeamSpend:input_type -> ktms.v1.GetTeamSpendRequest
+	81,  // 92: ktms.v1.AdminService.GetSpend:input_type -> ktms.v1.GetSpendRequest
+	97,  // 93: ktms.v1.AdminService.ExplainRoute:input_type -> ktms.v1.ExplainRouteRequest
+	85,  // 94: ktms.v1.AdminService.UpsertMCPServer:input_type -> ktms.v1.UpsertMCPServerRequest
+	87,  // 95: ktms.v1.AdminService.DeleteMCPServer:input_type -> ktms.v1.DeleteMCPServerRequest
+	89,  // 96: ktms.v1.AdminService.SetMCPCredential:input_type -> ktms.v1.SetMCPCredentialRequest
+	91,  // 97: ktms.v1.AdminService.DeleteMCPCredential:input_type -> ktms.v1.DeleteMCPCredentialRequest
+	94,  // 98: ktms.v1.AdminService.ListMCPTools:input_type -> ktms.v1.ListMCPToolsRequest
+	100, // 99: ktms.v1.AdminService.ListAgents:input_type -> ktms.v1.ListAgentsRequest
+	103, // 100: ktms.v1.AdminService.SetAgentRecording:input_type -> ktms.v1.SetAgentRecordingRequest
+	105, // 101: ktms.v1.AdminService.ListAgentTasks:input_type -> ktms.v1.ListAgentTasksRequest
+	109, // 102: ktms.v1.AdminService.GetAgentTask:input_type -> ktms.v1.GetAgentTaskRequest
+	3,   // 103: ktms.v1.AdminService.UpsertModel:output_type -> ktms.v1.UpsertModelResponse
+	5,   // 104: ktms.v1.AdminService.DeleteModel:output_type -> ktms.v1.DeleteModelResponse
+	7,   // 105: ktms.v1.AdminService.ReplaceRules:output_type -> ktms.v1.ReplaceRulesResponse
+	9,   // 106: ktms.v1.AdminService.SetVendorKey:output_type -> ktms.v1.SetVendorKeyResponse
+	11,  // 107: ktms.v1.AdminService.DeleteVendorKey:output_type -> ktms.v1.DeleteVendorKeyResponse
+	14,  // 108: ktms.v1.AdminService.GetConfig:output_type -> ktms.v1.GetConfigResponse
+	19,  // 109: ktms.v1.AdminService.MintAPIKey:output_type -> ktms.v1.MintAPIKeyResponse
+	21,  // 110: ktms.v1.AdminService.RevokeAPIKey:output_type -> ktms.v1.RevokeAPIKeyResponse
+	24,  // 111: ktms.v1.AdminService.ListAPIKeys:output_type -> ktms.v1.ListAPIKeysResponse
+	18,  // 112: ktms.v1.AdminService.SetAPIKeyPolicy:output_type -> ktms.v1.SetAPIKeyPolicyResponse
+	26,  // 113: ktms.v1.AdminService.RotateEncryption:output_type -> ktms.v1.RotateEncryptionResponse
+	28,  // 114: ktms.v1.AdminService.MintNodeKey:output_type -> ktms.v1.MintNodeKeyResponse
+	30,  // 115: ktms.v1.AdminService.RevokeNodeKey:output_type -> ktms.v1.RevokeNodeKeyResponse
+	33,  // 116: ktms.v1.AdminService.ListNodeKeys:output_type -> ktms.v1.ListNodeKeysResponse
+	36,  // 117: ktms.v1.AdminService.ListNodes:output_type -> ktms.v1.ListNodesResponse
+	38,  // 118: ktms.v1.AdminService.DrainNode:output_type -> ktms.v1.DrainNodeResponse
+	40,  // 119: ktms.v1.AdminService.GetNodeSchedule:output_type -> ktms.v1.NodeScheduleInfo
+	44,  // 120: ktms.v1.AdminService.ListNodeSchedules:output_type -> ktms.v1.ListNodeSchedulesResponse
+	40,  // 121: ktms.v1.AdminService.SetNodeSchedule:output_type -> ktms.v1.NodeScheduleInfo
+	40,  // 122: ktms.v1.AdminService.SetNodeCapacityOverride:output_type -> ktms.v1.NodeScheduleInfo
+	46,  // 123: ktms.v1.AdminService.DeleteNodeSchedule:output_type -> ktms.v1.DeleteNodeScheduleResponse
+	49,  // 124: ktms.v1.AdminService.SetUserRateLimit:output_type -> ktms.v1.SetUserRateLimitResponse
+	51,  // 125: ktms.v1.AdminService.DeleteUserRateLimit:output_type -> ktms.v1.DeleteUserRateLimitResponse
+	53,  // 126: ktms.v1.AdminService.ListUserRateLimits:output_type -> ktms.v1.ListUserRateLimitsResponse
+	56,  // 127: ktms.v1.AdminService.SetSpendLimit:output_type -> ktms.v1.SetSpendLimitResponse
+	58,  // 128: ktms.v1.AdminService.DeleteSpendLimit:output_type -> ktms.v1.DeleteSpendLimitResponse
+	60,  // 129: ktms.v1.AdminService.ListSpendLimits:output_type -> ktms.v1.ListSpendLimitsResponse
+	64,  // 130: ktms.v1.AdminService.CreateOrganization:output_type -> ktms.v1.CreateOrganizationResponse
+	66,  // 131: ktms.v1.AdminService.ListOrganizations:output_type -> ktms.v1.ListOrganizationsResponse
+	68,  // 132: ktms.v1.AdminService.DeleteOrganization:output_type -> ktms.v1.DeleteOrganizationResponse
+	70,  // 133: ktms.v1.AdminService.CreateTeam:output_type -> ktms.v1.CreateTeamResponse
+	72,  // 134: ktms.v1.AdminService.GetTeam:output_type -> ktms.v1.GetTeamResponse
+	74,  // 135: ktms.v1.AdminService.ListTeams:output_type -> ktms.v1.ListTeamsResponse
+	76,  // 136: ktms.v1.AdminService.UpdateTeam:output_type -> ktms.v1.UpdateTeamResponse
+	78,  // 137: ktms.v1.AdminService.DeleteTeam:output_type -> ktms.v1.DeleteTeamResponse
+	80,  // 138: ktms.v1.AdminService.GetTeamSpend:output_type -> ktms.v1.GetTeamSpendResponse
+	83,  // 139: ktms.v1.AdminService.GetSpend:output_type -> ktms.v1.GetSpendResponse
+	99,  // 140: ktms.v1.AdminService.ExplainRoute:output_type -> ktms.v1.ExplainRouteResponse
+	86,  // 141: ktms.v1.AdminService.UpsertMCPServer:output_type -> ktms.v1.UpsertMCPServerResponse
+	88,  // 142: ktms.v1.AdminService.DeleteMCPServer:output_type -> ktms.v1.DeleteMCPServerResponse
+	90,  // 143: ktms.v1.AdminService.SetMCPCredential:output_type -> ktms.v1.SetMCPCredentialResponse
+	92,  // 144: ktms.v1.AdminService.DeleteMCPCredential:output_type -> ktms.v1.DeleteMCPCredentialResponse
+	96,  // 145: ktms.v1.AdminService.ListMCPTools:output_type -> ktms.v1.ListMCPToolsResponse
+	102, // 146: ktms.v1.AdminService.ListAgents:output_type -> ktms.v1.ListAgentsResponse
+	104, // 147: ktms.v1.AdminService.SetAgentRecording:output_type -> ktms.v1.SetAgentRecordingResponse
+	108, // 148: ktms.v1.AdminService.ListAgentTasks:output_type -> ktms.v1.ListAgentTasksResponse
+	107, // 149: ktms.v1.AdminService.GetAgentTask:output_type -> ktms.v1.AgentTask
+	103, // [103:150] is the sub-list for method output_type
+	56,  // [56:103] is the sub-list for method input_type
+	56,  // [56:56] is the sub-list for extension type_name
+	56,  // [56:56] is the sub-list for extension extendee
+	0,   // [0:56] is the sub-list for field type_name
 }
 
 func init() { file_ktms_v1_admin_proto_init() }
@@ -6404,7 +7168,7 @@ func file_ktms_v1_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ktms_v1_admin_proto_rawDesc), len(file_ktms_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   102,
+			NumMessages:   112,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
