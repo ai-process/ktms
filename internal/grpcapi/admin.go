@@ -448,6 +448,9 @@ func (s *AdminServer) MintAPIKey(ctx context.Context, req *pb.MintAPIKeyRequest)
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
 			return nil, status.Error(codes.InvalidArgument, "team or organization not found")
 		}
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, status.Errorf(codes.AlreadyExists, "a key named %q exists", req.GetName())
+		}
 		return nil, dbStatus(err)
 	}
 	// The plain key exists only in this response.

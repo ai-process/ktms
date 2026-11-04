@@ -27,6 +27,9 @@ func TestAgentKeysAndConversations(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if _, err := s.MintAPIKey(ctx, &pb.MintAPIKeyRequest{Name: names[0], Scopes: []string{"mcp"}}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("a second key of the same name: %v", err)
+	}
 	keys, err := s.ListAPIKeys(ctx, &pb.ListAPIKeysRequest{Owner: owner})
 	if err != nil || len(keys.GetKeys()) != 2 || keys.GetKeys()[0].GetOwner() != "dev-"+owner[4:12]+"@x.com" {
 		t.Fatalf("keys by owner = %v, %v", keys, err)

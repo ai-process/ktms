@@ -19,6 +19,9 @@ All notable changes to KTMS are listed here. The format follows
 - `owner` on client keys (`MintAPIKey`, `ListAPIKeys`, `ktms keys mint --owner`, `owner` in the
   configuration file): the person a key belongs to. An MCP server can no longer be named `agents`.
 
+### Fixed
+- `MintAPIKey` with the name of an existing key answers `ALREADY_EXISTS`, not `UNAVAILABLE`.
+
 ## [1.5.0] - 2026-11-03
 
 ### Added
