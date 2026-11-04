@@ -137,14 +137,17 @@ func (d *DB) GetAgentByName(ctx context.Context, name string) (*Agent, error) {
 type AgentFilter struct {
 	Owner          string
 	IncludeRevoked bool
+	// Org, when set, keeps the agents of that organization; "" in it means none.
+	Org *string
 }
 
 // ListAgents lists agents by name, by default only those whose key is active.
 func (d *DB) ListAgents(ctx context.Context, f AgentFilter) ([]*Agent, error) {
 	rows, err := d.pool.Query(ctx,
 		`SELECT `+agentColumns+` FROM agent a JOIN api_key k ON k.id = a.key_id
-		 WHERE ($1 OR k.disabled_at IS NULL) AND ($2 = '' OR k.owner = $2) ORDER BY a.name`,
-		f.IncludeRevoked, f.Owner)
+		 WHERE ($1 OR k.disabled_at IS NULL) AND ($2 = '' OR k.owner = $2)
+		   AND ($3::text IS NULL OR COALESCE(k.org_id::text, '') = $3) ORDER BY a.name`,
+		f.IncludeRevoked, f.Owner, f.Org)
 	if err != nil {
 		return nil, err
 	}
@@ -160,11 +163,12 @@ func (d *DB) ListAgents(ctx context.Context, f AgentFilter) ([]*Agent, error) {
 	return out, rows.Err()
 }
 
-// ContextDepth is the depth of the deepest task of a conversation, -1 for none.
-func (d *DB) ContextDepth(ctx context.Context, contextID string) (int32, error) {
+// ContextDepth is the depth of the deepest task of a conversation sent to
+// the agent, -1 for none.
+func (d *DB) ContextDepth(ctx context.Context, contextID, toAgent string) (int32, error) {
 	var depth int32
 	err := d.pool.QueryRow(ctx,
-		`SELECT COALESCE(MAX(depth), -1) FROM agent_task WHERE context_id = $1`, contextID).Scan(&depth)
+		`SELECT COALESCE(MAX(depth), -1) FROM agent_task WHERE context_id = $1 AND to_agent = $2`, contextID, toAgent).Scan(&depth)
 	return depth, err
 }
 
@@ -226,6 +230,11 @@ func (d *DB) AddAgentMessage(ctx context.Context, taskID, fromAgent, role, text,
 				return ErrNotFound
 			}
 			return err
+		}
+		// A status change without text is never refused, so a full
+		// conversation can still be closed.
+		if text == "" {
+			maxMessages = 0
 		}
 		if err := lockContext(ctx, tx, contextID, maxMessages); err != nil {
 			return err

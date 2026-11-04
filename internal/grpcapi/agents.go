@@ -27,6 +27,9 @@ func (s *AdminServer) ListAgents(ctx context.Context, req *pb.ListAgentsRequest)
 	return out, nil
 }
 
+// agentName is an agent's name as send_message reads it.
+func agentName(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+
 func agentProto(a *proxydb.Agent) *pb.AgentInfo {
 	return &pb.AgentInfo{
 		Name: a.Name, Owner: a.Owner, OrgId: a.OrgID, TeamId: a.TeamID, Description: a.Description,
@@ -40,7 +43,7 @@ func (s *AdminServer) SetAgentRecording(ctx context.Context, req *pb.SetAgentRec
 	if !agents.ValidRecording(rec) {
 		return nil, status.Errorf(codes.InvalidArgument, "recording %q: want off, metadata, full or empty", req.GetRecording())
 	}
-	err := s.db.SetAgentRecording(ctx, req.GetName(), rec)
+	err := s.db.SetAgentRecording(ctx, agentName(req.GetName()), rec)
 	if errors.Is(err, proxydb.ErrNotFound) {
 		return nil, status.Errorf(codes.NotFound, "no agent %q", req.GetName())
 	}
@@ -51,7 +54,7 @@ func (s *AdminServer) SetAgentRecording(ctx context.Context, req *pb.SetAgentRec
 }
 
 func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasksRequest) (*pb.ListAgentTasksResponse, error) {
-	a, err := s.db.GetAgentByName(ctx, req.GetAgent())
+	a, err := s.db.GetAgentByName(ctx, agentName(req.GetAgent()))
 	if errors.Is(err, proxydb.ErrNotFound) {
 		return nil, status.Errorf(codes.NotFound, "no agent %q", req.GetAgent())
 	}

@@ -1695,17 +1695,20 @@ question (`working`) or cancels it. An ended task takes no more messages.
 
 - **Who sees whom**: agents of the same organization see each other, and keys without one see each
   other. `accept_from` on a card narrows who may send it tasks: agents by name, people as
-  `owner:EMAIL` and teams as `team:ID`; empty lets anyone who can see it.
-- **Limits**: a task sent with a `context_id` is one level deeper than the deepest task of the
-  conversation, up to `AGENTS_MAX_DEPTH`; a conversation holds at most
-  `AGENTS_MAX_MESSAGES_PER_CONTEXT` messages of at most `AGENTS_MAX_MESSAGE_BYTES` each; each key
-  makes at most `AGENTS_TOOL_RPM` calls of each tool a minute (needs Redis). A refusal is a tool
-  error that says why.
+  `owner:EMAIL` and teams as `team:ID`; empty lets anyone who can see it. A key of another organization is never reached, nor
+  its card written.
+- **Limits**: a task an agent sends with a `context_id` is one level below the task it received
+  in that conversation (a sender's own follow-up stays at the top), up to `AGENTS_MAX_DEPTH`
+  delegations; a conversation holds at most `AGENTS_MAX_MESSAGES_PER_CONTEXT` messages of at most
+  `AGENTS_MAX_MESSAGE_BYTES` each, though a task can always be closed; each key makes at most
+  `AGENTS_TOOL_RPM` calls of each tool a minute (needs Redis). A refusal is a tool error that says
+  why.
 - **Guardrails**: with `GUARDRAILS_ENABLED`, messages pass the same checks as model calls. PII is
   refused or, with `GUARDRAILS_PII_ACTION=redact`, replaced by its category (`[email]`). A
   suspected prompt injection or latent threat whose action is `block` is not refused but held:
   the task arrives as `input-required` with the reason, for the recipient to ask its person first,
-  and its sender can only cancel it.
+  and its sender can only cancel it. A flagged reply keeps its status and carries the reason
+  (`guardrail note: ...`) for the other side.
 - **Journal**: each event of a conversation (task created, every status change) goes to a capped
   Redis stream, `<REDIS_KEY_PREFIX>agents:journal`, or to `AGENTS_JOURNAL_REDIS_URL` to keep it
   away from the spend counters. `AGENTS_RECORDING` is `off`, `metadata` (who, when, status, size)

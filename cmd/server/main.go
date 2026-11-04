@@ -317,7 +317,9 @@ func main() {
 		defer gw.Close()
 		adminSrv.SetMCPToolLister(gw)
 		if cfg.AgentsEnabled {
-			gw.WithAgents(newAgents(rootCtx, cfg, db, rails, redisClient), int32(cfg.AgentsToolRPM))
+			svc, closeJournal := newAgents(rootCtx, cfg, db, rails, redisClient)
+			defer closeJournal()
+			gw.WithAgents(svc, int32(cfg.AgentsToolRPM))
 		}
 		extra = append(extra, gw)
 	}
@@ -387,14 +389,18 @@ func newLatentDetector(ctx context.Context, cfg *config.Config, enc latent.Encod
 
 // newAgents builds the agents' inbox: Postgres holds the conversations, a
 // capped Redis stream the best-effort journal (none without Redis).
-func newAgents(ctx context.Context, cfg *config.Config, db *proxydb.DB, rails *guardrails.Guardrails, rdb *redis.Client) *agents.Service {
+func newAgents(ctx context.Context, cfg *config.Config, db *proxydb.DB, rails *guardrails.Guardrails, rdb *redis.Client) (*agents.Service, func()) {
 	var journal agents.Journal
+	closeJournal := func() {}
 	if cfg.AgentsJournalRedisURL != "" {
 		opts, err := redis.ParseURL(cfg.AgentsJournalRedisURL)
 		if err != nil {
 			log.Fatal().Err(err).Msg("AGENTS_JOURNAL_REDIS_URL must be a redis:// URL")
 		}
+		opts.ReadTimeout, opts.WriteTimeout, opts.DialTimeout = cfg.RedisTimeout, cfg.RedisTimeout, 2*cfg.RedisTimeout
 		rdb = redis.NewClient(opts)
+		rdb.AddHook(redisguard.New())
+		closeJournal = func() { _ = rdb.Close() }
 	}
 	// Built even when the default is off: an agent may have its own level.
 	if rdb != nil {
@@ -409,5 +415,5 @@ func newAgents(ctx context.Context, cfg *config.Config, db *proxydb.DB, rails *g
 	}, agents.NewGuard(rails), journal)
 	go svc.Sweep(ctx, time.Hour)
 	log.Info().Str("recording", cfg.AgentsRecording).Bool("journal", journal != nil).Msg("agents inbox enabled (mcp server agents)")
-	return svc
+	return svc, closeJournal
 }

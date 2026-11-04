@@ -50,9 +50,9 @@ type Store interface {
 	UpsertAgent(ctx context.Context, a *proxydb.Agent) error
 	GetAgentByKey(ctx context.Context, keyID string) (*proxydb.Agent, error)
 	GetAgentByName(ctx context.Context, name string) (*proxydb.Agent, error)
-	GetAPIKeyByName(ctx context.Context, name string) (*proxydb.APIKey, error)
+	GetAPIKeyByLowerName(ctx context.Context, name string) (*proxydb.APIKey, error)
 	ListAgents(ctx context.Context, f proxydb.AgentFilter) ([]*proxydb.Agent, error)
-	ContextDepth(ctx context.Context, contextID string) (int32, error)
+	ContextDepth(ctx context.Context, contextID, toAgent string) (int32, error)
 	WithAgentMessages(ctx context.Context, tasks []*proxydb.AgentTask) error
 	AgentInContext(ctx context.Context, keyID, contextID string) (bool, error)
 	CreateAgentTask(ctx context.Context, t *proxydb.AgentTask, text string, maxMessages int64) error
@@ -147,7 +147,9 @@ func (s *Service) Register(ctx context.Context, id *apikeys.Identity, c Card) (*
 	}
 	a.Description = strings.TrimSpace(c.Description)
 	a.Skills, a.Repos = clean(c.Skills), clean(c.Repos)
-	a.AcceptFrom = clean(c.AcceptFrom)
+	if a.AcceptFrom, err = acceptList(c.AcceptFrom); err != nil {
+		return nil, err
+	}
 	if err := s.store.UpsertAgent(ctx, &a); err != nil {
 		return nil, err
 	}
@@ -164,6 +166,23 @@ func clean(in []string) []string {
 	return out
 }
 
+// acceptList normalises accept_from: agent names, owner:EMAIL and team:ID.
+func acceptList(in []string) ([]string, error) {
+	out := clean(in)
+	for i, e := range out {
+		e = strings.ToLower(e)
+		switch {
+		case strings.HasPrefix(e, "owner:") && strings.Count(e, "@") == 1 && len(e) <= 6+254:
+		case strings.HasPrefix(e, "team:") && uuid.Validate(e[5:]) == nil:
+		case nameRe.MatchString(e):
+		default:
+			return nil, fmt.Errorf(`%w: accept_from entry %q: want an agent name, "owner:EMAIL" or "team:ID"`, ErrInvalid, out[i])
+		}
+		out[i] = e
+	}
+	return out, nil
+}
+
 // visible: agents see the agents of their own organization; keys without one
 // see each other.
 func visible(me, other *proxydb.Agent) bool {
@@ -176,7 +195,7 @@ func accepts(to, from *proxydb.Agent) bool {
 		return true
 	}
 	for _, e := range to.AcceptFrom {
-		if e == from.Name || from.TeamID != "" && e == "team:"+from.TeamID || from.Owner != "" && strings.EqualFold(e, "owner:"+from.Owner) {
+		if e == from.Name || from.TeamID != "" && e == "team:"+from.TeamID || from.Owner != "" && e == "owner:"+from.Owner {
 			return true
 		}
 	}
@@ -186,20 +205,29 @@ func accepts(to, from *proxydb.Agent) bool {
 // target is the named agent. A key that may use the agents server but has not
 // called it yet gets its card now, so a person can be sent tasks as soon as
 // their key is minted, before their agent first connects.
-func (s *Service) target(ctx context.Context, name string) (*proxydb.Agent, error) {
+// The card is written only after the caller is known to see it, so no one
+// registers another organization's keys or learns their names.
+func (s *Service) target(ctx context.Context, me *proxydb.Agent, name string) (*proxydb.Agent, error) {
 	a, err := s.store.GetAgentByName(ctx, name)
+	if err == nil && !visible(me, a) {
+		return nil, proxydb.ErrNotFound
+	}
 	if !errors.Is(err, proxydb.ErrNotFound) {
 		return a, err
 	}
-	row, err := s.store.GetAPIKeyByName(ctx, name)
+	row, err := s.store.GetAPIKeyByLowerName(ctx, name)
 	if err != nil {
 		return nil, err
 	}
 	id := apikeys.IdentityFor(row)
-	if !row.Active() || !id.HasScope(apikeys.ScopeMCP) || !id.CanUseTool(Server, "") {
+	if !row.Active() || !id.HasScope(apikeys.ScopeMCP) || !id.CanUseTool(Server, "") || id.OrgID != me.OrgID {
 		return nil, proxydb.ErrNotFound
 	}
-	return s.Me(ctx, id)
+	a, err = s.Me(ctx, id)
+	if errors.Is(err, ErrDenied) {
+		return nil, proxydb.ErrNotFound // its key cannot be an agent: not the sender's to fix
+	}
+	return a, err
 }
 
 // List is the agents the caller can see, itself included.
@@ -207,16 +235,8 @@ func (s *Service) List(ctx context.Context, id *apikeys.Identity) (me *proxydb.A
 	if me, err = s.Me(ctx, id); err != nil {
 		return nil, nil, err
 	}
-	all, err := s.store.ListAgents(ctx, proxydb.AgentFilter{})
-	if err != nil {
-		return nil, nil, err
-	}
-	for _, a := range all {
-		if visible(me, a) {
-			out = append(out, a)
-		}
-	}
-	return me, out, nil
+	out, err = s.store.ListAgents(ctx, proxydb.AgentFilter{Org: &me.OrgID})
+	return me, out, err
 }
 
 // Send opens a task for agent to. With contextID it continues a conversation
@@ -226,8 +246,8 @@ func (s *Service) Send(ctx context.Context, id *apikeys.Identity, to, text, cont
 	if err != nil {
 		return nil, err
 	}
-	target, err := s.target(ctx, strings.ToLower(strings.TrimSpace(to)))
-	if errors.Is(err, proxydb.ErrNotFound) || err == nil && !visible(me, target) {
+	target, err := s.target(ctx, me, strings.ToLower(strings.TrimSpace(to)))
+	if errors.Is(err, proxydb.ErrNotFound) {
 		return nil, fmt.Errorf("%w: no agent %q; list_agents shows the ones you can reach", ErrInvalid, to)
 	}
 	if err != nil {
@@ -257,13 +277,15 @@ func (s *Service) Send(ctx context.Context, id *apikeys.Identity, to, text, cont
 		if !in {
 			return nil, fmt.Errorf("%w: context %s is not one of your conversations", ErrInvalid, contextID)
 		}
-		deepest, err := s.store.ContextDepth(ctx, contextID)
+		// One level below the task the caller is working on; a sender's
+		// follow-up stays at the top.
+		parent, err := s.store.ContextDepth(ctx, contextID, me.KeyID)
 		if err != nil {
 			return nil, err
 		}
-		if depth = deepest + 1; depth > s.cfg.MaxDepth {
+		if depth = parent + 1; depth > s.cfg.MaxDepth {
 			s.deny("max_depth")
-			return nil, fmt.Errorf("%w: this conversation is %d tasks deep, the limit is %d; answer with reply instead", ErrDenied, deepest, s.cfg.MaxDepth)
+			return nil, fmt.Errorf("%w: this task would be delegated %d times, the limit is %d; answer with reply instead", ErrDenied, depth, s.cfg.MaxDepth)
 		}
 	} else {
 		contextID = uuid.NewString()
@@ -367,9 +389,10 @@ func (s *Service) Reply(ctx context.Context, id *apikeys.Identity, taskID, text,
 	if err != nil {
 		return nil, err
 	}
-	if reason != "" && status != proxydb.TaskCanceled {
-		// Held for a person: the other side sees why before acting on it.
-		status = proxydb.TaskInputRequired
+	if reason != "" {
+		// A reply keeps its status: the reason tells the other side to ask its
+		// person first, and holding it would leave neither side able to go on.
+		reason = guardNote + strings.TrimPrefix(reason, guardReason)
 	}
 	out, err := s.store.AddAgentMessage(ctx, t.ID, me.KeyID, role, text, status, reason, s.cfg.MaxMessages)
 	if errors.Is(err, proxydb.ErrTaskClosed) {

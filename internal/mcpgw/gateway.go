@@ -278,16 +278,8 @@ func (g *Gateway) callTool(ctx context.Context, c *caller, p *mcp.CallToolParams
 	if known, err := g.pool.get(srv).listTools(ctx, g.version); err == nil && !slices.ContainsFunc(known, func(t *mcp.Tool) bool { return t.Name == tool }) {
 		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q", p.Name)}
 	}
-	if !c.id.CanUseTool(server, tool) {
-		observability.MCPToolCallsTotal.WithLabelValues(server, tool, "denied").Inc()
-		return nil, &jsonrpc.Error{Code: CodeForbidden, Message: fmt.Sprintf("permission_denied: tool %s of mcp server %s is not in the %s's allowed_mcp", tool, server, c.id.MCPDeniedBy(server, tool))}
-	}
-	if g.limiter != nil && srv.ToolRPM > 0 {
-		if ok, retry := g.limiter.AdmitTool(ctx, c.id.Name, server, tool, srv.ToolRPM); !ok {
-			observability.MCPToolCallsTotal.WithLabelValues(server, tool, "throttled").Inc()
-			observability.ThrottledTotal.WithLabelValues("mcp_tool_rpm").Inc()
-			return toolError(fmt.Sprintf("throttled: %s allows %d calls a minute per key; retry in %ds", p.Name, srv.ToolRPM, int(retry.Seconds()+0.999))), nil
-		}
+	if res, err := g.admit(ctx, c, server, tool, p.Name, srv.ToolRPM); res != nil || err != nil {
+		return res, err
 	}
 
 	start := time.Now()
@@ -330,22 +322,31 @@ func (g *Gateway) callTool(ctx context.Context, c *caller, p *mcp.CallToolParams
 	return res, err
 }
 
+// admit refuses a tool outside the key's allowed_mcp and throttles one past
+// rpm calls a minute; nil, nil lets the call go on.
+func (g *Gateway) admit(ctx context.Context, c *caller, server, tool, name string, rpm int32) (*mcp.CallToolResult, error) {
+	if !c.id.CanUseTool(server, tool) {
+		observability.MCPToolCallsTotal.WithLabelValues(server, tool, "denied").Inc()
+		return nil, &jsonrpc.Error{Code: CodeForbidden, Message: fmt.Sprintf("permission_denied: tool %s of mcp server %s is not in the %s's allowed_mcp", tool, server, c.id.MCPDeniedBy(server, tool))}
+	}
+	if g.limiter != nil && rpm > 0 {
+		if ok, retry := g.limiter.AdmitTool(ctx, c.id.Name, server, tool, rpm); !ok {
+			observability.MCPToolCallsTotal.WithLabelValues(server, tool, "throttled").Inc()
+			observability.ThrottledTotal.WithLabelValues("mcp_tool_rpm").Inc()
+			return toolError(fmt.Sprintf("throttled: %s allows %d calls a minute per key; retry in %ds", name, rpm, int(retry.Seconds()+0.999))), nil
+		}
+	}
+	return nil, nil
+}
+
 func (g *Gateway) callAgents(ctx context.Context, c *caller, tool string, p *mcp.CallToolParamsRaw) (*mcp.CallToolResult, error) {
 	if !slices.ContainsFunc(g.agents.Tools(), func(t *mcp.Tool) bool { return t.Name == tool }) {
 		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q", p.Name)}
 	}
 	server := agents.Server
-	if !c.id.CanUseTool(server, tool) {
-		observability.MCPToolCallsTotal.WithLabelValues(server, tool, "denied").Inc()
-		return nil, &jsonrpc.Error{Code: CodeForbidden, Message: fmt.Sprintf("permission_denied: tool %s of mcp server %s is not in the %s's allowed_mcp", tool, server, c.id.MCPDeniedBy(server, tool))}
-	}
 	// A pair of agents answering each other in a loop is stopped here too.
-	if g.limiter != nil && g.agentsRPM > 0 {
-		if ok, retry := g.limiter.AdmitTool(ctx, c.id.Name, server, tool, g.agentsRPM); !ok {
-			observability.MCPToolCallsTotal.WithLabelValues(server, tool, "throttled").Inc()
-			observability.ThrottledTotal.WithLabelValues("mcp_tool_rpm").Inc()
-			return toolError(fmt.Sprintf("throttled: %s allows %d calls a minute per key; retry in %ds", p.Name, g.agentsRPM, int(retry.Seconds()+0.999))), nil
-		}
+	if res, err := g.admit(ctx, c, server, tool, p.Name, g.agentsRPM); res != nil || err != nil {
+		return res, err
 	}
 	start := time.Now()
 	res, err := g.agents.Call(ctx, c.id, tool, p.Arguments)

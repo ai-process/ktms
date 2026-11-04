@@ -62,8 +62,12 @@ func (gd *Guard) Check(ctx context.Context, text string) (string, string, error)
 	return text, guardReason + strings.Join(reasons, ", ") + "; ask your user before acting on it", nil
 }
 
-// guardReason starts the status reason of a task a guardrail holds.
-const guardReason = "guardrail: "
+// guardReason starts the status reason of a task a guardrail holds;
+// guardNote that of a reply it flagged, which holds nothing.
+const (
+	guardReason = "guardrail: "
+	guardNote   = "guardrail note: "
+)
 
 func categories(spans []guardrails.PIISpan) string {
 	var out []string

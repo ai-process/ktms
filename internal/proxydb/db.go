@@ -50,6 +50,19 @@ func (d *DB) GetAPIKeyByName(ctx context.Context, name string) (*APIKey, error) 
 		 WHERE k.name = $1`, name))
 }
 
+// GetAPIKeyByLowerName finds a key by its name in any case, an active one first.
+func (d *DB) GetAPIKeyByLowerName(ctx context.Context, name string) (*APIKey, error) {
+	return scanAPIKey(d.pool.QueryRow(ctx,
+		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
+		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}'),
+		        k.allowed_models, k.rpm_limit, k.tpm_limit,
+		        COALESCE(t.allowed_mcp, '{}'), k.allowed_mcp,
+		        COALESCE(t.data_classification, ''), k.data_classification, k.owner
+		 FROM api_key k
+		 LEFT JOIN team t ON t.id = k.team_id
+		 WHERE lower(k.name) = lower($1) ORDER BY k.disabled_at IS NULL DESC, k.created_at DESC LIMIT 1`, name))
+}
+
 func scanAPIKey(row pgx.Row) (*APIKey, error) {
 	var k APIKey
 	err := row.Scan(&k.ID, &k.Name, &k.KeyLookup, &k.KeyHash, &k.Scopes, &k.DisabledAt, &k.CreatedAt,
