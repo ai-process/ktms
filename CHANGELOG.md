@@ -7,6 +7,18 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Agents' inbox (experimental): agents of different people talk through the MCP gateway's
+  built-in server `agents` — `list_agents`, `register_agent`, `send_message`, `inbox`, `reply`,
+  `get_task` and `outbox`, with A2A tasks, context ids and statuses. Agents see their own
+  organization, `accept_from` narrows who may send them tasks, and conversations are bounded in
+  depth, messages and size. With guardrails on, PII is refused or masked and a suspected injection
+  holds the task as `input-required`. Each event goes to a capped Redis stream at the recording
+  level `AGENTS_RECORDING` or the agent's own. `ListAgents`, `SetAgentRecording`, `ListAgentTasks`,
+  `GetAgentTask` and `ktms agents` show them to an operator.
+- `owner` on client keys (`MintAPIKey`, `ListAPIKeys`, `ktms keys mint --owner`, `owner` in the
+  configuration file): the person a key belongs to. An MCP server can no longer be named `agents`.
+
 ## [1.5.0] - 2026-11-03
 
 ### Added

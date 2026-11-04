@@ -81,7 +81,8 @@ type Identity struct {
 	TeamAllowedMCP []string
 	// DataRestricted on the key or its team keeps all its calls on nodes.
 	KeyDataClassification  string
-	TeamDataClassification string
+	TeamDataClassification string // Owner is the person the key belongs to (an e-mail); "" for a service key.
+	Owner                  string
 }
 
 // Data classifications. DataUnrestricted exists only to lift a restriction
@@ -406,6 +407,7 @@ func IdentityFor(row *proxydb.APIKey) *Identity {
 		TPMLimit:          row.TPMLimit,
 		KeyAllowedMCP:     row.AllowedMCP,
 		TeamAllowedMCP:    row.TeamAllowedMCP,
+		Owner:             row.Owner,
 
 		KeyDataClassification:  row.DataClassification,
 		TeamDataClassification: row.TeamDataClassification,

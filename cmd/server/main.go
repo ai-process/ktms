@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/agents"
 	"github.com/ai-process/ktms/internal/apikeys"
 	"github.com/ai-process/ktms/internal/batch"
 	"github.com/ai-process/ktms/internal/cache"
@@ -60,6 +61,9 @@ func main() {
 	}
 	if cfg.SpendLimitsFailMode != "open" && cfg.SpendLimitsFailMode != "closed" {
 		log.Fatal().Str("value", cfg.SpendLimitsFailMode).Msg(`SPEND_LIMITS_FAIL_MODE must be "open" or "closed"`)
+	}
+	if cfg.AgentsRecording == "" || !agents.ValidRecording(cfg.AgentsRecording) {
+		log.Fatal().Str("value", cfg.AgentsRecording).Msg(`AGENTS_RECORDING must be "off", "metadata" or "full"`)
 	}
 
 	shutdownTracing, err := observability.InitTracing(context.Background(), cfg.OTELServiceName, cfg.OTELExporterOTLPEndpoint)
@@ -275,12 +279,14 @@ func main() {
 			log.Info().Float64("threshold", cfg.SemanticCacheThreshold).Int("max_entries", cfg.SemanticCacheMaxEntries).Msg("semantic caching enabled")
 		}
 	}
+	var rails *guardrails.Guardrails
 	if cfg.GuardrailsEnabled {
 		g := guardrails.New(cfg.GuardrailsEnabled, cfg.GuardrailsPIIAction, cfg.GuardrailsPromptInjectionAction)
 		if cfg.GuardrailsLatentEnabled {
 			g.WithLatent(newLatentDetector(rootCtx, cfg, encoder), cfg.GuardrailsLatentAction)
 		}
 		proxySrv.WithGuardrails(g)
+		rails = g
 		log.Info().Str("pii_action", cfg.GuardrailsPIIAction).Str("prompt_injection_action", cfg.GuardrailsPromptInjectionAction).Bool("latent", cfg.GuardrailsLatentEnabled).Msg("guardrails enabled")
 	}
 
@@ -310,6 +316,9 @@ func main() {
 		gw := mcpgw.New(loader, verifier, toolLimiter, recorder, server.Version)
 		defer gw.Close()
 		adminSrv.SetMCPToolLister(gw)
+		if cfg.AgentsEnabled {
+			gw.WithAgents(newAgents(rootCtx, cfg, db, rails, redisClient), int32(cfg.AgentsToolRPM))
+		}
 		extra = append(extra, gw)
 	}
 	httpSrv := server.NewHTTPServer(pool, cfg.HTTPAddr, openaiAPI, cfg.HTTPAPITimeout, extra...).
@@ -374,4 +383,30 @@ func newLatentDetector(ctx context.Context, cfg *config.Config, enc latent.Encod
 		log.Warn().Err(err).Msg("latent guardrail warmup failed; centroids compile on first request")
 	}
 	return d
+}
+
+// newAgents builds the agents' inbox: Postgres holds the conversations, a
+// capped Redis stream the best-effort journal (none without Redis).
+func newAgents(ctx context.Context, cfg *config.Config, db *proxydb.DB, rails *guardrails.Guardrails, rdb *redis.Client) *agents.Service {
+	var journal agents.Journal
+	if cfg.AgentsJournalRedisURL != "" {
+		opts, err := redis.ParseURL(cfg.AgentsJournalRedisURL)
+		if err != nil {
+			log.Fatal().Err(err).Msg("AGENTS_JOURNAL_REDIS_URL must be a redis:// URL")
+		}
+		rdb = redis.NewClient(opts)
+	}
+	if rdb != nil && cfg.AgentsRecording != agents.RecordOff {
+		journal = agents.NewRedisJournal(rdb, cfg.RedisKeyPrefix+"agents:journal", int64(cfg.AgentsJournalMaxLen), cfg.AgentsJournalMaxEvent)
+	}
+	svc := agents.New(db, agents.Config{
+		MaxDepth:        int32(cfg.AgentsMaxDepth),
+		MaxMessages:     int64(cfg.AgentsMaxMessages),
+		MaxMessageBytes: cfg.AgentsMaxMessageBytes,
+		Recording:       cfg.AgentsRecording,
+		Retention:       cfg.AgentsRetention,
+	}, agents.NewGuard(rails), journal)
+	go svc.Sweep(ctx, time.Hour)
+	log.Info().Str("recording", cfg.AgentsRecording).Bool("journal", journal != nil).Msg("agents inbox enabled (mcp server agents)")
+	return svc
 }

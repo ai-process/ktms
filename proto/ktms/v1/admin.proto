@@ -117,6 +117,9 @@ message MintAPIKeyRequest {
   string org_id = 3;
   string team_id = 4;
   APIKeyPolicy policy = 5;
+  // The person the key belongs to, an e-mail; empty for a service key. An agent's
+  // card shows it, and ktms-admin lists and revokes a person's own keys by it.
+  string owner = 6;
 }
 
 // APIKeyPolicy limits one key on top of its team and each model's rpm. Refusals:
@@ -155,7 +158,9 @@ message RevokeAPIKeyRequest {
 
 message RevokeAPIKeyResponse {}
 
-message ListAPIKeysRequest {}
+message ListAPIKeysRequest {
+  string owner = 1; // only this person's keys; empty lists all
+}
 
 message APIKeyInfo {
   string name = 1;
@@ -165,6 +170,7 @@ message APIKeyInfo {
   string org_id = 5;
   string team_id = 6;
   APIKeyPolicy policy = 7;
+  string owner = 8;
 }
 
 message ListAPIKeysResponse {
@@ -610,6 +616,16 @@ service AdminService {
   rpc SetMCPCredential(SetMCPCredentialRequest) returns (SetMCPCredentialResponse);
   rpc DeleteMCPCredential(DeleteMCPCredentialRequest) returns (DeleteMCPCredentialResponse);
   rpc ListMCPTools(ListMCPToolsRequest) returns (ListMCPToolsResponse);
+
+  // Agents talk to each other through the MCP server "agents" (see the README's
+  // Agents section); these RPCs let an operator, or ktms-admin for one person,
+  // see their cards and conversations.
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+  // SetAgentRecording sets how much of an agent's conversations the journal keeps.
+  rpc SetAgentRecording(SetAgentRecordingRequest) returns (SetAgentRecordingResponse);
+  rpc ListAgentTasks(ListAgentTasksRequest) returns (ListAgentTasksResponse);
+  // GetAgentTask returns the messages too, so it needs the admin scope.
+  rpc GetAgentTask(GetAgentTaskRequest) returns (AgentTask);
 }
 
 message ExplainRouteRequest {
@@ -647,4 +663,69 @@ message ExplainRouteResponse {
   // The code and message a real call would fail with before any vendor, as in the
   // error contract, e.g. "FAILED_PRECONDITION: no_vendor_key"; empty if it would go out.
   string error = 11;
+}
+
+message ListAgentsRequest {
+  string owner = 1; // only the agents of this person's keys; empty lists all. Revoked keys' agents are left out.
+}
+
+message AgentInfo {
+  string name = 1;
+  string api_key_name = 2;
+  string owner = 3;
+  string org_id = 4;
+  string team_id = 5;
+  string description = 6;
+  repeated string skills = 7;
+  repeated string repos = 8;
+  repeated string accept_from = 9; // agents ("name") and teams ("team:ID") it takes tasks from; empty = any
+  string recording = 10; // off | metadata | full; empty takes AGENTS_RECORDING
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+message ListAgentsResponse {
+  repeated AgentInfo agents = 1;
+}
+
+message SetAgentRecordingRequest {
+  string name = 1;
+  string recording = 2; // off | metadata | full, or empty for AGENTS_RECORDING
+}
+
+message SetAgentRecordingResponse {}
+
+message ListAgentTasksRequest {
+  string agent = 1; // tasks this agent sent or received; required
+  bool open_only = 2; // submitted, working and input-required only
+  int32 limit = 3; // default 100, at most 500
+}
+
+message AgentMessage {
+  string from = 1;
+  string role = 2; // user: the task's sender; agent: its recipient
+  string text = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+// AgentTask follows A2A: status is submitted, working, input-required,
+// completed, failed or canceled; context_id groups the tasks of one conversation.
+message AgentTask {
+  string task_id = 1;
+  string context_id = 2;
+  string from = 3;
+  string to = 4;
+  string status = 5;
+  string status_reason = 6; // why a guardrail holds it for a person, among others
+  int32 depth = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  repeated AgentMessage messages = 10; // GetAgentTask only
+}
+
+message ListAgentTasksResponse {
+  repeated AgentTask tasks = 1;
+}
+
+message GetAgentTaskRequest {
+  string task_id = 1;
 }
