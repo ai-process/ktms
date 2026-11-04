@@ -5750,7 +5750,7 @@ type AgentInfo struct {
 	Description   string                 `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
 	Skills        []string               `protobuf:"bytes,7,rep,name=skills,proto3" json:"skills,omitempty"`
 	Repos         []string               `protobuf:"bytes,8,rep,name=repos,proto3" json:"repos,omitempty"`
-	AcceptFrom    []string               `protobuf:"bytes,9,rep,name=accept_from,json=acceptFrom,proto3" json:"accept_from,omitempty"` // agents ("name") and teams ("team:ID") it takes tasks from; empty = any
+	AcceptFrom    []string               `protobuf:"bytes,9,rep,name=accept_from,json=acceptFrom,proto3" json:"accept_from,omitempty"` // agents ("name"), people ("owner:EMAIL") and teams ("team:ID") it takes tasks from; empty = any
 	Recording     string                 `protobuf:"bytes,10,opt,name=recording,proto3" json:"recording,omitempty"`                    // off | metadata | full; empty takes AGENTS_RECORDING
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields protoimpl.UnknownFields

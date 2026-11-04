@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -58,26 +59,20 @@ func (gd *Guard) Check(ctx context.Context, text string) (string, string, error)
 	if len(reasons) == 0 {
 		return text, "", nil
 	}
-	return text, "guardrail: " + strings.Join(reasons, ", ") + "; ask your user before acting on it", nil
+	return text, guardReason + strings.Join(reasons, ", ") + "; ask your user before acting on it", nil
 }
+
+// guardReason starts the status reason of a task a guardrail holds.
+const guardReason = "guardrail: "
 
 func categories(spans []guardrails.PIISpan) string {
 	var out []string
 	for _, s := range spans {
-		if c := string(s.Category); !contains(out, c) {
+		if c := string(s.Category); !slices.Contains(out, c) {
 			out = append(out, c)
 		}
 	}
 	return strings.Join(out, ", ")
-}
-
-func contains(list []string, v string) bool {
-	for _, e := range list {
-		if e == v {
-			return true
-		}
-	}
-	return false
 }
 
 // mask replaces each PII span with its category, so the reader still sees

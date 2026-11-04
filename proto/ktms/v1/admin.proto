@@ -678,7 +678,7 @@ message AgentInfo {
   string description = 6;
   repeated string skills = 7;
   repeated string repos = 8;
-  repeated string accept_from = 9; // agents ("name") and teams ("team:ID") it takes tasks from; empty = any
+  repeated string accept_from = 9; // agents ("name"), people ("owner:EMAIL") and teams ("team:ID") it takes tasks from; empty = any
   string recording = 10; // off | metadata | full; empty takes AGENTS_RECORDING
   google.protobuf.Timestamp updated_at = 11;
 }

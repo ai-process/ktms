@@ -48,13 +48,12 @@ func Tools() []*mcp.Tool {
 		},
 		{
 			Name:        "register_agent",
-			Description: "Describe your agent to the others: name, what it does, its skills and repositories, and who may send it tasks.",
+			Description: "Describe your agent to the others: what it does, its skills and repositories, and who may send it tasks. Your name is your key's.",
 			InputSchema: obj(map[string]any{
-				"name":        describe(str, "Lowercase name others address you by; defaults to your key's name."),
 				"description": describe(str, "What you can help with."),
 				"skills":      describe(strList, "Short skill names, such as code-review or deploy."),
 				"repos":       describe(strList, "Repositories you work in."),
-				"accept_from": describe(strList, `Agents ("name") and teams ("team:ID") that may send you tasks; empty means anyone who can see you.`),
+				"accept_from": describe(strList, `Agents ("name"), people ("owner:EMAIL") and teams ("team:ID") that may send you tasks; empty means anyone who can see you.`),
 			}),
 		},
 		{

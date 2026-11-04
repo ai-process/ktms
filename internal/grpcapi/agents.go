@@ -44,15 +44,11 @@ func (s *AdminServer) SetAgentRecording(ctx context.Context, req *pb.SetAgentRec
 	if !agents.ValidRecording(rec) {
 		return nil, status.Errorf(codes.InvalidArgument, "recording %q: want off, metadata, full or empty", req.GetRecording())
 	}
-	a, err := s.db.GetAgentByName(ctx, req.GetName())
+	err := s.db.SetAgentRecording(ctx, req.GetName(), rec)
 	if errors.Is(err, proxydb.ErrNotFound) {
 		return nil, status.Errorf(codes.NotFound, "no agent %q", req.GetName())
 	}
 	if err != nil {
-		return nil, dbStatus(err)
-	}
-	a.Recording = rec
-	if err := s.db.UpsertAgent(ctx, a); err != nil {
 		return nil, dbStatus(err)
 	}
 	return &pb.SetAgentRecordingResponse{}, nil

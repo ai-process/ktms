@@ -94,20 +94,33 @@ func scanAgent(row pgx.Row) (*Agent, error) {
 	return &a, nil
 }
 
-// UpsertAgent writes the card of a key; ErrAlreadyExists when another key's
-// agent has the name.
+// UpsertAgent writes the card of a key, all but its recording level, which
+// only SetAgentRecording changes; ErrAlreadyExists when another key's agent
+// has the name.
 func (d *DB) UpsertAgent(ctx context.Context, a *Agent) error {
 	_, err := d.pool.Exec(ctx,
-		`INSERT INTO agent (key_id, name, description, skills, repos, accept_from, recording)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`INSERT INTO agent (key_id, name, description, skills, repos, accept_from)
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 ON CONFLICT (key_id) DO UPDATE SET name = $2, description = $3, skills = $4, repos = $5,
-		   accept_from = $6, recording = $7, updated_at = NOW()`,
-		a.KeyID, a.Name, a.Description, nonNil(a.Skills), nonNil(a.Repos), nonNil(a.AcceptFrom), a.Recording)
+		   accept_from = $6, updated_at = NOW()`,
+		a.KeyID, a.Name, a.Description, nonNil(a.Skills), nonNil(a.Repos), nonNil(a.AcceptFrom))
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return ErrAlreadyExists
 	}
 	return err
+}
+
+// SetAgentRecording sets the journal level of the named agent.
+func (d *DB) SetAgentRecording(ctx context.Context, name, recording string) error {
+	tag, err := d.pool.Exec(ctx, `UPDATE agent SET recording = $2, updated_at = NOW() WHERE name = $1`, name, recording)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (d *DB) GetAgentByKey(ctx context.Context, keyID string) (*Agent, error) {
@@ -140,12 +153,12 @@ func (d *DB) ListAgents(ctx context.Context) ([]*Agent, error) {
 	return out, rows.Err()
 }
 
-// ContextStats is the deepest task and the message count of a conversation.
-func (d *DB) ContextStats(ctx context.Context, contextID string) (depth int32, messages int64, err error) {
-	err = d.pool.QueryRow(ctx,
-		`SELECT COALESCE((SELECT MAX(depth) FROM agent_task WHERE context_id = $1), -1),
-		        (SELECT COUNT(*) FROM agent_message WHERE context_id = $1)`, contextID).Scan(&depth, &messages)
-	return depth, messages, err
+// ContextDepth is the depth of the deepest task of a conversation, -1 for none.
+func (d *DB) ContextDepth(ctx context.Context, contextID string) (int32, error) {
+	var depth int32
+	err := d.pool.QueryRow(ctx,
+		`SELECT COALESCE(MAX(depth), -1) FROM agent_task WHERE context_id = $1`, contextID).Scan(&depth)
+	return depth, err
 }
 
 // AgentInContext reports whether the agent sent or received a task of the conversation.
@@ -260,22 +273,43 @@ func getAgentTask(ctx context.Context, q querier, id string) (*AgentTask, error)
 	if err != nil {
 		return nil, err
 	}
+	return t, withMessages(ctx, q, []*AgentTask{t})
+}
+
+// WithAgentMessages fills in the messages of the tasks, oldest first.
+func (d *DB) WithAgentMessages(ctx context.Context, tasks []*AgentTask) error {
+	return withMessages(ctx, d.pool, tasks)
+}
+
+func withMessages(ctx context.Context, q querier, tasks []*AgentTask) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+	byID := make(map[string]*AgentTask, len(tasks))
+	ids := make([]string, 0, len(tasks))
+	for _, t := range tasks {
+		t.Messages = nil
+		byID[t.ID] = t
+		ids = append(ids, t.ID)
+	}
 	rows, err := q.Query(ctx,
 		`SELECT m.id, m.task_id, m.context_id, m.from_agent, COALESCE(a.name, ''), m.role, m.text, m.created_at
 		 FROM agent_message m LEFT JOIN agent a ON a.key_id = m.from_agent
-		 WHERE m.task_id = $1 ORDER BY m.id`, id)
+		 WHERE m.task_id = ANY($1::uuid[]) ORDER BY m.id`, ids)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var m AgentMessage
 		if err := rows.Scan(&m.ID, &m.TaskID, &m.ContextID, &m.FromAgent, &m.FromName, &m.Role, &m.Text, &m.CreatedAt); err != nil {
-			return nil, err
+			return err
 		}
-		t.Messages = append(t.Messages, &m)
+		if t := byID[m.TaskID]; t != nil {
+			t.Messages = append(t.Messages, &m)
+		}
 	}
-	return t, rows.Err()
+	return rows.Err()
 }
 
 // TaskFilter picks tasks for a listing; empty fields do not filter.
@@ -291,17 +325,19 @@ type TaskFilter struct {
 // ListAgentTasks lists tasks without their messages, most recently changed first.
 func (d *DB) ListAgentTasks(ctx context.Context, f TaskFilter) ([]*AgentTask, error) {
 	limit := f.Limit
-	if limit <= 0 || limit > 500 {
+	if limit <= 0 {
 		limit = 100
 	}
+	limit = min(limit, 500)
+	// Typed uuids, NULL for no filter, so the indexes on the columns apply.
 	rows, err := d.pool.Query(ctx,
 		`SELECT `+taskColumns+taskJoins+`
-		 WHERE ($1 = '' OR t.to_agent::text = $1)
-		   AND ($2 = '' OR t.from_agent::text = $2)
-		   AND ($3 = '' OR t.to_agent::text = $3 OR t.from_agent::text = $3)
+		 WHERE ($1::uuid IS NULL OR t.to_agent = $1)
+		   AND ($2::uuid IS NULL OR t.from_agent = $2)
+		   AND ($3::uuid IS NULL OR t.to_agent = $3 OR t.from_agent = $3)
 		   AND (cardinality($4::text[]) = 0 OR t.status = ANY($4))
 		 ORDER BY t.updated_at DESC LIMIT $5`,
-		f.ToAgent, f.FromAgent, f.Agent, nonNil(f.Statuses), limit)
+		nullable(f.ToAgent), nullable(f.FromAgent), nullable(f.Agent), nonNil(f.Statuses), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -325,4 +361,11 @@ func (d *DB) DeleteAgentTasksBefore(ctx context.Context, cutoff time.Time) (int6
 		return 0, err
 	}
 	return tag.RowsAffected(), nil
+}
+
+func nullable(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

@@ -396,7 +396,8 @@ func newAgents(ctx context.Context, cfg *config.Config, db *proxydb.DB, rails *g
 		}
 		rdb = redis.NewClient(opts)
 	}
-	if rdb != nil && cfg.AgentsRecording != agents.RecordOff {
+	// Built even when the default is off: an agent may have its own level.
+	if rdb != nil {
 		journal = agents.NewRedisJournal(rdb, cfg.RedisKeyPrefix+"agents:journal", int64(cfg.AgentsJournalMaxLen), cfg.AgentsJournalMaxEvent)
 	}
 	svc := agents.New(db, agents.Config{

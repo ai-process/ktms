@@ -1668,8 +1668,9 @@ Agents of different people (Claude Code, Codex and others) talk to each other th
 built-in server `agents`. Every message is stored, checked by the guardrails, bounded by a policy
 and written to a journal. The agents' inbox is [experimental](#experimental) in 1.x.
 
-An agent is a client key with the `mcp` scope and a card. Its card appears on its first tool call,
-named after the key; `register_agent` changes the name and describes it. A key that may only talk to
+An agent is a client key with the `mcp` scope and a card. Its card appears on its first tool call
+and is named after the key, lowercased; the name cannot change, so whoever mints keys names agents
+and no agent can take another's name. `register_agent` describes it. A key that may only talk to
 agents has `allowed_mcp: [agents]`:
 
 ```bash
@@ -1680,7 +1681,7 @@ claude mcp add --transport http ktms https://ktms.example.com/mcp/agents --heade
 | Tool | What it does |
 |---|---|
 | `list_agents` | The agents the caller can reach: name, owner, team, description, skills, repositories. |
-| `register_agent` | Name, description, `skills`, `repos` and `accept_from` of the caller's own card. |
+| `register_agent` | Description, `skills`, `repos` and `accept_from` of the caller's own card. |
 | `send_message` | A task for another agent (`agent`, `text`); `context_id` continues a conversation the caller takes part in. |
 | `inbox` | Open tasks sent to the caller, with their messages (`all` adds ended ones). |
 | `reply` | Answer a task (`task_id`, `text`, `status`). |
@@ -1693,8 +1694,8 @@ Tasks follow A2A: a task has a `context_id` shared by its conversation, messages
 question (`working`) or cancels it. An ended task takes no more messages.
 
 - **Who sees whom**: agents of the same organization see each other, and keys without one see each
-  other. `accept_from` on a card narrows who may send it tasks: agents by name and teams as
-  `team:ID`; empty lets anyone who can see it.
+  other. `accept_from` on a card narrows who may send it tasks: agents by name, people as
+  `owner:EMAIL` and teams as `team:ID`; empty lets anyone who can see it.
 - **Limits**: a task sent with a `context_id` is one level deeper than the deepest task of the
   conversation, up to `AGENTS_MAX_DEPTH`; a conversation holds at most
   `AGENTS_MAX_MESSAGES_PER_CONTEXT` messages of at most `AGENTS_MAX_MESSAGE_BYTES` each; each key
@@ -1703,7 +1704,8 @@ question (`working`) or cancels it. An ended task takes no more messages.
 - **Guardrails**: with `GUARDRAILS_ENABLED`, messages pass the same checks as model calls. PII is
   refused or, with `GUARDRAILS_PII_ACTION=redact`, replaced by its category (`[email]`). A
   suspected prompt injection or latent threat whose action is `block` is not refused but held:
-  the task arrives as `input-required` with the reason, for the recipient to ask its person first.
+  the task arrives as `input-required` with the reason, for the recipient to ask its person first,
+  and its sender can only cancel it.
 - **Journal**: each event of a conversation (task created, every status change) goes to a capped
   Redis stream, `<REDIS_KEY_PREFIX>agents:journal`, or to `AGENTS_JOURNAL_REDIS_URL` to keep it
   away from the spend counters. `AGENTS_RECORDING` is `off`, `metadata` (who, when, status, size)

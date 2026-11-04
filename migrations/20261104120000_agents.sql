@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS agent (
     description TEXT NOT NULL DEFAULT '',
     skills TEXT[] NOT NULL DEFAULT '{}',
     repos TEXT[] NOT NULL DEFAULT '{}',
-    -- Agents ("name") and teams ("team:ID") that may send it tasks; empty = any it is visible to.
+    -- Agents ("name"), people ("owner:EMAIL") and teams ("team:ID") that may send it tasks; empty = any it is visible to.
     accept_from TEXT[] NOT NULL DEFAULT '{}',
     -- off | metadata | full; empty takes AGENTS_RECORDING.
     recording TEXT NOT NULL DEFAULT '',

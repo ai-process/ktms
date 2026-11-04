@@ -51,7 +51,8 @@ type Store interface {
 	GetAgentByKey(ctx context.Context, keyID string) (*proxydb.Agent, error)
 	GetAgentByName(ctx context.Context, name string) (*proxydb.Agent, error)
 	ListAgents(ctx context.Context) ([]*proxydb.Agent, error)
-	ContextStats(ctx context.Context, contextID string) (depth int32, messages int64, err error)
+	ContextDepth(ctx context.Context, contextID string) (int32, error)
+	WithAgentMessages(ctx context.Context, tasks []*proxydb.AgentTask) error
 	AgentInContext(ctx context.Context, keyID, contextID string) (bool, error)
 	CreateAgentTask(ctx context.Context, t *proxydb.AgentTask, text string, maxMessages int64) error
 	AddAgentMessage(ctx context.Context, taskID, fromAgent, role, text, status, reason string, maxMessages int64) (*proxydb.AgentTask, error)
@@ -100,7 +101,9 @@ func New(store Store, cfg Config, guard *Guard, journal Journal) *Service {
 
 var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
 
-// Me is the caller's agent, registered under the key's name on first use.
+// Me is the caller's agent, registered on first use. Its name is the key's
+// and cannot change: whoever mints keys names agents, so no agent can take
+// another's name to pass an accept_from list.
 func (s *Service) Me(ctx context.Context, id *apikeys.Identity) (*proxydb.Agent, error) {
 	if id == nil || uuid.Validate(id.KeyID) != nil {
 		return nil, fmt.Errorf("%w: only a client key minted in Keystone can be an agent", ErrDenied)
@@ -111,11 +114,11 @@ func (s *Service) Me(ctx context.Context, id *apikeys.Identity) (*proxydb.Agent,
 	}
 	name := strings.ToLower(id.Name)
 	if !nameRe.MatchString(name) {
-		return nil, fmt.Errorf("%w: the key name %q is not a valid agent name; call register_agent with a name", ErrInvalid, id.Name)
+		return nil, fmt.Errorf("%w: the key name %q is not a valid agent name (lowercase letters, digits, '.', '_' or '-'); ask the operator for a key named so", ErrDenied, id.Name)
 	}
 	if err := s.store.UpsertAgent(ctx, &proxydb.Agent{KeyID: id.KeyID, Name: name}); err != nil {
 		if errors.Is(err, proxydb.ErrAlreadyExists) {
-			return nil, fmt.Errorf("%w: an agent named %q exists; call register_agent with another name", ErrInvalid, name)
+			return nil, fmt.Errorf("%w: another key's agent is named %q; ask the operator for a key with another name", ErrDenied, name)
 		}
 		return nil, err
 	}
@@ -124,40 +127,27 @@ func (s *Service) Me(ctx context.Context, id *apikeys.Identity) (*proxydb.Agent,
 
 // Card is what an agent says about itself.
 type Card struct {
-	Name        string   `json:"name,omitempty"`
 	Description string   `json:"description,omitempty"`
 	Skills      []string `json:"skills,omitempty"`
 	Repos       []string `json:"repos,omitempty"`
 	AcceptFrom  []string `json:"accept_from,omitempty"`
 }
 
-// Register writes the caller's card. The recording level is not the agent's
-// to choose: it stays as the operator set it.
+// Register writes the caller's card. Its name and recording level are not the
+// agent's to choose.
 func (s *Service) Register(ctx context.Context, id *apikeys.Identity, c Card) (*proxydb.Agent, error) {
 	me, err := s.Me(ctx, id)
-	if err != nil && !errors.Is(err, ErrInvalid) {
+	if err != nil {
 		return nil, err
 	}
-	a := &proxydb.Agent{KeyID: id.KeyID}
-	if me != nil {
-		*a = *me
-	}
-	if c.Name != "" {
-		a.Name = strings.ToLower(strings.TrimSpace(c.Name))
-	}
-	if !nameRe.MatchString(a.Name) {
-		return nil, fmt.Errorf("%w: name %q: use lowercase letters, digits, '.', '_' or '-', up to 63", ErrInvalid, a.Name)
-	}
+	a := *me
 	if len(c.Description) > 2000 {
 		return nil, fmt.Errorf("%w: description is longer than 2000 characters", ErrInvalid)
 	}
 	a.Description = strings.TrimSpace(c.Description)
 	a.Skills, a.Repos = clean(c.Skills), clean(c.Repos)
 	a.AcceptFrom = clean(c.AcceptFrom)
-	if err := s.store.UpsertAgent(ctx, a); err != nil {
-		if errors.Is(err, proxydb.ErrAlreadyExists) {
-			return nil, fmt.Errorf("%w: an agent named %q exists", ErrInvalid, a.Name)
-		}
+	if err := s.store.UpsertAgent(ctx, &a); err != nil {
 		return nil, err
 	}
 	return s.store.GetAgentByKey(ctx, id.KeyID)
@@ -185,7 +175,7 @@ func accepts(to, from *proxydb.Agent) bool {
 		return true
 	}
 	for _, e := range to.AcceptFrom {
-		if e == from.Name || from.TeamID != "" && e == "team:"+from.TeamID {
+		if e == from.Name || from.TeamID != "" && e == "team:"+from.TeamID || from.Owner != "" && strings.EqualFold(e, "owner:"+from.Owner) {
 			return true
 		}
 	}
@@ -247,7 +237,7 @@ func (s *Service) Send(ctx context.Context, id *apikeys.Identity, to, text, cont
 		if !in {
 			return nil, fmt.Errorf("%w: context %s is not one of your conversations", ErrInvalid, contextID)
 		}
-		deepest, _, err := s.store.ContextStats(ctx, contextID)
+		deepest, err := s.store.ContextDepth(ctx, contextID)
 		if err != nil {
 			return nil, err
 		}
@@ -288,14 +278,7 @@ func (s *Service) Inbox(ctx context.Context, id *apikeys.Identity, all bool, lim
 	if err != nil {
 		return nil, err
 	}
-	for i, t := range tasks {
-		full, err := s.store.GetAgentTask(ctx, t.ID)
-		if err != nil {
-			return nil, err
-		}
-		tasks[i] = full
-	}
-	return tasks, nil
+	return tasks, s.store.WithAgentMessages(ctx, tasks)
 }
 
 // Outbox is the tasks the caller sent, without their messages.
@@ -344,7 +327,12 @@ func (s *Service) Reply(ctx context.Context, id *apikeys.Identity, taskID, text,
 		status = proxydb.TaskCompleted
 	}
 	if t.FromAgent == me.KeyID {
-		role, allowed = "user", []string{proxydb.TaskWorking, proxydb.TaskCanceled}
+		// The sender answers only a question its recipient asked; a task a
+		// guardrail holds waits for the recipient's person, so it may only cancel.
+		role, allowed = "user", []string{proxydb.TaskCanceled}
+		if t.Status == proxydb.TaskInputRequired && !held(t) {
+			allowed = append(allowed, proxydb.TaskWorking)
+		}
 		if status == proxydb.TaskCompleted {
 			status = proxydb.TaskWorking
 		}
@@ -359,7 +347,7 @@ func (s *Service) Reply(ctx context.Context, id *apikeys.Identity, taskID, text,
 	if err != nil {
 		return nil, err
 	}
-	if reason != "" {
+	if reason != "" && status != proxydb.TaskCanceled {
 		// Held for a person: the other side sees why before acting on it.
 		status = proxydb.TaskInputRequired
 	}
@@ -382,6 +370,9 @@ func (s *Service) Reply(ctx context.Context, id *apikeys.Identity, taskID, text,
 	s.record(ctx, me, peer, out, "task."+status, text)
 	return out, nil
 }
+
+// held reports whether a guardrail holds the task for a person.
+func held(t *proxydb.AgentTask) bool { return strings.HasPrefix(t.StatusReason, guardReason) }
 
 func (s *Service) limitErr(err error) error {
 	if errors.Is(err, proxydb.ErrContextFull) {
