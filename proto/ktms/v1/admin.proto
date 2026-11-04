@@ -666,7 +666,8 @@ message ExplainRouteResponse {
 }
 
 message ListAgentsRequest {
-  string owner = 1; // only the agents of this person's keys; empty lists all. Revoked keys' agents are left out.
+  string owner = 1; // only the agents of this person's keys; empty lists all
+  bool include_revoked = 2; // also the agents of revoked keys, whose conversations stay until AGENTS_RETENTION
 }
 
 message AgentInfo {
@@ -681,6 +682,7 @@ message AgentInfo {
   repeated string accept_from = 9; // agents ("name"), people ("owner:EMAIL") and teams ("team:ID") it takes tasks from; empty = any
   string recording = 10; // off | metadata | full; empty takes AGENTS_RECORDING
   google.protobuf.Timestamp updated_at = 11;
+  bool revoked = 12; // its key is revoked; with include_revoked only
 }
 
 message ListAgentsResponse {

@@ -51,7 +51,7 @@ type Store interface {
 	GetAgentByKey(ctx context.Context, keyID string) (*proxydb.Agent, error)
 	GetAgentByName(ctx context.Context, name string) (*proxydb.Agent, error)
 	GetAPIKeyByName(ctx context.Context, name string) (*proxydb.APIKey, error)
-	ListAgents(ctx context.Context) ([]*proxydb.Agent, error)
+	ListAgents(ctx context.Context, f proxydb.AgentFilter) ([]*proxydb.Agent, error)
 	ContextDepth(ctx context.Context, contextID string) (int32, error)
 	WithAgentMessages(ctx context.Context, tasks []*proxydb.AgentTask) error
 	AgentInContext(ctx context.Context, keyID, contextID string) (bool, error)
@@ -207,7 +207,7 @@ func (s *Service) List(ctx context.Context, id *apikeys.Identity) (me *proxydb.A
 	if me, err = s.Me(ctx, id); err != nil {
 		return nil, nil, err
 	}
-	all, err := s.store.ListAgents(ctx)
+	all, err := s.store.ListAgents(ctx, proxydb.AgentFilter{})
 	if err != nil {
 		return nil, nil, err
 	}

@@ -133,11 +133,18 @@ func (d *DB) GetAgentByName(ctx context.Context, name string) (*Agent, error) {
 		`SELECT `+agentColumns+` FROM agent a JOIN api_key k ON k.id = a.key_id WHERE a.name = $1`, name))
 }
 
-// ListAgents is every agent whose key is active, by name.
-func (d *DB) ListAgents(ctx context.Context) ([]*Agent, error) {
+// AgentFilter picks agents for a listing; an empty owner does not filter.
+type AgentFilter struct {
+	Owner          string
+	IncludeRevoked bool
+}
+
+// ListAgents lists agents by name, by default only those whose key is active.
+func (d *DB) ListAgents(ctx context.Context, f AgentFilter) ([]*Agent, error) {
 	rows, err := d.pool.Query(ctx,
 		`SELECT `+agentColumns+` FROM agent a JOIN api_key k ON k.id = a.key_id
-		 WHERE k.disabled_at IS NULL ORDER BY a.name`)
+		 WHERE ($1 OR k.disabled_at IS NULL) AND ($2 = '' OR k.owner = $2) ORDER BY a.name`,
+		f.IncludeRevoked, f.Owner)
 	if err != nil {
 		return nil, err
 	}

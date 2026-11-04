@@ -16,16 +16,12 @@ import (
 )
 
 func (s *AdminServer) ListAgents(ctx context.Context, req *pb.ListAgentsRequest) (*pb.ListAgentsResponse, error) {
-	list, err := s.db.ListAgents(ctx)
+	list, err := s.db.ListAgents(ctx, proxydb.AgentFilter{Owner: strings.ToLower(strings.TrimSpace(req.GetOwner())), IncludeRevoked: req.GetIncludeRevoked()})
 	if err != nil {
 		return nil, dbStatus(err)
 	}
-	owner := strings.ToLower(strings.TrimSpace(req.GetOwner()))
 	out := &pb.ListAgentsResponse{}
 	for _, a := range list {
-		if owner != "" && a.Owner != owner {
-			continue
-		}
 		out.Agents = append(out.Agents, agentProto(a))
 	}
 	return out, nil
@@ -35,7 +31,7 @@ func agentProto(a *proxydb.Agent) *pb.AgentInfo {
 	return &pb.AgentInfo{
 		Name: a.Name, Owner: a.Owner, OrgId: a.OrgID, TeamId: a.TeamID, Description: a.Description,
 		Skills: a.Skills, Repos: a.Repos, AcceptFrom: a.AcceptFrom, Recording: a.Recording, ApiKeyName: a.KeyName,
-		UpdatedAt: timestamppb.New(a.UpdatedAt),
+		UpdatedAt: timestamppb.New(a.UpdatedAt), Revoked: a.Disabled,
 	}
 }
 

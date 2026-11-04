@@ -57,6 +57,15 @@ func TestAgentKeysAndConversations(t *testing.T) {
 	if err != nil || len(list.GetAgents()) != 2 || list.GetAgents()[0].GetApiKeyName() == "" {
 		t.Fatalf("agents = %v, %v", list, err)
 	}
+	if _, err := s.RevokeAPIKey(ctx, &pb.RevokeAPIKeyRequest{Name: names[0]}); err != nil {
+		t.Fatal(err)
+	}
+	if l, _ := s.ListAgents(ctx, &pb.ListAgentsRequest{Owner: keys.GetKeys()[0].GetOwner()}); len(l.GetAgents()) != 1 {
+		t.Fatalf("a revoked key's agent is listed: %v", l)
+	}
+	if l, _ := s.ListAgents(ctx, &pb.ListAgentsRequest{Owner: keys.GetKeys()[0].GetOwner(), IncludeRevoked: true}); len(l.GetAgents()) != 2 || l.GetAgents()[0].GetRevoked() != (l.GetAgents()[0].GetName() == names[0]) {
+		t.Fatalf("include_revoked = %v", l)
+	}
 	if _, err := s.SetAgentRecording(ctx, &pb.SetAgentRecordingRequest{Name: names[1], Recording: "loud"}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("bad recording: %v", err)
 	}

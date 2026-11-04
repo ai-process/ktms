@@ -5697,10 +5697,11 @@ func (x *ExplainRouteResponse) GetError() string {
 }
 
 type ListAgentsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Owner         string                 `protobuf:"bytes,1,opt,name=owner,proto3" json:"owner,omitempty"` // only the agents of this person's keys; empty lists all. Revoked keys' agents are left out.
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Owner          string                 `protobuf:"bytes,1,opt,name=owner,proto3" json:"owner,omitempty"`                                          // only the agents of this person's keys; empty lists all
+	IncludeRevoked bool                   `protobuf:"varint,2,opt,name=include_revoked,json=includeRevoked,proto3" json:"include_revoked,omitempty"` // also the agents of revoked keys, whose conversations stay until AGENTS_RETENTION
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ListAgentsRequest) Reset() {
@@ -5740,6 +5741,13 @@ func (x *ListAgentsRequest) GetOwner() string {
 	return ""
 }
 
+func (x *ListAgentsRequest) GetIncludeRevoked() bool {
+	if x != nil {
+		return x.IncludeRevoked
+	}
+	return false
+}
+
 type AgentInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -5753,6 +5761,7 @@ type AgentInfo struct {
 	AcceptFrom    []string               `protobuf:"bytes,9,rep,name=accept_from,json=acceptFrom,proto3" json:"accept_from,omitempty"` // agents ("name"), people ("owner:EMAIL") and teams ("team:ID") it takes tasks from; empty = any
 	Recording     string                 `protobuf:"bytes,10,opt,name=recording,proto3" json:"recording,omitempty"`                    // off | metadata | full; empty takes AGENTS_RECORDING
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Revoked       bool                   `protobuf:"varint,12,opt,name=revoked,proto3" json:"revoked,omitempty"` // its key is revoked; with include_revoked only
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5862,6 +5871,13 @@ func (x *AgentInfo) GetUpdatedAt() *timestamppb.Timestamp {
 		return x.UpdatedAt
 	}
 	return nil
+}
+
+func (x *AgentInfo) GetRevoked() bool {
+	if x != nil {
+		return x.Revoked
+	}
+	return false
 }
 
 type ListAgentsResponse struct {
@@ -6738,9 +6754,10 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x11shadow_percentage\x18\t \x01(\x01R\x10shadowPercentage\x12#\n" +
 	"\rjudge_skipped\x18\n" +
 	" \x01(\bR\fjudgeSkipped\x12\x14\n" +
-	"\x05error\x18\v \x01(\tR\x05error\")\n" +
+	"\x05error\x18\v \x01(\tR\x05error\"R\n" +
 	"\x11ListAgentsRequest\x12\x14\n" +
-	"\x05owner\x18\x01 \x01(\tR\x05owner\"\xd1\x02\n" +
+	"\x05owner\x18\x01 \x01(\tR\x05owner\x12'\n" +
+	"\x0finclude_revoked\x18\x02 \x01(\bR\x0eincludeRevoked\"\xeb\x02\n" +
 	"\tAgentInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\fapi_key_name\x18\x02 \x01(\tR\n" +
@@ -6756,7 +6773,8 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\trecording\x18\n" +
 	" \x01(\tR\trecording\x129\n" +
 	"\n" +
-	"updated_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"@\n" +
+	"updated_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x18\n" +
+	"\arevoked\x18\f \x01(\bR\arevoked\"@\n" +
 	"\x12ListAgentsResponse\x12*\n" +
 	"\x06agents\x18\x01 \x03(\v2\x12.ktms.v1.AgentInfoR\x06agents\"L\n" +
 	"\x18SetAgentRecordingRequest\x12\x12\n" +
