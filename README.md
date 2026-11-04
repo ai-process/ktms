@@ -2046,6 +2046,8 @@ metrics are served next to them.
 | `ktms_mcp_tool_calls_total` | `server`, `tool`, `status` (`success`, `tool_error`, `denied`, `throttled`, `timeout`, `too_large`, `upstream_error`, `cancelled`) | Tool calls through the [MCP gateway](#mcp-gateway). |
 | `ktms_mcp_tool_call_duration_seconds` | `server` | Tool call duration, histogram. |
 | `ktms_mcp_response_bytes` | `server` | Tool result size, histogram. |
+| `ktms_agent_messages_total` | `outcome` (`sent`, `replied`, `held`, `denied_<reason>`) | Messages between [agents](#agents); `held` is a task a guardrail holds for a person. |
+| `ktms_agent_journal_events_total` | `result` (`written`, `error`) | Writes to the agents' journal. |
 
 The `throttled` and `usage_events_dropped` reasons are exported at 0 from startup, so `increase()`
 catches the first event after a restart. Suggested alerts (tune thresholds to your traffic; `job`
