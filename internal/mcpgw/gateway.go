@@ -29,6 +29,9 @@ import (
 // Separator joins a server and a tool name in the /mcp aggregate.
 const Separator = "__"
 
+// resultTypeSince is the MCP version whose clients require resultType on results.
+const resultTypeSince = "2026-07-28"
+
 // CodeForbidden is the JSON-RPC error of a tool or server the key may not use.
 const CodeForbidden = -32003
 
@@ -185,7 +188,7 @@ func (g *Gateway) server(r *http.Request) *mcp.Server {
 				if res, err := g.callTool(ctx, c, p); err != nil {
 					return nil, err
 				} else {
-					return res, nil
+					return completed(req, res), nil
 				}
 			}
 			return next(ctx, method, req)
@@ -395,6 +398,34 @@ func (g *Gateway) account(c *caller, server, tool string, st usagev1.Status, cla
 
 // toolError is a failure the model sees and may act on, as MCP wants for
 // errors of the tool rather than of the protocol.
+// completed marks a result complete for clients of MCP 2026-07-28 and later, which
+// refuse a tools/call result without resultType. The SDK sets it only in its own
+// tools/call handler, which this gateway answers before; the field is unexported.
+func completed(req mcp.Request, res *mcp.CallToolResult) *mcp.CallToolResult {
+	if res == nil || res.NeedsInput() {
+		return res
+	}
+	if ss, _ := req.GetSession().(*mcp.ServerSession); ss != nil {
+		if p := ss.InitializeParams(); p != nil && p.ProtocolVersion < resultTypeSince {
+			return res
+		}
+	}
+	b, err := json.Marshal(res)
+	if err != nil || len(b) < 2 || b[0] != '{' {
+		return res
+	}
+	if b[1] != '}' {
+		b = append([]byte(`{"resultType":"complete",`), b[1:]...)
+	} else {
+		b = []byte(`{"resultType":"complete"}`)
+	}
+	out := new(mcp.CallToolResult)
+	if json.Unmarshal(b, out) != nil {
+		return res
+	}
+	return out
+}
+
 func toolError(msg string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: msg}}}
 }
