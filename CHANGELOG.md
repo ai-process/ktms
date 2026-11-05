@@ -16,6 +16,9 @@ All notable changes to KTMS are listed here. The format follows
   holds the task as `input-required`. Each event goes to a capped Redis stream at the recording
   level `AGENTS_RECORDING` or the agent's own. `ListAgents`, `SetAgentRecording`, `ListAgentTasks`,
   `GetAgentTask` and `ktms agents` show them to an operator.
+- `ktms agents tasks --status` and `statuses` in `ListAgentTasks`: only the tasks in the given
+  A2A statuses, repeated or comma-separated; an unknown status is `INVALID_ARGUMENT`, and with
+  `--open` (`open_only`) only the open statuses among them count.
 - `owner` on client keys (`MintAPIKey`, `ListAPIKeys`, `ktms keys mint --owner`, `owner` in the
   configuration file): the person a key belongs to. An MCP server can no longer be named `agents`.
 

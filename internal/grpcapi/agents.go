@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -54,6 +55,10 @@ func (s *AdminServer) SetAgentRecording(ctx context.Context, req *pb.SetAgentRec
 }
 
 func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasksRequest) (*pb.ListAgentTasksResponse, error) {
+	statuses, err := taskStatuses(req.GetStatuses(), req.GetOpenOnly())
+	if err != nil {
+		return nil, err
+	}
 	a, err := s.db.GetAgentByName(ctx, agentName(req.GetAgent()))
 	if errors.Is(err, proxydb.ErrNotFound) {
 		return nil, status.Errorf(codes.NotFound, "no agent %q", req.GetAgent())
@@ -61,11 +66,11 @@ func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasks
 	if err != nil {
 		return nil, dbStatus(err)
 	}
-	f := proxydb.TaskFilter{Agent: a.KeyID, Limit: int(req.GetLimit())}
-	if req.GetOpenOnly() {
-		f.Statuses = []string{proxydb.TaskSubmitted, proxydb.TaskWorking, proxydb.TaskInputRequired}
+	// An empty filter means every status, so open_only with only ended statuses must match nothing.
+	if req.GetOpenOnly() && len(statuses) == 0 {
+		return &pb.ListAgentTasksResponse{}, nil
 	}
-	tasks, err := s.db.ListAgentTasks(ctx, f)
+	tasks, err := s.db.ListAgentTasks(ctx, proxydb.TaskFilter{Agent: a.KeyID, Statuses: statuses, Limit: int(req.GetLimit())})
 	if err != nil {
 		return nil, dbStatus(err)
 	}
@@ -74,6 +79,34 @@ func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasks
 		out.Tasks = append(out.Tasks, taskProto(t))
 	}
 	return out, nil
+}
+
+// taskStatuses is the status filter of a listing, empty for any status; with
+// openOnly, the open ones among those requested, which may be none.
+func taskStatuses(requested []string, openOnly bool) ([]string, error) {
+	var out []string
+	for _, st := range requested {
+		st = strings.ToLower(strings.TrimSpace(st))
+		if !proxydb.ValidTaskStatus(st) {
+			return nil, status.Errorf(codes.InvalidArgument, "status %q: want one of %s", st, strings.Join(proxydb.TaskStatuses, ", "))
+		}
+		if !slices.Contains(out, st) {
+			out = append(out, st)
+		}
+	}
+	if !openOnly {
+		return out, nil
+	}
+	if len(out) == 0 {
+		out = proxydb.TaskStatuses
+	}
+	var open []string
+	for _, st := range out {
+		if !proxydb.TaskTerminal(st) {
+			open = append(open, st)
+		}
+	}
+	return open, nil
 }
 
 func (s *AdminServer) GetAgentTask(ctx context.Context, req *pb.GetAgentTaskRequest) (*pb.AgentTask, error) {

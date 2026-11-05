@@ -6013,10 +6013,14 @@ func (*SetAgentRecordingResponse) Descriptor() ([]byte, []int) {
 }
 
 type ListAgentTasksRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Agent         string                 `protobuf:"bytes,1,opt,name=agent,proto3" json:"agent,omitempty"`                        // tasks this agent sent or received; required
-	OpenOnly      bool                   `protobuf:"varint,2,opt,name=open_only,json=openOnly,proto3" json:"open_only,omitempty"` // submitted, working and input-required only
-	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`                       // default 100, at most 500
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Agent    string                 `protobuf:"bytes,1,opt,name=agent,proto3" json:"agent,omitempty"`                        // tasks this agent sent or received; required
+	OpenOnly bool                   `protobuf:"varint,2,opt,name=open_only,json=openOnly,proto3" json:"open_only,omitempty"` // submitted, working and input-required only
+	Limit    int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`                       // default 100, at most 500
+	// Only tasks in these statuses (submitted, working, input-required, completed,
+	// failed, canceled); empty for all, an unknown one is INVALID_ARGUMENT. With
+	// open_only, the statuses that are both listed and open.
+	Statuses      []string `protobuf:"bytes,4,rep,name=statuses,proto3" json:"statuses,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6070,6 +6074,13 @@ func (x *ListAgentTasksRequest) GetLimit() int32 {
 		return x.Limit
 	}
 	return 0
+}
+
+func (x *ListAgentTasksRequest) GetStatuses() []string {
+	if x != nil {
+		return x.Statuses
+	}
+	return nil
 }
 
 type AgentMessage struct {
@@ -6780,11 +6791,12 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x18SetAgentRecordingRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
 	"\trecording\x18\x02 \x01(\tR\trecording\"\x1b\n" +
-	"\x19SetAgentRecordingResponse\"`\n" +
+	"\x19SetAgentRecordingResponse\"|\n" +
 	"\x15ListAgentTasksRequest\x12\x14\n" +
 	"\x05agent\x18\x01 \x01(\tR\x05agent\x12\x1b\n" +
 	"\topen_only\x18\x02 \x01(\bR\bopenOnly\x12\x14\n" +
-	"\x05limit\x18\x03 \x01(\x05R\x05limit\"\x85\x01\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x1a\n" +
+	"\bstatuses\x18\x04 \x03(\tR\bstatuses\"\x85\x01\n" +
 	"\fAgentMessage\x12\x12\n" +
 	"\x04from\x18\x01 \x01(\tR\x04from\x12\x12\n" +
 	"\x04role\x18\x02 \x01(\tR\x04role\x12\x12\n" +

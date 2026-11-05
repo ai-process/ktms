@@ -45,12 +45,15 @@ func TestValidateAndSchema(t *testing.T) {
 	if code, _, errs := call("config", "validate", "-f", bad); code != 1 || !strings.Contains(errs, "api_version must be") {
 		t.Fatalf("validate bad = %d %q", code, errs)
 	}
+	if code, _, errs := call("agents", "tasks", "bot", "--status", "working", "--status", "Paused"); code != exitUsage || !strings.Contains(errs, `--status "Paused": want one of submitted, working`) {
+		t.Fatalf("agents tasks --status Paused = %d %q", code, errs)
+	}
 	if code, out, _ := call("config", "schema"); code != 0 || !strings.Contains(out, `"$schema"`) {
 		t.Fatalf("schema = %d", code)
 	}
 	for _, args := range [][]string{{"nonsense"}, {"keys", "list", "--bogus"}, {"keys", "mint"}, {"models", "list", "-o", "xml"},
 		{"keys"}, {"keys", "revok", "bot"}, {"config", "bogus"}, {"keys", "policy"}, {"limits", "set", "key", "a", "day", "NaN"},
-		{"node-keys", "mint", "gpu"}} {
+		{"node-keys", "mint", "gpu"}, {"agents", "tasks", "bot", "--status", "working,done"}} {
 		if code, _, _ := call(args...); code != exitUsage {
 			t.Errorf("ktms %v = %d, want %d", args, code, exitUsage)
 		}
