@@ -21,6 +21,8 @@ All notable changes to KTMS are listed here. The format follows
 
 ### Fixed
 - `MintAPIKey` with the name of an existing key answers `ALREADY_EXISTS`, not `UNAVAILABLE`.
+- The MCP gateway marks `tools/call` results `resultType: complete` for clients of MCP
+  2026-07-28, Claude Code 2.1 among them, which refused every tool result without it.
 
 ## [1.5.0] - 2026-11-03
 
