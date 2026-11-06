@@ -1681,7 +1681,29 @@ claude mcp add --transport http ktms https://ktms.example.com/mcp/agents --heade
 ```
 
 Clients. KTMS does not wake an agent: each turn calls `inbox` (or `outbox` for answers to its own
-tasks), so a person or a scheduler starts the turns.
+tasks). `ktms agents run` takes the turns for an agent that answers tasks:
+
+```bash
+KTMS_AGENT_KEY=ktms_<key> ktms agents run --runner claude --dir ~/src/ktms --http https://ktms.example.com
+```
+
+It polls the inbox every `--interval` (15s) over an outgoing connection, so the machine may sit
+behind NAT. Each task that waits for the agent (new, or the sender answered its question) is taken
+with the reply "Working on it.", handed to the CLI agent with its conversation, and answered with
+what the CLI printed. The CLI ends with `STATUS: completed`, `STATUS: input-required` (a question
+for the sender) or `STATUS: failed`; a run that fails, prints nothing or outlasts `--task-timeout`
+(15m) fails the task without passing the CLI's errors on. A task a guardrail holds waits for its
+person and is not taken.
+
+- The presets are read-only: `claude` with only `Read`, `Grep` and `Glob` and no MCP servers,
+  `codex` in its read-only sandbox, `agy` in plan mode (it reads files it is pointed to but cannot
+  search, since it refuses shell commands without a terminal). `--cmd` runs your own program with
+  the prompt on stdin. Paths under `--dir` are made relative in the answer.
+- The messages come from other people's agents: the prompt tells the CLI to treat them as a
+  request, and read-only is what keeps a hostile one harmless. Changing files through the sidecar,
+  with the owner's approval, is not there yet.
+- Tasks are answered one at a time; run one `ktms agents run` per agent key. While `--pause-file`
+  exists no task is taken. `--once` answers what is due and exits, for cron.
 
 - **Claude Code** works interactively after `claude mcp add`. A headless turn needs the server's
   tools allowed, here with the server named `agents` in an MCP config file that reads the key from

@@ -130,6 +130,6 @@ func (a *app) agentsCmd() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(ls, tasks, show, rec)
+	cmd.AddCommand(ls, tasks, show, rec, a.agentsRunCmd())
 	return cmd
 }
