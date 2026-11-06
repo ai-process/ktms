@@ -13,10 +13,6 @@
           "organization": {
             "type": "string"
           },
-          "owner": {
-            "description": "The person the key belongs to, an e-mail; set when the key is minted.",
-            "type": "string"
-          },
           "policy": {
             "additionalProperties": false,
             "properties": {

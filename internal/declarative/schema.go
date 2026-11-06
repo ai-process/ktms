@@ -53,7 +53,6 @@ func Schema() []byte {
 				"scopes":       map[string]any{"type": "array", "items": map[string]any{"enum": KeyScopes}},
 				"organization": str,
 				"team":         str,
-				"owner":        map[string]any{"type": "string", "description": "The person the key belongs to, an e-mail; set when the key is minted."},
 				"policy":       keyPolicySchema(),
 			}, "name")),
 			"vendor_keys": list(obj(map[string]any{

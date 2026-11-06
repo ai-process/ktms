@@ -62,10 +62,6 @@ const (
 	AdminService_SetMCPCredential_FullMethodName        = "/ktms.v1.AdminService/SetMCPCredential"
 	AdminService_DeleteMCPCredential_FullMethodName     = "/ktms.v1.AdminService/DeleteMCPCredential"
 	AdminService_ListMCPTools_FullMethodName            = "/ktms.v1.AdminService/ListMCPTools"
-	AdminService_ListAgents_FullMethodName              = "/ktms.v1.AdminService/ListAgents"
-	AdminService_SetAgentRecording_FullMethodName       = "/ktms.v1.AdminService/SetAgentRecording"
-	AdminService_ListAgentTasks_FullMethodName          = "/ktms.v1.AdminService/ListAgentTasks"
-	AdminService_GetAgentTask_FullMethodName            = "/ktms.v1.AdminService/GetAgentTask"
 )
 
 // AdminServiceClient is the client API for AdminService service.
@@ -123,15 +119,6 @@ type AdminServiceClient interface {
 	SetMCPCredential(ctx context.Context, in *SetMCPCredentialRequest, opts ...grpc.CallOption) (*SetMCPCredentialResponse, error)
 	DeleteMCPCredential(ctx context.Context, in *DeleteMCPCredentialRequest, opts ...grpc.CallOption) (*DeleteMCPCredentialResponse, error)
 	ListMCPTools(ctx context.Context, in *ListMCPToolsRequest, opts ...grpc.CallOption) (*ListMCPToolsResponse, error)
-	// Agents talk to each other through the MCP server "agents" (see the README's
-	// Agents section); these RPCs let an operator, or ktms-admin for one person,
-	// see their cards and conversations.
-	ListAgents(ctx context.Context, in *ListAgentsRequest, opts ...grpc.CallOption) (*ListAgentsResponse, error)
-	// SetAgentRecording sets how much of an agent's conversations the journal keeps.
-	SetAgentRecording(ctx context.Context, in *SetAgentRecordingRequest, opts ...grpc.CallOption) (*SetAgentRecordingResponse, error)
-	ListAgentTasks(ctx context.Context, in *ListAgentTasksRequest, opts ...grpc.CallOption) (*ListAgentTasksResponse, error)
-	// GetAgentTask returns the messages too, so it needs the admin scope.
-	GetAgentTask(ctx context.Context, in *GetAgentTaskRequest, opts ...grpc.CallOption) (*AgentTask, error)
 }
 
 type adminServiceClient struct {
@@ -572,46 +559,6 @@ func (c *adminServiceClient) ListMCPTools(ctx context.Context, in *ListMCPToolsR
 	return out, nil
 }
 
-func (c *adminServiceClient) ListAgents(ctx context.Context, in *ListAgentsRequest, opts ...grpc.CallOption) (*ListAgentsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListAgentsResponse)
-	err := c.cc.Invoke(ctx, AdminService_ListAgents_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *adminServiceClient) SetAgentRecording(ctx context.Context, in *SetAgentRecordingRequest, opts ...grpc.CallOption) (*SetAgentRecordingResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(SetAgentRecordingResponse)
-	err := c.cc.Invoke(ctx, AdminService_SetAgentRecording_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *adminServiceClient) ListAgentTasks(ctx context.Context, in *ListAgentTasksRequest, opts ...grpc.CallOption) (*ListAgentTasksResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListAgentTasksResponse)
-	err := c.cc.Invoke(ctx, AdminService_ListAgentTasks_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *adminServiceClient) GetAgentTask(ctx context.Context, in *GetAgentTaskRequest, opts ...grpc.CallOption) (*AgentTask, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(AgentTask)
-	err := c.cc.Invoke(ctx, AdminService_GetAgentTask_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // AdminServiceServer is the server API for AdminService service.
 // All implementations must embed UnimplementedAdminServiceServer
 // for forward compatibility.
@@ -667,15 +614,6 @@ type AdminServiceServer interface {
 	SetMCPCredential(context.Context, *SetMCPCredentialRequest) (*SetMCPCredentialResponse, error)
 	DeleteMCPCredential(context.Context, *DeleteMCPCredentialRequest) (*DeleteMCPCredentialResponse, error)
 	ListMCPTools(context.Context, *ListMCPToolsRequest) (*ListMCPToolsResponse, error)
-	// Agents talk to each other through the MCP server "agents" (see the README's
-	// Agents section); these RPCs let an operator, or ktms-admin for one person,
-	// see their cards and conversations.
-	ListAgents(context.Context, *ListAgentsRequest) (*ListAgentsResponse, error)
-	// SetAgentRecording sets how much of an agent's conversations the journal keeps.
-	SetAgentRecording(context.Context, *SetAgentRecordingRequest) (*SetAgentRecordingResponse, error)
-	ListAgentTasks(context.Context, *ListAgentTasksRequest) (*ListAgentTasksResponse, error)
-	// GetAgentTask returns the messages too, so it needs the admin scope.
-	GetAgentTask(context.Context, *GetAgentTaskRequest) (*AgentTask, error)
 	mustEmbedUnimplementedAdminServiceServer()
 }
 
@@ -814,18 +752,6 @@ func (UnimplementedAdminServiceServer) DeleteMCPCredential(context.Context, *Del
 }
 func (UnimplementedAdminServiceServer) ListMCPTools(context.Context, *ListMCPToolsRequest) (*ListMCPToolsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListMCPTools not implemented")
-}
-func (UnimplementedAdminServiceServer) ListAgents(context.Context, *ListAgentsRequest) (*ListAgentsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListAgents not implemented")
-}
-func (UnimplementedAdminServiceServer) SetAgentRecording(context.Context, *SetAgentRecordingRequest) (*SetAgentRecordingResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method SetAgentRecording not implemented")
-}
-func (UnimplementedAdminServiceServer) ListAgentTasks(context.Context, *ListAgentTasksRequest) (*ListAgentTasksResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListAgentTasks not implemented")
-}
-func (UnimplementedAdminServiceServer) GetAgentTask(context.Context, *GetAgentTaskRequest) (*AgentTask, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetAgentTask not implemented")
 }
 func (UnimplementedAdminServiceServer) mustEmbedUnimplementedAdminServiceServer() {}
 func (UnimplementedAdminServiceServer) testEmbeddedByValue()                      {}
@@ -1622,78 +1548,6 @@ func _AdminService_ListMCPTools_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
-func _AdminService_ListAgents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListAgentsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AdminServiceServer).ListAgents(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AdminService_ListAgents_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AdminServiceServer).ListAgents(ctx, req.(*ListAgentsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _AdminService_SetAgentRecording_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SetAgentRecordingRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AdminServiceServer).SetAgentRecording(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AdminService_SetAgentRecording_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AdminServiceServer).SetAgentRecording(ctx, req.(*SetAgentRecordingRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _AdminService_ListAgentTasks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListAgentTasksRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AdminServiceServer).ListAgentTasks(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AdminService_ListAgentTasks_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AdminServiceServer).ListAgentTasks(ctx, req.(*ListAgentTasksRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _AdminService_GetAgentTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetAgentTaskRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AdminServiceServer).GetAgentTask(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AdminService_GetAgentTask_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AdminServiceServer).GetAgentTask(ctx, req.(*GetAgentTaskRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // AdminService_ServiceDesc is the grpc.ServiceDesc for AdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1872,22 +1726,6 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListMCPTools",
 			Handler:    _AdminService_ListMCPTools_Handler,
-		},
-		{
-			MethodName: "ListAgents",
-			Handler:    _AdminService_ListAgents_Handler,
-		},
-		{
-			MethodName: "SetAgentRecording",
-			Handler:    _AdminService_SetAgentRecording_Handler,
-		},
-		{
-			MethodName: "ListAgentTasks",
-			Handler:    _AdminService_ListAgentTasks_Handler,
-		},
-		{
-			MethodName: "GetAgentTask",
-			Handler:    _AdminService_GetAgentTask_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

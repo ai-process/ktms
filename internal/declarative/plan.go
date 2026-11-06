@@ -318,7 +318,7 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 				}
 				p.add(Change{Op: Create, Kind: "api key", Name: k.Name, Details: keyDetails(k, scopes)},
 					func(ctx context.Context, c pb.AdminServiceClient, a *applied) error {
-						req := &pb.MintAPIKeyRequest{Name: k.Name, Scopes: scopes, Policy: k.Policy, Owner: k.Owner}
+						req := &pb.MintAPIKeyRequest{Name: k.Name, Scopes: scopes, Policy: k.Policy}
 						if k.Organization != "" {
 							req.OrgId = a.orgIDs[k.Organization]
 						}
@@ -343,9 +343,6 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 			}
 			if org, team := keyTenancy(live, lk); org != k.Organization || team != k.Team {
 				conflict("api key %s belongs to %q/%q, the file says %q/%q: a key cannot move, mint a key under another name", k.Name, org, team, k.Organization, k.Team)
-			}
-			if want := strings.ToLower(strings.TrimSpace(k.Owner)); want != lk.GetOwner() {
-				conflict("api key %s belongs to %q, the file says %q: a key's owner cannot change, mint a key under another name", k.Name, lk.GetOwner(), want)
 			}
 			if d := policyDiff(lk.GetPolicy(), k.Policy); len(d) > 0 {
 				p.add(Change{Op: Update, Kind: "api key policy", Name: k.Name, Details: d}, func(ctx context.Context, c pb.AdminServiceClient, _ *applied) error {

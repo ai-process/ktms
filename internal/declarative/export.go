@@ -119,9 +119,6 @@ func exportDoc(live *State) (*yaml.Node, error) {
 		if team != "" {
 			add(kn, "team", scalarNode(team))
 		}
-		if k.GetOwner() != "" {
-			add(kn, "owner", scalarNode(k.GetOwner()))
-		}
 		if k.GetPolicy() != nil {
 			pn, err := messageNode(k.GetPolicy(), false)
 			if err != nil {

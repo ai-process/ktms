@@ -27,17 +27,6 @@ type Config struct {
 	HTTPAPIEnabled bool
 	// MCPGatewayEnabled mounts the MCP gateway (/mcp) on HTTPAddr.
 	MCPGatewayEnabled bool
-	// Agents* configure the agents' inbox, the gateway's built-in server "agents".
-	AgentsEnabled         bool
-	AgentsMaxDepth        int
-	AgentsMaxMessages     int
-	AgentsMaxMessageBytes int
-	AgentsToolRPM         int
-	AgentsRetention       time.Duration
-	AgentsRecording       string
-	AgentsJournalMaxLen   int
-	AgentsJournalMaxEvent int
-	AgentsJournalRedisURL string
 	// HTTPAPITimeout bounds one HTTP API call, which waits on an upstream model.
 	HTTPAPITimeout  time.Duration
 	LogLevel        string
@@ -162,47 +151,37 @@ type Config struct {
 // Load loads configuration from environment variables
 func Load() *Config {
 	c := &Config{
-		DatabaseURL:           getEnv("DATABASE_URL", ""),
-		EncryptionKeys:        getEnvFirst([]string{"KTMS_ENCRYPTION_KEYS", "LLMPROXY_ENCRYPTION_KEYS"}, ""),
-		GRPCAddr:              getEnv("GRPC_ADDR", ":9090"),
-		GRPCMaxRecvMsgSize:    getIntEnv("GRPC_MAX_RECV_MSG_SIZE", 16*1024*1024),
-		HTTPAddr:              getEnv("HTTP_ADDR", ":8080"),
-		HTTPAPIEnabled:        getBoolEnv("HTTP_API_ENABLED", true),
-		MCPGatewayEnabled:     getBoolEnv("MCP_GATEWAY_ENABLED", true),
-		AgentsEnabled:         getBoolEnv("AGENTS_ENABLED", true),
-		AgentsMaxDepth:        getIntEnv("AGENTS_MAX_DEPTH", 5),
-		AgentsMaxMessages:     getIntEnv("AGENTS_MAX_MESSAGES_PER_CONTEXT", 200),
-		AgentsMaxMessageBytes: getIntEnv("AGENTS_MAX_MESSAGE_BYTES", 64<<10),
-		AgentsToolRPM:         getIntEnv("AGENTS_TOOL_RPM", 60),
-		AgentsRetention:       getDurationEnv("AGENTS_RETENTION", 30*24*time.Hour),
-		AgentsRecording:       strings.ToLower(getEnv("AGENTS_RECORDING", "metadata")),
-		AgentsJournalMaxLen:   getIntEnv("AGENTS_JOURNAL_MAXLEN", 100000),
-		AgentsJournalMaxEvent: getIntEnv("AGENTS_JOURNAL_MAX_EVENT_BYTES", 16<<10),
-		AgentsJournalRedisURL: getEnv("AGENTS_JOURNAL_REDIS_URL", ""),
-		HTTPAPITimeout:        getDurationEnv("HTTP_API_TIMEOUT", 5*time.Minute),
-		LogLevel:              getEnv("LOG_LEVEL", "info"),
-		ShutdownTimeout:       getDurationEnv("SHUTDOWN_TIMEOUT", 30*time.Second),
-		DBMaxConns:            int32(getIntEnv("DB_MAX_CONNS", 25)),
-		DBMinConns:            int32(getIntEnv("DB_MIN_CONNS", 5)),
-		DBTimeout:             getDurationEnv("DB_TIMEOUT", 3*time.Second),
-		AuthStaleIfError:      getDurationEnv("AUTH_STALE_IF_ERROR", 5*time.Minute),
-		RoutingReload:         time.Duration(getIntEnv("ROUTING_RELOAD_SECONDS", 60)) * time.Second,
-		AutoMigrate:           getBoolEnv("AUTO_MIGRATE", true),
-		MigrateTimeout:        getDurationEnv("MIGRATE_TIMEOUT", 3*time.Minute),
-		AutoSeed:              getBoolEnv("AUTO_SEED", false),
-		SeedClientKey:         getEnv("SEED_CLIENT_KEY", ""),
-		SeedClientName:        getEnv("SEED_CLIENT_NAME", "dev-default"),
-		SeedOpenAIKey:         getEnv("SEED_OPENAI_KEY", getEnv("OPENAI_API_KEY", "")),
-		SeedGeminiKey:         getEnv("SEED_GEMINI_KEY", getEnv("GEMINI_API_KEY", "")),
-		SeedAnthropicKey:      getEnv("SEED_ANTHROPIC_KEY", getEnv("ANTHROPIC_API_KEY", "")),
-		RedisAddr:             getEnv("REDIS_ADDR", ""),
-		RedisPassword:         getEnv("REDIS_PASSWORD", ""),
-		RedisDB:               getIntEnv("REDIS_DB", 0),
-		RedisKeyPrefix:        getEnv("REDIS_KEY_PREFIX", ""),
-		RedisTimeout:          getDurationEnv("REDIS_TIMEOUT", 500*time.Millisecond),
-		BootstrapAdminKey:     getEnv("BOOTSTRAP_ADMIN_KEY", ""),
-		UsageCollectorHost:    getEnv("USAGE_COLLECTOR_HOST", ""),
-		UsageCollectorTLS:     getBoolEnv("USAGE_COLLECTOR_TLS", false),
+		DatabaseURL:        getEnv("DATABASE_URL", ""),
+		EncryptionKeys:     getEnvFirst([]string{"KTMS_ENCRYPTION_KEYS", "LLMPROXY_ENCRYPTION_KEYS"}, ""),
+		GRPCAddr:           getEnv("GRPC_ADDR", ":9090"),
+		GRPCMaxRecvMsgSize: getIntEnv("GRPC_MAX_RECV_MSG_SIZE", 16*1024*1024),
+		HTTPAddr:           getEnv("HTTP_ADDR", ":8080"),
+		HTTPAPIEnabled:     getBoolEnv("HTTP_API_ENABLED", true),
+		MCPGatewayEnabled:  getBoolEnv("MCP_GATEWAY_ENABLED", true),
+		HTTPAPITimeout:     getDurationEnv("HTTP_API_TIMEOUT", 5*time.Minute),
+		LogLevel:           getEnv("LOG_LEVEL", "info"),
+		ShutdownTimeout:    getDurationEnv("SHUTDOWN_TIMEOUT", 30*time.Second),
+		DBMaxConns:         int32(getIntEnv("DB_MAX_CONNS", 25)),
+		DBMinConns:         int32(getIntEnv("DB_MIN_CONNS", 5)),
+		DBTimeout:          getDurationEnv("DB_TIMEOUT", 3*time.Second),
+		AuthStaleIfError:   getDurationEnv("AUTH_STALE_IF_ERROR", 5*time.Minute),
+		RoutingReload:      time.Duration(getIntEnv("ROUTING_RELOAD_SECONDS", 60)) * time.Second,
+		AutoMigrate:        getBoolEnv("AUTO_MIGRATE", true),
+		MigrateTimeout:     getDurationEnv("MIGRATE_TIMEOUT", 3*time.Minute),
+		AutoSeed:           getBoolEnv("AUTO_SEED", false),
+		SeedClientKey:      getEnv("SEED_CLIENT_KEY", ""),
+		SeedClientName:     getEnv("SEED_CLIENT_NAME", "dev-default"),
+		SeedOpenAIKey:      getEnv("SEED_OPENAI_KEY", getEnv("OPENAI_API_KEY", "")),
+		SeedGeminiKey:      getEnv("SEED_GEMINI_KEY", getEnv("GEMINI_API_KEY", "")),
+		SeedAnthropicKey:   getEnv("SEED_ANTHROPIC_KEY", getEnv("ANTHROPIC_API_KEY", "")),
+		RedisAddr:          getEnv("REDIS_ADDR", ""),
+		RedisPassword:      getEnv("REDIS_PASSWORD", ""),
+		RedisDB:            getIntEnv("REDIS_DB", 0),
+		RedisKeyPrefix:     getEnv("REDIS_KEY_PREFIX", ""),
+		RedisTimeout:       getDurationEnv("REDIS_TIMEOUT", 500*time.Millisecond),
+		BootstrapAdminKey:  getEnv("BOOTSTRAP_ADMIN_KEY", ""),
+		UsageCollectorHost: getEnv("USAGE_COLLECTOR_HOST", ""),
+		UsageCollectorTLS:  getBoolEnv("USAGE_COLLECTOR_TLS", false),
 		// Trimmed: a secret written with echo ends in a newline, which no header may carry.
 		UsageCollectorToken:             strings.TrimSpace(getEnv("USAGE_COLLECTOR_TOKEN", "")),
 		UsageProjectID:                  getEnv("USAGE_PROJECT_ID", "ktms"),

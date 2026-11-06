@@ -32,7 +32,7 @@ func (d *DB) GetAPIKeyByLookup(ctx context.Context, lookup string) (*APIKey, err
 		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}'),
 		        k.allowed_models, k.rpm_limit, k.tpm_limit,
 		        COALESCE(t.allowed_mcp, '{}'), k.allowed_mcp,
-		        COALESCE(t.data_classification, ''), k.data_classification, k.owner
+		        COALESCE(t.data_classification, ''), k.data_classification
 		 FROM api_key k
 		 LEFT JOIN team t ON t.id = k.team_id
 		 WHERE k.key_lookup = $1`, lookup))
@@ -44,30 +44,17 @@ func (d *DB) GetAPIKeyByName(ctx context.Context, name string) (*APIKey, error) 
 		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}'),
 		        k.allowed_models, k.rpm_limit, k.tpm_limit,
 		        COALESCE(t.allowed_mcp, '{}'), k.allowed_mcp,
-		        COALESCE(t.data_classification, ''), k.data_classification, k.owner
+		        COALESCE(t.data_classification, ''), k.data_classification
 		 FROM api_key k
 		 LEFT JOIN team t ON t.id = k.team_id
 		 WHERE k.name = $1`, name))
-}
-
-// GetAPIKeyByLowerName finds a key by its name in any case, an active one first.
-func (d *DB) GetAPIKeyByLowerName(ctx context.Context, name string) (*APIKey, error) {
-	return scanAPIKey(d.pool.QueryRow(ctx,
-		`SELECT k.id, k.name, k.key_lookup, k.key_hash, k.scopes, k.disabled_at, k.created_at,
-		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}'),
-		        k.allowed_models, k.rpm_limit, k.tpm_limit,
-		        COALESCE(t.allowed_mcp, '{}'), k.allowed_mcp,
-		        COALESCE(t.data_classification, ''), k.data_classification, k.owner
-		 FROM api_key k
-		 LEFT JOIN team t ON t.id = k.team_id
-		 WHERE lower(k.name) = lower($1) ORDER BY k.disabled_at IS NULL DESC, k.created_at DESC LIMIT 1`, name))
 }
 
 func scanAPIKey(row pgx.Row) (*APIKey, error) {
 	var k APIKey
 	err := row.Scan(&k.ID, &k.Name, &k.KeyLookup, &k.KeyHash, &k.Scopes, &k.DisabledAt, &k.CreatedAt,
 		&k.OrgID, &k.TeamID, &k.TeamAllowedModels, &k.AllowedModels, &k.RPMLimit, &k.TPMLimit,
-		&k.TeamAllowedMCP, &k.AllowedMCP, &k.TeamDataClassification, &k.DataClassification, &k.Owner)
+		&k.TeamAllowedMCP, &k.AllowedMCP, &k.TeamDataClassification, &k.DataClassification)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -79,9 +66,9 @@ func scanAPIKey(row pgx.Row) (*APIKey, error) {
 
 func (d *DB) InsertAPIKey(ctx context.Context, k *APIKey) error {
 	_, err := d.pool.Exec(ctx,
-		`INSERT INTO api_key (id, name, key_lookup, key_hash, scopes, org_id, team_id, allowed_models, rpm_limit, tpm_limit, allowed_mcp, data_classification, owner)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-		k.ID, k.Name, k.KeyLookup, k.KeyHash, k.Scopes, k.OrgID, k.TeamID, nonNil(k.AllowedModels), k.RPMLimit, k.TPMLimit, nonNil(k.AllowedMCP), k.DataClassification, k.Owner)
+		`INSERT INTO api_key (id, name, key_lookup, key_hash, scopes, org_id, team_id, allowed_models, rpm_limit, tpm_limit, allowed_mcp, data_classification)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		k.ID, k.Name, k.KeyLookup, k.KeyHash, k.Scopes, k.OrgID, k.TeamID, nonNil(k.AllowedModels), k.RPMLimit, k.TPMLimit, nonNil(k.AllowedMCP), k.DataClassification)
 	return err
 }
 
@@ -128,7 +115,7 @@ func (d *DB) ListAPIKeys(ctx context.Context) ([]*APIKey, error) {
 		        k.org_id, k.team_id, COALESCE(t.allowed_models, '{}'),
 		        k.allowed_models, k.rpm_limit, k.tpm_limit,
 		        COALESCE(t.allowed_mcp, '{}'), k.allowed_mcp,
-		        COALESCE(t.data_classification, ''), k.data_classification, k.owner
+		        COALESCE(t.data_classification, ''), k.data_classification
 		 FROM api_key k
 		 LEFT JOIN team t ON t.id = k.team_id
 		 ORDER BY k.created_at`)

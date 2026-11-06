@@ -66,7 +66,6 @@ type APIKey struct {
 	Scopes       []string         `json:"scopes,omitempty"`
 	Organization string           `json:"organization,omitempty"`
 	Team         string           `json:"team,omitempty"`
-	Owner        string           `json:"owner,omitempty"`
 	Policy       *pb.APIKeyPolicy `json:"-"`
 }
 

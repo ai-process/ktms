@@ -99,10 +99,6 @@ var methodScopes = map[string]string{
 	method(pb.AdminService_SetMCPCredential_FullMethodName):    apikeys.ScopeAdmin,
 	method(pb.AdminService_DeleteMCPCredential_FullMethodName): apikeys.ScopeAdmin,
 	method(pb.AdminService_ListMCPTools_FullMethodName):        apikeys.ScopeAdminRead,
-	method(pb.AdminService_ListAgents_FullMethodName):          apikeys.ScopeAdminRead,
-	method(pb.AdminService_SetAgentRecording_FullMethodName):   apikeys.ScopeAdmin,
-	method(pb.AdminService_ListAgentTasks_FullMethodName):      apikeys.ScopeAdminRead,
-	method(pb.AdminService_GetAgentTask_FullMethodName):        apikeys.ScopeAdmin, // the messages themselves
 
 	method(pb.NodeRegistryService_RegisterNode_FullMethodName):   apikeys.ScopeNode,
 	method(pb.NodeRegistryService_ValidateNode_FullMethodName):   apikeys.ScopeNode,

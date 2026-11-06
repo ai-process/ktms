@@ -60,17 +60,11 @@ func (m *MCPServer) Fingerprint() string {
 // ValidMCPName reports whether name may name an MCP server.
 func ValidMCPName(name string) bool { return mcpName.MatchString(name) }
 
-// ReservedMCPServer is the built-in server of the agents' inbox (agents.Server).
-const ReservedMCPServer = "agents"
-
 // ValidateMCPServer checks a spec on its own; whether its host resolves to a
 // private address is checked where the network is (the Admin API).
 func ValidateMCPServer(m *proxydb.MCPServer) error {
 	if !mcpName.MatchString(m.Name) {
 		return fmt.Errorf("mcp server name %q: 1-32 of a-z, 0-9 and -, starting with a letter", m.Name)
-	}
-	if m.Name == ReservedMCPServer {
-		return fmt.Errorf("mcp server name %q is reserved for the agents' inbox in Keystone", m.Name)
 	}
 	switch m.Transport {
 	case MCPStreamableHTTP, MCPSSE:
