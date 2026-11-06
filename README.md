@@ -71,7 +71,7 @@ Two gRPC services share port `9090`:
 | Service | Purpose | Needed scope |
 | --- | --- | --- |
 | `ktms.v1.GatewayService` | `GenerateText`, `GenerateTextStream`, `SubmitBatch`, `GetBatch`, `ListBatchResults`, `CancelBatch`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `JudgeStream`, `EvaluateRollouts`, `GetEmbeddings`, `ListModels` | `generate` |
-| `ktms.v1.AdminService` | models, rules, vendor keys, API keys, key rotation, `ExplainRoute` | `admin`; `admin:read` for the `Get*` and `List*` reads and `ExplainRoute` |
+| `ktms.v1.AdminService` | models, rules, vendor keys, API keys, key rotation, `ExplainRoute` | `admin`; `admin:read` for the `Get*` and `List*` reads and `ExplainRoute`; `agents:read` for the agents' cards and conversations |
 
 Port `8080` serves the health probes (`/healthz`, `/readyz`) and the
 [OpenAI-compatible HTTP API](#openai-compatible-http-api) under `/v1`. gRPC server
@@ -692,7 +692,9 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
 Keys look like `ktms_<hex>` (keys minted before the rename start with `llm_` and keep working). Only a hash is stored, and the plaintext is returned once.
 Scopes: `generate` (data plane), `mcp` (the [MCP gateway](#mcp-gateway)), `admin` (implies
 everything) and `admin:read` (the Admin API reads: `GetConfig`, `GetSpend`, `GetTeam`,
-`GetTeamSpend`, `ExplainRoute` and every `List*`; nothing that changes state). A read key sees every tenant, so it cannot be bound to an organization or team. `GetConfig`
+`GetTeamSpend`, `ExplainRoute` and every `List*`; nothing that changes state) and `agents:read`
+(the [agents](#agents)' cards and conversations, messages included: `ListAgents`,
+`ListAgentTasks`, `GetAgentTask`; nothing else). A read key sees every tenant, so it cannot be bound to an organization or team. `GetConfig`
 never returns a vendor key itself, only its fingerprint.
 `ListAPIKeys` and `RevokeAPIKey` do what they say.
 
@@ -1678,6 +1680,32 @@ ktms keys mint alice-agent --scopes mcp --allowed-mcp agents --owner alice@examp
 claude mcp add --transport http ktms https://ktms.example.com/mcp/agents --header "Authorization: Bearer ktms_<key>"
 ```
 
+Clients. KTMS does not wake an agent: each turn calls `inbox` (or `outbox` for answers to its own
+tasks), so a person or a scheduler starts the turns.
+
+- **Claude Code** works interactively after `claude mcp add`. A headless turn needs the server's
+  tools allowed, here with the server named `agents` in an MCP config file that reads the key from
+  the environment:
+
+  ```bash
+  # agents.json: {"mcpServers":{"agents":{"type":"http","url":"https://ktms.example.com/mcp/agents",
+  #   "headers":{"Authorization":"Bearer ${AGENT_KEY}"}}}}
+  AGENT_KEY=ktms_<key> claude -p "Call inbox and answer your open tasks" \
+    --mcp-config agents.json --strict-mcp-config --allowedTools "mcp__agents"
+  ```
+
+- **agy** (Google Antigravity CLI) stores the header, and so the key, in its configuration in plain
+  text. Without a terminal it refuses MCP calls unless `--settings` allows them:
+
+  ```bash
+  agy mcp add --header "Authorization: Bearer ktms_<key>" ktms-agents https://ktms.example.com/mcp/agents
+  agy --settings '{"permissions":{"allow":["mcp(ktms-agents)","mcp(ktms-agents/*)"]}}' \
+    -p="Call inbox and answer your open tasks"
+  ```
+
+  Shell commands stay refused in that mode whatever `--settings` allows; give a reviewing agent
+  the diff as a file (`--add-dir`) rather than asking it to run `git`.
+
 | Tool | What it does |
 |---|---|
 | `list_agents` | The agents the caller can reach: name, owner, team, description, skills, repositories. |
@@ -1716,10 +1744,12 @@ question (`working`) or cancels it. An ended task takes no more messages.
   `ktms agents recording NAME LEVEL` sets it per agent, and the more detailed of two agents' levels
   applies to their conversation. The stream keeps `AGENTS_JOURNAL_MAXLEN` events, dropping the
   oldest; a write never fails a message. Metrics: `ktms_agent_messages_total`,
-  `ktms_agent_journal_events_total`.
+  `ktms_agent_journal_events_total`, `ktms_agent_tasks`, `ktms_agent_reply_seconds`.
 - **Retention**: tasks unchanged for `AGENTS_RETENTION` are deleted with their messages.
 - **Operators** see the cards and conversations with `ListAgents`, `ListAgentTasks` (both with
-  `admin:read`), `GetAgentTask` (the messages, `admin` only) and `ktms agents`; a key's `owner` (`MintAPIKey`, `--owner`) is how ktms-admin
+  `admin:read` or `agents:read`), `GetAgentTask` (the messages: `agents:read` or `admin`, never
+  `admin:read`) and `ktms agents`; an auditor gets an `agents:read` key
+  (`ktms keys mint auditor --scopes agents:read`), which reads conversations and nothing else; a key's `owner` (`MintAPIKey`, `--owner`) is how ktms-admin
   lists a person's own keys and agents.
 
 ```bash
@@ -2056,6 +2086,8 @@ metrics are served next to them.
 | `ktms_mcp_tool_call_duration_seconds` | `server` | Tool call duration, histogram. |
 | `ktms_mcp_response_bytes` | `server` | Tool result size, histogram. |
 | `ktms_agent_messages_total` | `outcome` (`sent`, `replied`, `held`, `denied_<reason>`) | Messages between [agents](#agents); `held` is a task a guardrail holds for a person. |
+| `ktms_agent_tasks` | `status` | [Agent](#agents) tasks in each status, read from Postgres every minute; every replica reports the same total, so aggregate with `max`. |
+| `ktms_agent_reply_seconds` | `role` (`agent` — the recipient, `user` — the sender), `status` | How long a task waited for a reply since its last change. |
 | `ktms_agent_journal_events_total` | `result` (`written`, `error`) | Writes to the agents' journal. |
 
 The `throttled` and `usage_events_dropped` reasons are exported at 0 from startup, so `increase()`

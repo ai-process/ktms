@@ -552,7 +552,7 @@ func (a *app) addWriteTools(srv *mcp.Server, tool func(name, title, desc string,
 
 	type mintIn struct {
 		Name          string   `json:"name" jsonschema:"key name, unique"`
-		Scopes        []string `json:"scopes,omitempty" jsonschema:"generate (default), mcp, admin or admin:read"`
+		Scopes        []string `json:"scopes,omitempty" jsonschema:"generate (default), mcp, admin, admin:read or agents:read"`
 		Organization  string   `json:"organization,omitempty" jsonschema:"organization name"`
 		Team          string   `json:"team,omitempty" jsonschema:"team as org/team"`
 		AllowedModels []string `json:"allowed_models,omitempty" jsonschema:"model ids the key may call; empty means any"`

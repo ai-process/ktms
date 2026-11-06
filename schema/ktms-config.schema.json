@@ -57,7 +57,8 @@
                 "generate",
                 "mcp",
                 "admin",
-                "admin:read"
+                "admin:read",
+                "agents:read"
               ]
             },
             "type": "array"

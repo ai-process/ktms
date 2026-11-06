@@ -60,6 +60,7 @@ type Store interface {
 	GetAgentTask(ctx context.Context, id string) (*proxydb.AgentTask, error)
 	ListAgentTasks(ctx context.Context, f proxydb.TaskFilter) ([]*proxydb.AgentTask, error)
 	DeleteAgentTasksBefore(ctx context.Context, cutoff time.Time) (int64, error)
+	CountAgentTasks(ctx context.Context) (map[string]int64, error)
 }
 
 // Config bounds conversations; zero values take the defaults.
@@ -402,6 +403,7 @@ func (s *Service) Reply(ctx context.Context, id *apikeys.Identity, taskID, text,
 		return nil, s.limitErr(err)
 	}
 	observability.AgentMessagesTotal.WithLabelValues("replied").Inc()
+	observability.AgentReplySeconds.WithLabelValues(role, status).Observe(s.now().Sub(t.UpdatedAt).Seconds())
 	other := t.ToAgent
 	if other == me.KeyID {
 		other = t.FromAgent
@@ -512,5 +514,33 @@ func (s *Service) Sweep(ctx context.Context, every time.Duration) {
 			return
 		case <-t.C:
 		}
+	}
+}
+
+// Count sets ktms_agent_tasks every interval until ctx ends. Every status is
+// set, zero included, so a status that empties does not keep its last value.
+func (s *Service) Count(ctx context.Context, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		s.count(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+func (s *Service) count(ctx context.Context) {
+	n, err := s.store.CountAgentTasks(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			log.Warn().Err(err).Msg("agents: counting tasks failed")
+		}
+		return
+	}
+	for _, st := range proxydb.TaskStatuses {
+		observability.AgentTasks.WithLabelValues(st).Set(float64(n[st]))
 	}
 }

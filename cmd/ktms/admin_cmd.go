@@ -285,7 +285,7 @@ func (a *app) keysCmd() *cobra.Command {
 		},
 	}
 	outputFlag(mint, &format)
-	mint.Flags().StringSliceVar(&scopes, "scopes", []string{"generate"}, "generate, mcp, admin or admin:read")
+	mint.Flags().StringSliceVar(&scopes, "scopes", []string{"generate"}, "generate, mcp, admin, admin:read or agents:read")
 	mint.Flags().StringVar(&org, "org", "", "organization name")
 	mint.Flags().StringVar(&team, "team", "", "team as org/team")
 	mint.Flags().StringVar(&owner, "owner", "", "the person the key belongs to, an e-mail (an agent's card shows it)")

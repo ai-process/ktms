@@ -414,6 +414,7 @@ func newAgents(ctx context.Context, cfg *config.Config, db *proxydb.DB, rails *g
 		Retention:       cfg.AgentsRetention,
 	}, agents.NewGuard(rails), journal)
 	go svc.Sweep(ctx, time.Hour)
+	go svc.Count(ctx, time.Minute)
 	log.Info().Str("recording", cfg.AgentsRecording).Bool("journal", journal != nil).Msg("agents inbox enabled (mcp server agents)")
 	return svc, closeJournal
 }
