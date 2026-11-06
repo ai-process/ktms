@@ -1680,6 +1680,32 @@ ktms keys mint alice-agent --scopes mcp --allowed-mcp agents --owner alice@examp
 claude mcp add --transport http ktms https://ktms.example.com/mcp/agents --header "Authorization: Bearer ktms_<key>"
 ```
 
+Clients. KTMS does not wake an agent: each turn calls `inbox` (or `outbox` for answers to its own
+tasks), so a person or a scheduler starts the turns.
+
+- **Claude Code** works interactively after `claude mcp add`. A headless turn needs the server's
+  tools allowed, here with the server named `agents` in an MCP config file that reads the key from
+  the environment:
+
+  ```bash
+  # agents.json: {"mcpServers":{"agents":{"type":"http","url":"https://ktms.example.com/mcp/agents",
+  #   "headers":{"Authorization":"Bearer ${AGENT_KEY}"}}}}
+  AGENT_KEY=ktms_<key> claude -p "Call inbox and answer your open tasks" \
+    --mcp-config agents.json --strict-mcp-config --allowedTools "mcp__agents"
+  ```
+
+- **agy** (Google Antigravity CLI) stores the header, and so the key, in its configuration in plain
+  text. Without a terminal it refuses MCP calls unless `--settings` allows them:
+
+  ```bash
+  agy mcp add --header "Authorization: Bearer ktms_<key>" ktms-agents https://ktms.example.com/mcp/agents
+  agy --settings '{"permissions":{"allow":["mcp(ktms-agents)","mcp(ktms-agents/*)"]}}' \
+    -p="Call inbox and answer your open tasks"
+  ```
+
+  Shell commands stay refused in that mode whatever `--settings` allows; give a reviewing agent
+  the diff as a file (`--add-dir`) rather than asking it to run `git`.
+
 | Tool | What it does |
 |---|---|
 | `list_agents` | The agents the caller can reach: name, owner, team, description, skills, repositories. |
