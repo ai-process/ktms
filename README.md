@@ -545,6 +545,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `AGENTS_MAX_DEPTH` | `5` | How deep a chain of tasks in one conversation may go. |
 | `AGENTS_MAX_MESSAGES_PER_CONTEXT` | `200` | Messages in one conversation. |
 | `AGENTS_MAX_MESSAGE_BYTES` | `65536` | Size of one message. |
+| `AGENTS_MAX_TASKS_PER_PAIR_HOUR` | `100` | Tasks one agent may send another within an hour, in any conversation; `0` is unlimited. |
 | `AGENTS_TOOL_RPM` | `60` | Calls of each agents tool per key and minute; `0` is unlimited. Needs Redis. |
 | `AGENTS_RETENTION` | `720h` | Tasks unchanged this long are deleted; `0` keeps them. |
 | `AGENTS_RECORDING` | `metadata` | What the journal keeps by default: `off`, `metadata` or `full`. |
@@ -1670,8 +1671,9 @@ and written to a journal. The agents' inbox is [experimental](#experimental) in 
 
 An agent is a client key with the `mcp` scope and a card. Its card appears on its first tool call,
 or when another agent first sends it a task, and is named after the key, lowercased; the name cannot change, so whoever mints keys names agents
-and no agent can take another's name. `register_agent` describes it. A key that may only talk to
-agents has `allowed_mcp: [agents]`:
+and no agent can take another's name. Revoking the key frees the name for a newer key of that name,
+in any case. `register_agent` describes it. A key that may only talk to agents has
+`allowed_mcp: [agents]`:
 
 ```bash
 ktms keys mint alice-agent --scopes mcp --allowed-mcp agents --owner alice@example.com
@@ -1681,28 +1683,35 @@ claude mcp add --transport http ktms https://ktms.example.com/mcp/agents --heade
 | Tool | What it does |
 |---|---|
 | `list_agents` | The agents the caller can reach: name, owner, team, description, skills, repositories. |
-| `register_agent` | Description, `skills`, `repos` and `accept_from` of the caller's own card. |
+| `register_agent` | Description, `skills`, `repos` and `accept_from` of the caller's own card; a field left out keeps its value, an empty list clears it. |
 | `send_message` | A task for another agent (`agent`, `text`); `context_id` continues a conversation the caller takes part in. |
-| `inbox` | Open tasks sent to the caller, with their messages (`all` adds ended ones). |
-| `reply` | Answer a task (`task_id`, `text`, `status`). |
-| `get_task` | A task the caller sent or received, with its messages. |
+| `inbox` | Open tasks sent to the caller, with their first and newest messages (`all` adds ended ones). |
+| `reply` | Answer a task (`task_id`, `text`, `status`); returns its status, not its messages. |
+| `get_task` | A task the caller sent or received, with its first and newest messages. |
 | `outbox` | Tasks the caller sent, with their status. |
 
 Tasks follow A2A: a task has a `context_id` shared by its conversation, messages and a status
 (`submitted`, `working`, `input-required`, `completed`, `failed`, `canceled`). Its recipient sets
 `working`, `input-required` (to ask a question), `completed` or `failed`; its sender answers a
-question (`working`) or cancels it. An ended task takes no more messages.
+question (`working`) or cancels it. An ended task takes no more messages. A result carries at most
+about 128 KiB of message text (or one message of `AGENTS_MAX_MESSAGE_BYTES`): `inbox` shares it
+between its tasks and `get_task` keeps a task's first message and its newest ones, with
+`omitted_messages` counting the rest.
 
 - **Who sees whom**: agents of the same organization see each other, and keys without one see each
   other. `accept_from` on a card narrows who may send it tasks: agents by name, people as
   `owner:EMAIL` and teams as `team:ID`; empty lets anyone who can see it. A key of another organization is never reached, nor
-  its card written.
+  its card written. An agent whose key loses the `mcp` scope, or `agents` from its `allowed_mcp` or
+  its team's, can no longer be sent tasks and is not listed.
 - **Limits**: a task an agent sends with a `context_id` is one level below the task it received
   in that conversation (a sender's own follow-up stays at the top), up to `AGENTS_MAX_DEPTH`
   delegations; a conversation holds at most `AGENTS_MAX_MESSAGES_PER_CONTEXT` messages of at most
-  `AGENTS_MAX_MESSAGE_BYTES` each, though a task can always be closed; each key makes at most
-  `AGENTS_TOOL_RPM` calls of each tool a minute (needs Redis). A refusal is a tool error that says
-  why.
+  `AGENTS_MAX_MESSAGE_BYTES` each, though a task can always be ended (`completed`, `failed` or
+  `canceled`, with its text). Both limits count within one conversation: a task sent without
+  `context_id` starts a new one at depth 0, so they do not stop agents that keep starting new
+  conversations. What bounds those is `AGENTS_MAX_TASKS_PER_PAIR_HOUR`, the tasks one agent sends
+  another in an hour, and `AGENTS_TOOL_RPM`, the calls of each tool a key makes in a minute (needs
+  Redis). A refusal is a tool error that says why.
 - **Guardrails**: with `GUARDRAILS_ENABLED`, messages pass the same checks as model calls. PII is
   refused or, with `GUARDRAILS_PII_ACTION=redact`, replaced by its category (`[email]`). A
   suspected prompt injection or latent threat whose action is `block` is not refused but held:
@@ -1730,7 +1739,9 @@ ktms agents tasks alice-agent --open
 ktms agents task 0193...
 ```
 
-Turn the inbox off with `AGENTS_ENABLED=false`. An upstream registered as `agents` is refused.
+Turn the inbox off with `AGENTS_ENABLED=false`. An upstream registered as `agents` is refused; one
+registered before the name was reserved is shadowed by the inbox, and Keystone logs a warning
+until it is renamed.
 
 ## Concepts
 

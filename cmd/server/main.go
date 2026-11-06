@@ -410,6 +410,7 @@ func newAgents(ctx context.Context, cfg *config.Config, db *proxydb.DB, rails *g
 		MaxDepth:        int32(cfg.AgentsMaxDepth),
 		MaxMessages:     int64(cfg.AgentsMaxMessages),
 		MaxMessageBytes: cfg.AgentsMaxMessageBytes,
+		MaxTasksPerPair: int64(cfg.AgentsMaxTasksPerPair),
 		Recording:       cfg.AgentsRecording,
 		Retention:       cfg.AgentsRetention,
 	}, agents.NewGuard(rails), journal)

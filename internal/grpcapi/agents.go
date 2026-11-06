@@ -63,7 +63,7 @@ func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasks
 	}
 	f := proxydb.TaskFilter{Agent: a.KeyID, Limit: int(req.GetLimit())}
 	if req.GetOpenOnly() {
-		f.Statuses = []string{proxydb.TaskSubmitted, proxydb.TaskWorking, proxydb.TaskInputRequired}
+		f.Statuses = proxydb.TaskOpenStatuses
 	}
 	tasks, err := s.db.ListAgentTasks(ctx, f)
 	if err != nil {
@@ -77,12 +77,16 @@ func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasks
 }
 
 func (s *AdminServer) GetAgentTask(ctx context.Context, req *pb.GetAgentTaskRequest) (*pb.AgentTask, error) {
-	if uuid.Validate(req.GetTaskId()) != nil {
+	id, err := uuid.Parse(req.GetTaskId())
+	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "task_id must be a task id")
 	}
-	t, err := s.db.GetAgentTask(ctx, req.GetTaskId())
+	t, err := s.db.GetAgentTask(ctx, id.String())
 	if errors.Is(err, proxydb.ErrNotFound) {
 		return nil, status.Errorf(codes.NotFound, "no task %s", req.GetTaskId())
+	}
+	if err == nil {
+		err = s.db.WithAgentMessages(ctx, []*proxydb.AgentTask{t}, 0)
 	}
 	if err != nil {
 		return nil, dbStatus(err)
