@@ -1708,7 +1708,9 @@ question (`working`) or cancels it. An ended task takes no more messages.
   suspected prompt injection or latent threat whose action is `block` is not refused but held:
   the task arrives as `input-required` with the reason, for the recipient to ask its person first,
   and its sender can only cancel it. A flagged reply keeps its status and carries the reason
-  (`guardrail note: ...`) for the other side.
+  (`guardrail note: ...`) for the other side. The reason names the check, never the message's
+  words: `possible prompt injection (ignore_instructions)`, `mode_switch` or `prompt_leak`, or
+  `latent CATEGORY intent`; it is at most 256 bytes.
 - **Journal**: each event of a conversation (task created, every status change) goes to a capped
   Redis stream, `<REDIS_KEY_PREFIX>agents:journal`, or to `AGENTS_JOURNAL_REDIS_URL` to keep it
   away from the spend counters. `AGENTS_RECORDING` is `off`, `metadata` (who, when, status, size)

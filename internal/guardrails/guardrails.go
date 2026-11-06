@@ -139,17 +139,17 @@ func (g *Guardrails) inspectText(text string, vault *TokenVault) (string, []Viol
 	var allViolations []Violation
 
 	// 1. Prompt Injection check
-	if detected, pattern := DetectPromptInjection(text); detected {
+	if detected, rule := DetectPromptInjection(text); detected {
 		v := Violation{
 			Category: CategoryPromptInjection,
-			Detail:   "prompt injection heuristic match: " + pattern,
-			Value:    pattern,
+			Detail:   "prompt injection heuristic match: " + rule,
+			Value:    rule,
 		}
 		allViolations = append(allViolations, v)
 		if g.PromptInjectionAction == ActionBlock {
 			return "", allViolations, fmt.Errorf("%w: prompt injection detected", ErrGuardrailViolation)
 		}
-		log.Warn().Str("pattern", pattern).Msg("guardrail: prompt injection detected (logged)")
+		log.Warn().Str("pattern", rule).Msg("guardrail: prompt injection detected (logged)")
 	}
 
 	// 2. PII check

@@ -23,6 +23,11 @@ All notable changes to KTMS are listed here. The format follows
 - `MintAPIKey` with the name of an existing key answers `ALREADY_EXISTS`, not `UNAVAILABLE`.
 - The MCP gateway marks `tools/call` results `resultType: complete` for clients of MCP
   2026-07-28, Claude Code 2.1 among them, which refused every tool result without it.
+- Agents' inbox: the reason of a task held for a suspected prompt injection no longer quotes the
+  message. It named the matched text, which could hold the words between the trigger words, a
+  password among them, and reached `ListAgentTasks` (`admin:read`) and the `metadata` journal.
+  It now names the rule (`ignore_instructions`, `mode_switch`, `prompt_leak`) and is at most 256
+  bytes. The model guardrails' prompt injection violation and log line name the rule too.
 
 ## [1.5.0] - 2026-11-03
 

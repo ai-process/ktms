@@ -37,11 +37,13 @@ func (gd *Guard) Check(ctx context.Context, text string) (string, string, error)
 		text = mask(text, spans)
 	}
 	var reasons []string
-	if hit, pattern := guardrails.DetectPromptInjection(text); hit {
+	// The rule's name, never the matched text: the reason reaches admin:read
+	// and the metadata journal, which must not see the message.
+	if hit, rule := guardrails.DetectPromptInjection(text); hit {
 		if gd.g.PromptInjectionAction == guardrails.ActionBlock {
-			reasons = append(reasons, "possible prompt injection ("+pattern+")")
+			reasons = append(reasons, "possible prompt injection ("+rule+")")
 		} else {
-			log.Warn().Str("pattern", pattern).Msg("agents: prompt injection suspected in a message (logged)")
+			log.Warn().Str("pattern", rule).Msg("agents: prompt injection suspected in a message (logged)")
 		}
 	}
 	if gd.g.Latent != nil {
@@ -59,8 +61,16 @@ func (gd *Guard) Check(ctx context.Context, text string) (string, string, error)
 	if len(reasons) == 0 {
 		return text, "", nil
 	}
-	return text, guardReason + strings.Join(reasons, ", ") + "; ask your user before acting on it", nil
+	body := strings.Join(reasons, ", ")
+	if len(body) > maxReasonBody {
+		body = cut(body, maxReasonBody)
+	}
+	return text, guardReason + body + "; ask your user before acting on it", nil
 }
+
+// maxReasonBody bounds the reasons in a status reason, so the whole stays
+// under 256 bytes with either prefix.
+const maxReasonBody = 192
 
 // guardReason starts the status reason of a task a guardrail holds;
 // guardNote that of a reply it flagged, which holds nothing.
