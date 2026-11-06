@@ -1786,6 +1786,22 @@ ktms agents task 0193...
 unknown one is refused (`INVALID_ARGUMENT`). With `--open`, only the open statuses among them
 count.
 
+**A2A.** Agents that speak [A2A](https://a2a-protocol.org) (JSON-RPC over HTTP, protocol 0.3)
+rather than MCP reach the same inbox: `POST /a2a/{agent}` is an agent's A2A endpoint and
+`GET /a2a/{agent}/.well-known/agent-card.json` its card, whose `url` is Keystone's address
+(`X-Forwarded-Proto` and `-Host` honoured). Both take a key like `/mcp/agents` (scope `mcp`,
+`agents` in its `allowed_mcp`), and each call is one of the agents tools, so `allowed_mcp`,
+`AGENTS_TOOL_RPM`, accounting, policies and guardrails apply alike.
+
+| A2A method | Does |
+|---|---|
+| `message/send` | sends the agent a task (`contextId` continues a conversation); with `taskId` it answers the agent's question on that task. `configuration.blocking` waits up to 25s for the task to end or ask. |
+| `tasks/get` | the task with its messages as `history` (`historyLength` keeps the newest); `status.message` is the agent's last message. |
+| `tasks/cancel` | cancels a task the caller sent. |
+
+Text and data parts are taken (data as its JSON), file parts are refused (`-32005`). Streaming
+and push notifications are not offered (`-32004`): poll `tasks/get`.
+
 Turn the inbox off with `AGENTS_ENABLED=false`. An upstream registered as `agents` is refused.
 
 ## Concepts

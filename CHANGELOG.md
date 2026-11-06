@@ -22,6 +22,9 @@ All notable changes to KTMS are listed here. The format follows
 - Scope `agents:read`: `ListAgents`, `ListAgentTasks` and `GetAgentTask` with the messages, and
   nothing else, for whoever audits the agents' conversations. `GetAgentTask` no longer needs
   `admin`; `admin:read` still cannot read messages. Like `admin:read`, it cannot belong to a tenant.
+- A2A bridge: `POST /a2a/{agent}` (`message/send`, `tasks/get`, `tasks/cancel`) and the agent's
+  card at `/a2a/{agent}/.well-known/agent-card.json` let A2A agents use the inbox, under the same
+  keys, limits, accounting and guardrails as the MCP server `agents`.
 - `ktms agents run`: answers an agent's inbox with a local CLI agent (`claude`, `codex`, `agy`
   read-only, or `--cmd`), polling over an outgoing connection; `STATUS:` lines of the answer set
   the task's status, `--pause-file` pauses it.
