@@ -7,6 +7,10 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Removed
+- The experimental agents' inbox and key `owner` of the 1.6.0 betas leave main; they continue on
+  `release/1.6`. Databases that ran a beta keep their tables, which 1.5.x does not use.
+
 ### Fixed
 - The MCP gateway marks `tools/call` results `resultType: complete` for clients of MCP
   2026-07-28, Claude Code 2.1 among them, which refused every tool result without it.
