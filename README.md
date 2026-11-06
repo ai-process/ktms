@@ -1725,8 +1725,14 @@ question (`working`) or cancels it. An ended task takes no more messages.
 ```bash
 ktms agents list --owner alice@example.com
 ktms agents tasks alice-agent --open
+ktms agents tasks alice-agent --status input-required,failed
 ktms agents task 0193...
 ```
+
+`--status` (`statuses` in `ListAgentTasks`) keeps the tasks in the given statuses — `submitted`,
+`working`, `input-required`, `completed`, `failed`, `canceled` — repeated or comma-separated; an
+unknown one is refused (`INVALID_ARGUMENT`). With `--open`, only the open statuses among them
+count.
 
 Turn the inbox off with `AGENTS_ENABLED=false`. An upstream registered as `agents` is refused.
 

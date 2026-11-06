@@ -3,6 +3,7 @@ package proxydb
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -18,6 +19,12 @@ const (
 	TaskFailed        = "failed"
 	TaskCanceled      = "canceled"
 )
+
+// TaskStatuses are all task statuses, in the order a task goes through them.
+var TaskStatuses = []string{TaskSubmitted, TaskWorking, TaskInputRequired, TaskCompleted, TaskFailed, TaskCanceled}
+
+// ValidTaskStatus reports whether status is one of TaskStatuses.
+func ValidTaskStatus(status string) bool { return slices.Contains(TaskStatuses, status) }
 
 // TaskTerminal reports whether a task in this status can change no more.
 func TaskTerminal(status string) bool {

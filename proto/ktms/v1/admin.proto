@@ -700,6 +700,10 @@ message ListAgentTasksRequest {
   string agent = 1; // tasks this agent sent or received; required
   bool open_only = 2; // submitted, working and input-required only
   int32 limit = 3; // default 100, at most 500
+  // Only tasks in these statuses (submitted, working, input-required, completed,
+  // failed, canceled); empty for all, an unknown one is INVALID_ARGUMENT. With
+  // open_only, the statuses that are both listed and open.
+  repeated string statuses = 4;
 }
 
 message AgentMessage {

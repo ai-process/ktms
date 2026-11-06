@@ -2,6 +2,7 @@ package grpcapi
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -88,5 +89,47 @@ func TestAgentKeysAndConversations(t *testing.T) {
 	}
 	if _, err := s.ListAgentTasks(ctx, &pb.ListAgentTasksRequest{Agent: "nobody-here"}); status.Code(err) != codes.NotFound {
 		t.Fatalf("unknown agent: %v", err)
+	}
+	for _, tc := range []struct {
+		statuses []string
+		open     bool
+		want     int
+	}{
+		{[]string{" Submitted "}, false, 1},
+		{[]string{"completed", "canceled"}, false, 0},
+		{[]string{"submitted", "completed"}, true, 1},
+		{[]string{"completed"}, true, 0},
+	} {
+		tasks, err := s.ListAgentTasks(ctx, &pb.ListAgentTasksRequest{Agent: names[1], Statuses: tc.statuses, OpenOnly: tc.open})
+		if err != nil || len(tasks.GetTasks()) != tc.want {
+			t.Fatalf("statuses %v, open %v = %v, %v; want %d tasks", tc.statuses, tc.open, tasks, err, tc.want)
+		}
+	}
+	if _, err := s.ListAgentTasks(ctx, &pb.ListAgentTasksRequest{Agent: names[1], Statuses: []string{"working", "paused"}}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("unknown status: %v", err)
+	}
+}
+
+func TestTaskStatuses(t *testing.T) {
+	for _, tc := range []struct {
+		in   []string
+		open bool
+		want []string
+	}{
+		{nil, false, nil},
+		{nil, true, []string{"submitted", "working", "input-required"}},
+		{[]string{"Working", "working ", "failed"}, false, []string{"working", "failed"}},
+		{[]string{"failed", "input-required", "completed"}, true, []string{"input-required"}},
+		{[]string{"failed", "canceled"}, true, nil},
+	} {
+		got, err := taskStatuses(tc.in, tc.open)
+		if err != nil || !slices.Equal(got, tc.want) {
+			t.Errorf("taskStatuses(%q, %v) = %q, %v; want %q", tc.in, tc.open, got, err, tc.want)
+		}
+	}
+	for _, bad := range [][]string{{"paused"}, {"working", ""}, {"in-progress"}} {
+		if _, err := taskStatuses(bad, false); status.Code(err) != codes.InvalidArgument {
+			t.Errorf("taskStatuses(%q) = %v, want INVALID_ARGUMENT", bad, err)
+		}
 	}
 }

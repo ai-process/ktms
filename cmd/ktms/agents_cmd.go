@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/proxydb"
 )
 
 func (a *app) agentsCmd() *cobra.Command {
@@ -44,15 +46,22 @@ func (a *app) agentsCmd() *cobra.Command {
 	var tFormat string
 	var open bool
 	var lim int32
+	var statuses []string
 	tasks := &cobra.Command{
 		Use: "tasks AGENT", Short: "Tasks an agent sent or received, most recent first", Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
+			for i, st := range statuses {
+				statuses[i] = strings.ToLower(strings.TrimSpace(st))
+				if !proxydb.ValidTaskStatus(statuses[i]) {
+					return usageError{fmt.Errorf("--status %q: want one of %s", st, strings.Join(proxydb.TaskStatuses, ", "))}
+				}
+			}
 			p, err := newPrinter(a.stdout, tFormat)
 			if err != nil {
 				return err
 			}
 			return a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
-				res, err := c.ListAgentTasks(ctx, &pb.ListAgentTasksRequest{Agent: args[0], OpenOnly: open, Limit: lim})
+				res, err := c.ListAgentTasks(ctx, &pb.ListAgentTasksRequest{Agent: args[0], OpenOnly: open, Limit: lim, Statuses: statuses})
 				if err != nil {
 					return err
 				}
@@ -71,6 +80,8 @@ func (a *app) agentsCmd() *cobra.Command {
 	outputFlag(tasks, &tFormat)
 	tasks.Flags().BoolVar(&open, "open", false, "only tasks that have not ended")
 	tasks.Flags().Int32Var(&lim, "limit", 100, "most tasks to show (at most 500)")
+	tasks.Flags().StringSliceVar(&statuses, "status", nil,
+		"only tasks in these statuses, repeatable or comma-separated: "+strings.Join(proxydb.TaskStatuses, ", ")+"; with --open, the open ones among them")
 
 	var sFormat string
 	show := &cobra.Command{
