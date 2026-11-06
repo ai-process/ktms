@@ -1,6 +1,7 @@
 package mcpgw
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,13 +77,28 @@ type Gateway struct {
 	sdk       *mcp.StreamableHTTPHandler
 	agents    Builtin
 	agentsRPM int32
+	// The last snapshot checked for an upstream the inbox shadows.
+	shadowSeen atomic.Pointer[registry.Snapshot]
 }
 
 // WithAgents serves the agents' inbox as the server agents.Server, rpm calls a
 // minute per key (0 = unlimited); it shadows an upstream of the same name.
 func (g *Gateway) WithAgents(b Builtin, rpm int32) *Gateway {
 	g.agents, g.agentsRPM = b, rpm
+	g.warnShadowed(g.snaps.Snapshot())
 	return g
+}
+
+// warnShadowed logs, once per snapshot, an upstream registered as agents before
+// the name was reserved: the inbox answers in its place.
+func (g *Gateway) warnShadowed(snap *registry.Snapshot) {
+	if g.agents == nil || snap == nil || g.shadowSeen.Swap(snap) == snap {
+		return
+	}
+	if snap.MCPServers[agents.Server] != nil {
+		log.Warn().Str("mcp_server", agents.Server).
+			Msg("an upstream mcp server is registered as agents; the agents' inbox shadows it, rename it or set AGENTS_ENABLED=false")
+	}
 }
 
 func (g *Gateway) builtin(server string) bool { return g.agents != nil && server == agents.Server }
@@ -185,10 +202,10 @@ func (g *Gateway) server(r *http.Request) *mcp.Server {
 				if p == nil {
 					return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "missing params"}
 				}
-				if res, err := g.callTool(ctx, c, p); err != nil {
+				if res, raw, err := g.callTool(ctx, c, p); err != nil {
 					return nil, err
 				} else {
-					return completed(req, res), nil
+					return completed(req, res, raw), nil
 				}
 			}
 			return next(ctx, method, req)
@@ -199,7 +216,9 @@ func (g *Gateway) server(r *http.Request) *mcp.Server {
 
 // servers lists the enabled servers the caller may see, in name order.
 func (g *Gateway) servers(c *caller) []*registry.MCPServer {
-	all := g.snaps.Snapshot().MCPServers
+	snap := g.snaps.Snapshot()
+	g.warnShadowed(snap)
+	all := snap.MCPServers
 	g.pool.prune(all)
 	var out []*registry.MCPServer
 	for name, srv := range all {
@@ -262,34 +281,36 @@ func (g *Gateway) listTools(ctx context.Context, c *caller) (*mcp.ListToolsResul
 	return res, nil
 }
 
-func (g *Gateway) callTool(ctx context.Context, c *caller, p *mcp.CallToolParamsRaw) (*mcp.CallToolResult, error) {
+// callTool answers a tools/call; raw, when not nil, is res as JSON.
+func (g *Gateway) callTool(ctx context.Context, c *caller, p *mcp.CallToolParamsRaw) (res *mcp.CallToolResult, raw []byte, err error) {
 	server, tool := c.server, p.Name
 	if server == "" {
 		var ok bool
 		if server, tool, ok = strings.Cut(p.Name, Separator); !ok {
-			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q: tools here are named server%stool", p.Name, Separator)}
+			return nil, nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q: tools here are named server%stool", p.Name, Separator)}
 		}
 	}
 	if g.builtin(server) {
-		return g.callAgents(ctx, c, tool, p)
+		res, err := g.callAgents(ctx, c, tool, p)
+		return res, nil, err
 	}
 	srv := g.snaps.Snapshot().MCPServers[server]
 	if srv == nil {
-		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q: no mcp server %s", p.Name, server)}
+		return nil, nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q: no mcp server %s", p.Name, server)}
 	}
 	// Only the server's own tool names become metric labels and rate keys.
 	if known, err := g.pool.get(srv).listTools(ctx, g.version); err == nil && !slices.ContainsFunc(known, func(t *mcp.Tool) bool { return t.Name == tool }) {
-		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q", p.Name)}
+		return nil, nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q", p.Name)}
 	}
 	if res, err := g.admit(ctx, c, server, tool, p.Name, srv.ToolRPM); res != nil || err != nil {
-		return res, err
+		return res, nil, err
 	}
 
 	start := time.Now()
 	cctx, cancel := context.WithTimeout(ctx, srv.Timeout())
 	defer cancel()
 	cctx, cut := withCutMark(cctx)
-	res, err := g.pool.get(srv).call(cctx, g.version, &mcp.CallToolParams{Name: tool, Arguments: p.Arguments})
+	res, err = g.pool.get(srv).call(cctx, g.version, &mcp.CallToolParams{Name: tool, Arguments: p.Arguments})
 	elapsed := time.Since(start)
 
 	var size int64
@@ -304,7 +325,9 @@ func (g *Gateway) callTool(ctx context.Context, c *caller, p *mcp.CallToolParams
 			st, class = usagev1.Status_STATUS_ERROR, "too_large"
 			res = toolError(fmt.Sprintf("the result of %s exceeds max_response_bytes (%d)", p.Name, srv.MaxResponse()))
 		case res.IsError:
-			st, class = usagev1.Status_STATUS_ERROR, "tool_error"
+			st, class, raw = usagev1.Status_STATUS_ERROR, "tool_error", b
+		default:
+			raw = b
 		}
 	case errors.As(err, &rpcErr):
 		st, class = usagev1.Status_STATUS_ERROR, "tool_error"
@@ -322,7 +345,7 @@ func (g *Gateway) callTool(ctx context.Context, c *caller, p *mcp.CallToolParams
 		res, err = toolError(fmt.Sprintf("mcp server %s is unavailable", server)), nil
 	}
 	g.account(c, server, tool, st, class, elapsed, size)
-	return res, err
+	return res, raw, err
 }
 
 // admit refuses a tool outside the key's allowed_mcp and throttles one past
@@ -396,12 +419,10 @@ func (g *Gateway) account(c *caller, server, tool string, st usagev1.Status, cla
 	}
 }
 
-// toolError is a failure the model sees and may act on, as MCP wants for
-// errors of the tool rather than of the protocol.
-// completed marks a result complete for clients of MCP 2026-07-28 and later, which
-// refuse a tools/call result without resultType. The SDK sets it only in its own
-// tools/call handler, which this gateway answers before; the field is unexported.
-func completed(req mcp.Request, res *mcp.CallToolResult) *mcp.CallToolResult {
+// completed sets resultType, which MCP 2026-07-28 clients require, on a result
+// this gateway answers before the SDK's own handler would; the field is
+// unexported, so it goes through JSON, reusing raw (res as JSON) when given.
+func completed(req mcp.Request, res *mcp.CallToolResult, raw []byte) *mcp.CallToolResult {
 	if res == nil || res.NeedsInput() {
 		return res
 	}
@@ -410,8 +431,15 @@ func completed(req mcp.Request, res *mcp.CallToolResult) *mcp.CallToolResult {
 			return res
 		}
 	}
-	b, err := json.Marshal(res)
-	if err != nil || len(b) < 2 || b[0] != '{' {
+	b := raw
+	if b == nil {
+		var err error
+		if b, err = json.Marshal(res); err != nil {
+			return res
+		}
+	}
+	// The SDK writes resultType last: an upstream's result may carry it already.
+	if len(b) < 2 || b[0] != '{' || bytes.HasSuffix(b, []byte(`"resultType":"complete"}`)) {
 		return res
 	}
 	if b[1] != '}' {
@@ -426,6 +454,8 @@ func completed(req mcp.Request, res *mcp.CallToolResult) *mcp.CallToolResult {
 	return out
 }
 
+// toolError is a failure the model sees and may act on, as MCP wants for
+// errors of the tool rather than of the protocol.
 func toolError(msg string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: msg}}}
 }
