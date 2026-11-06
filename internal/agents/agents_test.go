@@ -12,9 +12,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 
 	"github.com/ai-process/ktms/internal/apikeys"
 	"github.com/ai-process/ktms/internal/guardrails"
+	"github.com/ai-process/ktms/internal/observability"
 	"github.com/ai-process/ktms/internal/proxydb"
 	"github.com/ai-process/ktms/migrations"
 )
@@ -437,5 +441,45 @@ func TestReviewCases(t *testing.T) {
 	}
 	if c, err := s.Register(ctx, b, Card{AcceptFrom: []string{"Owner:A@X.com", strings.ToUpper(a.Name)}}); err != nil || c.AcceptFrom[0] != "owner:a@x.com" || c.AcceptFrom[1] != strings.ToLower(a.Name) {
 		t.Fatalf("accept_from = %+v, %v", c, err)
+	}
+}
+
+func TestMetrics(t *testing.T) {
+	db, pool := testDB(t)
+	ctx := context.Background()
+	s := New(db, Config{}, nil, nil)
+	alice := key(t, pool, "alice", "alice@x.com", nil)
+	bob := key(t, pool, "bob", "bob@x.com", nil)
+	if _, err := s.Me(ctx, bob); err != nil {
+		t.Fatal(err)
+	}
+	task, err := s.Send(ctx, alice, bob.Name, "review PR 12", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The gauge counts the whole table, which other tests share.
+	s.count(ctx)
+	if n := testutil.ToFloat64(observability.AgentTasks.WithLabelValues(proxydb.TaskSubmitted)); n < 1 {
+		t.Fatalf("submitted tasks = %v, want at least 1", n)
+	}
+	waited := func() uint64 {
+		m := &dto.Metric{}
+		if err := observability.AgentReplySeconds.WithLabelValues("agent", proxydb.TaskCompleted).(prometheus.Histogram).Write(m); err != nil {
+			t.Fatal(err)
+		}
+		return m.GetHistogram().GetSampleCount()
+	}
+	before := waited()
+	s.now = func() time.Time { return time.Now().Add(time.Minute) }
+	if _, err := s.Reply(ctx, bob, task.ID, "LGTM", proxydb.TaskCompleted); err != nil {
+		t.Fatal(err)
+	}
+	if got := waited(); got != before+1 {
+		t.Fatalf("reply waits observed = %d, want %d", got, before+1)
+	}
+	s.count(ctx)
+	if n := testutil.ToFloat64(observability.AgentTasks.WithLabelValues(proxydb.TaskCompleted)); n < 1 {
+		t.Fatalf("completed tasks = %v, want at least 1", n)
 	}
 }

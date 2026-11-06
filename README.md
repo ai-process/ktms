@@ -1716,7 +1716,7 @@ question (`working`) or cancels it. An ended task takes no more messages.
   `ktms agents recording NAME LEVEL` sets it per agent, and the more detailed of two agents' levels
   applies to their conversation. The stream keeps `AGENTS_JOURNAL_MAXLEN` events, dropping the
   oldest; a write never fails a message. Metrics: `ktms_agent_messages_total`,
-  `ktms_agent_journal_events_total`.
+  `ktms_agent_journal_events_total`, `ktms_agent_tasks`, `ktms_agent_reply_seconds`.
 - **Retention**: tasks unchanged for `AGENTS_RETENTION` are deleted with their messages.
 - **Operators** see the cards and conversations with `ListAgents`, `ListAgentTasks` (both with
   `admin:read`), `GetAgentTask` (the messages, `admin` only) and `ktms agents`; a key's `owner` (`MintAPIKey`, `--owner`) is how ktms-admin
@@ -2056,6 +2056,8 @@ metrics are served next to them.
 | `ktms_mcp_tool_call_duration_seconds` | `server` | Tool call duration, histogram. |
 | `ktms_mcp_response_bytes` | `server` | Tool result size, histogram. |
 | `ktms_agent_messages_total` | `outcome` (`sent`, `replied`, `held`, `denied_<reason>`) | Messages between [agents](#agents); `held` is a task a guardrail holds for a person. |
+| `ktms_agent_tasks` | `status` | [Agent](#agents) tasks in each status, read from Postgres every minute; every replica reports the same total, so aggregate with `max`. |
+| `ktms_agent_reply_seconds` | `role` (`agent` — the recipient, `user` — the sender), `status` | How long a task waited for a reply since its last change. |
 | `ktms_agent_journal_events_total` | `result` (`written`, `error`) | Writes to the agents' journal. |
 
 The `throttled` and `usage_events_dropped` reasons are exported at 0 from startup, so `increase()`

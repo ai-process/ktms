@@ -19,6 +19,8 @@ All notable changes to KTMS are listed here. The format follows
 - `ktms agents tasks --status` and `statuses` in `ListAgentTasks`: only the tasks in the given
   A2A statuses, repeated or comma-separated; an unknown status is `INVALID_ARGUMENT`, and with
   `--open` (`open_only`) only the open statuses among them count.
+- Metrics `ktms_agent_tasks` (tasks in each status, read every minute) and
+  `ktms_agent_reply_seconds` (how long a task waited for a reply, by `role` and new `status`).
 - `owner` on client keys (`MintAPIKey`, `ListAPIKeys`, `ktms keys mint --owner`, `owner` in the
   configuration file): the person a key belongs to. An MCP server can no longer be named `agents`.
 

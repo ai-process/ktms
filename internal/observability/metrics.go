@@ -49,6 +49,29 @@ var (
 		[]string{"outcome"},
 	)
 
+	// AgentTasks is the number of tasks in each status, read from Postgres
+	// every minute; every replica reports the same total, so aggregate with max.
+	AgentTasks = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "ktms",
+			Name:      "agent_tasks",
+			Help:      "Agent tasks by status (the same on every replica).",
+		},
+		[]string{"status"},
+	)
+
+	// AgentReplySeconds is how long a task waited for this reply since its last
+	// change: role agent is the recipient answering, user the sender.
+	AgentReplySeconds = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "ktms",
+			Name:      "agent_reply_seconds",
+			Help:      "Time a task waited for a reply, by who replied and the new status.",
+			Buckets:   prometheus.ExponentialBuckets(1, 4, 9), // 1s to 18h
+		},
+		[]string{"role", "status"},
+	)
+
 	// AgentJournalEventsTotal counts conversation journal writes: written | error.
 	AgentJournalEventsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{

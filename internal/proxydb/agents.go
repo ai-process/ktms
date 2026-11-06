@@ -376,6 +376,26 @@ func (d *DB) ListAgentTasks(ctx context.Context, f TaskFilter) ([]*AgentTask, er
 	return out, rows.Err()
 }
 
+// CountAgentTasks is the number of tasks in each status; a status with no
+// tasks is absent.
+func (d *DB) CountAgentTasks(ctx context.Context) (map[string]int64, error) {
+	rows, err := d.pool.Query(ctx, `SELECT status, count(*) FROM agent_task GROUP BY status`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var status string
+		var n int64
+		if err := rows.Scan(&status, &n); err != nil {
+			return nil, err
+		}
+		out[status] = n
+	}
+	return out, rows.Err()
+}
+
 // DeleteAgentTasksBefore removes tasks unchanged since before cutoff, with
 // their messages, and reports how many went.
 func (d *DB) DeleteAgentTasksBefore(ctx context.Context, cutoff time.Time) (int64, error) {
