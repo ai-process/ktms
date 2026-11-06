@@ -113,7 +113,7 @@ message GetConfigResponse {
 
 message MintAPIKeyRequest {
   string name = 1;
-  repeated string scopes = 2; // "generate" | "mcp" | "admin" | "admin:read"
+  repeated string scopes = 2; // "generate" | "mcp" | "admin" | "admin:read" | "agents:read"
   string org_id = 3;
   string team_id = 4;
   APIKeyPolicy policy = 5;
@@ -624,7 +624,8 @@ service AdminService {
   // SetAgentRecording sets how much of an agent's conversations the journal keeps.
   rpc SetAgentRecording(SetAgentRecordingRequest) returns (SetAgentRecordingResponse);
   rpc ListAgentTasks(ListAgentTasksRequest) returns (ListAgentTasksResponse);
-  // GetAgentTask returns the messages too, so it needs the admin scope.
+  // GetAgentTask returns the messages too, so it needs "agents:read" (or
+  // "admin"); ListAgents and ListAgentTasks accept it besides "admin:read".
   rpc GetAgentTask(GetAgentTaskRequest) returns (AgentTask);
 }
 

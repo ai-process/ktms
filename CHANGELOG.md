@@ -19,6 +19,9 @@ All notable changes to KTMS are listed here. The format follows
 - `ktms agents tasks --status` and `statuses` in `ListAgentTasks`: only the tasks in the given
   A2A statuses, repeated or comma-separated; an unknown status is `INVALID_ARGUMENT`, and with
   `--open` (`open_only`) only the open statuses among them count.
+- Scope `agents:read`: `ListAgents`, `ListAgentTasks` and `GetAgentTask` with the messages, and
+  nothing else, for whoever audits the agents' conversations. `GetAgentTask` no longer needs
+  `admin`; `admin:read` still cannot read messages. Like `admin:read`, it cannot belong to a tenant.
 - Metrics `ktms_agent_tasks` (tasks in each status, read every minute) and
   `ktms_agent_reply_seconds` (how long a task waited for a reply, by `role` and new `status`).
 - `owner` on client keys (`MintAPIKey`, `ListAPIKeys`, `ktms keys mint --owner`, `owner` in the

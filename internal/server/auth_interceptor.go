@@ -102,7 +102,7 @@ var methodScopes = map[string]string{
 	method(pb.AdminService_ListAgents_FullMethodName):          apikeys.ScopeAdminRead,
 	method(pb.AdminService_SetAgentRecording_FullMethodName):   apikeys.ScopeAdmin,
 	method(pb.AdminService_ListAgentTasks_FullMethodName):      apikeys.ScopeAdminRead,
-	method(pb.AdminService_GetAgentTask_FullMethodName):        apikeys.ScopeAdmin, // the messages themselves
+	method(pb.AdminService_GetAgentTask_FullMethodName):        apikeys.ScopeAgentsRead, // the messages themselves
 
 	method(pb.NodeRegistryService_RegisterNode_FullMethodName):   apikeys.ScopeNode,
 	method(pb.NodeRegistryService_ValidateNode_FullMethodName):   apikeys.ScopeNode,
@@ -177,6 +177,13 @@ func isAuthExempt(fullMethod string) bool {
 		strings.HasPrefix(fullMethod, "/grpc.reflection.")
 }
 
+// alsoScopes is a second scope that some RPCs accept: an agents:read key lists
+// the agents and tasks whose messages it may read.
+var alsoScopes = map[string]string{
+	method(pb.AdminService_ListAgents_FullMethodName):     apikeys.ScopeAgentsRead,
+	method(pb.AdminService_ListAgentTasks_FullMethodName): apikeys.ScopeAgentsRead,
+}
+
 func authorize(ctx context.Context, verifier *apikeys.Verifier, fullMethod string) (*apikeys.Identity, error) {
 	scope, known := methodScopes[fullMethod]
 	if !known {
@@ -187,15 +194,16 @@ func authorize(ctx context.Context, verifier *apikeys.Verifier, fullMethod strin
 		return nil, err
 	}
 
-	id, err := verifier.VerifyScope(ctx, key, scope)
+	id, err := verifier.Verify(ctx, key)
 	switch {
 	case errors.Is(err, apikeys.ErrUnauthenticated):
 		return nil, status.Error(codes.Unauthenticated, "invalid api key")
-	case errors.Is(err, apikeys.ErrForbidden):
-		return nil, status.Error(codes.PermissionDenied, "insufficient scope: "+scope)
 	case err != nil:
 		// A store failure must never fall through to allow.
 		return nil, status.Error(codes.Unavailable, "auth_unavailable")
+	}
+	if also, ok := alsoScopes[fullMethod]; !id.HasScope(scope) && !(ok && id.HasScope(also)) {
+		return nil, status.Error(codes.PermissionDenied, "insufficient scope: "+scope)
 	}
 	return id, nil
 }

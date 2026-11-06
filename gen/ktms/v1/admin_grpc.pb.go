@@ -130,7 +130,8 @@ type AdminServiceClient interface {
 	// SetAgentRecording sets how much of an agent's conversations the journal keeps.
 	SetAgentRecording(ctx context.Context, in *SetAgentRecordingRequest, opts ...grpc.CallOption) (*SetAgentRecordingResponse, error)
 	ListAgentTasks(ctx context.Context, in *ListAgentTasksRequest, opts ...grpc.CallOption) (*ListAgentTasksResponse, error)
-	// GetAgentTask returns the messages too, so it needs the admin scope.
+	// GetAgentTask returns the messages too, so it needs "agents:read" (or
+	// "admin"); ListAgents and ListAgentTasks accept it besides "admin:read".
 	GetAgentTask(ctx context.Context, in *GetAgentTaskRequest, opts ...grpc.CallOption) (*AgentTask, error)
 }
 
@@ -674,7 +675,8 @@ type AdminServiceServer interface {
 	// SetAgentRecording sets how much of an agent's conversations the journal keeps.
 	SetAgentRecording(context.Context, *SetAgentRecordingRequest) (*SetAgentRecordingResponse, error)
 	ListAgentTasks(context.Context, *ListAgentTasksRequest) (*ListAgentTasksResponse, error)
-	// GetAgentTask returns the messages too, so it needs the admin scope.
+	// GetAgentTask returns the messages too, so it needs "agents:read" (or
+	// "admin"); ListAgents and ListAgentTasks accept it besides "admin:read".
 	GetAgentTask(context.Context, *GetAgentTaskRequest) (*AgentTask, error)
 	mustEmbedUnimplementedAdminServiceServer()
 }

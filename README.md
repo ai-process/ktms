@@ -71,7 +71,7 @@ Two gRPC services share port `9090`:
 | Service | Purpose | Needed scope |
 | --- | --- | --- |
 | `ktms.v1.GatewayService` | `GenerateText`, `GenerateTextStream`, `SubmitBatch`, `GetBatch`, `ListBatchResults`, `CancelBatch`, `SynthesizeSpeech`, `GenerateImage`, `Judge`, `JudgeStream`, `EvaluateRollouts`, `GetEmbeddings`, `ListModels` | `generate` |
-| `ktms.v1.AdminService` | models, rules, vendor keys, API keys, key rotation, `ExplainRoute` | `admin`; `admin:read` for the `Get*` and `List*` reads and `ExplainRoute` |
+| `ktms.v1.AdminService` | models, rules, vendor keys, API keys, key rotation, `ExplainRoute` | `admin`; `admin:read` for the `Get*` and `List*` reads and `ExplainRoute`; `agents:read` for the agents' cards and conversations |
 
 Port `8080` serves the health probes (`/healthz`, `/readyz`) and the
 [OpenAI-compatible HTTP API](#openai-compatible-http-api) under `/v1`. gRPC server
@@ -692,7 +692,9 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" \
 Keys look like `ktms_<hex>` (keys minted before the rename start with `llm_` and keep working). Only a hash is stored, and the plaintext is returned once.
 Scopes: `generate` (data plane), `mcp` (the [MCP gateway](#mcp-gateway)), `admin` (implies
 everything) and `admin:read` (the Admin API reads: `GetConfig`, `GetSpend`, `GetTeam`,
-`GetTeamSpend`, `ExplainRoute` and every `List*`; nothing that changes state). A read key sees every tenant, so it cannot be bound to an organization or team. `GetConfig`
+`GetTeamSpend`, `ExplainRoute` and every `List*`; nothing that changes state) and `agents:read`
+(the [agents](#agents)' cards and conversations, messages included: `ListAgents`,
+`ListAgentTasks`, `GetAgentTask`; nothing else). A read key sees every tenant, so it cannot be bound to an organization or team. `GetConfig`
 never returns a vendor key itself, only its fingerprint.
 `ListAPIKeys` and `RevokeAPIKey` do what they say.
 
@@ -1719,7 +1721,9 @@ question (`working`) or cancels it. An ended task takes no more messages.
   `ktms_agent_journal_events_total`, `ktms_agent_tasks`, `ktms_agent_reply_seconds`.
 - **Retention**: tasks unchanged for `AGENTS_RETENTION` are deleted with their messages.
 - **Operators** see the cards and conversations with `ListAgents`, `ListAgentTasks` (both with
-  `admin:read`), `GetAgentTask` (the messages, `admin` only) and `ktms agents`; a key's `owner` (`MintAPIKey`, `--owner`) is how ktms-admin
+  `admin:read` or `agents:read`), `GetAgentTask` (the messages: `agents:read` or `admin`, never
+  `admin:read`) and `ktms agents`; an auditor gets an `agents:read` key
+  (`ktms keys mint auditor --scopes agents:read`), which reads conversations and nothing else; a key's `owner` (`MintAPIKey`, `--owner`) is how ktms-admin
   lists a person's own keys and agents.
 
 ```bash

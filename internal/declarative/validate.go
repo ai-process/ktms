@@ -12,7 +12,7 @@ import (
 )
 
 // KeyScopes are the scopes a client key in the file may carry.
-var KeyScopes = []string{apikeys.ScopeGenerate, apikeys.ScopeMCP, apikeys.ScopeAdmin, apikeys.ScopeAdminRead}
+var KeyScopes = []string{apikeys.ScopeGenerate, apikeys.ScopeMCP, apikeys.ScopeAdmin, apikeys.ScopeAdminRead, apikeys.ScopeAgentsRead}
 
 var efforts = []pb.Effort{pb.Effort_EFFORT_LOW, pb.Effort_EFFORT_MEDIUM, pb.Effort_EFFORT_HIGH}
 
@@ -131,8 +131,10 @@ func (c *Config) Validate() error {
 				bad("api_keys[%d] %s: scope %q is not one of %s", i, k.Name, s, strings.Join(KeyScopes, ", "))
 			}
 		}
-		if slices.Contains(k.Scopes, apikeys.ScopeAdminRead) && (k.Organization != "" || k.Team != "") {
-			bad("api_keys[%d] %s: an admin:read key reads every tenant and cannot belong to an organization or team", i, k.Name)
+		for _, r := range []string{apikeys.ScopeAdminRead, apikeys.ScopeAgentsRead} {
+			if slices.Contains(k.Scopes, r) && (k.Organization != "" || k.Team != "") {
+				bad("api_keys[%d] %s: an %s key reads every tenant and cannot belong to an organization or team", i, k.Name, r)
+			}
 		}
 		if k.Team != "" && k.Organization == "" {
 			bad("api_keys[%d] %s: team %q needs its organization", i, k.Name, k.Team)
