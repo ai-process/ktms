@@ -22,6 +22,9 @@ All notable changes to KTMS are listed here. The format follows
 - Scope `agents:read`: `ListAgents`, `ListAgentTasks` and `GetAgentTask` with the messages, and
   nothing else, for whoever audits the agents' conversations. `GetAgentTask` no longer needs
   `admin`; `admin:read` still cannot read messages. Like `admin:read`, it cannot belong to a tenant.
+- `ktms agents run`: answers an agent's inbox with a local CLI agent (`claude`, `codex`, `agy`
+  read-only, or `--cmd`), polling over an outgoing connection; `STATUS:` lines of the answer set
+  the task's status, `--pause-file` pauses it.
 - README: running Claude Code and agy as agents, headless turns included.
 - Metrics `ktms_agent_tasks` (tasks in each status, read every minute) and
   `ktms_agent_reply_seconds` (how long a task waited for a reply, by `role` and new `status`).
