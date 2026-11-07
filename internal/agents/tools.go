@@ -53,7 +53,7 @@ func Tools() []*mcp.Tool {
 				"description": describe(str, "What you can help with."),
 				"skills":      describe(strList, "Short skill names, such as code-review or deploy."),
 				"repos":       describe(strList, "Repositories you work in."),
-				"accept_from": describe(strList, `Agents ("name"), people ("owner:EMAIL") and teams ("team:ID") that may send you tasks; an empty list lets anyone who can see you.`),
+				"accept_from": describe(strList, `Agents ("name"), people ("owner:EMAIL") and teams ("team:ID") that may send you tasks; an empty list lets anyone who can see you. "revoked:NAME" marks an agent whose key was revoked and matches no one.`),
 			}),
 		},
 		{
@@ -67,7 +67,7 @@ func Tools() []*mcp.Tool {
 		},
 		{
 			Name:        "inbox",
-			Description: "Tasks other agents sent you that are still open, each with its first and newest messages; omitted_messages counts the ones left out, which get_task shows. Answer each with reply.",
+			Description: "Tasks other agents sent you that are still open, each with its first message (cut if long, truncated) and newest ones; omitted_messages counts the ones left out, which get_task shows. Answer each with reply.",
 			InputSchema: obj(map[string]any{
 				"all":   map[string]any{"type": "boolean", "description": "Include tasks that have ended."},
 				"limit": limit,
@@ -219,6 +219,8 @@ type messageView struct {
 	Role string    `json:"role"`
 	Text string    `json:"text"`
 	At   time.Time `json:"at"`
+	// The text is the start of a longer message; get_task shows more.
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 type taskOut struct {
@@ -239,7 +241,7 @@ func taskView(t *proxydb.AgentTask) taskOut {
 	v := taskOut{TaskID: t.ID, ContextID: t.ContextID, From: t.FromName, To: t.ToName, Status: t.Status, Reason: t.StatusReason,
 		Depth: t.Depth, Created: t.CreatedAt, Updated: t.UpdatedAt, Omitted: t.Omitted}
 	for _, m := range t.Messages {
-		v.Messages = append(v.Messages, messageView{From: m.FromName, Role: m.Role, Text: m.Text, At: m.CreatedAt})
+		v.Messages = append(v.Messages, messageView{From: m.FromName, Role: m.Role, Text: m.Text, At: m.CreatedAt, Truncated: m.Truncated})
 	}
 	return v
 }

@@ -72,6 +72,10 @@ type Config struct {
 	Retention       time.Duration
 }
 
+// MaxMessageBytesLimit caps AGENTS_MAX_MESSAGE_BYTES, so one message always
+// fits a tool result and the admin GetAgentTask window.
+const MaxMessageBytesLimit = 1 << 20
+
 func (c Config) withDefaults() Config {
 	if c.MaxDepth <= 0 {
 		c.MaxDepth = 5
@@ -82,6 +86,7 @@ func (c Config) withDefaults() Config {
 	if c.MaxMessageBytes <= 0 {
 		c.MaxMessageBytes = 64 << 10
 	}
+	c.MaxMessageBytes = min(c.MaxMessageBytes, MaxMessageBytesLimit)
 	if c.Recording == "" {
 		c.Recording = RecordMetadata
 	}
@@ -199,6 +204,7 @@ func acceptList(in []string) ([]string, error) {
 		switch {
 		case strings.HasPrefix(e, "owner:") && strings.Count(e, "@") == 1:
 		case strings.HasPrefix(e, "team:") && uuid.Validate(e[5:]) == nil:
+		case strings.HasPrefix(e, proxydb.AcceptRevoked) && nameRe.MatchString(e[len(proxydb.AcceptRevoked):]):
 		case nameRe.MatchString(e):
 		default:
 			return nil, fmt.Errorf(`%w: accept_from entry %q: want an agent name, "owner:EMAIL" or "team:ID"`, ErrInvalid, out[i])

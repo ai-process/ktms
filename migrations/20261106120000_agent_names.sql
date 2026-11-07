@@ -4,6 +4,11 @@ ALTER TABLE agent ADD COLUMN IF NOT EXISTS released BOOLEAN NOT NULL DEFAULT FAL
 UPDATE agent SET released = TRUE FROM api_key k WHERE k.id = agent.key_id AND k.disabled_at IS NOT NULL;
 ALTER TABLE agent DROP CONSTRAINT IF EXISTS agent_name_key;
 CREATE UNIQUE INDEX IF NOT EXISTS agent_name_live_idx ON agent (name) WHERE NOT released;
+-- A newer key of a freed name must not inherit trust given to the old one.
+UPDATE agent SET accept_from = ARRAY(
+    SELECT CASE WHEN e IN (SELECT name FROM agent WHERE released) THEN 'revoked:' || e ELSE e END
+    FROM unnest(accept_from) WITH ORDINALITY AS u(e, i) ORDER BY i)
+WHERE accept_from && ARRAY(SELECT name FROM agent WHERE released);
 CREATE INDEX IF NOT EXISTS agent_name_idx ON agent (name);
 
 -- Tasks one agent sent another lately, for AGENTS_MAX_TASKS_PER_PAIR_HOUR.

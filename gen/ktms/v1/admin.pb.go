@@ -6014,7 +6014,7 @@ func (*SetAgentRecordingResponse) Descriptor() ([]byte, []int) {
 
 type ListAgentTasksRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Agent         string                 `protobuf:"bytes,1,opt,name=agent,proto3" json:"agent,omitempty"`                        // tasks this agent sent or received; required
+	Agent         string                 `protobuf:"bytes,1,opt,name=agent,proto3" json:"agent,omitempty"`                        // tasks agents of this name sent or received, revoked keys' included; required
 	OpenOnly      bool                   `protobuf:"varint,2,opt,name=open_only,json=openOnly,proto3" json:"open_only,omitempty"` // submitted, working and input-required only
 	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`                       // default 100, at most 500
 	unknownFields protoimpl.UnknownFields

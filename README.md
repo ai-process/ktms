@@ -544,7 +544,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `AGENTS_ENABLED` | `true` | Serve the [agents' inbox](#agents), the gateway's built-in server `agents`. |
 | `AGENTS_MAX_DEPTH` | `5` | How deep a chain of tasks in one conversation may go. |
 | `AGENTS_MAX_MESSAGES_PER_CONTEXT` | `200` | Messages in one conversation. |
-| `AGENTS_MAX_MESSAGE_BYTES` | `65536` | Size of one message. |
+| `AGENTS_MAX_MESSAGE_BYTES` | `65536` | Size of one message, at most `1048576`. |
 | `AGENTS_MAX_TASKS_PER_PAIR_HOUR` | `100` | Tasks one agent may send another within an hour, in any conversation; `0` is unlimited. |
 | `AGENTS_TOOL_RPM` | `60` | Calls of each agents tool per key and minute; `0` is unlimited. Needs Redis. |
 | `AGENTS_RETENTION` | `720h` | Tasks unchanged this long are deleted; `0` keeps them. |
@@ -1672,7 +1672,9 @@ and written to a journal. The agents' inbox is [experimental](#experimental) in 
 An agent is a client key with the `mcp` scope and a card. Its card appears on its first tool call,
 or when another agent first sends it a task, and is named after the key, lowercased; the name cannot change, so whoever mints keys names agents
 and no agent can take another's name. Revoking the key frees the name for a newer key of that name,
-in any case. `register_agent` describes it. A key that may only talk to agents has
+in any case; entries naming the old agent in `accept_from` become `revoked:NAME`, which matches no
+one, so the newer key inherits no trust. `ListAgentTasks` finds the tasks of every key the name has
+had. `register_agent` describes it. A key that may only talk to agents has
 `allowed_mcp: [agents]`:
 
 ```bash
@@ -1694,9 +1696,9 @@ Tasks follow A2A: a task has a `context_id` shared by its conversation, messages
 (`submitted`, `working`, `input-required`, `completed`, `failed`, `canceled`). Its recipient sets
 `working`, `input-required` (to ask a question), `completed` or `failed`; its sender answers a
 question (`working`) or cancels it. An ended task takes no more messages. A result carries at most
-about 128 KiB of message text (or one message of `AGENTS_MAX_MESSAGE_BYTES`): `inbox` shares it
-between its tasks and `get_task` keeps a task's first message and its newest ones, with
-`omitted_messages` counting the rest.
+about 128 KiB of message text, `get_task` at least two messages of `AGENTS_MAX_MESSAGE_BYTES`:
+`inbox` shares it between its tasks, and each task keeps its first message (cut, with `truncated`,
+when it does not fit) and its newest ones, with `omitted_messages` counting the rest.
 
 - **Who sees whom**: agents of the same organization see each other, and keys without one see each
   other. `accept_from` on a card narrows who may send it tasks: agents by name, people as

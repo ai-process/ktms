@@ -85,6 +85,8 @@ type AgentMessage struct {
 	FromName  string
 	Role      string // "user" for the sender of the task, "agent" for its recipient
 	Text      string
+	// Truncated: Text is the start of a longer message, cut by a bounded load.
+	Truncated bool
 	CreatedAt time.Time
 }
 
@@ -112,9 +114,19 @@ func scanAgent(row pgx.Row) (*Agent, error) {
 // by a revoked key's agent is taken over; ErrAlreadyExists when a live key's
 // agent has it.
 func (d *DB) InsertAgent(ctx context.Context, keyID, name string) error {
-	if _, err := d.pool.Exec(ctx,
-		`UPDATE agent a SET released = TRUE FROM api_key k
-		 WHERE k.id = a.key_id AND a.name = $1 AND NOT a.released AND k.disabled_at IS NOT NULL`, name); err != nil {
+	if err := pgx.BeginFunc(ctx, d.pool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			`SELECT a.key_id::text FROM agent a JOIN api_key k ON k.id = a.key_id
+			 WHERE a.name = $1 AND NOT a.released AND k.disabled_at IS NOT NULL`, name)
+		if err != nil {
+			return err
+		}
+		ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			return err
+		}
+		return releaseAgents(ctx, tx, ids)
+	}); err != nil {
 		return err
 	}
 	// DO NOTHING: a concurrent first call must not overwrite a card just written.
@@ -130,6 +142,43 @@ func (d *DB) InsertAgent(ctx context.Context, keyID, name string) error {
 		return ErrAlreadyExists
 	}
 	return nil
+}
+
+// releaseAgents frees the names of the keys' agents. Entries naming them in
+// accept_from become revoked:NAME, which matches no one: a newer key of the
+// name must not inherit their trust, and dropping them could empty a list.
+func releaseAgents(ctx context.Context, tx pgx.Tx, keyIDs []string) error {
+	if len(keyIDs) == 0 {
+		return nil
+	}
+	rows, err := tx.Query(ctx,
+		`UPDATE agent SET released = TRUE WHERE key_id = ANY($1::uuid[]) AND NOT released RETURNING name`, keyIDs)
+	if err != nil {
+		return err
+	}
+	names, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil || len(names) == 0 {
+		return err
+	}
+	_, err = tx.Exec(ctx,
+		`UPDATE agent SET updated_at = NOW(), accept_from = ARRAY(
+		   SELECT CASE WHEN e = ANY($1::text[]) THEN '`+AcceptRevoked+`' || e ELSE e END
+		   FROM unnest(accept_from) WITH ORDINALITY AS u(e, i) ORDER BY i)
+		 WHERE accept_from && $1::text[]`, names)
+	return err
+}
+
+// AcceptRevoked marks an accept_from entry whose agent's key was revoked.
+const AcceptRevoked = "revoked:"
+
+// AgentKeysByName is the keys whose agents have ever had the name, a revoked
+// key's included, so an audit finds the tasks of each.
+func (d *DB) AgentKeysByName(ctx context.Context, name string) ([]string, error) {
+	rows, err := d.pool.Query(ctx, `SELECT key_id::text FROM agent WHERE name = $1`, name)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
 // AgentCard is a change to an agent's card; a nil field keeps its value.
@@ -367,12 +416,19 @@ func getAgentTask(ctx context.Context, q querier, id string) (*AgentTask, error)
 }
 
 // WithAgentMessages fills in the messages of the tasks, oldest first. With a
-// window above 0 each task keeps its first message and its newest ones, each
-// group within window bytes of text; Omitted counts the others.
+// window above 0 each task keeps its first message, cut to window bytes, and
+// its newest within window bytes; Omitted counts the others.
 func (d *DB) WithAgentMessages(ctx context.Context, tasks []*AgentTask, window int) error {
 	if len(tasks) == 0 {
 		return nil
 	}
+	// One snapshot: a message added between the two reads must not skew Omitted.
+	return pgx.BeginTxFunc(ctx, d.pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+		return withMessages(ctx, tx, tasks, window)
+	})
+}
+
+func withMessages(ctx context.Context, tx pgx.Tx, tasks []*AgentTask, window int) error {
 	byID := make(map[string]*AgentTask, len(tasks))
 	ids := make([]string, 0, len(tasks))
 	for _, t := range tasks {
@@ -380,22 +436,28 @@ func (d *DB) WithAgentMessages(ctx context.Context, tasks []*AgentTask, window i
 		byID[t.ID] = t
 		ids = append(ids, t.ID)
 	}
-	rows, err := d.pool.Query(ctx,
-		`SELECT id, task_id, context_id, from_agent, from_name, role, text, created_at FROM (
+	rows, err := tx.Query(ctx,
+		`SELECT id, task_id, context_id, from_agent, from_name, role,
+		   CASE WHEN $2 > 0 AND octet_length(text) > $2 THEN left(text, $2) ELSE text END,
+		   $2 > 0 AND octet_length(text) > $2, created_at FROM (
 		   SELECT m.id, m.task_id, m.context_id, m.from_agent, COALESCE(a.name, '') AS from_name, m.role, m.text, m.created_at,
 		     row_number() OVER (PARTITION BY m.task_id ORDER BY m.id) AS n,
 		     SUM(octet_length(m.text)) OVER (PARTITION BY m.task_id ORDER BY m.id DESC) AS tail
 		   FROM agent_message m LEFT JOIN agent a ON a.key_id = m.from_agent
 		   WHERE m.task_id = ANY($1::uuid[])
-		 ) w WHERE $2 <= 0 OR (n = 1 AND octet_length(text) <= $2) OR tail <= $2 ORDER BY id`, ids, window)
+		 ) w WHERE $2 <= 0 OR n = 1 OR tail <= $2 ORDER BY id`, ids, window)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var m AgentMessage
-		if err := rows.Scan(&m.ID, &m.TaskID, &m.ContextID, &m.FromAgent, &m.FromName, &m.Role, &m.Text, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.TaskID, &m.ContextID, &m.FromAgent, &m.FromName, &m.Role, &m.Text, &m.Truncated, &m.CreatedAt); err != nil {
 			return err
+		}
+		// left() counts characters: cut the rest to window bytes.
+		if m.Truncated {
+			m.Text = cutUTF8(m.Text, window)
 		}
 		if t := byID[m.TaskID]; t != nil {
 			t.Messages = append(t.Messages, &m)
@@ -404,7 +466,7 @@ func (d *DB) WithAgentMessages(ctx context.Context, tasks []*AgentTask, window i
 	if err := rows.Err(); err != nil || window <= 0 {
 		return err
 	}
-	rows, err = d.pool.Query(ctx, `SELECT task_id, COUNT(*) FROM agent_message WHERE task_id = ANY($1::uuid[]) GROUP BY task_id`, ids)
+	rows, err = tx.Query(ctx, `SELECT task_id, COUNT(*) FROM agent_message WHERE task_id = ANY($1::uuid[]) GROUP BY task_id`, ids)
 	if err != nil {
 		return err
 	}
@@ -422,12 +484,20 @@ func (d *DB) WithAgentMessages(ctx context.Context, tasks []*AgentTask, window i
 	return rows.Err()
 }
 
+// cutUTF8 shortens s to at most n bytes without splitting a character.
+func cutUTF8(s string, n int) string {
+	for n > 0 && n < len(s) && s[n]&0xC0 == 0x80 {
+		n--
+	}
+	return s[:min(n, len(s))]
+}
+
 // TaskFilter picks tasks for a listing; empty fields do not filter.
 type TaskFilter struct {
 	ToAgent   string
 	FromAgent string
-	// Either side: the agent sent or received the task.
-	Agent    string
+	// Either side: one of the agents sent or received the task.
+	Agents   []string
 	Statuses []string
 	Limit    int
 }
@@ -444,10 +514,10 @@ func (d *DB) ListAgentTasks(ctx context.Context, f TaskFilter) ([]*AgentTask, er
 		`SELECT `+taskColumns+taskJoins+`
 		 WHERE ($1::uuid IS NULL OR t.to_agent = $1)
 		   AND ($2::uuid IS NULL OR t.from_agent = $2)
-		   AND ($3::uuid IS NULL OR t.to_agent = $3 OR t.from_agent = $3)
+		   AND (cardinality($3::uuid[]) = 0 OR t.to_agent = ANY($3) OR t.from_agent = ANY($3))
 		   AND (cardinality($4::text[]) = 0 OR t.status = ANY($4))
 		 ORDER BY t.updated_at DESC LIMIT $5`,
-		nullable(f.ToAgent), nullable(f.FromAgent), nullable(f.Agent), nonNil(f.Statuses), limit)
+		nullable(f.ToAgent), nullable(f.FromAgent), nonNil(f.Agents), nonNil(f.Statuses), limit)
 	if err != nil {
 		return nil, err
 	}

@@ -54,14 +54,15 @@ func (s *AdminServer) SetAgentRecording(ctx context.Context, req *pb.SetAgentRec
 }
 
 func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasksRequest) (*pb.ListAgentTasksResponse, error) {
-	a, err := s.db.GetAgentByName(ctx, agentName(req.GetAgent()))
-	if errors.Is(err, proxydb.ErrNotFound) {
-		return nil, status.Errorf(codes.NotFound, "no agent %q", req.GetAgent())
-	}
+	// Every key the name has had: a revoked key's tasks stay auditable by name.
+	keys, err := s.db.AgentKeysByName(ctx, agentName(req.GetAgent()))
 	if err != nil {
 		return nil, dbStatus(err)
 	}
-	f := proxydb.TaskFilter{Agent: a.KeyID, Limit: int(req.GetLimit())}
+	if len(keys) == 0 {
+		return nil, status.Errorf(codes.NotFound, "no agent %q", req.GetAgent())
+	}
+	f := proxydb.TaskFilter{Agents: keys, Limit: int(req.GetLimit())}
 	if req.GetOpenOnly() {
 		f.Statuses = proxydb.TaskOpenStatuses
 	}

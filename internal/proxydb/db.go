@@ -112,18 +112,21 @@ func nonNil(s []string) []string {
 
 // DisableAPIKey revokes a key and frees its agent's name for another key.
 func (d *DB) DisableAPIKey(ctx context.Context, name string) error {
-	var n int
-	err := d.pool.QueryRow(ctx,
-		`WITH k AS (UPDATE api_key SET disabled_at = NOW() WHERE name = $1 AND disabled_at IS NULL RETURNING id),
-		      a AS (UPDATE agent SET released = TRUE WHERE key_id IN (SELECT id FROM k))
-		 SELECT COUNT(*) FROM k`, name).Scan(&n)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return pgx.BeginFunc(ctx, d.pool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			`UPDATE api_key SET disabled_at = NOW() WHERE name = $1 AND disabled_at IS NULL RETURNING id::text`, name)
+		if err != nil {
+			return err
+		}
+		ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return ErrNotFound
+		}
+		return releaseAgents(ctx, tx, ids)
+	})
 }
 
 func (d *DB) ListAPIKeys(ctx context.Context) ([]*APIKey, error) {

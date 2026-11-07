@@ -67,6 +67,33 @@ func TestAgentNames(t *testing.T) {
 	if a, _ := d.GetAgentByKey(ctx, fresh); a.Recording != "full" {
 		t.Fatalf("recording went to the old card: %+v", a)
 	}
+	if keys, err := d.AgentKeysByName(ctx, name); err != nil || len(keys) != 2 {
+		t.Fatalf("keys of the name = %v, %v", keys, err)
+	}
+}
+
+// Trust given to a revoked key's agent by name does not pass to a newer key of
+// that name, and the list never empties into "anyone".
+func TestRevokedNameLosesTrust(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	name := "trusted-" + uuid.NewString()[:8]
+	old := agentKey(t, d, name)
+	bob := agentKey(t, d, "bob-"+uuid.NewString()[:8])
+	for k, n := range map[string]string{old: name, bob: "bob-" + bob[:8]} {
+		if err := d.InsertAgent(ctx, k, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := d.UpdateAgentCard(ctx, bob, AgentCard{AcceptFrom: []string{name, "owner:x@y.z"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.DisableAPIKey(ctx, name); err != nil {
+		t.Fatal(err)
+	}
+	if a, _ := d.GetAgentByKey(ctx, bob); len(a.AcceptFrom) != 2 || a.AcceptFrom[0] != AcceptRevoked+name || a.AcceptFrom[1] != "owner:x@y.z" {
+		t.Fatalf("accept_from after the revoke = %v", a.AcceptFrom)
+	}
 }
 
 func TestAgentMessagesWindow(t *testing.T) {
@@ -98,7 +125,9 @@ func TestAgentMessagesWindow(t *testing.T) {
 	if len(got.Messages) != 3 || got.Omitted != 2 || got.Messages[0].Text[0] != 'q' || got.Messages[2].Text[0] != 'd' {
 		t.Fatalf("windowed = %d messages, %d omitted", len(got.Messages), got.Omitted)
 	}
-	if err := d.WithAgentMessages(ctx, []*AgentTask{got}, 50); err != nil || len(got.Messages) != 0 || got.Omitted != 5 {
+	// Nothing else fits: the first message stays, cut to the window.
+	if err := d.WithAgentMessages(ctx, []*AgentTask{got}, 50); err != nil || len(got.Messages) != 1 || got.Omitted != 4 ||
+		!got.Messages[0].Truncated || len(got.Messages[0].Text) > 50 {
 		t.Fatalf("nothing fits = %d, %d, %v", len(got.Messages), got.Omitted, err)
 	}
 	if err := d.WithAgentMessages(ctx, []*AgentTask{got}, 0); err != nil || len(got.Messages) != 5 || got.Omitted != 0 {
@@ -151,5 +180,37 @@ func TestTaskStatuses(t *testing.T) {
 		if !TaskTerminal(s) {
 			t.Fatalf("%s is not terminal", s)
 		}
+	}
+}
+
+// A first message larger than the window is cut, not dropped; the count of the
+// others comes from the same snapshot.
+func TestAgentMessagesFirstCut(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	a, b := agentKey(t, d, "ca-"+uuid.NewString()[:8]), agentKey(t, d, "cb-"+uuid.NewString()[:8])
+	for _, k := range []string{a, b} {
+		if err := d.InsertAgent(ctx, k, "c-"+k[:13]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	task := &AgentTask{ID: uuid.NewString(), ContextID: uuid.NewString(), FromAgent: a, ToAgent: b, Status: TaskSubmitted}
+	if err := d.CreateAgentTask(ctx, task, strings.Repeat("я", 300), TaskLimits{}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := d.AddAgentMessage(ctx, task.ID, b, "agent", strings.Repeat("z", 80), TaskWorking, "", 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := d.WithAgentMessages(ctx, []*AgentTask{task}, 101); err != nil {
+		t.Fatal(err)
+	}
+	first := task.Messages[0]
+	if !first.Truncated || len(first.Text) > 101 || !strings.HasPrefix(strings.Repeat("я", 300), first.Text) {
+		t.Fatalf("first message = %d bytes, truncated %v", len(first.Text), first.Truncated)
+	}
+	if len(task.Messages) != 2 || task.Omitted != 2 || task.Messages[1].Truncated {
+		t.Fatalf("%d messages, %d omitted", len(task.Messages), task.Omitted)
 	}
 }
