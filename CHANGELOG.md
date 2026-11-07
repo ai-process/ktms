@@ -27,7 +27,10 @@ All notable changes to KTMS are listed here. The format follows
   message. It named the matched text, which could hold the words between the trigger words, a
   password among them, and reached `ListAgentTasks` (`admin:read`) and the `metadata` journal.
   It now names the rule (`ignore_instructions`, `mode_switch`, `prompt_leak`) and is at most 256
-  bytes. The model guardrails' prompt injection violation and log line name the rule too.
+  bytes. The model guardrails' prompt injection violation and log line (field `rule`, was
+  `pattern`) name the rule too. Reasons stored by an earlier build are rewritten without the quote
+  on migration; events already in the journal stream keep it, so trim
+  `<REDIS_KEY_PREFIX>agents:journal` if you ran one.
 
 ## [1.5.0] - 2026-11-03
 

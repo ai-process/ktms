@@ -43,7 +43,7 @@ func (gd *Guard) Check(ctx context.Context, text string) (string, string, error)
 		if gd.g.PromptInjectionAction == guardrails.ActionBlock {
 			reasons = append(reasons, "possible prompt injection ("+rule+")")
 		} else {
-			log.Warn().Str("pattern", rule).Msg("agents: prompt injection suspected in a message (logged)")
+			log.Warn().Str("rule", rule).Msg("agents: prompt injection suspected in a message (logged)")
 		}
 	}
 	if gd.g.Latent != nil {

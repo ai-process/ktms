@@ -149,7 +149,7 @@ func (g *Guardrails) inspectText(text string, vault *TokenVault) (string, []Viol
 		if g.PromptInjectionAction == ActionBlock {
 			return "", allViolations, fmt.Errorf("%w: prompt injection detected", ErrGuardrailViolation)
 		}
-		log.Warn().Str("pattern", rule).Msg("guardrail: prompt injection detected (logged)")
+		log.Warn().Str("rule", rule).Msg("guardrail: prompt injection detected (logged)")
 	}
 
 	// 2. PII check
