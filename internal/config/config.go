@@ -32,6 +32,7 @@ type Config struct {
 	AgentsMaxDepth        int
 	AgentsMaxMessages     int
 	AgentsMaxMessageBytes int
+	AgentsMaxTasksPerPair int
 	AgentsToolRPM         int
 	AgentsRetention       time.Duration
 	AgentsRecording       string
@@ -173,6 +174,7 @@ func Load() *Config {
 		AgentsMaxDepth:        getIntEnv("AGENTS_MAX_DEPTH", 5),
 		AgentsMaxMessages:     getIntEnv("AGENTS_MAX_MESSAGES_PER_CONTEXT", 200),
 		AgentsMaxMessageBytes: getIntEnv("AGENTS_MAX_MESSAGE_BYTES", 64<<10),
+		AgentsMaxTasksPerPair: getIntEnv("AGENTS_MAX_TASKS_PER_PAIR_HOUR", 100),
 		AgentsToolRPM:         getIntEnv("AGENTS_TOOL_RPM", 60),
 		AgentsRetention:       getDurationEnv("AGENTS_RETENTION", 30*24*time.Hour),
 		AgentsRecording:       strings.ToLower(getEnv("AGENTS_RECORDING", "metadata")),

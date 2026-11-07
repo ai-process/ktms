@@ -54,16 +54,17 @@ func (s *AdminServer) SetAgentRecording(ctx context.Context, req *pb.SetAgentRec
 }
 
 func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasksRequest) (*pb.ListAgentTasksResponse, error) {
-	a, err := s.db.GetAgentByName(ctx, agentName(req.GetAgent()))
-	if errors.Is(err, proxydb.ErrNotFound) {
-		return nil, status.Errorf(codes.NotFound, "no agent %q", req.GetAgent())
-	}
+	// Every key the name has had: a revoked key's tasks stay auditable by name.
+	keys, err := s.db.AgentKeysByName(ctx, agentName(req.GetAgent()))
 	if err != nil {
 		return nil, dbStatus(err)
 	}
-	f := proxydb.TaskFilter{Agent: a.KeyID, Limit: int(req.GetLimit())}
+	if len(keys) == 0 {
+		return nil, status.Errorf(codes.NotFound, "no agent %q", req.GetAgent())
+	}
+	f := proxydb.TaskFilter{Agents: keys, Limit: int(req.GetLimit())}
 	if req.GetOpenOnly() {
-		f.Statuses = []string{proxydb.TaskSubmitted, proxydb.TaskWorking, proxydb.TaskInputRequired}
+		f.Statuses = proxydb.TaskOpenStatuses
 	}
 	tasks, err := s.db.ListAgentTasks(ctx, f)
 	if err != nil {
@@ -76,13 +77,21 @@ func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasks
 	return out, nil
 }
 
+// adminTaskWindow bounds each of a task's first message and its newest ones, so
+// GetAgentTask stays under the 4 MiB a gRPC client takes by default.
+const adminTaskWindow = 1 << 20
+
 func (s *AdminServer) GetAgentTask(ctx context.Context, req *pb.GetAgentTaskRequest) (*pb.AgentTask, error) {
-	if uuid.Validate(req.GetTaskId()) != nil {
+	id, err := uuid.Parse(req.GetTaskId())
+	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "task_id must be a task id")
 	}
-	t, err := s.db.GetAgentTask(ctx, req.GetTaskId())
+	t, err := s.db.GetAgentTask(ctx, id.String())
 	if errors.Is(err, proxydb.ErrNotFound) {
 		return nil, status.Errorf(codes.NotFound, "no task %s", req.GetTaskId())
+	}
+	if err == nil {
+		err = s.db.WithAgentMessages(ctx, []*proxydb.AgentTask{t}, adminTaskWindow)
 	}
 	if err != nil {
 		return nil, dbStatus(err)
@@ -93,7 +102,7 @@ func (s *AdminServer) GetAgentTask(ctx context.Context, req *pb.GetAgentTaskRequ
 func taskProto(t *proxydb.AgentTask) *pb.AgentTask {
 	out := &pb.AgentTask{
 		TaskId: t.ID, ContextId: t.ContextID, From: t.FromName, To: t.ToName, Status: t.Status,
-		StatusReason: t.StatusReason, Depth: t.Depth,
+		StatusReason: t.StatusReason, Depth: t.Depth, OmittedMessages: int32(t.Omitted),
 		CreatedAt: timestamppb.New(t.CreatedAt), UpdatedAt: timestamppb.New(t.UpdatedAt),
 	}
 	for _, m := range t.Messages {

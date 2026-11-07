@@ -697,7 +697,7 @@ message SetAgentRecordingRequest {
 message SetAgentRecordingResponse {}
 
 message ListAgentTasksRequest {
-  string agent = 1; // tasks this agent sent or received; required
+  string agent = 1; // tasks agents of this name sent or received, revoked keys' included; required
   bool open_only = 2; // submitted, working and input-required only
   int32 limit = 3; // default 100, at most 500
 }
@@ -722,6 +722,9 @@ message AgentTask {
   google.protobuf.Timestamp created_at = 8;
   google.protobuf.Timestamp updated_at = 9;
   repeated AgentMessage messages = 10; // GetAgentTask only
+  // GetAgentTask keeps the first message and the newest within about 2 MiB, so the
+  // response fits a default gRPC client; this counts the messages left out between them.
+  int32 omitted_messages = 11;
 }
 
 message ListAgentTasksResponse {

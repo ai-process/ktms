@@ -1,7 +1,6 @@
-// Package agents lets the agents of different people talk through Keystone:
-// an agent is a client key with a card, and a task is one request from one
-// agent to another, delivered to the recipient's inbox (MCP server "agents").
-// The model follows A2A: tasks, context ids, messages and statuses.
+// Package agents lets people's agents talk through Keystone, as A2A does: an
+// agent is a client key with a card, a task one request from one agent to
+// another, delivered to the recipient's inbox (the MCP server "agents").
 package agents
 
 import (
@@ -47,15 +46,16 @@ var (
 
 // Store is the slice of proxydb the service needs.
 type Store interface {
-	UpsertAgent(ctx context.Context, a *proxydb.Agent) error
+	InsertAgent(ctx context.Context, keyID, name string) error
+	UpdateAgentCard(ctx context.Context, keyID string, c proxydb.AgentCard) error
 	GetAgentByKey(ctx context.Context, keyID string) (*proxydb.Agent, error)
 	GetAgentByName(ctx context.Context, name string) (*proxydb.Agent, error)
 	GetAPIKeyByLowerName(ctx context.Context, name string) (*proxydb.APIKey, error)
 	ListAgents(ctx context.Context, f proxydb.AgentFilter) ([]*proxydb.Agent, error)
 	ContextDepth(ctx context.Context, contextID, toAgent string) (int32, error)
-	WithAgentMessages(ctx context.Context, tasks []*proxydb.AgentTask) error
+	WithAgentMessages(ctx context.Context, tasks []*proxydb.AgentTask, window int) error
 	AgentInContext(ctx context.Context, keyID, contextID string) (bool, error)
-	CreateAgentTask(ctx context.Context, t *proxydb.AgentTask, text string, maxMessages int64) error
+	CreateAgentTask(ctx context.Context, t *proxydb.AgentTask, text string, lim proxydb.TaskLimits) error
 	AddAgentMessage(ctx context.Context, taskID, fromAgent, role, text, status, reason string, maxMessages int64) (*proxydb.AgentTask, error)
 	GetAgentTask(ctx context.Context, id string) (*proxydb.AgentTask, error)
 	ListAgentTasks(ctx context.Context, f proxydb.TaskFilter) ([]*proxydb.AgentTask, error)
@@ -67,9 +67,14 @@ type Config struct {
 	MaxDepth        int32 // tasks one task may cause in a chain
 	MaxMessages     int64 // messages in one conversation (context id)
 	MaxMessageBytes int   // one message
+	MaxTasksPerPair int64 // tasks one agent sends another an hour; 0 = unlimited, not defaulted
 	Recording       string
 	Retention       time.Duration
 }
+
+// MaxMessageBytesLimit caps AGENTS_MAX_MESSAGE_BYTES, so one message always
+// fits a tool result and the admin GetAgentTask window.
+const MaxMessageBytesLimit = 1 << 20
 
 func (c Config) withDefaults() Config {
 	if c.MaxDepth <= 0 {
@@ -81,6 +86,7 @@ func (c Config) withDefaults() Config {
 	if c.MaxMessageBytes <= 0 {
 		c.MaxMessageBytes = 64 << 10
 	}
+	c.MaxMessageBytes = min(c.MaxMessageBytes, MaxMessageBytesLimit)
 	if c.Recording == "" {
 		c.Recording = RecordMetadata
 	}
@@ -117,63 +123,88 @@ func (s *Service) Me(ctx context.Context, id *apikeys.Identity) (*proxydb.Agent,
 	if !nameRe.MatchString(name) {
 		return nil, fmt.Errorf("%w: the key name %q is not a valid agent name (lowercase letters, digits, '.', '_' or '-'); ask the operator for a key named so", ErrDenied, id.Name)
 	}
-	if err := s.store.UpsertAgent(ctx, &proxydb.Agent{KeyID: id.KeyID, Name: name}); err != nil {
+	if err := s.store.InsertAgent(ctx, id.KeyID, name); err != nil {
 		if errors.Is(err, proxydb.ErrAlreadyExists) {
-			return nil, fmt.Errorf("%w: another key's agent is named %q; ask the operator for a key with another name", ErrDenied, name)
+			return nil, fmt.Errorf("%w: this key's name is taken by another agent; ask the operator for a key with another name", ErrDenied)
 		}
 		return nil, err
 	}
 	return s.store.GetAgentByKey(ctx, id.KeyID)
 }
 
-// Card is what an agent says about itself.
+// Card is what an agent says about itself; a field left out keeps its value,
+// an empty one clears it.
 type Card struct {
-	Description string   `json:"description,omitempty"`
-	Skills      []string `json:"skills,omitempty"`
-	Repos       []string `json:"repos,omitempty"`
-	AcceptFrom  []string `json:"accept_from,omitempty"`
+	Description *string   `json:"description"`
+	Skills      *[]string `json:"skills"`
+	Repos       *[]string `json:"repos"`
+	AcceptFrom  *[]string `json:"accept_from"`
 }
 
-// Register writes the caller's card. Its name and recording level are not the
-// agent's to choose.
+// Register changes the caller's card. Its name and recording level are not
+// the agent's to choose.
 func (s *Service) Register(ctx context.Context, id *apikeys.Identity, c Card) (*proxydb.Agent, error) {
-	me, err := s.Me(ctx, id)
-	if err != nil {
+	if _, err := s.Me(ctx, id); err != nil {
 		return nil, err
 	}
-	a := *me
-	if len(c.Description) > 2000 {
-		return nil, fmt.Errorf("%w: description is longer than 2000 characters", ErrInvalid)
+	var p proxydb.AgentCard
+	var err error
+	if c.Description != nil {
+		if len(*c.Description) > 2000 {
+			return nil, fmt.Errorf("%w: description is longer than 2000 characters", ErrInvalid)
+		}
+		d := strings.TrimSpace(*c.Description)
+		p.Description = &d
 	}
-	a.Description = strings.TrimSpace(c.Description)
-	a.Skills, a.Repos = clean(c.Skills), clean(c.Repos)
-	if a.AcceptFrom, err = acceptList(c.AcceptFrom); err != nil {
-		return nil, err
+	if c.Skills != nil {
+		if p.Skills, err = clean("skills", *c.Skills, maxItem); err != nil {
+			return nil, err
+		}
 	}
-	if err := s.store.UpsertAgent(ctx, &a); err != nil {
+	if c.Repos != nil {
+		if p.Repos, err = clean("repos", *c.Repos, maxItem); err != nil {
+			return nil, err
+		}
+	}
+	if c.AcceptFrom != nil {
+		if p.AcceptFrom, err = acceptList(*c.AcceptFrom); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.store.UpdateAgentCard(ctx, id.KeyID, p); err != nil {
 		return nil, err
 	}
 	return s.store.GetAgentByKey(ctx, id.KeyID)
 }
 
-func clean(in []string) []string {
+// maxItem bounds one skill or repository; an owner: entry may be longer.
+const maxItem = 200
+
+func clean(field string, in []string, max int) ([]string, error) {
 	out := []string{}
 	for _, v := range in {
-		if v = strings.TrimSpace(v); v != "" && !slices.Contains(out, v) && len(out) < 50 {
+		if v = strings.TrimSpace(v); len(v) > max {
+			return nil, fmt.Errorf("%w: a %s entry is longer than %d characters", ErrInvalid, field, max)
+		}
+		if v != "" && !slices.Contains(out, v) && len(out) < 50 {
 			out = append(out, v)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // acceptList normalises accept_from: agent names, owner:EMAIL and team:ID.
 func acceptList(in []string) ([]string, error) {
-	out := clean(in)
+	out, err := clean("accept_from", in, 6+254)
+	if err != nil {
+		return nil, err
+	}
 	for i, e := range out {
 		e = strings.ToLower(e)
 		switch {
-		case strings.HasPrefix(e, "owner:") && strings.Count(e, "@") == 1 && len(e) <= 6+254:
+		case strings.HasPrefix(e, "owner:") && strings.Count(e, "@") == 1:
 		case strings.HasPrefix(e, "team:") && uuid.Validate(e[5:]) == nil:
+		case strings.HasPrefix(e, proxydb.AcceptRevoked) && nameRe.MatchString(e[len(proxydb.AcceptRevoked):]):
 		case nameRe.MatchString(e):
 		default:
 			return nil, fmt.Errorf(`%w: accept_from entry %q: want an agent name, "owner:EMAIL" or "team:ID"`, ErrInvalid, out[i])
@@ -202,17 +233,23 @@ func accepts(to, from *proxydb.Agent) bool {
 	return false
 }
 
-// target is the named agent. A key that may use the agents server but has not
-// called it yet gets its card now, so a person can be sent tasks as soon as
-// their key is minted, before their agent first connects.
-// The card is written only after the caller is known to see it, so no one
-// registers another organization's keys or learns their names.
+// reachable reports whether the agent's key may still use the agents server.
+func reachable(a *proxydb.Agent) bool {
+	id := &apikeys.Identity{Scopes: a.Scopes, KeyAllowedMCP: a.KeyAllowedMCP, TeamAllowedMCP: a.TeamAllowedMCP}
+	return id.HasScope(apikeys.ScopeMCP) && id.CanUseTool(Server, "")
+}
+
+// target is the named agent; a key allowed the agents server gets its card now,
+// before its agent first connects. The card is written only once the caller is
+// known to see it, so no one registers another organization's keys.
 func (s *Service) target(ctx context.Context, me *proxydb.Agent, name string) (*proxydb.Agent, error) {
 	a, err := s.store.GetAgentByName(ctx, name)
-	if err == nil && !visible(me, a) {
+	switch {
+	case err == nil && a.Disabled:
+		// A revoked key's card: a newer key of that name may take it over.
+	case err == nil && (!visible(me, a) || !reachable(a)):
 		return nil, proxydb.ErrNotFound
-	}
-	if !errors.Is(err, proxydb.ErrNotFound) {
+	case !errors.Is(err, proxydb.ErrNotFound):
 		return a, err
 	}
 	row, err := s.store.GetAPIKeyByLowerName(ctx, name)
@@ -235,8 +272,16 @@ func (s *Service) List(ctx context.Context, id *apikeys.Identity) (me *proxydb.A
 	if me, err = s.Me(ctx, id); err != nil {
 		return nil, nil, err
 	}
-	out, err = s.store.ListAgents(ctx, proxydb.AgentFilter{Org: &me.OrgID})
-	return me, out, err
+	all, err := s.store.ListAgents(ctx, proxydb.AgentFilter{Org: &me.OrgID})
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, a := range all {
+		if a.KeyID == me.KeyID || reachable(a) {
+			out = append(out, a)
+		}
+	}
+	return me, out, nil
 }
 
 // Send opens a task for agent to. With contextID it continues a conversation
@@ -245,6 +290,9 @@ func (s *Service) Send(ctx context.Context, id *apikeys.Identity, to, text, cont
 	me, err := s.Me(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, fmt.Errorf("%w: text is required", ErrInvalid)
 	}
 	target, err := s.target(ctx, me, strings.ToLower(strings.TrimSpace(to)))
 	if errors.Is(err, proxydb.ErrNotFound) {
@@ -267,9 +315,11 @@ func (s *Service) Send(ctx context.Context, id *apikeys.Identity, to, text, cont
 
 	depth := int32(0)
 	if contextID != "" {
-		if uuid.Validate(contextID) != nil {
+		u, err := uuid.Parse(contextID)
+		if err != nil {
 			return nil, fmt.Errorf("%w: context_id must be a task's context_id", ErrInvalid)
 		}
+		contextID = u.String()
 		in, err := s.store.AgentInContext(ctx, me.KeyID, contextID)
 		if err != nil {
 			return nil, err
@@ -298,7 +348,8 @@ func (s *Service) Send(ctx context.Context, id *apikeys.Identity, to, text, cont
 		ID: uuid.NewString(), ContextID: contextID, FromAgent: me.KeyID, FromName: me.Name,
 		ToAgent: target.KeyID, ToName: target.Name, Status: status, StatusReason: reason, Depth: depth,
 	}
-	if err := s.store.CreateAgentTask(ctx, t, text, s.cfg.MaxMessages); err != nil {
+	lim := proxydb.TaskLimits{Messages: s.cfg.MaxMessages, PairPerHour: s.cfg.MaxTasksPerPair}
+	if err := s.store.CreateAgentTask(ctx, t, text, lim); err != nil {
 		return nil, s.limitErr(err)
 	}
 	observability.AgentMessagesTotal.WithLabelValues("sent").Inc()
@@ -306,7 +357,12 @@ func (s *Service) Send(ctx context.Context, id *apikeys.Identity, to, text, cont
 	return t, nil
 }
 
-// Inbox is the open tasks sent to the caller, with their messages.
+// resultBytes bounds the message text of one tool result; MCP carries it twice,
+// in content and in structuredContent.
+const resultBytes = 128 << 10
+
+// Inbox is the open tasks sent to the caller, each with its first message and
+// as many of its newest as its share of resultBytes holds.
 func (s *Service) Inbox(ctx context.Context, id *apikeys.Identity, all bool, limit int) ([]*proxydb.AgentTask, error) {
 	me, err := s.Me(ctx, id)
 	if err != nil {
@@ -314,13 +370,13 @@ func (s *Service) Inbox(ctx context.Context, id *apikeys.Identity, all bool, lim
 	}
 	f := proxydb.TaskFilter{ToAgent: me.KeyID, Limit: limit}
 	if !all {
-		f.Statuses = []string{proxydb.TaskSubmitted, proxydb.TaskWorking, proxydb.TaskInputRequired}
+		f.Statuses = proxydb.TaskOpenStatuses
 	}
 	tasks, err := s.store.ListAgentTasks(ctx, f)
-	if err != nil {
-		return nil, err
+	if err != nil || len(tasks) == 0 {
+		return tasks, err
 	}
-	return tasks, s.store.WithAgentMessages(ctx, tasks)
+	return tasks, s.store.WithAgentMessages(ctx, tasks, max(resultBytes/(2*len(tasks)), 1))
 }
 
 // Outbox is the tasks the caller sent, without their messages.
@@ -332,29 +388,36 @@ func (s *Service) Outbox(ctx context.Context, id *apikeys.Identity, limit int) (
 	return s.store.ListAgentTasks(ctx, proxydb.TaskFilter{FromAgent: me.KeyID, Limit: limit})
 }
 
-// Get is a task the caller sent or received.
+// Get is a task the caller sent or received, with its first message and as
+// many of its newest as resultBytes holds; one message of the largest size
+// always fits.
 func (s *Service) Get(ctx context.Context, id *apikeys.Identity, taskID string) (*proxydb.AgentTask, error) {
 	me, err := s.Me(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	return s.party(ctx, me, taskID)
+	t, err := s.party(ctx, me, taskID)
+	if err != nil {
+		return nil, err
+	}
+	return t, s.store.WithAgentMessages(ctx, []*proxydb.AgentTask{t}, max(resultBytes/2, s.cfg.MaxMessageBytes))
 }
 
 func (s *Service) party(ctx context.Context, me *proxydb.Agent, taskID string) (*proxydb.AgentTask, error) {
-	if uuid.Validate(taskID) != nil {
+	u, err := uuid.Parse(taskID)
+	if err != nil {
 		return nil, fmt.Errorf("%w: no task %q", ErrInvalid, taskID)
 	}
-	t, err := s.store.GetAgentTask(ctx, taskID)
+	t, err := s.store.GetAgentTask(ctx, u.String())
 	if errors.Is(err, proxydb.ErrNotFound) || err == nil && t.FromAgent != me.KeyID && t.ToAgent != me.KeyID {
 		return nil, fmt.Errorf("%w: no task %q", ErrInvalid, taskID)
 	}
 	return t, err
 }
 
-// Reply answers a task. Its recipient moves it to working, input-required,
-// completed or failed; its sender answers a question (back to working) or
-// cancels it.
+// Reply answers a task and returns it without its messages. Its recipient
+// moves it to working, input-required, completed or failed; its sender answers
+// a question (back to working) or cancels it.
 func (s *Service) Reply(ctx context.Context, id *apikeys.Identity, taskID, text, status string) (*proxydb.AgentTask, error) {
 	me, err := s.Me(ctx, id)
 	if err != nil {
@@ -382,7 +445,7 @@ func (s *Service) Reply(ctx context.Context, id *apikeys.Identity, taskID, text,
 	if !slices.Contains(allowed, status) {
 		return nil, fmt.Errorf("%w: status %q: you may set %s", ErrInvalid, status, strings.Join(allowed, ", "))
 	}
-	if text == "" && status != proxydb.TaskCanceled && status != proxydb.TaskWorking {
+	if text = strings.TrimSpace(text); text == "" && status != proxydb.TaskCanceled && status != proxydb.TaskWorking {
 		return nil, fmt.Errorf("%w: text is required", ErrInvalid)
 	}
 	text, reason, err := s.check(ctx, text)
@@ -420,7 +483,11 @@ func held(t *proxydb.AgentTask) bool { return strings.HasPrefix(t.StatusReason, 
 func (s *Service) limitErr(err error) error {
 	if errors.Is(err, proxydb.ErrContextFull) {
 		s.deny("max_messages")
-		return fmt.Errorf("%w: this conversation reached its limit of %d messages; start a new task", ErrDenied, s.cfg.MaxMessages)
+		return fmt.Errorf("%w: this conversation reached its limit of %d messages; end the task or start a new one", ErrDenied, s.cfg.MaxMessages)
+	}
+	if errors.Is(err, proxydb.ErrPairBusy) {
+		s.deny("max_tasks_per_pair")
+		return fmt.Errorf("%w: you sent this agent %d tasks in the last hour, the limit; try later", ErrDenied, s.cfg.MaxTasksPerPair)
 	}
 	return err
 }

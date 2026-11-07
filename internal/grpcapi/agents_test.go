@@ -2,12 +2,14 @@ package grpcapi
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 	"github.com/ai-process/ktms/internal/agents"
@@ -84,6 +86,22 @@ func TestAgentKeysAndConversations(t *testing.T) {
 	got, err := s.GetAgentTask(ctx, &pb.GetAgentTaskRequest{TaskId: task.ID})
 	if err != nil || len(got.GetMessages()) != 1 || got.GetMessages()[0].GetText() != "hello" {
 		t.Fatalf("task = %v, %v", got, err)
+	}
+	// A long conversation still fits a default gRPC client: first and newest
+	// messages, the ones between counted.
+	big := strings.Repeat("x", 60<<10)
+	for i := 0; i < 40; i++ {
+		if _, err := svc.Reply(ctx, ids[1], task.ID, fmt.Sprintf("%d %s", i, big), "working"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	long, err := s.GetAgentTask(ctx, &pb.GetAgentTaskRequest{TaskId: task.ID})
+	if err != nil || long.GetMessages()[0].GetText() != "hello" || long.GetOmittedMessages() == 0 ||
+		int(long.GetOmittedMessages())+len(long.GetMessages()) != 41 || proto.Size(long) > 4<<20 {
+		t.Fatalf("long task: %d messages, %d omitted, %d bytes, %v", len(long.GetMessages()), long.GetOmittedMessages(), proto.Size(long), err)
+	}
+	if last := long.GetMessages()[len(long.GetMessages())-1].GetText(); !strings.HasPrefix(last, "39 ") {
+		t.Fatalf("newest message missing: %.10q", last)
 	}
 	if _, err := s.GetAgentTask(ctx, &pb.GetAgentTaskRequest{TaskId: "x"}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("bad id: %v", err)

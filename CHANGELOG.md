@@ -12,17 +12,29 @@ All notable changes to KTMS are listed here. The format follows
   built-in server `agents` — `list_agents`, `register_agent`, `send_message`, `inbox`, `reply`,
   `get_task` and `outbox`, with A2A tasks, context ids and statuses. Agents see their own
   organization, `accept_from` narrows who may send them tasks, and conversations are bounded in
-  depth, messages and size. With guardrails on, PII is refused or masked and a suspected injection
-  holds the task as `input-required`. Each event goes to a capped Redis stream at the recording
-  level `AGENTS_RECORDING` or the agent's own. `ListAgents`, `SetAgentRecording`, `ListAgentTasks`,
-  `GetAgentTask` and `ktms agents` show them to an operator.
+  depth, messages and size; `AGENTS_MAX_TASKS_PER_PAIR_HOUR` (100) bounds the tasks one agent sends
+  another, which a new conversation does not reset. `register_agent` changes only the fields it is
+  given; revoking a key frees its agent's name for a newer key, and entries naming the old agent in
+  `accept_from` become `revoked:NAME`, so the newer key inherits no trust; an agent whose key loses the `mcp`
+  scope or the `agents` server drops out of reach. Tool results carry at most about 128 KiB of
+  message text: `inbox` and `get_task` keep each task's first message (cut when long) and newest
+  ones and count the rest in `omitted_messages`, and `reply` returns the status alone; `GetAgentTask` does the same
+  within about 2 MiB, under a gRPC client's default 4 MiB, and `AGENTS_MAX_MESSAGE_BYTES` is at
+  most 1 MiB. With guardrails on, PII is
+  refused or masked and a suspected injection holds the task as `input-required`. Each event goes
+  to a capped Redis stream at the recording level `AGENTS_RECORDING` or the agent's own.
+  `ListAgents`, `SetAgentRecording`, `ListAgentTasks`, `GetAgentTask` and `ktms agents` show them
+  to an operator.
 - `owner` on client keys (`MintAPIKey`, `ListAPIKeys`, `ktms keys mint --owner`, `owner` in the
-  configuration file): the person a key belongs to. An MCP server can no longer be named `agents`.
+  configuration file): the person a key belongs to. An MCP server can no longer be named `agents`;
+  one registered earlier is shadowed by the inbox, with a warning in the log.
 
 ### Fixed
 - `MintAPIKey` with the name of an existing key answers `ALREADY_EXISTS`, not `UNAVAILABLE`.
 - The MCP gateway marks `tools/call` results `resultType: complete` for clients of MCP
   2026-07-28, Claude Code 2.1 among them, which refused every tool result without it.
+  A result that carries it already is passed through, and one from an upstream is not serialised
+  twice.
 - Agents' inbox: the reason of a task held for a suspected prompt injection no longer quotes the
   message. It named the matched text, which could hold the words between the trigger words, a
   password among them, and reached `ListAgentTasks` (`admin:read`) and the `metadata` journal.

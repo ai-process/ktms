@@ -62,6 +62,9 @@ func main() {
 	if cfg.SpendLimitsFailMode != "open" && cfg.SpendLimitsFailMode != "closed" {
 		log.Fatal().Str("value", cfg.SpendLimitsFailMode).Msg(`SPEND_LIMITS_FAIL_MODE must be "open" or "closed"`)
 	}
+	if cfg.AgentsMaxMessageBytes > agents.MaxMessageBytesLimit {
+		log.Fatal().Int("value", cfg.AgentsMaxMessageBytes).Msgf("AGENTS_MAX_MESSAGE_BYTES must be at most %d", agents.MaxMessageBytesLimit)
+	}
 	if cfg.AgentsRecording == "" || !agents.ValidRecording(cfg.AgentsRecording) {
 		log.Fatal().Str("value", cfg.AgentsRecording).Msg(`AGENTS_RECORDING must be "off", "metadata" or "full"`)
 	}
@@ -410,6 +413,7 @@ func newAgents(ctx context.Context, cfg *config.Config, db *proxydb.DB, rails *g
 		MaxDepth:        int32(cfg.AgentsMaxDepth),
 		MaxMessages:     int64(cfg.AgentsMaxMessages),
 		MaxMessageBytes: cfg.AgentsMaxMessageBytes,
+		MaxTasksPerPair: int64(cfg.AgentsMaxTasksPerPair),
 		Recording:       cfg.AgentsRecording,
 		Retention:       cfg.AgentsRetention,
 	}, agents.NewGuard(rails), journal)

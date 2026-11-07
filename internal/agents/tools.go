@@ -48,12 +48,12 @@ func Tools() []*mcp.Tool {
 		},
 		{
 			Name:        "register_agent",
-			Description: "Describe your agent to the others: what it does, its skills and repositories, and who may send it tasks. Your name is your key's.",
+			Description: "Describe your agent to the others: what it does, its skills and repositories, and who may send it tasks. Only the fields you pass change; pass an empty list to clear one. Your name is your key's.",
 			InputSchema: obj(map[string]any{
 				"description": describe(str, "What you can help with."),
 				"skills":      describe(strList, "Short skill names, such as code-review or deploy."),
 				"repos":       describe(strList, "Repositories you work in."),
-				"accept_from": describe(strList, `Agents ("name"), people ("owner:EMAIL") and teams ("team:ID") that may send you tasks; empty means anyone who can see you.`),
+				"accept_from": describe(strList, `Agents ("name"), people ("owner:EMAIL") and teams ("team:ID") that may send you tasks; an empty list lets anyone who can see you. "revoked:NAME" marks an agent whose key was revoked and matches no one.`),
 			}),
 		},
 		{
@@ -67,7 +67,7 @@ func Tools() []*mcp.Tool {
 		},
 		{
 			Name:        "inbox",
-			Description: "Tasks other agents sent you that are still open, with their messages. Answer each with reply.",
+			Description: "Tasks other agents sent you that are still open, each with its first message (cut if long, truncated) and newest ones; omitted_messages counts the ones left out, which get_task shows. Answer each with reply.",
 			InputSchema: obj(map[string]any{
 				"all":   map[string]any{"type": "boolean", "description": "Include tasks that have ended."},
 				"limit": limit,
@@ -76,7 +76,7 @@ func Tools() []*mcp.Tool {
 		},
 		{
 			Name:        "reply",
-			Description: "Answer a task. As its recipient set status completed (default), working, input-required (to ask a question) or failed; as its sender answer a question (working) or cancel it (canceled).",
+			Description: "Answer a task; it returns the task's status, not its messages. As its recipient set status completed (default), working, input-required (to ask a question) or failed; as its sender answer a question (working) or cancel it (canceled).",
 			InputSchema: obj(map[string]any{
 				"task_id": str,
 				"text":    describe(str, "The answer or the question."),
@@ -85,7 +85,7 @@ func Tools() []*mcp.Tool {
 		},
 		{
 			Name:        "get_task",
-			Description: "A task you sent or received, with all its messages and its status.",
+			Description: "A task you sent or received with its status, its first message and as many of its newest as fit; omitted_messages counts the ones left out.",
 			InputSchema: obj(map[string]any{"task_id": str}, "task_id"),
 			Annotations: readOnly,
 		},
@@ -219,6 +219,8 @@ type messageView struct {
 	Role string    `json:"role"`
 	Text string    `json:"text"`
 	At   time.Time `json:"at"`
+	// The text is the start of a longer message; get_task shows more.
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 type taskOut struct {
@@ -232,13 +234,14 @@ type taskOut struct {
 	Created   time.Time     `json:"created_at"`
 	Updated   time.Time     `json:"updated_at"`
 	Messages  []messageView `json:"messages,omitempty"`
+	Omitted   int           `json:"omitted_messages,omitempty"`
 }
 
 func taskView(t *proxydb.AgentTask) taskOut {
 	v := taskOut{TaskID: t.ID, ContextID: t.ContextID, From: t.FromName, To: t.ToName, Status: t.Status, Reason: t.StatusReason,
-		Depth: t.Depth, Created: t.CreatedAt, Updated: t.UpdatedAt}
+		Depth: t.Depth, Created: t.CreatedAt, Updated: t.UpdatedAt, Omitted: t.Omitted}
 	for _, m := range t.Messages {
-		v.Messages = append(v.Messages, messageView{From: m.FromName, Role: m.Role, Text: m.Text, At: m.CreatedAt})
+		v.Messages = append(v.Messages, messageView{From: m.FromName, Role: m.Role, Text: m.Text, At: m.CreatedAt, Truncated: m.Truncated})
 	}
 	return v
 }
