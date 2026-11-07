@@ -93,8 +93,11 @@ func (a *app) agentsCmd() *cobra.Command {
 					fmt.Fprintf(a.stdout, " (%s)", t.GetStatusReason())
 				}
 				fmt.Fprintf(a.stdout, "\ncontext %s, depth %d\n", t.GetContextId(), t.GetDepth())
-				for _, m := range t.GetMessages() {
+				for i, m := range t.GetMessages() {
 					fmt.Fprintf(a.stdout, "\n%s  %s:\n%s\n", when(m.GetCreatedAt()), m.GetFrom(), m.GetText())
+					if i == 0 && t.GetOmittedMessages() > 0 {
+						fmt.Fprintf(a.stdout, "\n… %d messages left out …\n", t.GetOmittedMessages())
+					}
 				}
 				return nil
 			})

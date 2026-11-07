@@ -6143,19 +6143,22 @@ func (x *AgentMessage) GetCreatedAt() *timestamppb.Timestamp {
 // AgentTask follows A2A: status is submitted, working, input-required,
 // completed, failed or canceled; context_id groups the tasks of one conversation.
 type AgentTask struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	ContextId     string                 `protobuf:"bytes,2,opt,name=context_id,json=contextId,proto3" json:"context_id,omitempty"`
-	From          string                 `protobuf:"bytes,3,opt,name=from,proto3" json:"from,omitempty"`
-	To            string                 `protobuf:"bytes,4,opt,name=to,proto3" json:"to,omitempty"`
-	Status        string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
-	StatusReason  string                 `protobuf:"bytes,6,opt,name=status_reason,json=statusReason,proto3" json:"status_reason,omitempty"` // why a guardrail holds it for a person, among others
-	Depth         int32                  `protobuf:"varint,7,opt,name=depth,proto3" json:"depth,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	Messages      []*AgentMessage        `protobuf:"bytes,10,rep,name=messages,proto3" json:"messages,omitempty"` // GetAgentTask only
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	TaskId       string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	ContextId    string                 `protobuf:"bytes,2,opt,name=context_id,json=contextId,proto3" json:"context_id,omitempty"`
+	From         string                 `protobuf:"bytes,3,opt,name=from,proto3" json:"from,omitempty"`
+	To           string                 `protobuf:"bytes,4,opt,name=to,proto3" json:"to,omitempty"`
+	Status       string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	StatusReason string                 `protobuf:"bytes,6,opt,name=status_reason,json=statusReason,proto3" json:"status_reason,omitempty"` // why a guardrail holds it for a person, among others
+	Depth        int32                  `protobuf:"varint,7,opt,name=depth,proto3" json:"depth,omitempty"`
+	CreatedAt    *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt    *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Messages     []*AgentMessage        `protobuf:"bytes,10,rep,name=messages,proto3" json:"messages,omitempty"` // GetAgentTask only
+	// GetAgentTask keeps the first message and the newest within about 2 MiB, so the
+	// response fits a default gRPC client; this counts the messages left out between them.
+	OmittedMessages int32 `protobuf:"varint,11,opt,name=omitted_messages,json=omittedMessages,proto3" json:"omitted_messages,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *AgentTask) Reset() {
@@ -6256,6 +6259,13 @@ func (x *AgentTask) GetMessages() []*AgentMessage {
 		return x.Messages
 	}
 	return nil
+}
+
+func (x *AgentTask) GetOmittedMessages() int32 {
+	if x != nil {
+		return x.OmittedMessages
+	}
+	return 0
 }
 
 type ListAgentTasksResponse struct {
@@ -6790,7 +6800,7 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x04role\x18\x02 \x01(\tR\x04role\x12\x12\n" +
 	"\x04text\x18\x03 \x01(\tR\x04text\x129\n" +
 	"\n" +
-	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xe3\x02\n" +
+	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x8e\x03\n" +
 	"\tAgentTask\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
@@ -6805,7 +6815,8 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x121\n" +
 	"\bmessages\x18\n" +
-	" \x03(\v2\x15.ktms.v1.AgentMessageR\bmessages\"B\n" +
+	" \x03(\v2\x15.ktms.v1.AgentMessageR\bmessages\x12)\n" +
+	"\x10omitted_messages\x18\v \x01(\x05R\x0fomittedMessages\"B\n" +
 	"\x16ListAgentTasksResponse\x12(\n" +
 	"\x05tasks\x18\x01 \x03(\v2\x12.ktms.v1.AgentTaskR\x05tasks\".\n" +
 	"\x13GetAgentTaskRequest\x12\x17\n" +

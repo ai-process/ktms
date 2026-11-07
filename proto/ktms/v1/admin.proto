@@ -722,6 +722,9 @@ message AgentTask {
   google.protobuf.Timestamp created_at = 8;
   google.protobuf.Timestamp updated_at = 9;
   repeated AgentMessage messages = 10; // GetAgentTask only
+  // GetAgentTask keeps the first message and the newest within about 2 MiB, so the
+  // response fits a default gRPC client; this counts the messages left out between them.
+  int32 omitted_messages = 11;
 }
 
 message ListAgentTasksResponse {

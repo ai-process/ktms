@@ -76,6 +76,10 @@ func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasks
 	return out, nil
 }
 
+// adminTaskWindow bounds each of a task's first message and its newest ones, so
+// GetAgentTask stays under the 4 MiB a gRPC client takes by default.
+const adminTaskWindow = 1 << 20
+
 func (s *AdminServer) GetAgentTask(ctx context.Context, req *pb.GetAgentTaskRequest) (*pb.AgentTask, error) {
 	id, err := uuid.Parse(req.GetTaskId())
 	if err != nil {
@@ -86,7 +90,7 @@ func (s *AdminServer) GetAgentTask(ctx context.Context, req *pb.GetAgentTaskRequ
 		return nil, status.Errorf(codes.NotFound, "no task %s", req.GetTaskId())
 	}
 	if err == nil {
-		err = s.db.WithAgentMessages(ctx, []*proxydb.AgentTask{t}, 0)
+		err = s.db.WithAgentMessages(ctx, []*proxydb.AgentTask{t}, adminTaskWindow)
 	}
 	if err != nil {
 		return nil, dbStatus(err)
@@ -97,7 +101,7 @@ func (s *AdminServer) GetAgentTask(ctx context.Context, req *pb.GetAgentTaskRequ
 func taskProto(t *proxydb.AgentTask) *pb.AgentTask {
 	out := &pb.AgentTask{
 		TaskId: t.ID, ContextId: t.ContextID, From: t.FromName, To: t.ToName, Status: t.Status,
-		StatusReason: t.StatusReason, Depth: t.Depth,
+		StatusReason: t.StatusReason, Depth: t.Depth, OmittedMessages: int32(t.Omitted),
 		CreatedAt: timestamppb.New(t.CreatedAt), UpdatedAt: timestamppb.New(t.UpdatedAt),
 	}
 	for _, m := range t.Messages {

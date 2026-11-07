@@ -17,7 +17,8 @@ All notable changes to KTMS are listed here. The format follows
   given; revoking a key frees its agent's name for a newer key; an agent whose key loses the `mcp`
   scope or the `agents` server drops out of reach. Tool results carry at most about 128 KiB of
   message text: `inbox` and `get_task` keep each task's first and newest messages and count the
-  rest in `omitted_messages`, and `reply` returns the status alone. With guardrails on, PII is
+  rest in `omitted_messages`, and `reply` returns the status alone; `GetAgentTask` does the same
+  within about 2 MiB, under a gRPC client's default 4 MiB. With guardrails on, PII is
   refused or masked and a suspected injection holds the task as `input-required`. Each event goes
   to a capped Redis stream at the recording level `AGENTS_RECORDING` or the agent's own.
   `ListAgents`, `SetAgentRecording`, `ListAgentTasks`, `GetAgentTask` and `ktms agents` show them

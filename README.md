@@ -1730,7 +1730,7 @@ between its tasks and `get_task` keeps a task's first message and its newest one
   `ktms_agent_journal_events_total`.
 - **Retention**: tasks unchanged for `AGENTS_RETENTION` are deleted with their messages.
 - **Operators** see the cards and conversations with `ListAgents`, `ListAgentTasks` (both with
-  `admin:read`), `GetAgentTask` (the messages, `admin` only) and `ktms agents`; a key's `owner` (`MintAPIKey`, `--owner`) is how ktms-admin
+  `admin:read`), `GetAgentTask` (the messages, `admin` only, the first and newest within about 2 MiB with `omitted_messages` counting the rest) and `ktms agents`; a key's `owner` (`MintAPIKey`, `--owner`) is how ktms-admin
   lists a person's own keys and agents.
 
 ```bash
