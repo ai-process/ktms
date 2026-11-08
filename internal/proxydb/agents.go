@@ -26,6 +26,16 @@ var TaskStatuses = []string{TaskSubmitted, TaskWorking, TaskInputRequired, TaskC
 // ValidTaskStatus reports whether status is one of TaskStatuses.
 func ValidTaskStatus(status string) bool { return slices.Contains(TaskStatuses, status) }
 
+// Why a task is input-required.
+const (
+	ReasonQuestion  = "question"       // the recipient asks the sender
+	ReasonGuardHold = "guardrail_hold" // a guardrail holds it for the recipient's person
+	ReasonOwner     = "needs_owner"    // the recipient's agent asks its own person
+)
+
+// ReasonCodes are all reasons a task waits.
+var ReasonCodes = []string{ReasonQuestion, ReasonGuardHold, ReasonOwner}
+
 // TaskTerminal reports whether a task in this status can change no more.
 func TaskTerminal(status string) bool {
 	return status == TaskCompleted || status == TaskFailed || status == TaskCanceled
@@ -67,6 +77,7 @@ type AgentTask struct {
 	ToName       string
 	Status       string
 	StatusReason string
+	ReasonCode   string // question, guardrail_hold or needs_owner while input-required
 	Depth        int32
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
@@ -196,15 +207,17 @@ func (d *DB) CreateAgentTask(ctx context.Context, t *AgentTask, text string, max
 			return err
 		}
 		if err := tx.QueryRow(ctx,
-			`INSERT INTO agent_task (id, context_id, from_agent, to_agent, status, status_reason, depth)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING created_at, updated_at`,
-			t.ID, t.ContextID, t.FromAgent, t.ToAgent, t.Status, t.StatusReason, t.Depth).Scan(&t.CreatedAt, &t.UpdatedAt); err != nil {
+			`INSERT INTO agent_task (id, context_id, from_agent, to_agent, status, status_reason, reason_code, depth, created_at, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, clock_timestamp(), clock_timestamp()) RETURNING created_at, updated_at`,
+			t.ID, t.ContextID, t.FromAgent, t.ToAgent, t.Status, t.StatusReason, t.ReasonCode, t.Depth).Scan(&t.CreatedAt, &t.UpdatedAt); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx,
+		if _, err := tx.Exec(ctx,
 			`INSERT INTO agent_message (task_id, context_id, from_agent, role, text) VALUES ($1, $2, $3, 'user', $4)`,
-			t.ID, t.ContextID, t.FromAgent, text)
-		return err
+			t.ID, t.ContextID, t.FromAgent, text); err != nil {
+			return err
+		}
+		return notifyAgents(ctx, tx, t.FromAgent, t.ToAgent)
 	})
 }
 
@@ -228,11 +241,11 @@ func lockContext(ctx context.Context, tx pgx.Tx, contextID string, maxMessages i
 
 // AddAgentMessage appends a message to a task that has not ended and moves it
 // to status; reason is kept with the status. ErrTaskClosed once it has ended.
-func (d *DB) AddAgentMessage(ctx context.Context, taskID, fromAgent, role, text, status, reason string, maxMessages int64) (*AgentTask, error) {
+func (d *DB) AddAgentMessage(ctx context.Context, taskID, fromAgent, role, text, status, reason, reasonCode string, maxMessages int64) (*AgentTask, error) {
 	var t *AgentTask
 	err := pgx.BeginFunc(ctx, d.pool, func(tx pgx.Tx) error {
-		var contextID string
-		if err := tx.QueryRow(ctx, `SELECT context_id FROM agent_task WHERE id = $1`, taskID).Scan(&contextID); err != nil {
+		var contextID, from, to string
+		if err := tx.QueryRow(ctx, `SELECT context_id, from_agent, to_agent FROM agent_task WHERE id = $1`, taskID).Scan(&contextID, &from, &to); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return ErrNotFound
 			}
@@ -247,8 +260,8 @@ func (d *DB) AddAgentMessage(ctx context.Context, taskID, fromAgent, role, text,
 			return err
 		}
 		tag, err := tx.Exec(ctx,
-			`UPDATE agent_task SET status = $2, status_reason = $3, updated_at = NOW()
-			 WHERE id = $1 AND status NOT IN ('completed', 'failed', 'canceled')`, taskID, status, reason)
+			`UPDATE agent_task SET status = $2, status_reason = $3, reason_code = $4, updated_at = clock_timestamp()
+			 WHERE id = $1 AND status NOT IN ('completed', 'failed', 'canceled')`, taskID, status, reason, reasonCode)
 		if err != nil {
 			return err
 		}
@@ -262,21 +275,63 @@ func (d *DB) AddAgentMessage(ctx context.Context, taskID, fromAgent, role, text,
 				return err
 			}
 		}
+		if err := notifyAgents(ctx, tx, from, to); err != nil {
+			return err
+		}
 		t, err = getAgentTask(ctx, tx, taskID)
 		return err
 	})
 	return t, err
 }
 
+// AgentsChannel is the Postgres channel that names, after each commit, the
+// agents whose tasks changed; waiting inbox calls of every replica listen.
+const AgentsChannel = "ktms_agents"
+
+func notifyAgents(ctx context.Context, tx pgx.Tx, keyIDs ...string) error {
+	for _, id := range keyIDs {
+		if _, err := tx.Exec(ctx, `SELECT pg_notify($1, $2)`, AgentsChannel, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ListenAgents calls wake with the key id of each agent whose tasks changed,
+// until ctx ends or the connection fails; the caller listens again.
+func (d *DB) ListenAgents(ctx context.Context, wake func(keyID string)) error {
+	conn, err := d.pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	// A listening connection must not go back to the pool still listening.
+	defer conn.Release()
+	defer func() {
+		if _, err := conn.Exec(context.WithoutCancel(ctx), "UNLISTEN *"); err != nil {
+			conn.Conn().Close(context.WithoutCancel(ctx))
+		}
+	}()
+	if _, err := conn.Exec(ctx, "LISTEN "+AgentsChannel); err != nil {
+		return err
+	}
+	for {
+		n, err := conn.Conn().WaitForNotification(ctx)
+		if err != nil {
+			return err
+		}
+		wake(n.Payload)
+	}
+}
+
 const taskColumns = `t.id, t.context_id, t.from_agent, fa.name, t.to_agent, ta.name, t.status, t.status_reason,
-	t.depth, t.created_at, t.updated_at`
+	t.reason_code, t.depth, t.created_at, t.updated_at`
 
 const taskJoins = ` FROM agent_task t JOIN agent fa ON fa.key_id = t.from_agent JOIN agent ta ON ta.key_id = t.to_agent`
 
 func scanTask(row pgx.Row) (*AgentTask, error) {
 	var t AgentTask
 	err := row.Scan(&t.ID, &t.ContextID, &t.FromAgent, &t.FromName, &t.ToAgent, &t.ToName, &t.Status, &t.StatusReason,
-		&t.Depth, &t.CreatedAt, &t.UpdatedAt)
+		&t.ReasonCode, &t.Depth, &t.CreatedAt, &t.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -342,7 +397,11 @@ type TaskFilter struct {
 	// Either side: the agent sent or received the task.
 	Agent    string
 	Statuses []string
-	Limit    int
+	// Only waiting for these reasons (question, guardrail_hold, needs_owner).
+	ReasonCodes []string
+	// Only tasks changed after this moment; zero for any.
+	Since time.Time
+	Limit int
 }
 
 // ListAgentTasks lists tasks without their messages, most recently changed first.
@@ -359,8 +418,10 @@ func (d *DB) ListAgentTasks(ctx context.Context, f TaskFilter) ([]*AgentTask, er
 		   AND ($2::uuid IS NULL OR t.from_agent = $2)
 		   AND ($3::uuid IS NULL OR t.to_agent = $3 OR t.from_agent = $3)
 		   AND (cardinality($4::text[]) = 0 OR t.status = ANY($4))
+		   AND (cardinality($6::text[]) = 0 OR t.reason_code = ANY($6))
+		   AND ($7::timestamptz IS NULL OR t.updated_at > $7)
 		 ORDER BY t.updated_at DESC LIMIT $5`,
-		nullable(f.ToAgent), nullable(f.FromAgent), nullable(f.Agent), nonNil(f.Statuses), limit)
+		nullable(f.ToAgent), nullable(f.FromAgent), nullable(f.Agent), nonNil(f.Statuses), limit, nonNil(f.ReasonCodes), nullableTime(f.Since))
 	if err != nil {
 		return nil, err
 	}
@@ -404,6 +465,13 @@ func (d *DB) DeleteAgentTasksBefore(ctx context.Context, cutoff time.Time) (int6
 		return 0, err
 	}
 	return tag.RowsAffected(), nil
+}
+
+func nullableTime(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
 }
 
 func nullable(s string) *string {

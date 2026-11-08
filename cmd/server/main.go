@@ -412,8 +412,11 @@ func newAgents(ctx context.Context, cfg *config.Config, db *proxydb.DB, rails *g
 		MaxMessageBytes: cfg.AgentsMaxMessageBytes,
 		Recording:       cfg.AgentsRecording,
 		Retention:       cfg.AgentsRetention,
+		// A waiting inbox answers well before the HTTP server would cut it off.
+		MaxWait: max(time.Second, min(50*time.Second, cfg.HTTPAPITimeout-5*time.Second)),
 	}, agents.NewGuard(rails), journal)
 	go svc.Sweep(ctx, time.Hour)
+	go svc.Listen(ctx)
 	go svc.Count(ctx, time.Minute)
 	log.Info().Str("recording", cfg.AgentsRecording).Bool("journal", journal != nil).Msg("agents inbox enabled (mcp server agents)")
 	return svc, closeJournal

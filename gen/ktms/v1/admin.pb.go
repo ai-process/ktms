@@ -6020,7 +6020,10 @@ type ListAgentTasksRequest struct {
 	// Only tasks in these statuses (submitted, working, input-required, completed,
 	// failed, canceled); empty for all, an unknown one is INVALID_ARGUMENT. With
 	// open_only, the statuses that are both listed and open.
-	Statuses      []string `protobuf:"bytes,4,rep,name=statuses,proto3" json:"statuses,omitempty"`
+	Statuses []string `protobuf:"bytes,4,rep,name=statuses,proto3" json:"statuses,omitempty"`
+	// Only tasks waiting for these reasons (question, guardrail_hold,
+	// needs_owner); empty for any, an unknown one is INVALID_ARGUMENT.
+	ReasonCodes   []string `protobuf:"bytes,5,rep,name=reason_codes,json=reasonCodes,proto3" json:"reason_codes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6079,6 +6082,13 @@ func (x *ListAgentTasksRequest) GetLimit() int32 {
 func (x *ListAgentTasksRequest) GetStatuses() []string {
 	if x != nil {
 		return x.Statuses
+	}
+	return nil
+}
+
+func (x *ListAgentTasksRequest) GetReasonCodes() []string {
+	if x != nil {
+		return x.ReasonCodes
 	}
 	return nil
 }
@@ -6154,17 +6164,21 @@ func (x *AgentMessage) GetCreatedAt() *timestamppb.Timestamp {
 // AgentTask follows A2A: status is submitted, working, input-required,
 // completed, failed or canceled; context_id groups the tasks of one conversation.
 type AgentTask struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	ContextId     string                 `protobuf:"bytes,2,opt,name=context_id,json=contextId,proto3" json:"context_id,omitempty"`
-	From          string                 `protobuf:"bytes,3,opt,name=from,proto3" json:"from,omitempty"`
-	To            string                 `protobuf:"bytes,4,opt,name=to,proto3" json:"to,omitempty"`
-	Status        string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
-	StatusReason  string                 `protobuf:"bytes,6,opt,name=status_reason,json=statusReason,proto3" json:"status_reason,omitempty"` // why a guardrail holds it for a person, among others
-	Depth         int32                  `protobuf:"varint,7,opt,name=depth,proto3" json:"depth,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	Messages      []*AgentMessage        `protobuf:"bytes,10,rep,name=messages,proto3" json:"messages,omitempty"` // GetAgentTask only
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	TaskId       string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	ContextId    string                 `protobuf:"bytes,2,opt,name=context_id,json=contextId,proto3" json:"context_id,omitempty"`
+	From         string                 `protobuf:"bytes,3,opt,name=from,proto3" json:"from,omitempty"`
+	To           string                 `protobuf:"bytes,4,opt,name=to,proto3" json:"to,omitempty"`
+	Status       string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	StatusReason string                 `protobuf:"bytes,6,opt,name=status_reason,json=statusReason,proto3" json:"status_reason,omitempty"` // why a guardrail holds it for a person, among others
+	Depth        int32                  `protobuf:"varint,7,opt,name=depth,proto3" json:"depth,omitempty"`
+	CreatedAt    *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt    *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Messages     []*AgentMessage        `protobuf:"bytes,10,rep,name=messages,proto3" json:"messages,omitempty"` // GetAgentTask only
+	// Why an input-required task waits: question (for its sender), guardrail_hold
+	// (a guardrail holds it for the recipient's person) or needs_owner (the
+	// recipient's agent asks its own person).
+	ReasonCode    string `protobuf:"bytes,11,opt,name=reason_code,json=reasonCode,proto3" json:"reason_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6267,6 +6281,13 @@ func (x *AgentTask) GetMessages() []*AgentMessage {
 		return x.Messages
 	}
 	return nil
+}
+
+func (x *AgentTask) GetReasonCode() string {
+	if x != nil {
+		return x.ReasonCode
+	}
+	return ""
 }
 
 type ListAgentTasksResponse struct {
@@ -6791,18 +6812,19 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x18SetAgentRecordingRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
 	"\trecording\x18\x02 \x01(\tR\trecording\"\x1b\n" +
-	"\x19SetAgentRecordingResponse\"|\n" +
+	"\x19SetAgentRecordingResponse\"\x9f\x01\n" +
 	"\x15ListAgentTasksRequest\x12\x14\n" +
 	"\x05agent\x18\x01 \x01(\tR\x05agent\x12\x1b\n" +
 	"\topen_only\x18\x02 \x01(\bR\bopenOnly\x12\x14\n" +
 	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x1a\n" +
-	"\bstatuses\x18\x04 \x03(\tR\bstatuses\"\x85\x01\n" +
+	"\bstatuses\x18\x04 \x03(\tR\bstatuses\x12!\n" +
+	"\freason_codes\x18\x05 \x03(\tR\vreasonCodes\"\x85\x01\n" +
 	"\fAgentMessage\x12\x12\n" +
 	"\x04from\x18\x01 \x01(\tR\x04from\x12\x12\n" +
 	"\x04role\x18\x02 \x01(\tR\x04role\x12\x12\n" +
 	"\x04text\x18\x03 \x01(\tR\x04text\x129\n" +
 	"\n" +
-	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xe3\x02\n" +
+	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x84\x03\n" +
 	"\tAgentTask\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
@@ -6817,7 +6839,9 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x121\n" +
 	"\bmessages\x18\n" +
-	" \x03(\v2\x15.ktms.v1.AgentMessageR\bmessages\"B\n" +
+	" \x03(\v2\x15.ktms.v1.AgentMessageR\bmessages\x12\x1f\n" +
+	"\vreason_code\x18\v \x01(\tR\n" +
+	"reasonCode\"B\n" +
 	"\x16ListAgentTasksResponse\x12(\n" +
 	"\x05tasks\x18\x01 \x03(\v2\x12.ktms.v1.AgentTaskR\x05tasks\".\n" +
 	"\x13GetAgentTaskRequest\x12\x17\n" +

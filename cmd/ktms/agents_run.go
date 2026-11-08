@@ -23,7 +23,7 @@ func (a *app) agentsRunCmd() *cobra.Command {
 		Use:   "run",
 		Short: "Answer an agent's inbox with a local CLI agent (claude, codex, agy), read-only",
 		Long: `Run as the agent whose key it holds (KTMS_AGENT_KEY or --agent-key-file, a key with
-the mcp scope): poll its inbox, hand each task that waits for it to a CLI agent in --dir
+the mcp scope): wait on its inbox, hand each task that waits for it to a CLI agent in --dir
 and send what the CLI printed back as the reply. The CLI ends its answer with a line
 "STATUS: completed", "STATUS: input-required" (a question for the sender) or
 "STATUS: failed"; without one the answer completes the task.
@@ -77,7 +77,7 @@ prompt on stdin. Tasks are answered one at a time; run one per agent key. While
 	f.StringVar(&dir, "dir", "", "directory the CLI works in (default: the current one)")
 	f.StringVar(&keyFile, "agent-key-file", "", "file holding the agent's key (default: KTMS_AGENT_KEY)")
 	f.StringVar(&pauseFile, "pause-file", "", "while this file exists, take no task")
-	f.DurationVar(&interval, "interval", 15*time.Second, "time between inbox polls")
+	f.DurationVar(&interval, "interval", 15*time.Second, "time between inbox polls when KTMS cannot wait (before 1.6), and after an error")
 	f.DurationVar(&timeout, "task-timeout", 15*time.Minute, "longest run of the CLI on one task; then the task fails")
 	f.BoolVar(&once, "once", false, "answer the tasks due now and exit")
 	return cmd

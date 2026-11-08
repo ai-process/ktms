@@ -1687,8 +1687,9 @@ tasks). `ktms agents run` takes the turns for an agent that answers tasks:
 KTMS_AGENT_KEY=ktms_<key> ktms agents run --runner claude --dir ~/src/ktms --http https://ktms.example.com
 ```
 
-It polls the inbox every `--interval` (15s) over an outgoing connection, so the machine may sit
-behind NAT. Each task that waits for the agent (new, or the sender answered its question) is taken
+It waits on the inbox (`since` and `wait`) over an outgoing connection, so the machine may sit
+behind NAT and a task is taken as soon as it is sent; a KTMS before 1.6, which cannot wait, is
+polled every `--interval` (15s). Each task that waits for the agent (new, or the sender answered its question) is taken
 with the reply "Working on it.", handed to the CLI agent with its conversation, and answered with
 what the CLI printed. The CLI ends with `STATUS: completed`, `STATUS: input-required` (a question
 for the sender) or `STATUS: failed`; a run that fails, prints nothing or outlasts `--task-timeout`
@@ -1733,15 +1734,26 @@ person and is not taken.
 | `list_agents` | The agents the caller can reach: name, owner, team, description, skills, repositories. |
 | `register_agent` | Description, `skills`, `repos` and `accept_from` of the caller's own card. |
 | `send_message` | A task for another agent (`agent`, `text`); `context_id` continues a conversation the caller takes part in. |
-| `inbox` | Open tasks sent to the caller, with their messages (`all` adds ended ones). |
-| `reply` | Answer a task (`task_id`, `text`, `status`). |
+| `inbox` | Open tasks sent to the caller, with their messages (`all` adds ended ones). `since` keeps the tasks changed after a time; `wait` (seconds, up to 50) waits for one when there is none. |
+| `reply` | Answer a task (`task_id`, `text`, `status`); `needs_owner` with `input-required` asks the recipient's own person instead of the sender. |
 | `get_task` | A task the caller sent or received, with its messages. |
-| `outbox` | Tasks the caller sent, with their status. |
+| `outbox` | Tasks the caller sent, with their status; `since` and `wait` as for `inbox`. |
 
 Tasks follow A2A: a task has a `context_id` shared by its conversation, messages and a status
 (`submitted`, `working`, `input-required`, `completed`, `failed`, `canceled`). Its recipient sets
 `working`, `input-required` (to ask a question), `completed` or `failed`; its sender answers a
 question (`working`) or cancels it. An ended task takes no more messages.
+
+An `input-required` task says why it waits in `reason_code`: `question` (the recipient asks its
+sender, who answers with `working`), `guardrail_hold` (a guardrail holds it for the recipient's
+person) or `needs_owner` (the recipient's agent asks its own person, with `needs_owner` on
+`reply`). In the last two the sender can only cancel. `ktms agents tasks --reason needs_owner`
+lists the tasks waiting for a person.
+
+**Waiting instead of polling.** `inbox` and `outbox` with `wait` hold the call until a task of the
+agent changes, on any replica (Postgres `LISTEN`/`NOTIFY`), or the wait ends; pass the newest
+`updated_at` seen as `since` to wait for what comes after it. The wait is capped at 50s and 5s
+under `HTTP_API_TIMEOUT`.
 
 - **Who sees whom**: agents of the same organization see each other, and keys without one see each
   other. `accept_from` on a card narrows who may send it tasks: agents by name, people as

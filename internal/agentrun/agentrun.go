@@ -16,15 +16,18 @@ import (
 
 // Task and Message are the inbox tool's JSON.
 type Task struct {
-	TaskID    string    `json:"task_id"`
-	ContextID string    `json:"context_id"`
-	From      string    `json:"from"`
-	To        string    `json:"to"`
-	Status    string    `json:"status"`
-	Reason    string    `json:"reason,omitempty"`
-	Depth     int32     `json:"depth,omitempty"`
-	Created   time.Time `json:"created_at"`
-	Messages  []Message `json:"messages,omitempty"`
+	TaskID    string `json:"task_id"`
+	ContextID string `json:"context_id"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Status    string `json:"status"`
+	Reason    string `json:"reason,omitempty"`
+	// question, guardrail_hold or needs_owner while input-required.
+	ReasonCode string    `json:"reason_code,omitempty"`
+	Depth      int32     `json:"depth,omitempty"`
+	Created    time.Time `json:"created_at"`
+	Updated    time.Time `json:"updated_at"`
+	Messages   []Message `json:"messages,omitempty"`
 }
 
 type Message struct {
@@ -36,7 +39,9 @@ type Message struct {
 
 // Inbox is the slice of the agents server the loop uses.
 type Inbox interface {
-	Inbox(ctx context.Context) ([]Task, error)
+	// Inbox is the open tasks changed after since (zero for all), waiting up
+	// to wait for one when there is none.
+	Inbox(ctx context.Context, since time.Time, wait time.Duration) ([]Task, error)
 	Reply(ctx context.Context, taskID, text, status string) error
 }
 
@@ -65,7 +70,8 @@ func Due(t Task) bool {
 
 // Config of the loop; zero values take the defaults.
 type Config struct {
-	Interval    time.Duration // between polls
+	Interval    time.Duration // between polls when the server cannot wait, and after an error
+	Wait        time.Duration // how long one inbox call waits for a change
 	Timeout     time.Duration // of one run
 	PauseFile   string        // while it exists, no task is taken
 	MaxPrompt   int           // bytes of conversation handed to the runner
@@ -77,6 +83,9 @@ type Config struct {
 func (c Config) withDefaults() Config {
 	if c.Interval <= 0 {
 		c.Interval = 15 * time.Second
+	}
+	if c.Wait <= 0 {
+		c.Wait = 50 * time.Second
 	}
 	if c.Timeout <= 0 {
 		c.Timeout = 15 * time.Minute
@@ -96,46 +105,73 @@ func (c Config) withDefaults() Config {
 	return c
 }
 
-// Run polls until ctx ends. Tasks are answered one at a time, oldest first,
-// so run one loop per agent key.
+// Run answers the inbox until ctx ends. Each call waits on the server for the
+// next change after the newest one seen; a server that cannot wait (before
+// KTMS 1.6) is polled every Interval instead. Tasks are answered one at a
+// time, oldest first, so run one loop per agent key.
 func Run(ctx context.Context, in Inbox, r Runner, cfg Config) error {
 	cfg = cfg.withDefaults()
-	t := time.NewTicker(cfg.Interval)
-	defer t.Stop()
+	var since time.Time
 	paused := false
-	for {
+	for ctx.Err() == nil {
 		if p := cfg.PauseFile != "" && exists(cfg.PauseFile); p != paused {
 			paused = p
 			cfg.Logf("paused: %v", p)
 		}
-		if !paused {
-			if err := Once(ctx, in, r, cfg); err != nil && ctx.Err() == nil {
+		if paused {
+			sleep(ctx, cfg.Interval)
+			continue
+		}
+		start := time.Now()
+		tasks, err := in.Inbox(ctx, since, cfg.Wait)
+		if err != nil {
+			if ctx.Err() == nil {
 				cfg.Logf("inbox: %v", err)
+				sleep(ctx, cfg.Interval)
+			}
+			continue
+		}
+		newest := since
+		for _, t := range tasks {
+			if t.Updated.After(newest) {
+				newest = t.Updated
 			}
 		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-t.C:
+		answerDue(ctx, in, r, cfg, tasks)
+		// A waiting server answers early only with a change; nothing new, and
+		// soon, is a server that ignores since and wait, to be polled.
+		if !newest.After(since) && time.Since(start) < cfg.Wait/2 {
+			sleep(ctx, cfg.Interval)
 		}
+		since = newest
 	}
+	return nil
 }
 
 // Once answers the tasks due now.
 func Once(ctx context.Context, in Inbox, r Runner, cfg Config) error {
 	cfg = cfg.withDefaults()
-	tasks, err := in.Inbox(ctx)
+	tasks, err := in.Inbox(ctx, time.Time{}, 0)
 	if err != nil {
 		return err
 	}
-	for i := len(tasks) - 1; i >= 0; i-- { // the inbox lists the newest first
-		task := tasks[i]
-		if !Due(task) || ctx.Err() != nil {
-			continue
-		}
-		answer(ctx, in, r, cfg, task)
-	}
+	answerDue(ctx, in, r, cfg, tasks)
 	return nil
+}
+
+func answerDue(ctx context.Context, in Inbox, r Runner, cfg Config, tasks []Task) {
+	for i := len(tasks) - 1; i >= 0; i-- { // the inbox lists the newest first
+		if Due(tasks[i]) && ctx.Err() == nil {
+			answer(ctx, in, r, cfg, tasks[i])
+		}
+	}
+}
+
+func sleep(ctx context.Context, d time.Duration) {
+	select {
+	case <-ctx.Done():
+	case <-time.After(d):
+	}
 }
 
 func answer(ctx context.Context, in Inbox, r Runner, cfg Config, task Task) {

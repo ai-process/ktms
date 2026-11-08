@@ -59,6 +59,11 @@ func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasks
 	if err != nil {
 		return nil, err
 	}
+	for _, r := range req.GetReasonCodes() {
+		if !slices.Contains(proxydb.ReasonCodes, r) {
+			return nil, status.Errorf(codes.InvalidArgument, "reason code %q: want one of %s", r, strings.Join(proxydb.ReasonCodes, ", "))
+		}
+	}
 	a, err := s.db.GetAgentByName(ctx, agentName(req.GetAgent()))
 	if errors.Is(err, proxydb.ErrNotFound) {
 		return nil, status.Errorf(codes.NotFound, "no agent %q", req.GetAgent())
@@ -70,7 +75,7 @@ func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasks
 	if req.GetOpenOnly() && len(statuses) == 0 {
 		return &pb.ListAgentTasksResponse{}, nil
 	}
-	tasks, err := s.db.ListAgentTasks(ctx, proxydb.TaskFilter{Agent: a.KeyID, Statuses: statuses, Limit: int(req.GetLimit())})
+	tasks, err := s.db.ListAgentTasks(ctx, proxydb.TaskFilter{Agent: a.KeyID, Statuses: statuses, ReasonCodes: req.GetReasonCodes(), Limit: int(req.GetLimit())})
 	if err != nil {
 		return nil, dbStatus(err)
 	}
@@ -126,7 +131,7 @@ func (s *AdminServer) GetAgentTask(ctx context.Context, req *pb.GetAgentTaskRequ
 func taskProto(t *proxydb.AgentTask) *pb.AgentTask {
 	out := &pb.AgentTask{
 		TaskId: t.ID, ContextId: t.ContextID, From: t.FromName, To: t.ToName, Status: t.Status,
-		StatusReason: t.StatusReason, Depth: t.Depth,
+		StatusReason: t.StatusReason, ReasonCode: t.ReasonCode, Depth: t.Depth,
 		CreatedAt: timestamppb.New(t.CreatedAt), UpdatedAt: timestamppb.New(t.UpdatedAt),
 	}
 	for _, m := range t.Messages {

@@ -56,11 +56,12 @@ type Store interface {
 	WithAgentMessages(ctx context.Context, tasks []*proxydb.AgentTask) error
 	AgentInContext(ctx context.Context, keyID, contextID string) (bool, error)
 	CreateAgentTask(ctx context.Context, t *proxydb.AgentTask, text string, maxMessages int64) error
-	AddAgentMessage(ctx context.Context, taskID, fromAgent, role, text, status, reason string, maxMessages int64) (*proxydb.AgentTask, error)
+	AddAgentMessage(ctx context.Context, taskID, fromAgent, role, text, status, reason, reasonCode string, maxMessages int64) (*proxydb.AgentTask, error)
 	GetAgentTask(ctx context.Context, id string) (*proxydb.AgentTask, error)
 	ListAgentTasks(ctx context.Context, f proxydb.TaskFilter) ([]*proxydb.AgentTask, error)
 	DeleteAgentTasksBefore(ctx context.Context, cutoff time.Time) (int64, error)
 	CountAgentTasks(ctx context.Context) (map[string]int64, error)
+	ListenAgents(ctx context.Context, wake func(keyID string)) error
 }
 
 // Config bounds conversations; zero values take the defaults.
@@ -70,6 +71,7 @@ type Config struct {
 	MaxMessageBytes int   // one message
 	Recording       string
 	Retention       time.Duration
+	MaxWait         time.Duration // longest wait of inbox and outbox; keep it under the HTTP timeout
 }
 
 func (c Config) withDefaults() Config {
@@ -85,6 +87,9 @@ func (c Config) withDefaults() Config {
 	if c.Recording == "" {
 		c.Recording = RecordMetadata
 	}
+	if c.MaxWait <= 0 {
+		c.MaxWait = 50 * time.Second
+	}
 	return c
 }
 
@@ -95,10 +100,11 @@ type Service struct {
 	guard   *Guard
 	journal Journal
 	now     func() time.Time
+	hub     *hub
 }
 
 func New(store Store, cfg Config, guard *Guard, journal Journal) *Service {
-	return &Service{store: store, cfg: cfg.withDefaults(), guard: guard, journal: journal, now: time.Now}
+	return &Service{store: store, cfg: cfg.withDefaults(), guard: guard, journal: journal, now: time.Now, hub: newHub()}
 }
 
 var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,62}$`)
@@ -291,13 +297,13 @@ func (s *Service) Send(ctx context.Context, id *apikeys.Identity, to, text, cont
 	} else {
 		contextID = uuid.NewString()
 	}
-	status := proxydb.TaskSubmitted
+	status, code := proxydb.TaskSubmitted, ""
 	if reason != "" {
-		status = proxydb.TaskInputRequired
+		status, code = proxydb.TaskInputRequired, proxydb.ReasonGuardHold
 	}
 	t := &proxydb.AgentTask{
 		ID: uuid.NewString(), ContextID: contextID, FromAgent: me.KeyID, FromName: me.Name,
-		ToAgent: target.KeyID, ToName: target.Name, Status: status, StatusReason: reason, Depth: depth,
+		ToAgent: target.KeyID, ToName: target.Name, Status: status, StatusReason: reason, ReasonCode: code, Depth: depth,
 	}
 	if err := s.store.CreateAgentTask(ctx, t, text, s.cfg.MaxMessages); err != nil {
 		return nil, s.limitErr(err)
@@ -307,17 +313,26 @@ func (s *Service) Send(ctx context.Context, id *apikeys.Identity, to, text, cont
 	return t, nil
 }
 
+// Query narrows inbox and outbox: tasks changed after Since, and, with Wait,
+// a wait of up to Wait for the first such task when there is none yet.
+type Query struct {
+	All   bool // inbox: ended tasks too
+	Limit int
+	Since time.Time
+	Wait  time.Duration
+}
+
 // Inbox is the open tasks sent to the caller, with their messages.
-func (s *Service) Inbox(ctx context.Context, id *apikeys.Identity, all bool, limit int) ([]*proxydb.AgentTask, error) {
+func (s *Service) Inbox(ctx context.Context, id *apikeys.Identity, q Query) ([]*proxydb.AgentTask, error) {
 	me, err := s.Me(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	f := proxydb.TaskFilter{ToAgent: me.KeyID, Limit: limit}
-	if !all {
+	f := proxydb.TaskFilter{ToAgent: me.KeyID, Limit: q.Limit, Since: q.Since}
+	if !q.All {
 		f.Statuses = []string{proxydb.TaskSubmitted, proxydb.TaskWorking, proxydb.TaskInputRequired}
 	}
-	tasks, err := s.store.ListAgentTasks(ctx, f)
+	tasks, err := s.wait(ctx, me.KeyID, q.Wait, func() ([]*proxydb.AgentTask, error) { return s.store.ListAgentTasks(ctx, f) })
 	if err != nil {
 		return nil, err
 	}
@@ -325,12 +340,61 @@ func (s *Service) Inbox(ctx context.Context, id *apikeys.Identity, all bool, lim
 }
 
 // Outbox is the tasks the caller sent, without their messages.
-func (s *Service) Outbox(ctx context.Context, id *apikeys.Identity, limit int) ([]*proxydb.AgentTask, error) {
+func (s *Service) Outbox(ctx context.Context, id *apikeys.Identity, q Query) ([]*proxydb.AgentTask, error) {
 	me, err := s.Me(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	return s.store.ListAgentTasks(ctx, proxydb.TaskFilter{FromAgent: me.KeyID, Limit: limit})
+	f := proxydb.TaskFilter{FromAgent: me.KeyID, Limit: q.Limit, Since: q.Since}
+	return s.wait(ctx, me.KeyID, q.Wait, func() ([]*proxydb.AgentTask, error) { return s.store.ListAgentTasks(ctx, f) })
+}
+
+// recheck bounds a wait on a lost notification, as when the listening
+// connection is being replaced.
+const recheck = 5 * time.Second
+
+// wait runs list, and while it finds nothing and the wait lasts, again each
+// time a task of the agent changes.
+func (s *Service) wait(ctx context.Context, keyID string, d time.Duration, list func() ([]*proxydb.AgentTask, error)) ([]*proxydb.AgentTask, error) {
+	if d <= 0 {
+		return list()
+	}
+	d = min(d, s.cfg.MaxWait)
+	// Subscribed before the first read, so a change between them still wakes.
+	woke, stop := s.hub.subscribe(keyID)
+	defer stop()
+	deadline := time.NewTimer(d)
+	defer deadline.Stop()
+	for {
+		tasks, err := list()
+		if err != nil || len(tasks) > 0 {
+			return tasks, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-deadline.C:
+			return tasks, nil
+		case <-woke:
+		case <-time.After(recheck):
+		}
+	}
+}
+
+// Listen wakes waiting inbox and outbox calls when tasks change, on this
+// replica or another, until ctx ends.
+func (s *Service) Listen(ctx context.Context) {
+	for ctx.Err() == nil {
+		err := s.store.ListenAgents(ctx, s.hub.wake)
+		if ctx.Err() != nil {
+			return
+		}
+		log.Warn().Err(err).Msg("agents: listening for task changes failed; waits fall back to rechecks")
+		select {
+		case <-ctx.Done():
+		case <-time.After(time.Second):
+		}
+	}
 }
 
 // Get is a task the caller sent or received.
@@ -356,7 +420,7 @@ func (s *Service) party(ctx context.Context, me *proxydb.Agent, taskID string) (
 // Reply answers a task. Its recipient moves it to working, input-required,
 // completed or failed; its sender answers a question (back to working) or
 // cancels it.
-func (s *Service) Reply(ctx context.Context, id *apikeys.Identity, taskID, text, status string) (*proxydb.AgentTask, error) {
+func (s *Service) Reply(ctx context.Context, id *apikeys.Identity, taskID, text, status string, needsOwner bool) (*proxydb.AgentTask, error) {
 	me, err := s.Me(ctx, id)
 	if err != nil {
 		return nil, err
@@ -373,12 +437,22 @@ func (s *Service) Reply(ctx context.Context, id *apikeys.Identity, taskID, text,
 		// The sender answers only a question its recipient asked; a task a
 		// guardrail holds waits for the recipient's person, so it may only cancel.
 		role, allowed = "user", []string{proxydb.TaskCanceled}
-		if t.Status == proxydb.TaskInputRequired && !held(t) {
+		if t.Status == proxydb.TaskInputRequired && !held(t) && t.ReasonCode != proxydb.ReasonOwner {
 			allowed = append(allowed, proxydb.TaskWorking)
 		}
 		if status == proxydb.TaskCompleted {
 			status = proxydb.TaskWorking
 		}
+	}
+	code := ""
+	if status == proxydb.TaskInputRequired {
+		code = proxydb.ReasonQuestion
+		if needsOwner {
+			code = proxydb.ReasonOwner
+		}
+	}
+	if needsOwner && (role != "agent" || status != proxydb.TaskInputRequired) {
+		return nil, fmt.Errorf("%w: needs_owner goes with status input-required, from the task's recipient", ErrInvalid)
 	}
 	if !slices.Contains(allowed, status) {
 		return nil, fmt.Errorf("%w: status %q: you may set %s", ErrInvalid, status, strings.Join(allowed, ", "))
@@ -395,7 +469,7 @@ func (s *Service) Reply(ctx context.Context, id *apikeys.Identity, taskID, text,
 		// person first, and holding it would leave neither side able to go on.
 		reason = guardNote + strings.TrimPrefix(reason, guardReason)
 	}
-	out, err := s.store.AddAgentMessage(ctx, t.ID, me.KeyID, role, text, status, reason, s.cfg.MaxMessages)
+	out, err := s.store.AddAgentMessage(ctx, t.ID, me.KeyID, role, text, status, reason, code, s.cfg.MaxMessages)
 	if errors.Is(err, proxydb.ErrTaskClosed) {
 		return nil, fmt.Errorf("%w: task %s has already ended", ErrInvalid, t.ID)
 	}
@@ -417,7 +491,9 @@ func (s *Service) Reply(ctx context.Context, id *apikeys.Identity, taskID, text,
 }
 
 // held reports whether a guardrail holds the task for a person.
-func held(t *proxydb.AgentTask) bool { return strings.HasPrefix(t.StatusReason, guardReason) }
+func held(t *proxydb.AgentTask) bool {
+	return t.ReasonCode == proxydb.ReasonGuardHold || strings.HasPrefix(t.StatusReason, guardReason)
+}
 
 func (s *Service) limitErr(err error) error {
 	if errors.Is(err, proxydb.ErrContextFull) {
