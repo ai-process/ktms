@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -46,7 +47,7 @@ func (a *app) agentsCmd() *cobra.Command {
 	var tFormat string
 	var open bool
 	var lim int32
-	var statuses []string
+	var statuses, reasons []string
 	tasks := &cobra.Command{
 		Use: "tasks AGENT", Short: "Tasks an agent sent or received, most recent first", Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -56,12 +57,18 @@ func (a *app) agentsCmd() *cobra.Command {
 					return usageError{fmt.Errorf("--status %q: want one of %s", st, strings.Join(proxydb.TaskStatuses, ", "))}
 				}
 			}
+			for i, r := range reasons {
+				reasons[i] = strings.ToLower(strings.TrimSpace(r))
+				if !slices.Contains(proxydb.ReasonCodes, reasons[i]) {
+					return usageError{fmt.Errorf("--reason %q: want one of %s", r, strings.Join(proxydb.ReasonCodes, ", "))}
+				}
+			}
 			p, err := newPrinter(a.stdout, tFormat)
 			if err != nil {
 				return err
 			}
 			return a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
-				res, err := c.ListAgentTasks(ctx, &pb.ListAgentTasksRequest{Agent: args[0], OpenOnly: open, Limit: lim, Statuses: statuses})
+				res, err := c.ListAgentTasks(ctx, &pb.ListAgentTasksRequest{Agent: args[0], OpenOnly: open, Limit: lim, Statuses: statuses, ReasonCodes: reasons})
 				if err != nil {
 					return err
 				}
@@ -70,10 +77,10 @@ func (a *app) agentsCmd() *cobra.Command {
 				}
 				var rows [][]string
 				for _, t := range res.GetTasks() {
-					rows = append(rows, []string{t.GetTaskId(), t.GetFrom(), t.GetTo(), t.GetStatus(), strconv.Itoa(int(t.GetDepth())),
+					rows = append(rows, []string{t.GetTaskId(), t.GetFrom(), t.GetTo(), t.GetStatus(), orDash(t.GetReasonCode()), strconv.Itoa(int(t.GetDepth())),
 						orDash(t.GetStatusReason()), when(t.GetUpdatedAt())})
 				}
-				return p.rows([]string{"TASK", "FROM", "TO", "STATUS", "DEPTH", "REASON", "UPDATED"}, rows)
+				return p.rows([]string{"TASK", "FROM", "TO", "STATUS", "WAITS ON", "DEPTH", "REASON", "UPDATED"}, rows)
 			})
 		},
 	}
@@ -82,6 +89,9 @@ func (a *app) agentsCmd() *cobra.Command {
 	tasks.Flags().Int32Var(&lim, "limit", 100, "most tasks to show (at most 500)")
 	tasks.Flags().StringSliceVar(&statuses, "status", nil,
 		"only tasks in these statuses, repeatable or comma-separated: "+strings.Join(proxydb.TaskStatuses, ", ")+"; with --open, the open ones among them")
+
+	tasks.Flags().StringSliceVar(&reasons, "reason", nil,
+		"only input-required tasks waiting for these reasons: "+strings.Join(proxydb.ReasonCodes, ", ")+" (needs_owner: the agent asks its own person)")
 
 	var sFormat string
 	show := &cobra.Command{

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -63,7 +64,7 @@ func (c *Client) call(ctx context.Context, tool string, args map[string]any, out
 	if err != nil {
 		return err
 	}
-	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: args})
+	res, err := c.callTool(ctx, cs, tool, args)
 	if err != nil {
 		c.mu.Lock()
 		if c.cs == cs {
@@ -91,11 +92,39 @@ func (c *Client) call(ctx context.Context, tool string, args map[string]any, out
 	return nil
 }
 
-func (c *Client) Inbox(ctx context.Context) ([]Task, error) {
+// callTool returns when ctx ends even while a waiting inbox call is in
+// flight: the SDK would wait for the server's answer, so the session closes.
+func (c *Client) callTool(ctx context.Context, cs *mcp.ClientSession, tool string, args map[string]any) (*mcp.CallToolResult, error) {
+	type result struct {
+		res *mcp.CallToolResult
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: args})
+		ch <- result{res, err}
+	}()
+	select {
+	case r := <-ch:
+		return r.res, r.err
+	case <-ctx.Done():
+		_ = cs.Close() // the session is dropped below; its close error says nothing new
+		return nil, ctx.Err()
+	}
+}
+
+func (c *Client) Inbox(ctx context.Context, since time.Time, wait time.Duration) ([]Task, error) {
 	var out struct {
 		Tasks []Task `json:"tasks"`
 	}
-	if err := c.call(ctx, "inbox", map[string]any{"limit": 100}, &out); err != nil {
+	args := map[string]any{"limit": 100}
+	if !since.IsZero() {
+		args["since"] = since.Format(time.RFC3339Nano)
+	}
+	if wait > 0 {
+		args["wait"] = int(wait.Seconds())
+	}
+	if err := c.call(ctx, "inbox", args, &out); err != nil {
 		return nil, err
 	}
 	return out.Tasks, nil

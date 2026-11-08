@@ -13,16 +13,46 @@ import (
 
 type reply struct{ id, text, status string }
 
+// fakeInbox answers like a server that ignores since and wait (before 1.6)
+// unless waits is set, and then like one that honours both.
 type fakeInbox struct {
 	mu      sync.Mutex
 	tasks   []Task
 	replies []reply
+	waits   bool
+	calls   int
+	clock   time.Time
 }
 
-func (f *fakeInbox) Inbox(context.Context) ([]Task, error) {
+func (f *fakeInbox) Inbox(ctx context.Context, since time.Time, wait time.Duration) ([]Task, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append([]Task(nil), f.tasks...), nil
+	f.calls++
+	if !f.waits {
+		defer f.mu.Unlock()
+		return append([]Task(nil), f.tasks...), nil
+	}
+	var out []Task
+	for _, t := range f.tasks {
+		if t.Updated.After(since) {
+			out = append(out, t)
+		}
+	}
+	f.mu.Unlock()
+	if len(out) == 0 {
+		select {
+		case <-ctx.Done():
+		case <-time.After(wait):
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeInbox) tick() time.Time {
+	if f.clock.IsZero() {
+		f.clock = time.Now()
+	}
+	f.clock = f.clock.Add(time.Millisecond)
+	return f.clock
 }
 
 func (f *fakeInbox) Reply(_ context.Context, id, text, status string) error {
@@ -32,6 +62,7 @@ func (f *fakeInbox) Reply(_ context.Context, id, text, status string) error {
 	for i := range f.tasks {
 		if f.tasks[i].TaskID == id {
 			f.tasks[i].Status = status
+			f.tasks[i].Updated = f.tick()
 			f.tasks[i].Messages = append(f.tasks[i].Messages, Message{From: "me", Role: "agent", Text: text})
 		}
 	}
@@ -218,5 +249,57 @@ func TestCommandStdinAndArg(t *testing.T) {
 	}
 	if _, err := Preset("gpt", "."); err == nil {
 		t.Fatal("unknown preset accepted")
+	}
+}
+
+func TestRunWaitsOnTheServer(t *testing.T) {
+	in := &fakeInbox{waits: true, tasks: []Task{task("t", "submitted", Message{Role: "user", Text: "x"})}}
+	in.tasks[0].Updated = in.tick()
+	r := &fakeRunner{out: "ok"}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	// A long Interval: a loop that waits on the server never sleeps it.
+	go func() { done <- Run(ctx, in, r, Config{Interval: time.Hour, Wait: 400 * time.Millisecond}) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		in.mu.Lock()
+		n := len(in.replies)
+		in.mu.Unlock()
+		if n == 2 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	// A task that arrives later is answered too, without an Interval sleep.
+	in.mu.Lock()
+	late := task("late", "submitted", Message{Role: "user", Text: "y"})
+	late.Updated = in.tick()
+	in.tasks = append(in.tasks, late)
+	in.mu.Unlock()
+	for time.Now().Before(deadline.Add(time.Second)) {
+		in.mu.Lock()
+		n := len(in.replies)
+		in.mu.Unlock()
+		if n == 4 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	if err := <-done; err != nil || len(in.replies) != 4 || len(r.prompts) != 2 {
+		t.Fatalf("replies %+v, prompts %d, %v", in.replies, len(r.prompts), err)
+	}
+}
+
+func TestRunPollsAServerThatCannotWait(t *testing.T) {
+	in := &fakeInbox{tasks: []Task{task("asked", "input-required", Message{Role: "user", Text: "x"}, Message{Role: "agent", Text: "q?"})}}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	if err := Run(ctx, in, &fakeRunner{}, Config{Interval: 100 * time.Millisecond}); err != nil {
+		t.Fatal(err)
+	}
+	// Without the fallback this loop would call the inbox thousands of times.
+	if in.calls > 5 {
+		t.Fatalf("%d inbox calls in 300ms", in.calls)
 	}
 }

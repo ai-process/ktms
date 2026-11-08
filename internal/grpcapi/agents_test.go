@@ -108,6 +108,12 @@ func TestAgentKeysAndConversations(t *testing.T) {
 	if _, err := s.ListAgentTasks(ctx, &pb.ListAgentTasksRequest{Agent: names[1], Statuses: []string{"working", "paused"}}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("unknown status: %v", err)
 	}
+	if tasks, err := s.ListAgentTasks(ctx, &pb.ListAgentTasksRequest{Agent: names[1], ReasonCodes: []string{"needs_owner"}}); err != nil || len(tasks.GetTasks()) != 0 {
+		t.Fatalf("reason needs_owner = %v, %v", tasks, err)
+	}
+	if _, err := s.ListAgentTasks(ctx, &pb.ListAgentTasksRequest{Agent: names[1], ReasonCodes: []string{"bored"}}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("unknown reason: %v", err)
+	}
 }
 
 func TestTaskStatuses(t *testing.T) {

@@ -55,7 +55,7 @@ func TestAgentRunThroughGateway(t *testing.T) {
 	if err := agentrun.Once(ctx, c, r, cfg); err != nil || len(r.prompts) != 1 {
 		t.Fatalf("ran while waiting for the sender: %d, %v", len(r.prompts), err)
 	}
-	if _, err := svc.Reply(ctx, alice, task.ID, "main", proxydb.TaskWorking); err != nil {
+	if _, err := svc.Reply(ctx, alice, task.ID, "main", proxydb.TaskWorking, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := agentrun.Once(ctx, c, r, cfg); err != nil {
@@ -67,5 +67,41 @@ func TestAgentRunThroughGateway(t *testing.T) {
 	}
 	if !strings.Contains(r.prompts[1], "Which branch?") || !strings.Contains(r.prompts[1], "main") {
 		t.Fatalf("second prompt lacks the conversation: %s", r.prompts[1])
+	}
+}
+
+// ktms agents run waits on the inbox through the gateway and answers a task
+// as soon as it is sent, with no polling interval in between.
+func TestAgentRunWaitsThroughGateway(t *testing.T) {
+	f := newAgentsFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_, alice := f.mint("alice")
+	bobKey, bob := f.mint("bob")
+	if _, err := f.svc.Me(ctx, bob); err != nil {
+		t.Fatal(err)
+	}
+	c := &agentrun.Client{Endpoint: f.ts.URL + "/mcp/agents", Key: bobKey}
+	t.Cleanup(func() { _ = c.Close() })
+	done := make(chan error, 1)
+	go func() {
+		done <- agentrun.Run(ctx, c, &scripted{prompts: []string{"skip the question"}}, agentrun.Config{Interval: time.Hour, Wait: 3 * time.Second})
+	}()
+	time.Sleep(500 * time.Millisecond) // the sidecar is waiting
+	task, err := f.svc.Send(ctx, alice, strings.ToLower(bob.Name), "review PR 12", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	var got *proxydb.AgentTask
+	for time.Now().Before(deadline) {
+		if got, err = f.svc.Get(ctx, alice, task.ID); err == nil && got.Status == proxydb.TaskCompleted {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	cancel()
+	if err := <-done; err != nil || got == nil || got.Status != proxydb.TaskCompleted {
+		t.Fatalf("task = %+v, %v", got, err)
 	}
 }

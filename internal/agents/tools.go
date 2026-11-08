@@ -26,6 +26,8 @@ var (
 	str     = map[string]any{"type": "string"}
 	strList = map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
 	limit   = map[string]any{"type": "integer", "minimum": 1, "maximum": 100, "description": "Most tasks to return, default 20."}
+	since   = map[string]any{"type": "string", "format": "date-time", "description": "Only tasks changed after this time: pass the newest updated_at you have seen."}
+	wait    = map[string]any{"type": "integer", "minimum": 0, "maximum": 50, "description": "Seconds to wait for a task when there is none yet; the answer comes as soon as one changes."}
 )
 
 func describe(s map[string]any, d string) map[string]any {
@@ -67,10 +69,12 @@ func Tools() []*mcp.Tool {
 		},
 		{
 			Name:        "inbox",
-			Description: "Tasks other agents sent you that are still open, with their messages. Answer each with reply.",
+			Description: "Tasks other agents sent you that are still open, with their messages. Answer each with reply. With since and wait it waits for the next change instead of returning nothing.",
 			InputSchema: obj(map[string]any{
 				"all":   map[string]any{"type": "boolean", "description": "Include tasks that have ended."},
 				"limit": limit,
+				"since": since,
+				"wait":  wait,
 			}),
 			Annotations: readOnly,
 		},
@@ -78,9 +82,10 @@ func Tools() []*mcp.Tool {
 			Name:        "reply",
 			Description: "Answer a task. As its recipient set status completed (default), working, input-required (to ask a question) or failed; as its sender answer a question (working) or cancel it (canceled).",
 			InputSchema: obj(map[string]any{
-				"task_id": str,
-				"text":    describe(str, "The answer or the question."),
-				"status":  map[string]any{"type": "string", "enum": []string{"completed", "working", "input-required", "failed", "canceled"}},
+				"task_id":     str,
+				"text":        describe(str, "The answer or the question."),
+				"status":      map[string]any{"type": "string", "enum": []string{"completed", "working", "input-required", "failed", "canceled"}},
+				"needs_owner": map[string]any{"type": "boolean", "description": "With status input-required: the question is for your own person, not the sender; the sender can only wait or cancel."},
 			}, "task_id"),
 		},
 		{
@@ -91,8 +96,8 @@ func Tools() []*mcp.Tool {
 		},
 		{
 			Name:        "outbox",
-			Description: "Tasks you sent, most recently changed first, with their status.",
-			InputSchema: obj(map[string]any{"limit": limit}),
+			Description: "Tasks you sent, most recently changed first, with their status. With since and wait it waits for the next change.",
+			InputSchema: obj(map[string]any{"limit": limit, "since": since, "wait": wait}),
 			Annotations: readOnly,
 		},
 	}
@@ -103,13 +108,16 @@ func Tools() []*mcp.Tool {
 func (s *Service) Call(ctx context.Context, id *apikeys.Identity, tool string, args json.RawMessage) (*mcp.CallToolResult, error) {
 	var in struct {
 		Card
-		Agent     string `json:"agent"`
-		Text      string `json:"text"`
-		ContextID string `json:"context_id"`
-		TaskID    string `json:"task_id"`
-		Status    string `json:"status"`
-		All       bool   `json:"all"`
-		Limit     int    `json:"limit"`
+		Agent      string `json:"agent"`
+		Text       string `json:"text"`
+		ContextID  string `json:"context_id"`
+		TaskID     string `json:"task_id"`
+		Status     string `json:"status"`
+		All        bool   `json:"all"`
+		Limit      int    `json:"limit"`
+		Since      string `json:"since"`
+		Wait       int    `json:"wait"`
+		NeedsOwner bool   `json:"needs_owner"`
 	}
 	if len(args) > 0 {
 		if err := json.Unmarshal(args, &in); err != nil {
@@ -118,6 +126,14 @@ func (s *Service) Call(ctx context.Context, id *apikeys.Identity, tool string, a
 	}
 	if in.Limit <= 0 || in.Limit > 100 {
 		in.Limit = 20
+	}
+	q := Query{All: in.All, Limit: in.Limit, Wait: time.Duration(max(in.Wait, 0)) * time.Second}
+	if in.Since != "" {
+		t, err := time.Parse(time.RFC3339Nano, in.Since)
+		if err != nil {
+			return toolError("since: want an RFC 3339 time, such as an updated_at of an earlier answer"), nil
+		}
+		q.Since = t
 	}
 	var out any
 	var err error
@@ -140,12 +156,12 @@ func (s *Service) Call(ctx context.Context, id *apikeys.Identity, tool string, a
 		}
 	case "inbox":
 		var ts []*proxydb.AgentTask
-		if ts, err = s.Inbox(ctx, id, in.All, in.Limit); err == nil {
+		if ts, err = s.Inbox(ctx, id, q); err == nil {
 			out = map[string]any{"tasks": tasksView(ts)}
 		}
 	case "reply":
 		var t *proxydb.AgentTask
-		if t, err = s.Reply(ctx, id, in.TaskID, in.Text, in.Status); err == nil {
+		if t, err = s.Reply(ctx, id, in.TaskID, in.Text, in.Status, in.NeedsOwner); err == nil {
 			out = taskView(t)
 		}
 	case "get_task":
@@ -155,7 +171,7 @@ func (s *Service) Call(ctx context.Context, id *apikeys.Identity, tool string, a
 		}
 	case "outbox":
 		var ts []*proxydb.AgentTask
-		if ts, err = s.Outbox(ctx, id, in.Limit); err == nil {
+		if ts, err = s.Outbox(ctx, id, q); err == nil {
 			out = map[string]any{"tasks": tasksView(ts)}
 		}
 	default:
@@ -222,20 +238,22 @@ type messageView struct {
 }
 
 type taskOut struct {
-	TaskID    string        `json:"task_id"`
-	ContextID string        `json:"context_id"`
-	From      string        `json:"from"`
-	To        string        `json:"to"`
-	Status    string        `json:"status"`
-	Reason    string        `json:"reason,omitempty"`
-	Depth     int32         `json:"depth,omitempty"`
-	Created   time.Time     `json:"created_at"`
-	Updated   time.Time     `json:"updated_at"`
-	Messages  []messageView `json:"messages,omitempty"`
+	TaskID    string `json:"task_id"`
+	ContextID string `json:"context_id"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Status    string `json:"status"`
+	Reason    string `json:"reason,omitempty"`
+	// question, guardrail_hold or needs_owner while input-required.
+	ReasonCode string        `json:"reason_code,omitempty"`
+	Depth      int32         `json:"depth,omitempty"`
+	Created    time.Time     `json:"created_at"`
+	Updated    time.Time     `json:"updated_at"`
+	Messages   []messageView `json:"messages,omitempty"`
 }
 
 func taskView(t *proxydb.AgentTask) taskOut {
-	v := taskOut{TaskID: t.ID, ContextID: t.ContextID, From: t.FromName, To: t.ToName, Status: t.Status, Reason: t.StatusReason,
+	v := taskOut{TaskID: t.ID, ContextID: t.ContextID, From: t.FromName, To: t.ToName, Status: t.Status, Reason: t.StatusReason, ReasonCode: t.ReasonCode,
 		Depth: t.Depth, Created: t.CreatedAt, Updated: t.UpdatedAt}
 	for _, m := range t.Messages {
 		v.Messages = append(v.Messages, messageView{From: m.FromName, Role: m.Role, Text: m.Text, At: m.CreatedAt})

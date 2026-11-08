@@ -161,6 +161,7 @@ type taskJSON struct {
 	To        string    `json:"to"`
 	Status    string    `json:"status"`
 	Reason    string    `json:"reason"`
+	Code      string    `json:"reason_code"`
 	Updated   time.Time `json:"updated_at"`
 	Messages  []struct {
 		From string `json:"from"`
@@ -175,6 +176,9 @@ func (t taskJSON) a2a(historyLength int) a2aTask {
 		Metadata: map[string]string{"from": t.From, "to": t.To}}
 	if t.Reason != "" {
 		out.Metadata["reason"] = t.Reason
+	}
+	if t.Code != "" {
+		out.Metadata["reason_code"] = t.Code
 	}
 	for i, m := range t.Messages {
 		out.History = append(out.History, a2aMessage{Kind: "message", MessageID: t.TaskID + "-" + strconv.Itoa(i+1), Role: m.Role,

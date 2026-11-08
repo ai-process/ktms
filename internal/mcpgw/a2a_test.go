@@ -66,6 +66,9 @@ func newAgentsFixture(t *testing.T) *agentsFixture {
 		return "plain-" + name, ident
 	}
 	f.svc = agents.New(proxydb.New(pool), agents.Config{}, nil, nil)
+	lctx, stop := context.WithCancel(context.Background())
+	t.Cleanup(stop)
+	go f.svc.Listen(lctx)
 	sn := &snaps{}
 	sn.s.Store(&registry.Snapshot{})
 	gw := New(sn, f.ids, nil, &recorder{}, "test").WithAgents(f.svc, 0)
@@ -126,7 +129,7 @@ func TestA2ABridge(t *testing.T) {
 	if rerr != nil || task.Kind != "task" || task.Status.State != "submitted" || task.Metadata["to"] != b || task.History[0].Parts[0].Text != "review PR 12" {
 		t.Fatalf("send = %+v, %+v", task, rerr)
 	}
-	if _, err := f.svc.Reply(ctx, bob, task.ID, "which branch?", proxydb.TaskInputRequired); err != nil {
+	if _, err := f.svc.Reply(ctx, bob, task.ID, "which branch?", proxydb.TaskInputRequired, false); err != nil {
 		t.Fatal(err)
 	}
 	got, rerr := f.rpc(t, aliceKey, b, "tasks/get", map[string]any{"id": task.ID})
@@ -148,10 +151,10 @@ func TestA2ABridge(t *testing.T) {
 	a2aPoll = 20 * time.Millisecond
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		inbox, _ := f.svc.Inbox(ctx, bob, false, 10)
+		inbox, _ := f.svc.Inbox(ctx, bob, agents.Query{All: false, Limit: 10})
 		for _, tk := range inbox {
 			if tk.Status == proxydb.TaskSubmitted {
-				_, _ = f.svc.Reply(ctx, bob, tk.ID, "done", proxydb.TaskCompleted)
+				_, _ = f.svc.Reply(ctx, bob, tk.ID, "done", proxydb.TaskCompleted, false)
 			}
 		}
 	}()
