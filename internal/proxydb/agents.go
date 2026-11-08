@@ -44,6 +44,9 @@ func TaskTerminal(status string) bool {
 // ErrTaskClosed is a change to a task that has already ended.
 var ErrTaskClosed = errors.New("proxydb: task already ended")
 
+// ErrTaskOpen is a correction to a task that has not ended: reply instead.
+var ErrTaskOpen = errors.New("proxydb: task has not ended")
+
 // ErrContextFull is a message beyond the limit of one conversation.
 var ErrContextFull = errors.New("proxydb: conversation message limit reached")
 
@@ -91,9 +94,18 @@ type AgentMessage struct {
 	FromAgent string
 	FromName  string
 	Role      string // "user" for the sender of the task, "agent" for its recipient
-	Text      string
-	CreatedAt time.Time
+	Author    string // AuthorAgent, or AuthorOwner when the agent's person wrote it
+	// Correction amends an answer after the task ended.
+	Correction bool
+	Text       string
+	CreatedAt  time.Time
 }
+
+// Who wrote a message on its side of the task.
+const (
+	AuthorAgent = "agent"
+	AuthorOwner = "owner"
+)
 
 const agentColumns = `a.key_id, a.name, a.description, a.skills, a.repos, a.accept_from, a.recording,
 	k.name, k.owner, COALESCE(k.org_id::text, ''), COALESCE(k.team_id::text, ''), k.disabled_at IS NOT NULL,
@@ -241,7 +253,7 @@ func lockContext(ctx context.Context, tx pgx.Tx, contextID string, maxMessages i
 
 // AddAgentMessage appends a message to a task that has not ended and moves it
 // to status; reason is kept with the status. ErrTaskClosed once it has ended.
-func (d *DB) AddAgentMessage(ctx context.Context, taskID, fromAgent, role, text, status, reason, reasonCode string, maxMessages int64) (*AgentTask, error) {
+func (d *DB) AddAgentMessage(ctx context.Context, taskID, fromAgent, role, author, text, status, reason, reasonCode string, maxMessages int64) (*AgentTask, error) {
 	var t *AgentTask
 	err := pgx.BeginFunc(ctx, d.pool, func(tx pgx.Tx) error {
 		var contextID, from, to string
@@ -270,14 +282,61 @@ func (d *DB) AddAgentMessage(ctx context.Context, taskID, fromAgent, role, text,
 		}
 		if text != "" {
 			if _, err := tx.Exec(ctx,
-				`INSERT INTO agent_message (task_id, context_id, from_agent, role, text) VALUES ($1, $2, $3, $4, $5)`,
-				taskID, contextID, fromAgent, role, text); err != nil {
+				`INSERT INTO agent_message (task_id, context_id, from_agent, role, author, text) VALUES ($1, $2, $3, $4, $5, $6)`,
+				taskID, contextID, fromAgent, role, author, text); err != nil {
 				return err
 			}
 		}
 		if err := notifyAgents(ctx, tx, from, to); err != nil {
 			return err
 		}
+		t, err = getAgentTask(ctx, tx, taskID)
+		return err
+	})
+	return t, err
+}
+
+// ErrCorrectionLate is a correction to a task that ended longer ago than the
+// window allows.
+var ErrCorrectionLate = errors.New("proxydb: the task ended too long ago to correct")
+
+// AddAgentCorrection appends a correction to a task that has ended, within
+// window of its last change; the task keeps its status, and its change wakes
+// both agents. ErrTaskOpen while it has not ended.
+func (d *DB) AddAgentCorrection(ctx context.Context, taskID, fromAgent, author, text string, window time.Duration, maxMessages int64) (*AgentTask, error) {
+	var t *AgentTask
+	err := pgx.BeginFunc(ctx, d.pool, func(tx pgx.Tx) error {
+		var contextID, from, to, status string
+		var late bool
+		if err := tx.QueryRow(ctx,
+			`SELECT context_id, from_agent, to_agent, status, updated_at < clock_timestamp() - make_interval(secs => $2) FROM agent_task WHERE id = $1`,
+			taskID, window.Seconds()).Scan(&contextID, &from, &to, &status, &late); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if !TaskTerminal(status) {
+			return ErrTaskOpen
+		}
+		if late {
+			return ErrCorrectionLate
+		}
+		if err := lockContext(ctx, tx, contextID, maxMessages); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO agent_message (task_id, context_id, from_agent, role, author, correction, text) VALUES ($1, $2, $3, 'agent', $4, true, $5)`,
+			taskID, contextID, fromAgent, author, text); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE agent_task SET updated_at = clock_timestamp() WHERE id = $1`, taskID); err != nil {
+			return err
+		}
+		if err := notifyAgents(ctx, tx, from, to); err != nil {
+			return err
+		}
+		var err error
 		t, err = getAgentTask(ctx, tx, taskID)
 		return err
 	})
@@ -371,7 +430,7 @@ func withMessages(ctx context.Context, q querier, tasks []*AgentTask) error {
 		ids = append(ids, t.ID)
 	}
 	rows, err := q.Query(ctx,
-		`SELECT m.id, m.task_id, m.context_id, m.from_agent, COALESCE(a.name, ''), m.role, m.text, m.created_at
+		`SELECT m.id, m.task_id, m.context_id, m.from_agent, COALESCE(a.name, ''), m.role, m.author, m.correction, m.text, m.created_at
 		 FROM agent_message m LEFT JOIN agent a ON a.key_id = m.from_agent
 		 WHERE m.task_id = ANY($1::uuid[]) ORDER BY m.id`, ids)
 	if err != nil {
@@ -380,7 +439,7 @@ func withMessages(ctx context.Context, q querier, tasks []*AgentTask) error {
 	defer rows.Close()
 	for rows.Next() {
 		var m AgentMessage
-		if err := rows.Scan(&m.ID, &m.TaskID, &m.ContextID, &m.FromAgent, &m.FromName, &m.Role, &m.Text, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.TaskID, &m.ContextID, &m.FromAgent, &m.FromName, &m.Role, &m.Author, &m.Correction, &m.Text, &m.CreatedAt); err != nil {
 			return err
 		}
 		if t := byID[m.TaskID]; t != nil {

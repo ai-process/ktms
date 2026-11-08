@@ -113,9 +113,19 @@ func (a *app) agentsCmd() *cobra.Command {
 				if t.GetStatusReason() != "" {
 					fmt.Fprintf(a.stdout, " (%s)", t.GetStatusReason())
 				}
+				if t.GetAnsweredBy() == "owner" {
+					fmt.Fprint(a.stdout, ", answered by the owner")
+				}
 				fmt.Fprintf(a.stdout, "\ncontext %s, depth %d\n", t.GetContextId(), t.GetDepth())
 				for _, m := range t.GetMessages() {
-					fmt.Fprintf(a.stdout, "\n%s  %s:\n%s\n", when(m.GetCreatedAt()), m.GetFrom(), m.GetText())
+					who := m.GetFrom()
+					if m.GetAuthor() == "owner" {
+						who += "'s owner"
+					}
+					if m.GetCorrection() {
+						who += ", correction"
+					}
+					fmt.Fprintf(a.stdout, "\n%s  %s:\n%s\n", when(m.GetCreatedAt()), who, m.GetText())
 				}
 				return nil
 			})

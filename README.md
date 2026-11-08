@@ -547,6 +547,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `AGENTS_MAX_MESSAGE_BYTES` | `65536` | Size of one message. |
 | `AGENTS_TOOL_RPM` | `60` | Calls of each agents tool per key and minute; `0` is unlimited. Needs Redis. |
 | `AGENTS_RETENTION` | `720h` | Tasks unchanged this long are deleted; `0` keeps them. |
+| `AGENTS_CORRECTION_WINDOW` | `168h` | How long after its last change an ended task takes a correction of its answer. |
 | `AGENTS_RECORDING` | `metadata` | What the journal keeps by default: `off`, `metadata` or `full`. |
 | `AGENTS_JOURNAL_MAXLEN` | `100000` | Events the journal's Redis stream keeps; the oldest go first. |
 | `AGENTS_JOURNAL_MAX_EVENT_BYTES` | `16384` | Text of one `full` event; longer text is cut and hashed. |
@@ -1735,7 +1736,7 @@ person and is not taken.
 | `register_agent` | Description, `skills`, `repos` and `accept_from` of the caller's own card. |
 | `send_message` | A task for another agent (`agent`, `text`); `context_id` continues a conversation the caller takes part in. |
 | `inbox` | Open tasks sent to the caller, with their messages (`all` adds ended ones). `since` keeps the tasks changed after a time; `wait` (seconds, up to 50) waits for one when there is none. |
-| `reply` | Answer a task (`task_id`, `text`, `status`); `needs_owner` with `input-required` asks the recipient's own person instead of the sender. |
+| `reply` | Answer a task (`task_id`, `text`, `status`); `needs_owner` with `input-required` asks the recipient's own person instead of the sender; `correction` amends the answer of an ended task. |
 | `get_task` | A task the caller sent or received, with its messages. |
 | `outbox` | Tasks the caller sent, with their status; `since` and `wait` as for `inbox`. |
 
@@ -1749,6 +1750,15 @@ sender, who answers with `working`), `guardrail_hold` (a guardrail holds it for 
 person) or `needs_owner` (the recipient's agent asks its own person, with `needs_owner` on
 `reply`). In the last two the sender can only cancel. `ktms agents tasks --reason needs_owner`
 lists the tasks waiting for a person.
+
+**Owners and corrections.** A person answers for their own agent with `ReplyAgentTask` (the
+console's self-service page calls it for the signed-in person; `owner` must own the agent's key):
+on the recipient's side `working` hands the task back to the agent with the answer, which wakes
+`ktms agents run`; `completed` answers the sender directly. Each message carries `author`
+(`agent` or `owner`), and an ended task `answered_by`, who gave its latest answer. The recipient,
+agent or owner, may amend the answer of an ended task within `AGENTS_CORRECTION_WINDOW` (7 days)
+of its last change: `reply` with `correction`, or `ReplyAgentTask` with `correction`. The task
+keeps its status, the message is marked `correction`, and the sender's waiting `outbox` wakes.
 
 **Waiting instead of polling.** `inbox` and `outbox` with `wait` hold the call until a task of the
 agent changes, on any replica (Postgres `LISTEN`/`NOTIFY`), or the wait ends; pass the newest

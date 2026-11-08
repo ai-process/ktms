@@ -102,6 +102,9 @@ func TestDue(t *testing.T) {
 		"held":              {Task{Status: "input-required", Reason: "guardrail: injection", Messages: []Message{user}}, false},
 		"progress note":     {task("1", "working", user, Message{Role: "agent", Text: "halfway"}), false},
 		"claimed, died":     {task("1", "working", user, Message{Role: "agent", Text: Claim}), true},
+		"owner hands back":  {task("1", "working", user, Message{Role: "agent", Author: "owner", Text: "go ahead, share it"}), true},
+		"owner answered":    {task("1", "completed", user, Message{Role: "agent", Author: "owner", Text: "done"}), false},
+		"owner asks sender": {task("1", "input-required", user, Message{Role: "agent", Author: "owner", Text: "which?"}), false},
 		"ended":             {task("1", "completed", user), false},
 	}
 	for name, c := range cases {

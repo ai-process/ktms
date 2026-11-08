@@ -130,12 +130,13 @@ type a2aPart struct {
 }
 
 type a2aMessage struct {
-	Kind      string    `json:"kind"`
-	MessageID string    `json:"messageId"`
-	Role      string    `json:"role"`
-	Parts     []a2aPart `json:"parts"`
-	TaskID    string    `json:"taskId,omitempty"`
-	ContextID string    `json:"contextId,omitempty"`
+	Kind      string            `json:"kind"`
+	MessageID string            `json:"messageId"`
+	Role      string            `json:"role"`
+	Parts     []a2aPart         `json:"parts"`
+	TaskID    string            `json:"taskId,omitempty"`
+	ContextID string            `json:"contextId,omitempty"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
 }
 
 type a2aStatus struct {
@@ -162,11 +163,14 @@ type taskJSON struct {
 	Status    string    `json:"status"`
 	Reason    string    `json:"reason"`
 	Code      string    `json:"reason_code"`
+	Answered  string    `json:"answered_by"`
 	Updated   time.Time `json:"updated_at"`
 	Messages  []struct {
-		From string `json:"from"`
-		Role string `json:"role"`
-		Text string `json:"text"`
+		From       string `json:"from"`
+		Role       string `json:"role"`
+		Author     string `json:"author"`
+		Correction bool   `json:"correction"`
+		Text       string `json:"text"`
 	} `json:"messages"`
 }
 
@@ -180,9 +184,19 @@ func (t taskJSON) a2a(historyLength int) a2aTask {
 	if t.Code != "" {
 		out.Metadata["reason_code"] = t.Code
 	}
+	if t.Answered != "" {
+		out.Metadata["answered_by"] = t.Answered
+	}
 	for i, m := range t.Messages {
-		out.History = append(out.History, a2aMessage{Kind: "message", MessageID: t.TaskID + "-" + strconv.Itoa(i+1), Role: m.Role,
-			Parts: []a2aPart{{Kind: "text", Text: m.Text}}, TaskID: t.TaskID, ContextID: t.ContextID})
+		msg := a2aMessage{Kind: "message", MessageID: t.TaskID + "-" + strconv.Itoa(i+1), Role: m.Role,
+			Parts: []a2aPart{{Kind: "text", Text: m.Text}}, TaskID: t.TaskID, ContextID: t.ContextID}
+		if m.Author == "owner" || m.Correction {
+			msg.Metadata = map[string]string{"author": m.Author}
+			if m.Correction {
+				msg.Metadata["correction"] = "true"
+			}
+		}
+		out.History = append(out.History, msg)
 	}
 	if n := len(out.History); n > 0 && out.History[n-1].Role == "agent" {
 		last := out.History[n-1]

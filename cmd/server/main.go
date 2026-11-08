@@ -320,6 +320,7 @@ func main() {
 			svc, closeJournal := newAgents(rootCtx, cfg, db, rails, redisClient)
 			defer closeJournal()
 			gw.WithAgents(svc, int32(cfg.AgentsToolRPM))
+			adminSrv.SetAgents(svc)
 		}
 		extra = append(extra, gw)
 	}
@@ -413,7 +414,8 @@ func newAgents(ctx context.Context, cfg *config.Config, db *proxydb.DB, rails *g
 		Recording:       cfg.AgentsRecording,
 		Retention:       cfg.AgentsRetention,
 		// A waiting inbox answers well before the HTTP server would cut it off.
-		MaxWait: max(time.Second, min(50*time.Second, cfg.HTTPAPITimeout-5*time.Second)),
+		MaxWait:          max(time.Second, min(50*time.Second, cfg.HTTPAPITimeout-5*time.Second)),
+		CorrectionWindow: cfg.AgentsCorrectionWindow,
 	}, agents.NewGuard(rails), journal)
 	go svc.Sweep(ctx, time.Hour)
 	go svc.Listen(ctx)

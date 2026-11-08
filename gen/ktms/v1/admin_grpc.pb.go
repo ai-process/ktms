@@ -66,6 +66,7 @@ const (
 	AdminService_SetAgentRecording_FullMethodName       = "/ktms.v1.AdminService/SetAgentRecording"
 	AdminService_ListAgentTasks_FullMethodName          = "/ktms.v1.AdminService/ListAgentTasks"
 	AdminService_GetAgentTask_FullMethodName            = "/ktms.v1.AdminService/GetAgentTask"
+	AdminService_ReplyAgentTask_FullMethodName          = "/ktms.v1.AdminService/ReplyAgentTask"
 )
 
 // AdminServiceClient is the client API for AdminService service.
@@ -133,6 +134,10 @@ type AdminServiceClient interface {
 	// GetAgentTask returns the messages too, so it needs "agents:read" (or
 	// "admin"); ListAgents and ListAgentTasks accept it besides "admin:read".
 	GetAgentTask(ctx context.Context, in *GetAgentTaskRequest, opts ...grpc.CallOption) (*AgentTask, error)
+	// ReplyAgentTask answers a task, or corrects the answer of an ended one, as
+	// the owner of one of its agents: the console's self-service page calls it
+	// for the signed-in person. owner must be the owner of the agent's key.
+	ReplyAgentTask(ctx context.Context, in *ReplyAgentTaskRequest, opts ...grpc.CallOption) (*AgentTask, error)
 }
 
 type adminServiceClient struct {
@@ -613,6 +618,16 @@ func (c *adminServiceClient) GetAgentTask(ctx context.Context, in *GetAgentTaskR
 	return out, nil
 }
 
+func (c *adminServiceClient) ReplyAgentTask(ctx context.Context, in *ReplyAgentTaskRequest, opts ...grpc.CallOption) (*AgentTask, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AgentTask)
+	err := c.cc.Invoke(ctx, AdminService_ReplyAgentTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AdminServiceServer is the server API for AdminService service.
 // All implementations must embed UnimplementedAdminServiceServer
 // for forward compatibility.
@@ -678,6 +693,10 @@ type AdminServiceServer interface {
 	// GetAgentTask returns the messages too, so it needs "agents:read" (or
 	// "admin"); ListAgents and ListAgentTasks accept it besides "admin:read".
 	GetAgentTask(context.Context, *GetAgentTaskRequest) (*AgentTask, error)
+	// ReplyAgentTask answers a task, or corrects the answer of an ended one, as
+	// the owner of one of its agents: the console's self-service page calls it
+	// for the signed-in person. owner must be the owner of the agent's key.
+	ReplyAgentTask(context.Context, *ReplyAgentTaskRequest) (*AgentTask, error)
 	mustEmbedUnimplementedAdminServiceServer()
 }
 
@@ -828,6 +847,9 @@ func (UnimplementedAdminServiceServer) ListAgentTasks(context.Context, *ListAgen
 }
 func (UnimplementedAdminServiceServer) GetAgentTask(context.Context, *GetAgentTaskRequest) (*AgentTask, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetAgentTask not implemented")
+}
+func (UnimplementedAdminServiceServer) ReplyAgentTask(context.Context, *ReplyAgentTaskRequest) (*AgentTask, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReplyAgentTask not implemented")
 }
 func (UnimplementedAdminServiceServer) mustEmbedUnimplementedAdminServiceServer() {}
 func (UnimplementedAdminServiceServer) testEmbeddedByValue()                      {}
@@ -1696,6 +1718,24 @@ func _AdminService_GetAgentTask_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AdminService_ReplyAgentTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplyAgentTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).ReplyAgentTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_ReplyAgentTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).ReplyAgentTask(ctx, req.(*ReplyAgentTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AdminService_ServiceDesc is the grpc.ServiceDesc for AdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1890,6 +1930,10 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetAgentTask",
 			Handler:    _AdminService_GetAgentTask_Handler,
+		},
+		{
+			MethodName: "ReplyAgentTask",
+			Handler:    _AdminService_ReplyAgentTask_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

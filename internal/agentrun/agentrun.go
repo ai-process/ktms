@@ -31,10 +31,12 @@ type Task struct {
 }
 
 type Message struct {
-	From string    `json:"from"`
-	Role string    `json:"role"`
-	Text string    `json:"text"`
-	At   time.Time `json:"at"`
+	From       string    `json:"from"`
+	Role       string    `json:"role"`
+	Author     string    `json:"author"` // owner when the agent's person wrote it
+	Correction bool      `json:"correction,omitempty"`
+	Text       string    `json:"text"`
+	At         time.Time `json:"at"`
 }
 
 // Inbox is the slice of the agents server the loop uses.
@@ -56,7 +58,7 @@ const Claim = "Working on it."
 
 // Due reports whether a task waits for this agent: open, not waiting for its
 // sender (input-required, a guardrail hold included), and its last message is
-// not this agent's answer.
+// not this agent's answer, unless its owner wrote it to hand the task back.
 func Due(t Task) bool {
 	if t.Status != "submitted" && t.Status != "working" {
 		return false
@@ -65,6 +67,9 @@ func Due(t Task) bool {
 		return true
 	}
 	last := t.Messages[len(t.Messages)-1]
+	if last.Role == "agent" && last.Author == "owner" {
+		return t.Status == "working"
+	}
 	return last.Role != "agent" || last.Text == Claim
 }
 
@@ -227,7 +232,14 @@ func Prompt(t Task, instruction string, max int) string {
 	head := fmt.Sprintf("You are the agent %s. The agent %s sent you a task through Keystone (task %s).\n\n%s\n\nConversation:\n", t.To, t.From, t.TaskID, instruction)
 	msgs := make([]string, len(t.Messages))
 	for i, m := range t.Messages {
-		msgs[i] = fmt.Sprintf("\n[%s, %s]\n%s\n", m.From, m.Role, m.Text)
+		who := m.From + ", " + m.Role
+		if m.Author == "owner" {
+			who = m.From + "'s owner (a person), " + m.Role
+		}
+		if m.Correction {
+			who += ", correcting an earlier answer"
+		}
+		msgs[i] = fmt.Sprintf("\n[%s]\n%s\n", who, m.Text)
 	}
 	size := len(head)
 	for _, m := range msgs {

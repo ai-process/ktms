@@ -12,7 +12,7 @@ import (
 
 // Event is one journal entry of a conversation.
 type Event struct {
-	Type      string    `json:"type"` // task.created, task.<status>
+	Type      string    `json:"type"` // task.created, task.<status>, task.corrected
 	At        time.Time `json:"at"`
 	TaskID    string    `json:"task_id"`
 	ContextID string    `json:"context_id"`
@@ -24,6 +24,8 @@ type Event struct {
 	Reason    string    `json:"reason,omitempty"`
 	Depth     int32     `json:"depth"`
 	Bytes     int       `json:"bytes"`
+	// owner when the agent's person wrote the message, through the console.
+	Author string `json:"author,omitempty"`
 	// Only at recording level full; cut to the event limit, with the hash of the whole.
 	Text      string `json:"text,omitempty"`
 	Truncated bool   `json:"truncated,omitempty"`
