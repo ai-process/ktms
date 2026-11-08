@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -113,6 +114,27 @@ func TestAgentKeysAndConversations(t *testing.T) {
 	}
 	if _, err := s.ListAgentTasks(ctx, &pb.ListAgentTasksRequest{Agent: names[1], ReasonCodes: []string{"bored"}}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("unknown reason: %v", err)
+	}
+
+	// The owner of the recipient answers for it, then corrects the answer.
+	ownerOf := keys.GetKeys()[0].GetOwner()
+	if _, err := s.ReplyAgentTask(ctx, &pb.ReplyAgentTaskRequest{Agent: names[1], Owner: ownerOf, TaskId: task.ID, Text: "x"}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("without the inbox: %v", err)
+	}
+	s.SetAgents(svc)
+	if _, err := s.ReplyAgentTask(ctx, &pb.ReplyAgentTaskRequest{Agent: names[1], Owner: "eve@x.com", TaskId: task.ID, Text: "x"}); status.Code(err) != codes.NotFound {
+		t.Fatalf("another person's agent: %v", err)
+	}
+	done, err := s.ReplyAgentTask(ctx, &pb.ReplyAgentTaskRequest{Agent: names[1], Owner: strings.ToUpper(ownerOf), TaskId: task.ID, Text: "hi from the person"})
+	if err != nil || done.GetStatus() != "completed" || done.GetAnsweredBy() != "owner" || done.GetMessages()[1].GetAuthor() != "owner" {
+		t.Fatalf("owner's answer = %v, %v", done, err)
+	}
+	fixed, err := s.ReplyAgentTask(ctx, &pb.ReplyAgentTaskRequest{Agent: names[1], Owner: ownerOf, TaskId: task.ID, Text: "better answer", Correction: true})
+	if err != nil || fixed.GetStatus() != "completed" || !fixed.GetMessages()[2].GetCorrection() {
+		t.Fatalf("owner's correction = %v, %v", fixed, err)
+	}
+	if _, err := s.ReplyAgentTask(ctx, &pb.ReplyAgentTaskRequest{Agent: names[1], Owner: ownerOf, TaskId: task.ID, Text: "x", Status: "failed", Correction: true}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("a correction with a status: %v", err)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
@@ -562,5 +563,88 @@ func TestWaitSinceAndReasons(t *testing.T) {
 	start := time.Now()
 	if ts, err := s.Inbox(ctx, bob, Query{Since: w.UpdatedAt, Wait: time.Second}); err != nil || len(ts) != 0 || time.Since(start) < time.Second {
 		t.Fatalf("idle wait = %d after %s, %v", len(ts), time.Since(start), err)
+	}
+}
+
+func TestOwnerAnswersAndCorrections(t *testing.T) {
+	db, pool := testDB(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s := New(db, Config{}, nil, nil)
+	go s.Listen(ctx)
+	alice := key(t, pool, "alice", "alice@x.com", nil)
+	bob := key(t, pool, "bob", "bob@x.com", nil)
+	if _, err := s.Me(ctx, bob); err != nil {
+		t.Fatal(err)
+	}
+	bname := strings.ToLower(bob.Name)
+	if _, err := s.AsOwner(ctx, bname, "alice@x.com"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("another person's agent: %v", err)
+	}
+	me, err := s.AsOwner(ctx, bname, " BOB@x.com ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := s.Send(ctx, alice, bname, "may we share the repo?", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Reply(ctx, bob, task.ID, "asking my person", proxydb.TaskInputRequired, true); err != nil {
+		t.Fatal(err)
+	}
+	// The owner hands the task back to the agent with an answer.
+	back, err := s.OwnerReply(ctx, me, task.ID, "yes, share it", proxydb.TaskWorking)
+	if err != nil || back.Status != proxydb.TaskWorking || back.Messages[len(back.Messages)-1].Author != proxydb.AuthorOwner {
+		t.Fatalf("owner's answer = %+v, %v", back, err)
+	}
+	if _, err := s.Correct(ctx, bob, task.ID, "x"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a correction of an open task: %v", err)
+	}
+	done, err := s.Reply(ctx, bob, task.ID, "shared: github.com/x/y", proxydb.TaskCompleted, false)
+	if err != nil || AnsweredBy(done) != proxydb.AuthorAgent {
+		t.Fatalf("agent's answer = %+v, %v", done, err)
+	}
+	if _, err := s.Correct(ctx, alice, task.ID, "x"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a correction by the sender: %v", err)
+	}
+
+	// The sender's waiting outbox wakes on the owner's correction.
+	type got struct {
+		tasks []*proxydb.AgentTask
+		err   error
+	}
+	woke := make(chan got, 1)
+	go func() {
+		ts, err := s.Outbox(ctx, alice, Query{Since: done.UpdatedAt, Wait: 20 * time.Second})
+		woke <- got{ts, err}
+	}()
+	time.Sleep(300 * time.Millisecond)
+	fixed, err := s.OwnerCorrect(ctx, me, task.ID, "use github.com/x/z instead")
+	if err != nil || fixed.Status != proxydb.TaskCompleted || AnsweredBy(fixed) != proxydb.AuthorOwner || !fixed.Messages[len(fixed.Messages)-1].Correction {
+		t.Fatalf("owner's correction = %+v, %v", fixed, err)
+	}
+	select {
+	case r := <-woke:
+		if r.err != nil || len(r.tasks) != 1 || r.tasks[0].ID != task.ID {
+			t.Fatalf("woken outbox = %+v, %v", r.tasks, r.err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the correction did not wake the sender's outbox")
+	}
+
+	// Past the window a correction is refused.
+	late := New(db, Config{CorrectionWindow: time.Millisecond}, nil, nil)
+	time.Sleep(20 * time.Millisecond)
+	if _, err := late.Correct(ctx, bob, task.ID, "too late"); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "ago") {
+		t.Fatalf("a late correction: %v", err)
+	}
+	// Over MCP: reply with correction, and without a status.
+	res, err := s.Call(ctx, bob, "reply", json.RawMessage(`{"task_id":"`+task.ID+`","text":"one more fix","correction":true,"status":"failed"}`))
+	if err != nil || !res.IsError {
+		t.Fatalf("correction with a status over MCP: %+v, %v", res, err)
+	}
+	res, err = s.Call(ctx, bob, "reply", json.RawMessage(`{"task_id":"`+task.ID+`","text":"one more fix","correction":true}`))
+	if err != nil || res.IsError || !strings.Contains(res.Content[0].(*mcp.TextContent).Text, `"answered_by":"agent"`) {
+		t.Fatalf("correction over MCP: %+v, %v", res, err)
 	}
 }

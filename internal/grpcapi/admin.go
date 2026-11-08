@@ -40,6 +40,7 @@ type AdminServer struct {
 	nodeMgr  *nodes.Manager
 	explain  RouteExplainer
 	mcpTools MCPToolLister
+	agents   OwnerReplier
 	// onChange is called after a successful config mutation so this replica
 	// picks the change up immediately instead of waiting for the poll.
 	onChange func()

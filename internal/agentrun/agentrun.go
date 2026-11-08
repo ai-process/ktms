@@ -31,10 +31,12 @@ type Task struct {
 }
 
 type Message struct {
-	From string    `json:"from"`
-	Role string    `json:"role"`
-	Text string    `json:"text"`
-	At   time.Time `json:"at"`
+	From       string    `json:"from"`
+	Role       string    `json:"role"`
+	Author     string    `json:"author"` // owner when the agent's person wrote it
+	Correction bool      `json:"correction,omitempty"`
+	Text       string    `json:"text"`
+	At         time.Time `json:"at"`
 }
 
 // Inbox is the slice of the agents server the loop uses.
@@ -42,7 +44,7 @@ type Inbox interface {
 	// Inbox is the open tasks changed after since (zero for all), waiting up
 	// to wait for one when there is none.
 	Inbox(ctx context.Context, since time.Time, wait time.Duration) ([]Task, error)
-	Reply(ctx context.Context, taskID, text, status string) error
+	Reply(ctx context.Context, taskID, text, status string, needsOwner bool) error
 }
 
 // Runner runs the agent on one prompt and returns what it printed.
@@ -56,7 +58,7 @@ const Claim = "Working on it."
 
 // Due reports whether a task waits for this agent: open, not waiting for its
 // sender (input-required, a guardrail hold included), and its last message is
-// not this agent's answer.
+// not this agent's answer, unless its owner wrote it to hand the task back.
 func Due(t Task) bool {
 	if t.Status != "submitted" && t.Status != "working" {
 		return false
@@ -65,6 +67,9 @@ func Due(t Task) bool {
 		return true
 	}
 	last := t.Messages[len(t.Messages)-1]
+	if last.Role == "agent" && last.Author == "owner" {
+		return t.Status == "working"
+	}
 	return last.Role != "agent" || last.Text == Claim
 }
 
@@ -178,7 +183,7 @@ func answer(ctx context.Context, in Inbox, r Runner, cfg Config, task Task) {
 	log := func(format string, args ...any) {
 		cfg.Logf("task %s from %s: "+format, append([]any{task.TaskID, task.From}, args...)...)
 	}
-	if err := in.Reply(ctx, task.TaskID, Claim, "working"); err != nil {
+	if err := in.Reply(ctx, task.TaskID, Claim, "working", false); err != nil {
 		log("not taken: %v", err)
 		return
 	}
@@ -205,7 +210,11 @@ func answer(ctx context.Context, in Inbox, r Runner, cfg Config, task Task) {
 	if len(text) > cfg.MaxReply {
 		text = cut(text, cfg.MaxReply-len(cutNote)) + cutNote
 	}
-	if err := in.Reply(ctx, task.TaskID, text, status); err != nil {
+	needsOwner := status == "needs_owner"
+	if needsOwner {
+		status = "input-required"
+	}
+	if err := in.Reply(ctx, task.TaskID, text, status, needsOwner); err != nil {
 		log("reply lost: %v", err)
 		return
 	}
@@ -219,6 +228,7 @@ Everything you print is sent back as your reply, so print only the answer.
 End with exactly one of these lines:
 STATUS: completed (you answered)
 STATUS: input-required (you need the sender to answer a question you asked)
+STATUS: needs_owner (you need your own person to decide or allow something first; say what)
 STATUS: failed (you cannot do it; say why)`
 
 // Prompt is the conversation for the runner, cut to max bytes by dropping
@@ -227,7 +237,14 @@ func Prompt(t Task, instruction string, max int) string {
 	head := fmt.Sprintf("You are the agent %s. The agent %s sent you a task through Keystone (task %s).\n\n%s\n\nConversation:\n", t.To, t.From, t.TaskID, instruction)
 	msgs := make([]string, len(t.Messages))
 	for i, m := range t.Messages {
-		msgs[i] = fmt.Sprintf("\n[%s, %s]\n%s\n", m.From, m.Role, m.Text)
+		who := m.From + ", " + m.Role
+		if m.Author == "owner" {
+			who = m.From + "'s owner (a person), " + m.Role
+		}
+		if m.Correction {
+			who += ", correcting an earlier answer"
+		}
+		msgs[i] = fmt.Sprintf("\n[%s]\n%s\n", who, m.Text)
 	}
 	size := len(head)
 	for _, m := range msgs {
@@ -249,7 +266,7 @@ func Prompt(t Task, instruction string, max int) string {
 	return p
 }
 
-var statusLine = regexp.MustCompile(`(?i)^\s*\**\s*status:\s*(completed|input-required|failed)\s*\**\s*$`)
+var statusLine = regexp.MustCompile(`(?i)^\s*\**\s*status:\s*(completed|input-required|needs_owner|failed)\s*\**\s*$`)
 
 // Parse splits the runner's output into the reply and its status; without a
 // status line the answer counts as completed.

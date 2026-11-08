@@ -85,6 +85,7 @@ func Tools() []*mcp.Tool {
 				"task_id":     str,
 				"text":        describe(str, "The answer or the question."),
 				"status":      map[string]any{"type": "string", "enum": []string{"completed", "working", "input-required", "failed", "canceled"}},
+				"correction":  map[string]any{"type": "boolean", "description": "Amend your answer to a task you received that has already ended; the task keeps its status and its sender sees the correction."},
 				"needs_owner": map[string]any{"type": "boolean", "description": "With status input-required: the question is for your own person, not the sender; the sender can only wait or cancel."},
 			}, "task_id"),
 		},
@@ -118,6 +119,7 @@ func (s *Service) Call(ctx context.Context, id *apikeys.Identity, tool string, a
 		Since      string `json:"since"`
 		Wait       int    `json:"wait"`
 		NeedsOwner bool   `json:"needs_owner"`
+		Correction bool   `json:"correction"`
 	}
 	if len(args) > 0 {
 		if err := json.Unmarshal(args, &in); err != nil {
@@ -161,7 +163,15 @@ func (s *Service) Call(ctx context.Context, id *apikeys.Identity, tool string, a
 		}
 	case "reply":
 		var t *proxydb.AgentTask
-		if t, err = s.Reply(ctx, id, in.TaskID, in.Text, in.Status, in.NeedsOwner); err == nil {
+		if in.Correction {
+			if in.Status != "" || in.NeedsOwner {
+				return toolError("a correction keeps the task's status: send it without status or needs_owner"), nil
+			}
+			t, err = s.Correct(ctx, id, in.TaskID, in.Text)
+		} else {
+			t, err = s.Reply(ctx, id, in.TaskID, in.Text, in.Status, in.NeedsOwner)
+		}
+		if err == nil {
 			out = taskView(t)
 		}
 	case "get_task":
@@ -231,10 +241,13 @@ func agentsView(me *proxydb.Agent, list []*proxydb.Agent) map[string]any {
 }
 
 type messageView struct {
-	From string    `json:"from"`
-	Role string    `json:"role"`
-	Text string    `json:"text"`
-	At   time.Time `json:"at"`
+	From string `json:"from"`
+	Role string `json:"role"`
+	// owner when the agent's person wrote it rather than the agent.
+	Author     string    `json:"author"`
+	Correction bool      `json:"correction,omitempty"`
+	Text       string    `json:"text"`
+	At         time.Time `json:"at"`
 }
 
 type taskOut struct {
@@ -245,7 +258,9 @@ type taskOut struct {
 	Status    string `json:"status"`
 	Reason    string `json:"reason,omitempty"`
 	// question, guardrail_hold or needs_owner while input-required.
-	ReasonCode string        `json:"reason_code,omitempty"`
+	ReasonCode string `json:"reason_code,omitempty"`
+	// Who gave the latest answer of an ended task: agent or owner.
+	AnsweredBy string        `json:"answered_by,omitempty"`
 	Depth      int32         `json:"depth,omitempty"`
 	Created    time.Time     `json:"created_at"`
 	Updated    time.Time     `json:"updated_at"`
@@ -256,9 +271,24 @@ func taskView(t *proxydb.AgentTask) taskOut {
 	v := taskOut{TaskID: t.ID, ContextID: t.ContextID, From: t.FromName, To: t.ToName, Status: t.Status, Reason: t.StatusReason, ReasonCode: t.ReasonCode,
 		Depth: t.Depth, Created: t.CreatedAt, Updated: t.UpdatedAt}
 	for _, m := range t.Messages {
-		v.Messages = append(v.Messages, messageView{From: m.FromName, Role: m.Role, Text: m.Text, At: m.CreatedAt})
+		v.Messages = append(v.Messages, messageView{From: m.FromName, Role: m.Role, Author: m.Author, Correction: m.Correction, Text: m.Text, At: m.CreatedAt})
 	}
+	v.AnsweredBy = AnsweredBy(t)
 	return v
+}
+
+// AnsweredBy is who wrote the latest answer of an ended task, a correction
+// included: agent or owner; "" while it is open or has no answer.
+func AnsweredBy(t *proxydb.AgentTask) string {
+	if !proxydb.TaskTerminal(t.Status) {
+		return ""
+	}
+	for i := len(t.Messages) - 1; i >= 0; i-- {
+		if t.Messages[i].Role == "agent" {
+			return t.Messages[i].Author
+		}
+	}
+	return ""
 }
 
 func tasksView(ts []*proxydb.AgentTask) []taskOut {

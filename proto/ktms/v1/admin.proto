@@ -627,6 +627,10 @@ service AdminService {
   // GetAgentTask returns the messages too, so it needs "agents:read" (or
   // "admin"); ListAgents and ListAgentTasks accept it besides "admin:read".
   rpc GetAgentTask(GetAgentTaskRequest) returns (AgentTask);
+  // ReplyAgentTask answers a task, or corrects the answer of an ended one, as
+  // the owner of one of its agents: the console's self-service page calls it
+  // for the signed-in person. owner must be the owner of the agent's key.
+  rpc ReplyAgentTask(ReplyAgentTaskRequest) returns (AgentTask);
 }
 
 message ExplainRouteRequest {
@@ -715,6 +719,20 @@ message AgentMessage {
   string role = 2; // user: the task's sender; agent: its recipient
   string text = 3;
   google.protobuf.Timestamp created_at = 4;
+  string author = 5; // agent, or owner when the agent's person wrote it
+  bool correction = 6; // amends the answer after the task ended
+}
+
+message ReplyAgentTaskRequest {
+  string agent = 1; // the agent the owner speaks for: the task's sender or recipient
+  string owner = 2; // the signed-in person; must own the agent's key
+  string task_id = 3;
+  string text = 4;
+  // As the reply tool: the recipient's side sets working, input-required,
+  // completed (default) or failed, the sender's side working or canceled.
+  string status = 5;
+  // Amend the answer of an ended task the agent received; status stays.
+  bool correction = 6;
 }
 
 // AgentTask follows A2A: status is submitted, working, input-required,
@@ -734,6 +752,7 @@ message AgentTask {
   // (a guardrail holds it for the recipient's person) or needs_owner (the
   // recipient's agent asks its own person).
   string reason_code = 11;
+  string answered_by = 12; // ended tasks: agent or owner, who gave the latest answer
 }
 
 message ListAgentTasksResponse {

@@ -56,7 +56,8 @@ type Store interface {
 	WithAgentMessages(ctx context.Context, tasks []*proxydb.AgentTask) error
 	AgentInContext(ctx context.Context, keyID, contextID string) (bool, error)
 	CreateAgentTask(ctx context.Context, t *proxydb.AgentTask, text string, maxMessages int64) error
-	AddAgentMessage(ctx context.Context, taskID, fromAgent, role, text, status, reason, reasonCode string, maxMessages int64) (*proxydb.AgentTask, error)
+	AddAgentMessage(ctx context.Context, taskID, fromAgent, role, author, text, status, reason, reasonCode string, maxMessages int64) (*proxydb.AgentTask, error)
+	AddAgentCorrection(ctx context.Context, taskID, fromAgent, author, text string, window time.Duration, maxMessages int64) (*proxydb.AgentTask, error)
 	GetAgentTask(ctx context.Context, id string) (*proxydb.AgentTask, error)
 	ListAgentTasks(ctx context.Context, f proxydb.TaskFilter) ([]*proxydb.AgentTask, error)
 	DeleteAgentTasksBefore(ctx context.Context, cutoff time.Time) (int64, error)
@@ -72,6 +73,8 @@ type Config struct {
 	Recording       string
 	Retention       time.Duration
 	MaxWait         time.Duration // longest wait of inbox and outbox; keep it under the HTTP timeout
+	// How long after its last change an ended task takes a correction.
+	CorrectionWindow time.Duration
 }
 
 func (c Config) withDefaults() Config {
@@ -86,6 +89,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.Recording == "" {
 		c.Recording = RecordMetadata
+	}
+	if c.CorrectionWindow <= 0 {
+		c.CorrectionWindow = 7 * 24 * time.Hour
 	}
 	if c.MaxWait <= 0 {
 		c.MaxWait = 50 * time.Second
@@ -425,6 +431,26 @@ func (s *Service) Reply(ctx context.Context, id *apikeys.Identity, taskID, text,
 	if err != nil {
 		return nil, err
 	}
+	return s.reply(ctx, me, proxydb.AuthorAgent, taskID, text, status, needsOwner)
+}
+
+// AsOwner is the agent named name, for its owner to act as: owner must be
+// the owner of its key. Anyone else's agent is not found, as a missing one.
+func (s *Service) AsOwner(ctx context.Context, name, owner string) (*proxydb.Agent, error) {
+	a, err := s.store.GetAgentByName(ctx, strings.ToLower(strings.TrimSpace(name)))
+	if errors.Is(err, proxydb.ErrNotFound) || err == nil && (a.Owner == "" || !strings.EqualFold(a.Owner, strings.TrimSpace(owner))) {
+		return nil, fmt.Errorf("%w: no agent %q of %s", ErrInvalid, name, owner)
+	}
+	return a, err
+}
+
+// OwnerReply answers a task as the owner of agent me (from AsOwner), on
+// whichever side of it the agent is; the message is marked as the owner's.
+func (s *Service) OwnerReply(ctx context.Context, me *proxydb.Agent, taskID, text, status string) (*proxydb.AgentTask, error) {
+	return s.reply(ctx, me, proxydb.AuthorOwner, taskID, text, status, false)
+}
+
+func (s *Service) reply(ctx context.Context, me *proxydb.Agent, author, taskID, text, status string, needsOwner bool) (*proxydb.AgentTask, error) {
 	t, err := s.party(ctx, me, taskID)
 	if err != nil {
 		return nil, err
@@ -469,7 +495,7 @@ func (s *Service) Reply(ctx context.Context, id *apikeys.Identity, taskID, text,
 		// person first, and holding it would leave neither side able to go on.
 		reason = guardNote + strings.TrimPrefix(reason, guardReason)
 	}
-	out, err := s.store.AddAgentMessage(ctx, t.ID, me.KeyID, role, text, status, reason, code, s.cfg.MaxMessages)
+	out, err := s.store.AddAgentMessage(ctx, t.ID, me.KeyID, role, author, text, status, reason, code, s.cfg.MaxMessages)
 	if errors.Is(err, proxydb.ErrTaskClosed) {
 		return nil, fmt.Errorf("%w: task %s has already ended", ErrInvalid, t.ID)
 	}
@@ -487,6 +513,59 @@ func (s *Service) Reply(ctx context.Context, id *apikeys.Identity, taskID, text,
 		peer = &proxydb.Agent{KeyID: other}
 	}
 	s.record(ctx, me, peer, out, "task."+status, text)
+	return out, nil
+}
+
+// Correct amends the answer of an ended task the caller received, within
+// CorrectionWindow of its last change. The task keeps its status; its change
+// wakes the sender's waiting outbox.
+func (s *Service) Correct(ctx context.Context, id *apikeys.Identity, taskID, text string) (*proxydb.AgentTask, error) {
+	me, err := s.Me(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return s.correct(ctx, me, proxydb.AuthorAgent, taskID, text)
+}
+
+// OwnerCorrect is Correct by the owner of agent me (from AsOwner).
+func (s *Service) OwnerCorrect(ctx context.Context, me *proxydb.Agent, taskID, text string) (*proxydb.AgentTask, error) {
+	return s.correct(ctx, me, proxydb.AuthorOwner, taskID, text)
+}
+
+func (s *Service) correct(ctx context.Context, me *proxydb.Agent, author, taskID, text string) (*proxydb.AgentTask, error) {
+	t, err := s.party(ctx, me, taskID)
+	if err != nil {
+		return nil, err
+	}
+	if t.ToAgent != me.KeyID {
+		return nil, fmt.Errorf("%w: only the task's recipient corrects its answer; send a new task instead", ErrInvalid)
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, fmt.Errorf("%w: text is required", ErrInvalid)
+	}
+	text, reason, err := s.check(ctx, text)
+	if err != nil {
+		return nil, err
+	}
+	if reason != "" {
+		// Like a reply, a flagged correction goes on with the reason in it.
+		text = guardNote + strings.TrimPrefix(reason, guardReason) + "\n\n" + text
+	}
+	out, err := s.store.AddAgentCorrection(ctx, t.ID, me.KeyID, author, text, s.cfg.CorrectionWindow, s.cfg.MaxMessages)
+	switch {
+	case errors.Is(err, proxydb.ErrTaskOpen):
+		return nil, fmt.Errorf("%w: task %s has not ended: answer it with reply", ErrInvalid, t.ID)
+	case errors.Is(err, proxydb.ErrCorrectionLate):
+		return nil, fmt.Errorf("%w: task %s ended more than %s ago; send a new task instead", ErrInvalid, t.ID, s.cfg.CorrectionWindow)
+	case err != nil:
+		return nil, s.limitErr(err)
+	}
+	observability.AgentMessagesTotal.WithLabelValues("corrected").Inc()
+	peer, err := s.store.GetAgentByKey(ctx, t.FromAgent)
+	if err != nil {
+		peer = &proxydb.Agent{KeyID: t.FromAgent}
+	}
+	s.record(ctx, me, peer, out, "task.corrected", text)
 	return out, nil
 }
 
@@ -557,6 +636,9 @@ func (s *Service) record(ctx context.Context, from, to *proxydb.Agent, t *proxyd
 		Type: kind, At: s.now().UTC(), TaskID: t.ID, ContextID: t.ContextID,
 		From: from.Name, FromOwner: from.Owner, To: to.Name, ToOwner: to.Owner,
 		Status: t.Status, Reason: t.StatusReason, Depth: t.Depth, Bytes: len(text),
+	}
+	if n := len(t.Messages); n > 0 && t.Messages[n-1].Author == proxydb.AuthorOwner {
+		ev.Author = proxydb.AuthorOwner
 	}
 	if lvl == RecordFull {
 		ev.Text = text

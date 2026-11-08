@@ -131,11 +131,56 @@ func (s *AdminServer) GetAgentTask(ctx context.Context, req *pb.GetAgentTaskRequ
 func taskProto(t *proxydb.AgentTask) *pb.AgentTask {
 	out := &pb.AgentTask{
 		TaskId: t.ID, ContextId: t.ContextID, From: t.FromName, To: t.ToName, Status: t.Status,
-		StatusReason: t.StatusReason, ReasonCode: t.ReasonCode, Depth: t.Depth,
+		StatusReason: t.StatusReason, ReasonCode: t.ReasonCode, Depth: t.Depth, AnsweredBy: agents.AnsweredBy(t),
 		CreatedAt: timestamppb.New(t.CreatedAt), UpdatedAt: timestamppb.New(t.UpdatedAt),
 	}
 	for _, m := range t.Messages {
-		out.Messages = append(out.Messages, &pb.AgentMessage{From: m.FromName, Role: m.Role, Text: m.Text, CreatedAt: timestamppb.New(m.CreatedAt)})
+		out.Messages = append(out.Messages, &pb.AgentMessage{From: m.FromName, Role: m.Role, Text: m.Text, CreatedAt: timestamppb.New(m.CreatedAt),
+			Author: m.Author, Correction: m.Correction})
 	}
 	return out
+}
+
+// OwnerReplier is the slice of the agents service ReplyAgentTask needs.
+type OwnerReplier interface {
+	AsOwner(ctx context.Context, name, owner string) (*proxydb.Agent, error)
+	OwnerReply(ctx context.Context, me *proxydb.Agent, taskID, text, status string) (*proxydb.AgentTask, error)
+	OwnerCorrect(ctx context.Context, me *proxydb.Agent, taskID, text string) (*proxydb.AgentTask, error)
+}
+
+// SetAgents lets ReplyAgentTask answer; without it the inbox is off.
+func (s *AdminServer) SetAgents(a OwnerReplier) { s.agents = a }
+
+func (s *AdminServer) ReplyAgentTask(ctx context.Context, req *pb.ReplyAgentTaskRequest) (*pb.AgentTask, error) {
+	if s.agents == nil {
+		return nil, status.Error(codes.FailedPrecondition, "the agents' inbox is off (AGENTS_ENABLED=false)")
+	}
+	if strings.TrimSpace(req.GetOwner()) == "" || req.GetAgent() == "" || req.GetTaskId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "agent, owner and task_id are required")
+	}
+	me, err := s.agents.AsOwner(ctx, req.GetAgent(), req.GetOwner())
+	if errors.Is(err, agents.ErrInvalid) {
+		return nil, status.Errorf(codes.NotFound, "no agent %q of %s", req.GetAgent(), req.GetOwner())
+	}
+	if err != nil {
+		return nil, dbStatus(err)
+	}
+	var t *proxydb.AgentTask
+	if req.GetCorrection() {
+		if req.GetStatus() != "" {
+			return nil, status.Error(codes.InvalidArgument, "a correction keeps the task's status: leave status empty")
+		}
+		t, err = s.agents.OwnerCorrect(ctx, me, req.GetTaskId(), req.GetText())
+	} else {
+		t, err = s.agents.OwnerReply(ctx, me, req.GetTaskId(), req.GetText(), req.GetStatus())
+	}
+	switch {
+	case errors.Is(err, agents.ErrInvalid):
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	case errors.Is(err, agents.ErrDenied):
+		return nil, status.Error(codes.PermissionDenied, err.Error())
+	case err != nil:
+		return nil, dbStatus(err)
+	}
+	return taskProto(t), nil
 }

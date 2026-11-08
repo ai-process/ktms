@@ -55,7 +55,7 @@ func (f *fakeInbox) tick() time.Time {
 	return f.clock
 }
 
-func (f *fakeInbox) Reply(_ context.Context, id, text, status string) error {
+func (f *fakeInbox) Reply(_ context.Context, id, text, status string, _ bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.replies = append(f.replies, reply{id, text, status})
@@ -102,6 +102,9 @@ func TestDue(t *testing.T) {
 		"held":              {Task{Status: "input-required", Reason: "guardrail: injection", Messages: []Message{user}}, false},
 		"progress note":     {task("1", "working", user, Message{Role: "agent", Text: "halfway"}), false},
 		"claimed, died":     {task("1", "working", user, Message{Role: "agent", Text: Claim}), true},
+		"owner hands back":  {task("1", "working", user, Message{Role: "agent", Author: "owner", Text: "go ahead, share it"}), true},
+		"owner answered":    {task("1", "completed", user, Message{Role: "agent", Author: "owner", Text: "done"}), false},
+		"owner asks sender": {task("1", "input-required", user, Message{Role: "agent", Author: "owner", Text: "which?"}), false},
 		"ended":             {task("1", "completed", user), false},
 	}
 	for name, c := range cases {
@@ -116,6 +119,7 @@ func TestParse(t *testing.T) {
 		{"LGTM\n\nSTATUS: completed\n", "LGTM", "completed"},
 		{"Which repo?\n**Status: input-required**", "Which repo?", "input-required"},
 		{"cannot\nstatus: FAILED", "cannot", "failed"},
+		{"May I share the repo?\nSTATUS: needs_owner", "May I share the repo?", "needs_owner"},
 		{"no status line", "no status line", "completed"},
 		{"STATUS: completed\nbut more after", "STATUS: completed\nbut more after", "completed"},
 	}

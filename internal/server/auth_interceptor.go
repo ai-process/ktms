@@ -102,6 +102,7 @@ var methodScopes = map[string]string{
 	method(pb.AdminService_ListAgents_FullMethodName):          apikeys.ScopeAdminRead,
 	method(pb.AdminService_SetAgentRecording_FullMethodName):   apikeys.ScopeAdmin,
 	method(pb.AdminService_ListAgentTasks_FullMethodName):      apikeys.ScopeAdminRead,
+	method(pb.AdminService_ReplyAgentTask_FullMethodName):      apikeys.ScopeAdmin,
 	method(pb.AdminService_GetAgentTask_FullMethodName):        apikeys.ScopeAgentsRead, // the messages themselves
 
 	method(pb.NodeRegistryService_RegisterNode_FullMethodName):   apikeys.ScopeNode,
