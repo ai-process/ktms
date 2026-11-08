@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -63,6 +64,8 @@ type Store interface {
 	DeleteAgentTasksBefore(ctx context.Context, cutoff time.Time) (int64, error)
 	CountAgentTasks(ctx context.Context) (map[string]int64, error)
 	ListenAgents(ctx context.Context, wake func(keyID string)) error
+	SetAgentTaskPinned(ctx context.Context, taskID, byAgent string, pinned bool, maxPinned int64) (*proxydb.AgentTask, error)
+	ContextRef(ctx context.Context, contextID string) (string, error)
 }
 
 // Config bounds conversations; zero values take the defaults.
@@ -75,6 +78,7 @@ type Config struct {
 	MaxWait         time.Duration // longest wait of inbox and outbox; keep it under the HTTP timeout
 	// How long after its last change an ended task takes a correction.
 	CorrectionWindow time.Duration
+	MaxPinned        int64 // tasks one agent may pin
 }
 
 func (c Config) withDefaults() Config {
@@ -95,6 +99,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.MaxWait <= 0 {
 		c.MaxWait = 50 * time.Second
+	}
+	if c.MaxPinned <= 0 {
+		c.MaxPinned = 200
 	}
 	return c
 }
@@ -243,20 +250,67 @@ func (s *Service) target(ctx context.Context, me *proxydb.Agent, name string) (*
 	return a, err
 }
 
-// List is the agents the caller can see, itself included.
-func (s *Service) List(ctx context.Context, id *apikeys.Identity) (me *proxydb.Agent, out []*proxydb.Agent, err error) {
+// List is the agents the caller can see, itself included; with query, those
+// whose card holds every word of it.
+func (s *Service) List(ctx context.Context, id *apikeys.Identity, query string) (me *proxydb.Agent, out []*proxydb.Agent, err error) {
 	if me, err = s.Me(ctx, id); err != nil {
 		return nil, nil, err
 	}
-	out, err = s.store.ListAgents(ctx, proxydb.AgentFilter{Org: &me.OrgID})
-	return me, out, err
+	if len(query) > maxQuery || len(strings.Fields(query)) > maxQueryWords {
+		return nil, nil, fmt.Errorf("%w: query takes up to %d words and %d bytes", ErrInvalid, maxQueryWords, maxQuery)
+	}
+	all, err := s.store.ListAgents(ctx, proxydb.AgentFilter{Org: &me.OrgID})
+	if err != nil {
+		return nil, nil, err
+	}
+	words := strings.Fields(strings.ToLower(query))
+	for _, a := range all {
+		if matches(a, words) {
+			out = append(out, a)
+		}
+	}
+	return me, out, nil
+}
+
+const maxQuery, maxQueryWords, maxRef = 200, 10, 200
+
+// CheckRef validates an external_ref: printable, up to maxRef bytes.
+func CheckRef(ref string) (string, error) {
+	ref = strings.TrimSpace(ref)
+	if len(ref) > maxRef {
+		return "", fmt.Errorf("%w: external_ref takes up to %d bytes", ErrInvalid, maxRef)
+	}
+	for _, r := range ref {
+		if !unicode.IsPrint(r) {
+			return "", fmt.Errorf("%w: external_ref must be printable, such as PROJ-123 or a URL", ErrInvalid)
+		}
+	}
+	return ref, nil
+}
+
+// matches: every word is in the agent's name, owner, description, skills or repos.
+func matches(a *proxydb.Agent, words []string) bool {
+	if len(words) == 0 {
+		return true
+	}
+	card := strings.ToLower(strings.Join(append([]string{a.Name, a.Owner, a.Description}, append(a.Skills, a.Repos...)...), "\n"))
+	for _, w := range words {
+		if !strings.Contains(card, w) {
+			return false
+		}
+	}
+	return true
 }
 
 // Send opens a task for agent to. With contextID it continues a conversation
-// the caller takes part in, one level deeper.
-func (s *Service) Send(ctx context.Context, id *apikeys.Identity, to, text, contextID string) (*proxydb.AgentTask, error) {
+// the caller takes part in, one level deeper. ref ties it to an issue
+// elsewhere; a continuation without one takes the conversation's.
+func (s *Service) Send(ctx context.Context, id *apikeys.Identity, to, text, contextID, ref string) (*proxydb.AgentTask, error) {
 	me, err := s.Me(ctx, id)
 	if err != nil {
+		return nil, err
+	}
+	if ref, err = CheckRef(ref); err != nil {
 		return nil, err
 	}
 	target, err := s.target(ctx, me, strings.ToLower(strings.TrimSpace(to)))
@@ -300,6 +354,11 @@ func (s *Service) Send(ctx context.Context, id *apikeys.Identity, to, text, cont
 			s.deny("max_depth")
 			return nil, fmt.Errorf("%w: this task would be delegated %d times, the limit is %d; answer with reply instead", ErrDenied, depth, s.cfg.MaxDepth)
 		}
+		if ref == "" {
+			if ref, err = s.store.ContextRef(ctx, contextID); err != nil {
+				return nil, err
+			}
+		}
 	} else {
 		contextID = uuid.NewString()
 	}
@@ -309,7 +368,7 @@ func (s *Service) Send(ctx context.Context, id *apikeys.Identity, to, text, cont
 	}
 	t := &proxydb.AgentTask{
 		ID: uuid.NewString(), ContextID: contextID, FromAgent: me.KeyID, FromName: me.Name,
-		ToAgent: target.KeyID, ToName: target.Name, Status: status, StatusReason: reason, ReasonCode: code, Depth: depth,
+		ToAgent: target.KeyID, ToName: target.Name, Status: status, StatusReason: reason, ReasonCode: code, ExternalRef: ref, Depth: depth,
 	}
 	if err := s.store.CreateAgentTask(ctx, t, text, s.cfg.MaxMessages); err != nil {
 		return nil, s.limitErr(err)
@@ -322,10 +381,16 @@ func (s *Service) Send(ctx context.Context, id *apikeys.Identity, to, text, cont
 // Query narrows inbox and outbox: tasks changed after Since, and, with Wait,
 // a wait of up to Wait for the first such task when there is none yet.
 type Query struct {
-	All   bool // inbox: ended tasks too
-	Limit int
-	Since time.Time
-	Wait  time.Duration
+	All         bool // inbox: ended tasks too
+	Limit       int
+	Since       time.Time
+	Wait        time.Duration
+	ExternalRef string
+	Pinned      bool // only tasks pinned by either side
+}
+
+func (q Query) filter() proxydb.TaskFilter {
+	return proxydb.TaskFilter{Limit: q.Limit, Since: q.Since, ExternalRef: strings.TrimSpace(q.ExternalRef), PinnedOnly: q.Pinned}
 }
 
 // Inbox is the open tasks sent to the caller, with their messages.
@@ -334,7 +399,8 @@ func (s *Service) Inbox(ctx context.Context, id *apikeys.Identity, q Query) ([]*
 	if err != nil {
 		return nil, err
 	}
-	f := proxydb.TaskFilter{ToAgent: me.KeyID, Limit: q.Limit, Since: q.Since}
+	f := q.filter()
+	f.ToAgent = me.KeyID
 	if !q.All {
 		f.Statuses = []string{proxydb.TaskSubmitted, proxydb.TaskWorking, proxydb.TaskInputRequired}
 	}
@@ -351,7 +417,8 @@ func (s *Service) Outbox(ctx context.Context, id *apikeys.Identity, q Query) ([]
 	if err != nil {
 		return nil, err
 	}
-	f := proxydb.TaskFilter{FromAgent: me.KeyID, Limit: q.Limit, Since: q.Since}
+	f := q.filter()
+	f.FromAgent = me.KeyID
 	return s.wait(ctx, me.KeyID, q.Wait, func() ([]*proxydb.AgentTask, error) { return s.store.ListAgentTasks(ctx, f) })
 }
 
@@ -650,6 +717,43 @@ func (s *Service) record(ctx context.Context, from, to *proxydb.Agent, t *proxyd
 		return
 	}
 	observability.AgentJournalEventsTotal.WithLabelValues("written").Inc()
+}
+
+// Pin keeps a task the caller sent or received past the retention sweep, or
+// with pinned false lets it go; each side pins for itself.
+func (s *Service) Pin(ctx context.Context, id *apikeys.Identity, taskID string, pinned bool) (*proxydb.AgentTask, error) {
+	me, err := s.Me(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if uuid.Validate(taskID) != nil {
+		return nil, fmt.Errorf("%w: task_id must be a task's id", ErrInvalid)
+	}
+	t, err := s.store.SetAgentTaskPinned(ctx, taskID, me.KeyID, pinned, s.cfg.MaxPinned)
+	switch {
+	case errors.Is(err, proxydb.ErrNotFound):
+		return nil, fmt.Errorf("%w: no task %s of yours", ErrInvalid, taskID)
+	case errors.Is(err, proxydb.ErrTooManyPins):
+		s.deny("max_pinned")
+		return nil, fmt.Errorf("%w: you have pinned %d tasks, the limit; unpin one first", ErrDenied, s.cfg.MaxPinned)
+	case err != nil:
+		return nil, err
+	}
+	other, kind := t.FromAgent, "task.unpinned"
+	if other == me.KeyID {
+		other = t.ToAgent
+	}
+	if pinned {
+		kind = "task.pinned"
+	}
+	if oa, err := s.store.GetAgentByKey(ctx, other); err == nil {
+		from, to := me, oa
+		if t.FromAgent != me.KeyID {
+			from, to = oa, me
+		}
+		s.record(ctx, from, to, t, kind, "")
+	}
+	return t, nil
 }
 
 // Sweep deletes tasks unchanged for longer than the retention, every interval,

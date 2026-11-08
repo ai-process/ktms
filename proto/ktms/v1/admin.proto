@@ -712,6 +712,8 @@ message ListAgentTasksRequest {
   // Only tasks waiting for these reasons (question, guardrail_hold,
   // needs_owner); empty for any, an unknown one is INVALID_ARGUMENT.
   repeated string reason_codes = 5;
+  string external_ref = 6; // only tasks tied to this issue, exact match
+  bool pinned_only = 7; // only tasks pinned by either side
 }
 
 message AgentMessage {
@@ -753,6 +755,8 @@ message AgentTask {
   // recipient's agent asks its own person).
   string reason_code = 11;
   string answered_by = 12; // ended tasks: agent or owner, who gave the latest answer
+  string external_ref = 13; // the issue elsewhere it is about, such as PROJ-123 or a URL
+  repeated string pinned_by = 14; // agents that pinned it past the retention sweep
 }
 
 message ListAgentTasksResponse {

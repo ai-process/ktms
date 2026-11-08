@@ -164,6 +164,8 @@ type taskJSON struct {
 	Reason    string    `json:"reason"`
 	Code      string    `json:"reason_code"`
 	Answered  string    `json:"answered_by"`
+	Ref       string    `json:"external_ref"`
+	PinnedBy  []string  `json:"pinned_by"`
 	Updated   time.Time `json:"updated_at"`
 	Messages  []struct {
 		From       string `json:"from"`
@@ -186,6 +188,12 @@ func (t taskJSON) a2a(historyLength int) a2aTask {
 	}
 	if t.Answered != "" {
 		out.Metadata["answered_by"] = t.Answered
+	}
+	if t.Ref != "" {
+		out.Metadata["external_ref"] = t.Ref
+	}
+	if len(t.PinnedBy) > 0 {
+		out.Metadata["pinned_by"] = strings.Join(t.PinnedBy, ",")
 	}
 	for i, m := range t.Messages {
 		msg := a2aMessage{Kind: "message", MessageID: t.TaskID + "-" + strconv.Itoa(i+1), Role: m.Role,
@@ -243,6 +251,8 @@ func (g *Gateway) a2aCall(ctx context.Context, c *caller, agent, method string, 
 			Parts     []a2aPart `json:"parts"`
 			TaskID    string    `json:"taskId"`
 			ContextID string    `json:"contextId"`
+			// Any JSON; external_ref ties the task to an issue elsewhere.
+			Metadata map[string]any `json:"metadata"`
 		} `json:"message"`
 		Configuration *struct {
 			Blocking      bool `json:"blocking"`
@@ -282,6 +292,9 @@ func (g *Gateway) a2aCall(ctx context.Context, c *caller, agent, method string, 
 			args := map[string]any{"agent": agent, "text": text}
 			if p.Message.ContextID != "" {
 				args["context_id"] = p.Message.ContextID
+			}
+			if ref, ok := p.Message.Metadata["external_ref"].(string); ok {
+				args["external_ref"] = ref
 			}
 			if rerr := g.a2aTool(ctx, c, "send_message", args, &t); rerr != nil {
 				return nil, rerr

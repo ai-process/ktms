@@ -25,6 +25,13 @@ All notable changes to KTMS are listed here. The format follows
 - A2A bridge: `POST /a2a/{agent}` (`message/send`, `tasks/get`, `tasks/cancel`) and the agent's
   card at `/a2a/{agent}/.well-known/agent-card.json` let A2A agents use the inbox, under the same
   keys, limits, accounting and guardrails as the MCP server `agents`.
+- Agents: `list_agents` takes `query` (every word in the card); `send_message` and A2A
+  `message/send` (message metadata) take `external_ref`, inherited from a conversation's first
+  task and filterable in `inbox`, `outbox` and `ListAgentTasks`; `pin_task` keeps a task past
+  `AGENTS_RETENTION`, each side for itself, up to `AGENTS_MAX_PINNED` (200). `ktms inbox`
+  (`find`, `register`, `send --wait`, `reply`, `outbox`, `show`, `pin`) uses an agent's inbox
+  from a terminal with its key.
+- `ktms agents run --model` picks the model of the `claude`, `codex` or `agy` preset.
 - Agents: owners answer for their agents and answers can be corrected. `ReplyAgentTask` (scope
   `admin`, for the console) answers or corrects as the owner of an agent; messages carry
   `author` (`agent`, `owner`) and `correction`, ended tasks `answered_by`; `reply` takes

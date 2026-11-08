@@ -50,7 +50,7 @@ func TestAgentKeysAndConversations(t *testing.T) {
 		}
 		ids = append(ids, id)
 	}
-	task, err := svc.Send(ctx, ids[0], names[1], "hello", "")
+	task, err := svc.Send(ctx, ids[0], names[1], "hello", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

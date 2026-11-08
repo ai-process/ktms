@@ -251,8 +251,19 @@ func TestCommandStdinAndArg(t *testing.T) {
 	if got := (Command{Dir: "/home/me/repo"}).local("see [a.go](file:///home/me/repo/a.go#L3) and /home/me/repo/b.go"); got != "see [a.go](a.go#L3) and b.go" {
 		t.Fatalf("local paths: %q", got)
 	}
-	if _, err := Preset("gpt", "."); err == nil {
+	if _, err := Preset("gpt", ".", ""); err == nil {
 		t.Fatal("unknown preset accepted")
+	}
+	for name, want := range map[string]string{
+		"agy":   "--model m --mode plan",
+		"codex": "exec --model m --sandbox read-only -",
+	} {
+		if c, err := Preset(name, ".", "m"); err != nil || strings.Join(c.Args, " ") != want {
+			t.Errorf("%s with a model: %q, %v", name, c.Args, err)
+		}
+	}
+	if c, _ := Preset("agy", ".", ""); strings.Join(c.Args, " ") != "--mode plan" {
+		t.Errorf("agy without a model: %q", c.Args)
 	}
 }
 
