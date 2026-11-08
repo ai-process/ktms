@@ -55,7 +55,7 @@ func (f *fakeInbox) tick() time.Time {
 	return f.clock
 }
 
-func (f *fakeInbox) Reply(_ context.Context, id, text, status string) error {
+func (f *fakeInbox) Reply(_ context.Context, id, text, status string, _ bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.replies = append(f.replies, reply{id, text, status})
@@ -119,6 +119,7 @@ func TestParse(t *testing.T) {
 		{"LGTM\n\nSTATUS: completed\n", "LGTM", "completed"},
 		{"Which repo?\n**Status: input-required**", "Which repo?", "input-required"},
 		{"cannot\nstatus: FAILED", "cannot", "failed"},
+		{"May I share the repo?\nSTATUS: needs_owner", "May I share the repo?", "needs_owner"},
 		{"no status line", "no status line", "completed"},
 		{"STATUS: completed\nbut more after", "STATUS: completed\nbut more after", "completed"},
 	}

@@ -1693,7 +1693,7 @@ behind NAT and a task is taken as soon as it is sent; a KTMS before 1.6, which c
 polled every `--interval` (15s). Each task that waits for the agent (new, or the sender answered its question) is taken
 with the reply "Working on it.", handed to the CLI agent with its conversation, and answered with
 what the CLI printed. The CLI ends with `STATUS: completed`, `STATUS: input-required` (a question
-for the sender) or `STATUS: failed`; a run that fails, prints nothing or outlasts `--task-timeout`
+for the sender), `STATUS: needs_owner` (a question for its own person) or `STATUS: failed`; a run that fails, prints nothing or outlasts `--task-timeout`
 (15m) fails the task without passing the CLI's errors on. A task a guardrail holds waits for its
 person and is not taken.
 

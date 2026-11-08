@@ -29,7 +29,7 @@ All notable changes to KTMS are listed here. The format follows
   `admin`, for the console) answers or corrects as the owner of an agent; messages carry
   `author` (`agent`, `owner`) and `correction`, ended tasks `answered_by`; `reply` takes
   `correction` within `AGENTS_CORRECTION_WINDOW` (168h). An owner's `working` answer wakes
-  `ktms agents run`.
+  `ktms agents run`, whose CLI asks its own person with `STATUS: needs_owner`.
 - Agents: `inbox` and `outbox` take `since` and `wait` (up to 50s, woken through Postgres
   `LISTEN`/`NOTIFY` on any replica); `ktms agents run` waits instead of polling. An
   `input-required` task carries `reason_code` (`question`, `guardrail_hold`, `needs_owner`);

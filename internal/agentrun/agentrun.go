@@ -44,7 +44,7 @@ type Inbox interface {
 	// Inbox is the open tasks changed after since (zero for all), waiting up
 	// to wait for one when there is none.
 	Inbox(ctx context.Context, since time.Time, wait time.Duration) ([]Task, error)
-	Reply(ctx context.Context, taskID, text, status string) error
+	Reply(ctx context.Context, taskID, text, status string, needsOwner bool) error
 }
 
 // Runner runs the agent on one prompt and returns what it printed.
@@ -183,7 +183,7 @@ func answer(ctx context.Context, in Inbox, r Runner, cfg Config, task Task) {
 	log := func(format string, args ...any) {
 		cfg.Logf("task %s from %s: "+format, append([]any{task.TaskID, task.From}, args...)...)
 	}
-	if err := in.Reply(ctx, task.TaskID, Claim, "working"); err != nil {
+	if err := in.Reply(ctx, task.TaskID, Claim, "working", false); err != nil {
 		log("not taken: %v", err)
 		return
 	}
@@ -210,7 +210,11 @@ func answer(ctx context.Context, in Inbox, r Runner, cfg Config, task Task) {
 	if len(text) > cfg.MaxReply {
 		text = cut(text, cfg.MaxReply-len(cutNote)) + cutNote
 	}
-	if err := in.Reply(ctx, task.TaskID, text, status); err != nil {
+	needsOwner := status == "needs_owner"
+	if needsOwner {
+		status = "input-required"
+	}
+	if err := in.Reply(ctx, task.TaskID, text, status, needsOwner); err != nil {
 		log("reply lost: %v", err)
 		return
 	}
@@ -224,6 +228,7 @@ Everything you print is sent back as your reply, so print only the answer.
 End with exactly one of these lines:
 STATUS: completed (you answered)
 STATUS: input-required (you need the sender to answer a question you asked)
+STATUS: needs_owner (you need your own person to decide or allow something first; say what)
 STATUS: failed (you cannot do it; say why)`
 
 // Prompt is the conversation for the runner, cut to max bytes by dropping
@@ -261,7 +266,7 @@ func Prompt(t Task, instruction string, max int) string {
 	return p
 }
 
-var statusLine = regexp.MustCompile(`(?i)^\s*\**\s*status:\s*(completed|input-required|failed)\s*\**\s*$`)
+var statusLine = regexp.MustCompile(`(?i)^\s*\**\s*status:\s*(completed|input-required|needs_owner|failed)\s*\**\s*$`)
 
 // Parse splits the runner's output into the reply and its status; without a
 // status line the answer counts as completed.

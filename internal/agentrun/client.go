@@ -130,8 +130,12 @@ func (c *Client) Inbox(ctx context.Context, since time.Time, wait time.Duration)
 	return out.Tasks, nil
 }
 
-func (c *Client) Reply(ctx context.Context, taskID, text, status string) error {
-	return c.call(ctx, "reply", map[string]any{"task_id": taskID, "text": text, "status": status}, nil)
+func (c *Client) Reply(ctx context.Context, taskID, text, status string, needsOwner bool) error {
+	args := map[string]any{"task_id": taskID, "text": text, "status": status}
+	if needsOwner {
+		args["needs_owner"] = true
+	}
+	return c.call(ctx, "reply", args, nil)
 }
 
 // Close ends the session.
