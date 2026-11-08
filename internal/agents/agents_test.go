@@ -707,6 +707,17 @@ func TestRefsAndPins(t *testing.T) {
 	if ts, err := s.Inbox(ctx, bob, Query{All: true, Pinned: true}); err != nil || len(ts) != 1 || ts[0].ID != first.ID {
 		t.Fatalf("pinned inbox = %+v, %v", ts, err)
 	}
+	if ts, err := s.Outbox(ctx, alice, Query{Pinned: true}); err != nil || len(ts) != 0 {
+		t.Fatalf("alice's pinned outbox holds bob's pin: %+v, %v", ts, err)
+	}
+	// Clients see the arguments only in the schemas.
+	for _, tool := range Tools() {
+		props := tool.InputSchema.(map[string]any)["properties"].(map[string]any)
+		want := map[string]string{"list_agents": "query", "send_message": "external_ref", "inbox": "pinned", "outbox": "external_ref", "pin_task": "pinned"}[tool.Name]
+		if _, ok := props[want]; want != "" && !ok {
+			t.Errorf("%s has no %s in its schema", tool.Name, want)
+		}
+	}
 	if !slices.ContainsFunc(j.events, func(e Event) bool { return e.Type == "task.pinned" && e.TaskID == first.ID }) {
 		t.Fatalf("no task.pinned event: %+v", j.events)
 	}

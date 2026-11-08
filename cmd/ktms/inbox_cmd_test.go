@@ -19,6 +19,7 @@ type fakeAgents struct {
 	calls []string
 	args  map[string]map[string]any
 	auth  string
+	stuck bool // the task never ends
 }
 
 func (f *fakeAgents) serve(t *testing.T) string {
@@ -61,12 +62,20 @@ func (f *fakeAgents) serve(t *testing.T) string {
 	}
 	tool("send_message", func(int) any { return task("submitted", t0) })
 	tool("outbox", func(n int) any {
+		if f.stuck {
+			return map[string]any{"tasks": []any{}}
+		}
 		if n == 1 {
 			return map[string]any{"tasks": []any{task("working", t0.Add(time.Second))}}
 		}
 		return map[string]any{"tasks": []any{task("completed", t0.Add(2*time.Second))}}
 	})
-	tool("get_task", func(int) any { return task("completed", t0.Add(2*time.Second), "review it", "LGTM") })
+	tool("get_task", func(int) any {
+		if f.stuck {
+			return task("working", t0, "review it")
+		}
+		return task("completed", t0.Add(2*time.Second), "review it", "LGTM")
+	})
 	tool("list_agents", func(int) any {
 		return map[string]any{"agents": []any{map[string]any{"name": "rev", "skills": []string{"code-review"}, "accepts_you": false}}}
 	})
@@ -125,5 +134,19 @@ func TestInboxFind(t *testing.T) {
 	t.Setenv("KTMS_AGENT_KEY", "")
 	if code, _, _ := callIn("", "--http", url, "inbox", "find"); code == 0 {
 		t.Fatal("find without an agent key succeeded")
+	}
+}
+
+func TestInboxSendWaitEnds(t *testing.T) {
+	f := &fakeAgents{args: map[string]map[string]any{}, stuck: true}
+	url := f.serve(t)
+	t.Setenv("KTMS_AGENT_KEY", "agent-key")
+	start := time.Now()
+	code, out, errOut := callIn("", "--http", url, "inbox", "send", "rev", "x", "--wait", "2s")
+	if code == 0 || !strings.Contains(out, "me → rev  working") || strings.Contains(out, "review it") || !strings.Contains(errOut, "Still working after 2s") {
+		t.Fatalf("send --wait on a stuck task = %d\n%s\n%s", code, out, errOut)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("waited %s for --wait 2s", d)
 	}
 }

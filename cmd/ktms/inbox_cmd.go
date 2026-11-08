@@ -185,8 +185,11 @@ asks a question, for up to that long, and prints it; it exits 0 when the task co
 				if wait <= 0 {
 					return a.printTask(nFormat, t)
 				}
-				if t, err = waitTask(ctx, c, t); err != nil {
+				if t, err = waitTask(ctx, c, t, time.Now().Add(wait)); err != nil {
 					return err
+				}
+				if !ended(t) {
+					fmt.Fprintf(a.stderr, "Still %s after %s.\n", t.Status, wait)
 				}
 				// The request is the caller's own: print what came back.
 				if len(t.Messages) > 0 && t.Messages[0].Role == "user" {
@@ -328,15 +331,25 @@ asks a question, for up to that long, and prints it; it exits 0 when the task co
 	return cmd
 }
 
-// waitTask waits on the outbox until the task ends or asks its sender, then
-// reads it with its messages.
-func waitTask(ctx context.Context, c *agentrun.Client, t agentrun.Task) (agentrun.Task, error) {
+// ended: the task is over or asks its sender, so waiting for it is done.
+func ended(t agentrun.Task) bool {
+	return proxydb.TaskTerminal(t.Status) || t.Status == proxydb.TaskInputRequired && t.ReasonCode == proxydb.ReasonQuestion
+}
+
+// waitTask waits on the outbox until the task ends or asks its sender, or
+// until deadline, then reads it with its messages.
+func waitTask(ctx context.Context, c *agentrun.Client, t agentrun.Task, deadline time.Time) (agentrun.Task, error) {
 	since := t.Updated
-	for !proxydb.TaskTerminal(t.Status) && !(t.Status == proxydb.TaskInputRequired && t.ReasonCode == proxydb.ReasonQuestion) {
+	for !ended(t) {
+		left := time.Until(deadline)
+		if left < time.Second {
+			break
+		}
 		var out struct {
 			Tasks []agentrun.Task `json:"tasks"`
 		}
-		err := c.Call(ctx, "outbox", map[string]any{"since": since.Format(time.RFC3339Nano), "wait": 50, "limit": 100}, &out)
+		start := time.Now()
+		err := c.Call(ctx, "outbox", map[string]any{"since": since.Format(time.RFC3339Nano), "wait": int(min(left, 50*time.Second).Seconds()), "limit": 100}, &out)
 		if err != nil {
 			return t, err
 		}
@@ -348,12 +361,12 @@ func waitTask(ctx context.Context, c *agentrun.Client, t agentrun.Task) (agentru
 				t = o
 			}
 		}
-		if len(out.Tasks) == 0 {
+		if len(out.Tasks) == 0 && time.Since(start) < time.Second {
 			// A server before 1.6 answers at once; do not spin on it.
 			select {
 			case <-ctx.Done():
 				return t, ctx.Err()
-			case <-time.After(5 * time.Second):
+			case <-time.After(min(5*time.Second, time.Until(deadline))):
 			}
 		}
 	}

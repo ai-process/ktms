@@ -76,7 +76,7 @@ func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasks
 		return &pb.ListAgentTasksResponse{}, nil
 	}
 	tasks, err := s.db.ListAgentTasks(ctx, proxydb.TaskFilter{Agent: a.KeyID, Statuses: statuses, ReasonCodes: req.GetReasonCodes(), Limit: int(req.GetLimit()),
-		ExternalRef: strings.TrimSpace(req.GetExternalRef()), PinnedOnly: req.GetPinnedOnly()})
+		ExternalRef: strings.TrimSpace(req.GetExternalRef()), Pinned: pinnedSide(req.GetPinnedOnly())})
 	if err != nil {
 		return nil, dbStatus(err)
 	}
@@ -185,4 +185,11 @@ func (s *AdminServer) ReplyAgentTask(ctx context.Context, req *pb.ReplyAgentTask
 		return nil, dbStatus(err)
 	}
 	return taskProto(t), nil
+}
+
+func pinnedSide(only bool) string {
+	if only {
+		return proxydb.PinnedEither
+	}
+	return ""
 }

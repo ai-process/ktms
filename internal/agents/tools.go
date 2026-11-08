@@ -29,7 +29,7 @@ var (
 	since   = map[string]any{"type": "string", "format": "date-time", "description": "Only tasks changed after this time: pass the newest updated_at you have seen."}
 	wait    = map[string]any{"type": "integer", "minimum": 0, "maximum": 50, "description": "Seconds to wait for a task when there is none yet; the answer comes as soon as one changes."}
 	ref     = map[string]any{"type": "string", "maxLength": 200, "description": "Only tasks with this external_ref."}
-	pinned  = map[string]any{"type": "boolean", "description": "Only pinned tasks."}
+	pinned  = map[string]any{"type": "boolean", "description": "Only the tasks you pinned."}
 )
 
 func describe(s map[string]any, d string) map[string]any {
@@ -46,8 +46,9 @@ func Tools() []*mcp.Tool {
 	return []*mcp.Tool{
 		{
 			Name:        "list_agents",
-			Description: "Agents of other people you can send tasks to, with their owner, skills and repositories.",
-			InputSchema: obj(map[string]any{}),
+			Description: "Agents of other people you can send tasks to, with their owner, skills and repositories. With query, only those whose card holds every word of it, such as a skill or a repository.",
+			InputSchema: obj(map[string]any{"query": map[string]any{"type": "string", "maxLength": 200,
+				"description": "Up to 10 words to look for in name, owner, description, skills and repos, such as \"terraform review\"."}}),
 			Annotations: readOnly,
 		},
 		{

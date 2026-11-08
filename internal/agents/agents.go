@@ -386,11 +386,16 @@ type Query struct {
 	Since       time.Time
 	Wait        time.Duration
 	ExternalRef string
-	Pinned      bool // only tasks pinned by either side
+	Pinned      bool // only tasks the caller pinned
 }
 
-func (q Query) filter() proxydb.TaskFilter {
-	return proxydb.TaskFilter{Limit: q.Limit, Since: q.Since, ExternalRef: strings.TrimSpace(q.ExternalRef), PinnedOnly: q.Pinned}
+// filter is the query for the caller on side (proxydb.PinnedFrom or PinnedTo).
+func (q Query) filter(side string) proxydb.TaskFilter {
+	f := proxydb.TaskFilter{Limit: q.Limit, Since: q.Since, ExternalRef: strings.TrimSpace(q.ExternalRef)}
+	if q.Pinned {
+		f.Pinned = side
+	}
+	return f
 }
 
 // Inbox is the open tasks sent to the caller, with their messages.
@@ -399,7 +404,7 @@ func (s *Service) Inbox(ctx context.Context, id *apikeys.Identity, q Query) ([]*
 	if err != nil {
 		return nil, err
 	}
-	f := q.filter()
+	f := q.filter(proxydb.PinnedTo)
 	f.ToAgent = me.KeyID
 	if !q.All {
 		f.Statuses = []string{proxydb.TaskSubmitted, proxydb.TaskWorking, proxydb.TaskInputRequired}
@@ -417,7 +422,7 @@ func (s *Service) Outbox(ctx context.Context, id *apikeys.Identity, q Query) ([]
 	if err != nil {
 		return nil, err
 	}
-	f := q.filter()
+	f := q.filter(proxydb.PinnedFrom)
 	f.FromAgent = me.KeyID
 	return s.wait(ctx, me.KeyID, q.Wait, func() ([]*proxydb.AgentTask, error) { return s.store.ListAgentTasks(ctx, f) })
 }

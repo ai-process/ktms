@@ -348,6 +348,13 @@ func (d *DB) AddAgentCorrection(ctx context.Context, taskID, fromAgent, author, 
 	return t, err
 }
 
+// Sides of a task for TaskFilter.Pinned.
+const (
+	PinnedFrom   = "from"
+	PinnedTo     = "to"
+	PinnedEither = "either"
+)
+
 // ErrTooManyPins is a pin beyond the limit of one agent.
 var ErrTooManyPins = errors.New("proxydb: too many pinned tasks")
 
@@ -531,8 +538,10 @@ type TaskFilter struct {
 	// Only tasks changed after this moment; zero for any.
 	Since       time.Time
 	ExternalRef string
-	PinnedOnly  bool
-	Limit       int
+	// Only pinned tasks: PinnedFrom (by their sender), PinnedTo (by their
+	// recipient) or PinnedEither.
+	Pinned string
+	Limit  int
 }
 
 // ListAgentTasks lists tasks without their messages, most recently changed first.
@@ -552,10 +561,10 @@ func (d *DB) ListAgentTasks(ctx context.Context, f TaskFilter) ([]*AgentTask, er
 		   AND (cardinality($6::text[]) = 0 OR t.reason_code = ANY($6))
 		   AND ($7::timestamptz IS NULL OR t.updated_at > $7)
 		   AND ($8 = '' OR t.external_ref = $8)
-		   AND (NOT $9 OR t.pinned_by_from OR t.pinned_by_to)
+		   AND ($9 = '' OR ($9 IN ('from', 'either') AND t.pinned_by_from) OR ($9 IN ('to', 'either') AND t.pinned_by_to))
 		 ORDER BY t.updated_at DESC LIMIT $5`,
 		nullable(f.ToAgent), nullable(f.FromAgent), nullable(f.Agent), nonNil(f.Statuses), limit, nonNil(f.ReasonCodes), nullableTime(f.Since),
-		f.ExternalRef, f.PinnedOnly)
+		f.ExternalRef, f.Pinned)
 	if err != nil {
 		return nil, err
 	}
