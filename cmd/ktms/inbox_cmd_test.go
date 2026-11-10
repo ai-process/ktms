@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,11 +16,12 @@ import (
 
 // fakeAgents is an agents server whose task ends on the second outbox call.
 type fakeAgents struct {
-	mu    sync.Mutex
-	calls []string
-	args  map[string]map[string]any
-	auth  string
-	stuck bool // the task never ends
+	mu        sync.Mutex
+	calls     []string
+	args      map[string]map[string]any
+	auth      string
+	stuck     bool // the task never ends
+	emptyCard bool // the caller's card says nothing
 }
 
 func (f *fakeAgents) serve(t *testing.T) string {
@@ -77,7 +79,24 @@ func (f *fakeAgents) serve(t *testing.T) string {
 		return task("completed", t0.Add(2*time.Second), "review it", "LGTM")
 	})
 	tool("list_agents", func(int) any {
-		return map[string]any{"agents": []any{map[string]any{"name": "rev", "skills": []string{"code-review"}, "accepts_you": false}}}
+		out := map[string]any{"agents": []any{
+			map[string]any{"name": "rev", "skills": []string{"code-review"}, "accepts_you": false},
+			map[string]any{"name": "me", "description": "Reviews Go", "skills": []string{"go"}, "accept_from": []string{"team:t1"}, "you": true},
+		}}
+		if f.emptyCard {
+			out["agents"] = []any{map[string]any{"name": "me", "you": true}}
+		}
+		return out
+	})
+	tool("inbox", func(int) any { return map[string]any{"tasks": []any{}} })
+	tool("register_agent", func(int) any {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		out := map[string]any{"name": "me"}
+		for k, v := range f.args["register_agent"] {
+			out[k] = v
+		}
+		return out
 	})
 	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s }, nil)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -148,5 +167,45 @@ func TestInboxSendWaitEnds(t *testing.T) {
 	}
 	if d := time.Since(start); d > 5*time.Second {
 		t.Fatalf("waited %s for --wait 2s", d)
+	}
+}
+
+func TestInboxRegisterKeepsOtherFields(t *testing.T) {
+	f := &fakeAgents{args: map[string]map[string]any{}}
+	url := f.serve(t)
+	t.Setenv("KTMS_AGENT_KEY", "agent-key")
+	code, out, errOut := callIn("", "--http", url, "inbox", "register", "--skill", "code-review", "--skill", "go")
+	if code != 0 || !strings.Contains(out, "Card of me updated") {
+		t.Fatalf("register = %d\n%s\n%s", code, out, errOut)
+	}
+	a := f.args["register_agent"]
+	if a["description"] != "Reviews Go" || fmt.Sprint(a["skills"]) != "[code-review go]" || fmt.Sprint(a["accept_from"]) != "[team:t1]" || fmt.Sprint(a["repos"]) != "[]" {
+		t.Fatalf("register_agent args = %v", a)
+	}
+	if code, _, errOut := callIn("", "--http", url, "inbox", "register", "--accept-from", ""); code != 0 || fmt.Sprint(f.args["register_agent"]["accept_from"]) != "[]" {
+		t.Fatalf("clearing accept_from: %d %v %s", code, f.args["register_agent"], errOut)
+	}
+}
+
+func TestAgentsRunSetsTheCard(t *testing.T) {
+	f := &fakeAgents{args: map[string]map[string]any{}}
+	url := f.serve(t)
+	t.Setenv("KTMS_AGENT_KEY", "agent-key")
+	code, _, errOut := callIn("", "--http", url, "agents", "run", "--once", "--cmd", "true", "--description", "Reviews KTMS", "--skill", "review", "--repo", "ai-process/ktms")
+	if code != 0 || !strings.Contains(errOut, "card of me updated") {
+		t.Fatalf("agents run = %d\n%s", code, errOut)
+	}
+	if a := f.args["register_agent"]; a["description"] != "Reviews KTMS" || fmt.Sprint(a["skills"]) != "[review]" || fmt.Sprint(a["repos"]) != "[ai-process/ktms]" || fmt.Sprint(a["accept_from"]) != "[team:t1]" {
+		t.Fatalf("register_agent args = %v", a)
+	}
+}
+
+func TestAgentsRunWarnsOnAnEmptyCard(t *testing.T) {
+	f := &fakeAgents{args: map[string]map[string]any{}, emptyCard: true}
+	url := f.serve(t)
+	t.Setenv("KTMS_AGENT_KEY", "agent-key")
+	code, _, errOut := callIn("", "--http", url, "agents", "run", "--once", "--cmd", "true")
+	if code != 0 || !strings.Contains(errOut, "card of me is empty") || f.args["register_agent"] != nil {
+		t.Fatalf("agents run = %d\n%s", code, errOut)
 	}
 }
