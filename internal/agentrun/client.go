@@ -59,6 +59,12 @@ func (c *Client) session(ctx context.Context) (*mcp.ClientSession, error) {
 	return cs, nil
 }
 
+// Call runs a tool of the agents server and decodes its JSON result into out,
+// which may be nil; a tool error comes back as an error with its text.
+func (c *Client) Call(ctx context.Context, tool string, args map[string]any, out any) error {
+	return c.call(ctx, tool, args, out)
+}
+
 func (c *Client) call(ctx context.Context, tool string, args map[string]any, out any) error {
 	cs, err := c.session(ctx)
 	if err != nil {

@@ -35,6 +35,7 @@ type Config struct {
 	AgentsToolRPM          int
 	AgentsRetention        time.Duration
 	AgentsCorrectionWindow time.Duration
+	AgentsMaxPinned        int64
 	AgentsRecording        string
 	AgentsJournalMaxLen    int
 	AgentsJournalMaxEvent  int
@@ -177,6 +178,7 @@ func Load() *Config {
 		AgentsToolRPM:          getIntEnv("AGENTS_TOOL_RPM", 60),
 		AgentsRetention:        getDurationEnv("AGENTS_RETENTION", 30*24*time.Hour),
 		AgentsCorrectionWindow: getDurationEnv("AGENTS_CORRECTION_WINDOW", 7*24*time.Hour),
+		AgentsMaxPinned:        int64(getIntEnv("AGENTS_MAX_PINNED", 200)),
 		AgentsRecording:        strings.ToLower(getEnv("AGENTS_RECORDING", "metadata")),
 		AgentsJournalMaxLen:    getIntEnv("AGENTS_JOURNAL_MAXLEN", 100000),
 		AgentsJournalMaxEvent:  getIntEnv("AGENTS_JOURNAL_MAX_EVENT_BYTES", 16<<10),

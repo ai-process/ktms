@@ -75,7 +75,8 @@ func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasks
 	if req.GetOpenOnly() && len(statuses) == 0 {
 		return &pb.ListAgentTasksResponse{}, nil
 	}
-	tasks, err := s.db.ListAgentTasks(ctx, proxydb.TaskFilter{Agent: a.KeyID, Statuses: statuses, ReasonCodes: req.GetReasonCodes(), Limit: int(req.GetLimit())})
+	tasks, err := s.db.ListAgentTasks(ctx, proxydb.TaskFilter{Agent: a.KeyID, Statuses: statuses, ReasonCodes: req.GetReasonCodes(), Limit: int(req.GetLimit()),
+		ExternalRef: strings.TrimSpace(req.GetExternalRef()), Pinned: pinnedSide(req.GetPinnedOnly())})
 	if err != nil {
 		return nil, dbStatus(err)
 	}
@@ -132,6 +133,7 @@ func taskProto(t *proxydb.AgentTask) *pb.AgentTask {
 	out := &pb.AgentTask{
 		TaskId: t.ID, ContextId: t.ContextID, From: t.FromName, To: t.ToName, Status: t.Status,
 		StatusReason: t.StatusReason, ReasonCode: t.ReasonCode, Depth: t.Depth, AnsweredBy: agents.AnsweredBy(t),
+		ExternalRef: t.ExternalRef, PinnedBy: agents.PinnedBy(t),
 		CreatedAt: timestamppb.New(t.CreatedAt), UpdatedAt: timestamppb.New(t.UpdatedAt),
 	}
 	for _, m := range t.Messages {
@@ -183,4 +185,11 @@ func (s *AdminServer) ReplyAgentTask(ctx context.Context, req *pb.ReplyAgentTask
 		return nil, dbStatus(err)
 	}
 	return taskProto(t), nil
+}
+
+func pinnedSide(only bool) string {
+	if only {
+		return proxydb.PinnedEither
+	}
+	return ""
 }

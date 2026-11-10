@@ -6024,6 +6024,8 @@ type ListAgentTasksRequest struct {
 	// Only tasks waiting for these reasons (question, guardrail_hold,
 	// needs_owner); empty for any, an unknown one is INVALID_ARGUMENT.
 	ReasonCodes   []string `protobuf:"bytes,5,rep,name=reason_codes,json=reasonCodes,proto3" json:"reason_codes,omitempty"`
+	ExternalRef   string   `protobuf:"bytes,6,opt,name=external_ref,json=externalRef,proto3" json:"external_ref,omitempty"` // only tasks tied to this issue, exact match
+	PinnedOnly    bool     `protobuf:"varint,7,opt,name=pinned_only,json=pinnedOnly,proto3" json:"pinned_only,omitempty"`   // only tasks pinned by either side
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6091,6 +6093,20 @@ func (x *ListAgentTasksRequest) GetReasonCodes() []string {
 		return x.ReasonCodes
 	}
 	return nil
+}
+
+func (x *ListAgentTasksRequest) GetExternalRef() string {
+	if x != nil {
+		return x.ExternalRef
+	}
+	return ""
+}
+
+func (x *ListAgentTasksRequest) GetPinnedOnly() bool {
+	if x != nil {
+		return x.PinnedOnly
+	}
+	return false
 }
 
 type AgentMessage struct {
@@ -6281,8 +6297,10 @@ type AgentTask struct {
 	// Why an input-required task waits: question (for its sender), guardrail_hold
 	// (a guardrail holds it for the recipient's person) or needs_owner (the
 	// recipient's agent asks its own person).
-	ReasonCode    string `protobuf:"bytes,11,opt,name=reason_code,json=reasonCode,proto3" json:"reason_code,omitempty"`
-	AnsweredBy    string `protobuf:"bytes,12,opt,name=answered_by,json=answeredBy,proto3" json:"answered_by,omitempty"` // ended tasks: agent or owner, who gave the latest answer
+	ReasonCode    string   `protobuf:"bytes,11,opt,name=reason_code,json=reasonCode,proto3" json:"reason_code,omitempty"`
+	AnsweredBy    string   `protobuf:"bytes,12,opt,name=answered_by,json=answeredBy,proto3" json:"answered_by,omitempty"`    // ended tasks: agent or owner, who gave the latest answer
+	ExternalRef   string   `protobuf:"bytes,13,opt,name=external_ref,json=externalRef,proto3" json:"external_ref,omitempty"` // the issue elsewhere it is about, such as PROJ-123 or a URL
+	PinnedBy      []string `protobuf:"bytes,14,rep,name=pinned_by,json=pinnedBy,proto3" json:"pinned_by,omitempty"`          // agents that pinned it past the retention sweep
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6399,6 +6417,20 @@ func (x *AgentTask) GetAnsweredBy() string {
 		return x.AnsweredBy
 	}
 	return ""
+}
+
+func (x *AgentTask) GetExternalRef() string {
+	if x != nil {
+		return x.ExternalRef
+	}
+	return ""
+}
+
+func (x *AgentTask) GetPinnedBy() []string {
+	if x != nil {
+		return x.PinnedBy
+	}
+	return nil
 }
 
 type ListAgentTasksResponse struct {
@@ -6923,13 +6955,16 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x18SetAgentRecordingRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
 	"\trecording\x18\x02 \x01(\tR\trecording\"\x1b\n" +
-	"\x19SetAgentRecordingResponse\"\x9f\x01\n" +
+	"\x19SetAgentRecordingResponse\"\xe3\x01\n" +
 	"\x15ListAgentTasksRequest\x12\x14\n" +
 	"\x05agent\x18\x01 \x01(\tR\x05agent\x12\x1b\n" +
 	"\topen_only\x18\x02 \x01(\bR\bopenOnly\x12\x14\n" +
 	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x1a\n" +
 	"\bstatuses\x18\x04 \x03(\tR\bstatuses\x12!\n" +
-	"\freason_codes\x18\x05 \x03(\tR\vreasonCodes\"\xbd\x01\n" +
+	"\freason_codes\x18\x05 \x03(\tR\vreasonCodes\x12!\n" +
+	"\fexternal_ref\x18\x06 \x01(\tR\vexternalRef\x12\x1f\n" +
+	"\vpinned_only\x18\a \x01(\bR\n" +
+	"pinnedOnly\"\xbd\x01\n" +
 	"\fAgentMessage\x12\x12\n" +
 	"\x04from\x18\x01 \x01(\tR\x04from\x12\x12\n" +
 	"\x04role\x18\x02 \x01(\tR\x04role\x12\x12\n" +
@@ -6948,7 +6983,7 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x06status\x18\x05 \x01(\tR\x06status\x12\x1e\n" +
 	"\n" +
 	"correction\x18\x06 \x01(\bR\n" +
-	"correction\"\xa5\x03\n" +
+	"correction\"\xe5\x03\n" +
 	"\tAgentTask\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
@@ -6967,7 +7002,9 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\vreason_code\x18\v \x01(\tR\n" +
 	"reasonCode\x12\x1f\n" +
 	"\vanswered_by\x18\f \x01(\tR\n" +
-	"answeredBy\"B\n" +
+	"answeredBy\x12!\n" +
+	"\fexternal_ref\x18\r \x01(\tR\vexternalRef\x12\x1b\n" +
+	"\tpinned_by\x18\x0e \x03(\tR\bpinnedBy\"B\n" +
 	"\x16ListAgentTasksResponse\x12(\n" +
 	"\x05tasks\x18\x01 \x03(\v2\x12.ktms.v1.AgentTaskR\x05tasks\".\n" +
 	"\x13GetAgentTaskRequest\x12\x17\n" +

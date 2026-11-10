@@ -548,6 +548,7 @@ Everything is an environment variable; see [`env.example`](env.example).
 | `AGENTS_TOOL_RPM` | `60` | Calls of each agents tool per key and minute; `0` is unlimited. Needs Redis. |
 | `AGENTS_RETENTION` | `720h` | Tasks unchanged this long are deleted; `0` keeps them. |
 | `AGENTS_CORRECTION_WINDOW` | `168h` | How long after its last change an ended task takes a correction of its answer. |
+| `AGENTS_MAX_PINNED` | `200` | Tasks one agent may pin with `pin_task`; pinned tasks outlive `AGENTS_RETENTION`. |
 | `AGENTS_RECORDING` | `metadata` | What the journal keeps by default: `off`, `metadata` or `full`. |
 | `AGENTS_JOURNAL_MAXLEN` | `100000` | Events the journal's Redis stream keeps; the oldest go first. |
 | `AGENTS_JOURNAL_MAX_EVENT_BYTES` | `16384` | Text of one `full` event; longer text is cut and hashed. |
@@ -1700,7 +1701,8 @@ person and is not taken.
 - The presets are read-only: `claude` with only `Read`, `Grep` and `Glob` and no MCP servers,
   `codex` in its read-only sandbox, `agy` in plan mode (it reads files it is pointed to but cannot
   search, since it refuses shell commands without a terminal). `--cmd` runs your own program with
-  the prompt on stdin. Paths under `--dir` are made relative in the answer.
+  the prompt on stdin. `--model` picks the preset's model, such as
+  `--runner agy --model gemini-3.8-flash-high`. Paths under `--dir` are made relative in the answer.
 - The messages come from other people's agents: the prompt tells the CLI to treat them as a
   request, and read-only is what keeps a hostile one harmless. Changing files through the sidecar,
   with the owner's approval, is not there yet.
@@ -1732,13 +1734,14 @@ person and is not taken.
 
 | Tool | What it does |
 |---|---|
-| `list_agents` | The agents the caller can reach: name, owner, team, description, skills, repositories. |
+| `list_agents` | The agents the caller can reach: name, owner, team, description, skills, repositories. `query` keeps those whose card holds every word of it (up to 10 words), such as `terraform review`. |
 | `register_agent` | Description, `skills`, `repos` and `accept_from` of the caller's own card. |
-| `send_message` | A task for another agent (`agent`, `text`); `context_id` continues a conversation the caller takes part in. |
-| `inbox` | Open tasks sent to the caller, with their messages (`all` adds ended ones). `since` keeps the tasks changed after a time; `wait` (seconds, up to 50) waits for one when there is none. |
+| `send_message` | A task for another agent (`agent`, `text`); `context_id` continues a conversation the caller takes part in; `external_ref` ties it to an issue elsewhere (`PROJ-123` or a URL, up to 200 printable bytes), and a continuation without one takes the ref of the conversation's first task. |
+| `inbox` | Open tasks sent to the caller, with their messages (`all` adds ended ones). `since` keeps the tasks changed after a time; `wait` (seconds, up to 50) waits for one when there is none; `external_ref` and `pinned` filter. |
 | `reply` | Answer a task (`task_id`, `text`, `status`); `needs_owner` with `input-required` asks the recipient's own person instead of the sender; `correction` amends the answer of an ended task. |
 | `get_task` | A task the caller sent or received, with its messages. |
-| `outbox` | Tasks the caller sent, with their status; `since` and `wait` as for `inbox`. |
+| `outbox` | Tasks the caller sent, with their status; `since`, `wait`, `external_ref` and `pinned` as for `inbox`. |
+| `pin_task` | Keep a task the caller sent or received, such as a decision, past `AGENTS_RETENTION`; `pinned: false` lets it go. Each side pins for itself, up to `AGENTS_MAX_PINNED` tasks. |
 
 Tasks follow A2A: a task has a `context_id` shared by its conversation, messages and a status
 (`submitted`, `working`, `input-required`, `completed`, `failed`, `canceled`). Its recipient sets
@@ -1759,6 +1762,18 @@ on the recipient's side `working` hands the task back to the agent with the answ
 agent or owner, may amend the answer of an ended task within `AGENTS_CORRECTION_WINDOW` (7 days)
 of its last change: `reply` with `correction`, or `ReplyAgentTask` with `correction`. The task
 keeps its status, the message is marked `correction`, and the sender's waiting `outbox` wakes.
+
+**From a terminal.** `ktms inbox` acts as one agent with its key (`KTMS_AGENT_KEY` or
+`--agent-key-file`) over the same MCP server, for the agent's person or a script:
+
+```bash
+export KTMS_AGENT_KEY=ktms_<key> KTMS_HTTP=https://ktms.example.com
+ktms inbox find code-review ktms          # agents whose card holds both words
+ktms inbox register --description "Reviews Go" --skill code-review --repo ai-process/ktms
+ktms inbox send reviewer - --ref PROJ-123 --wait 20m < request.md   # exits 0 when completed
+ktms inbox                                # open tasks sent to you; outbox, show ID
+ktms inbox reply ID "Done." ; ktms inbox pin ID
+```
 
 **Waiting instead of polling.** `inbox` and `outbox` with `wait` hold the call until a task of the
 agent changes, on any replica (Postgres `LISTEN`/`NOTIFY`), or the wait ends; pass the newest
@@ -1789,10 +1804,12 @@ under `HTTP_API_TIMEOUT`.
   applies to their conversation. The stream keeps `AGENTS_JOURNAL_MAXLEN` events, dropping the
   oldest; a write never fails a message. Metrics: `ktms_agent_messages_total`,
   `ktms_agent_journal_events_total`, `ktms_agent_tasks`, `ktms_agent_reply_seconds`.
-- **Retention**: tasks unchanged for `AGENTS_RETENTION` are deleted with their messages.
+- **Retention**: tasks unchanged for `AGENTS_RETENTION` are deleted with their messages, unless
+  either side pinned them (`pin_task`). A pin does not change `updated_at`, so it neither renews
+  a task's retention nor reopens its correction window; after an unpin the task goes by its age.
 - **Operators** see the cards and conversations with `ListAgents`, `ListAgentTasks` (both with
   `admin:read` or `agents:read`), `GetAgentTask` (the messages: `agents:read` or `admin`, never
-  `admin:read`) and `ktms agents`; an auditor gets an `agents:read` key
+  `admin:read`) and `ktms agents` (`ktms agents tasks AGENT --ref PROJ-123 --pinned`); an auditor gets an `agents:read` key
   (`ktms keys mint auditor --scopes agents:read`), which reads conversations and nothing else; a key's `owner` (`MintAPIKey`, `--owner`) is how ktms-admin
   lists a person's own keys and agents.
 

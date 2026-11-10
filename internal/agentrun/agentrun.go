@@ -23,11 +23,14 @@ type Task struct {
 	Status    string `json:"status"`
 	Reason    string `json:"reason,omitempty"`
 	// question, guardrail_hold or needs_owner while input-required.
-	ReasonCode string    `json:"reason_code,omitempty"`
-	Depth      int32     `json:"depth,omitempty"`
-	Created    time.Time `json:"created_at"`
-	Updated    time.Time `json:"updated_at"`
-	Messages   []Message `json:"messages,omitempty"`
+	ReasonCode  string    `json:"reason_code,omitempty"`
+	AnsweredBy  string    `json:"answered_by,omitempty"`
+	ExternalRef string    `json:"external_ref,omitempty"`
+	PinnedBy    []string  `json:"pinned_by,omitempty"`
+	Depth       int32     `json:"depth,omitempty"`
+	Created     time.Time `json:"created_at"`
+	Updated     time.Time `json:"updated_at"`
+	Messages    []Message `json:"messages,omitempty"`
 }
 
 type Message struct {

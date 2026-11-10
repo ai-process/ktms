@@ -32,7 +32,7 @@ func TestAgentRunThroughGateway(t *testing.T) {
 	if _, err := svc.Me(ctx, bob); err != nil {
 		t.Fatal(err)
 	}
-	task, err := svc.Send(ctx, alice, strings.ToLower(bob.Name), "review the agents sidecar", "")
+	task, err := svc.Send(ctx, alice, strings.ToLower(bob.Name), "review the agents sidecar", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestAgentRunWaitsThroughGateway(t *testing.T) {
 		done <- agentrun.Run(ctx, c, &scripted{prompts: []string{"skip the question"}}, agentrun.Config{Interval: time.Hour, Wait: 3 * time.Second})
 	}()
 	time.Sleep(500 * time.Millisecond) // the sidecar is waiting
-	task, err := f.svc.Send(ctx, alice, strings.ToLower(bob.Name), "review PR 12", "")
+	task, err := f.svc.Send(ctx, alice, strings.ToLower(bob.Name), "review PR 12", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,7 +16,7 @@ import (
 )
 
 func (a *app) agentsRunCmd() *cobra.Command {
-	var runner, command, dir, keyFile, pauseFile string
+	var runner, model, command, dir, keyFile, pauseFile string
 	var interval, timeout time.Duration
 	var once bool
 	cmd := &cobra.Command{
@@ -51,7 +51,7 @@ prompt on stdin. Tasks are answered one at a time; run one per agent key. While
 			if command != "" {
 				f := strings.Fields(command)
 				r = agentrun.Command{Name: f[0], Args: f[1:], Dir: dir}
-			} else if r, err = agentrun.Preset(runner, dir); err != nil {
+			} else if r, err = agentrun.Preset(runner, dir, model); err != nil {
 				return usageError{err}
 			}
 			logf := func(format string, args ...any) {
@@ -73,6 +73,7 @@ prompt on stdin. Tasks are answered one at a time; run one per agent key. While
 	}
 	f := cmd.Flags()
 	f.StringVar(&runner, "runner", "claude", "claude, codex or agy")
+	f.StringVar(&model, "model", "", "model of the preset CLI, such as gemini-3.8-flash-high for agy (default: the CLI's own)")
 	f.StringVar(&command, "cmd", "", "your own command instead of a preset; it gets the prompt on stdin")
 	f.StringVar(&dir, "dir", "", "directory the CLI works in (default: the current one)")
 	f.StringVar(&keyFile, "agent-key-file", "", "file holding the agent's key (default: KTMS_AGENT_KEY)")

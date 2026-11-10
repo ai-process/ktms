@@ -28,6 +28,8 @@ var (
 	limit   = map[string]any{"type": "integer", "minimum": 1, "maximum": 100, "description": "Most tasks to return, default 20."}
 	since   = map[string]any{"type": "string", "format": "date-time", "description": "Only tasks changed after this time: pass the newest updated_at you have seen."}
 	wait    = map[string]any{"type": "integer", "minimum": 0, "maximum": 50, "description": "Seconds to wait for a task when there is none yet; the answer comes as soon as one changes."}
+	ref     = map[string]any{"type": "string", "maxLength": 200, "description": "Only tasks with this external_ref."}
+	pinned  = map[string]any{"type": "boolean", "description": "Only the tasks you pinned."}
 )
 
 func describe(s map[string]any, d string) map[string]any {
@@ -44,8 +46,9 @@ func Tools() []*mcp.Tool {
 	return []*mcp.Tool{
 		{
 			Name:        "list_agents",
-			Description: "Agents of other people you can send tasks to, with their owner, skills and repositories.",
-			InputSchema: obj(map[string]any{}),
+			Description: "Agents of other people you can send tasks to, with their owner, skills and repositories. With query, only those whose card holds every word of it, such as a skill or a repository.",
+			InputSchema: obj(map[string]any{"query": map[string]any{"type": "string", "maxLength": 200,
+				"description": "Up to 10 words to look for in name, owner, description, skills and repos, such as \"terraform review\"."}}),
 			Annotations: readOnly,
 		},
 		{
@@ -62,19 +65,22 @@ func Tools() []*mcp.Tool {
 			Name:        "send_message",
 			Description: "Send a task to another agent. It lands in their inbox; check its answer later with get_task or outbox.",
 			InputSchema: obj(map[string]any{
-				"agent":      describe(str, "Name of the agent, from list_agents."),
-				"text":       describe(str, "The request, self-contained: the other agent does not see your conversation."),
-				"context_id": describe(str, "To continue a conversation: the context_id of one of its tasks."),
+				"agent":        describe(str, "Name of the agent, from list_agents."),
+				"text":         describe(str, "The request, self-contained: the other agent does not see your conversation."),
+				"context_id":   describe(str, "To continue a conversation: the context_id of one of its tasks."),
+				"external_ref": map[string]any{"type": "string", "maxLength": 200, "description": "The issue this task is about elsewhere, such as PROJ-123 or a URL; a continuation without one takes the conversation's."},
 			}, "agent", "text"),
 		},
 		{
 			Name:        "inbox",
 			Description: "Tasks other agents sent you that are still open, with their messages. Answer each with reply. With since and wait it waits for the next change instead of returning nothing.",
 			InputSchema: obj(map[string]any{
-				"all":   map[string]any{"type": "boolean", "description": "Include tasks that have ended."},
-				"limit": limit,
-				"since": since,
-				"wait":  wait,
+				"all":          map[string]any{"type": "boolean", "description": "Include tasks that have ended."},
+				"limit":        limit,
+				"since":        since,
+				"wait":         wait,
+				"external_ref": ref,
+				"pinned":       pinned,
 			}),
 			Annotations: readOnly,
 		},
@@ -98,8 +104,16 @@ func Tools() []*mcp.Tool {
 		{
 			Name:        "outbox",
 			Description: "Tasks you sent, most recently changed first, with their status. With since and wait it waits for the next change.",
-			InputSchema: obj(map[string]any{"limit": limit, "since": since, "wait": wait}),
+			InputSchema: obj(map[string]any{"limit": limit, "since": since, "wait": wait, "external_ref": ref, "pinned": pinned}),
 			Annotations: readOnly,
+		},
+		{
+			Name:        "pin_task",
+			Description: "Keep a task you sent or received, such as a decision, past the retention of old tasks; pinned false lets it go again. Each side pins for itself.",
+			InputSchema: obj(map[string]any{
+				"task_id": str,
+				"pinned":  map[string]any{"type": "boolean", "description": "false to unpin; default true."},
+			}, "task_id"),
 		},
 	}
 }
@@ -119,6 +133,9 @@ func (s *Service) Call(ctx context.Context, id *apikeys.Identity, tool string, a
 		Since      string `json:"since"`
 		Wait       int    `json:"wait"`
 		NeedsOwner bool   `json:"needs_owner"`
+		Query      string `json:"query"`
+		Ref        string `json:"external_ref"`
+		Pinned     *bool  `json:"pinned"`
 		Correction bool   `json:"correction"`
 	}
 	if len(args) > 0 {
@@ -129,7 +146,8 @@ func (s *Service) Call(ctx context.Context, id *apikeys.Identity, tool string, a
 	if in.Limit <= 0 || in.Limit > 100 {
 		in.Limit = 20
 	}
-	q := Query{All: in.All, Limit: in.Limit, Wait: time.Duration(max(in.Wait, 0)) * time.Second}
+	q := Query{All: in.All, Limit: in.Limit, Wait: time.Duration(max(in.Wait, 0)) * time.Second, ExternalRef: in.Ref,
+		Pinned: tool != "pin_task" && in.Pinned != nil && *in.Pinned}
 	if in.Since != "" {
 		t, err := time.Parse(time.RFC3339Nano, in.Since)
 		if err != nil {
@@ -143,7 +161,7 @@ func (s *Service) Call(ctx context.Context, id *apikeys.Identity, tool string, a
 	case "list_agents":
 		var me *proxydb.Agent
 		var list []*proxydb.Agent
-		if me, list, err = s.List(ctx, id); err == nil {
+		if me, list, err = s.List(ctx, id, in.Query); err == nil {
 			out = agentsView(me, list)
 		}
 	case "register_agent":
@@ -153,7 +171,7 @@ func (s *Service) Call(ctx context.Context, id *apikeys.Identity, tool string, a
 		}
 	case "send_message":
 		var t *proxydb.AgentTask
-		if t, err = s.Send(ctx, id, in.Agent, in.Text, in.ContextID); err == nil {
+		if t, err = s.Send(ctx, id, in.Agent, in.Text, in.ContextID, in.Ref); err == nil {
 			out = taskView(t)
 		}
 	case "inbox":
@@ -172,6 +190,11 @@ func (s *Service) Call(ctx context.Context, id *apikeys.Identity, tool string, a
 			t, err = s.Reply(ctx, id, in.TaskID, in.Text, in.Status, in.NeedsOwner)
 		}
 		if err == nil {
+			out = taskView(t)
+		}
+	case "pin_task":
+		var t *proxydb.AgentTask
+		if t, err = s.Pin(ctx, id, in.TaskID, in.Pinned == nil || *in.Pinned); err == nil {
 			out = taskView(t)
 		}
 	case "get_task":
@@ -260,11 +283,14 @@ type taskOut struct {
 	// question, guardrail_hold or needs_owner while input-required.
 	ReasonCode string `json:"reason_code,omitempty"`
 	// Who gave the latest answer of an ended task: agent or owner.
-	AnsweredBy string        `json:"answered_by,omitempty"`
-	Depth      int32         `json:"depth,omitempty"`
-	Created    time.Time     `json:"created_at"`
-	Updated    time.Time     `json:"updated_at"`
-	Messages   []messageView `json:"messages,omitempty"`
+	AnsweredBy  string `json:"answered_by,omitempty"`
+	ExternalRef string `json:"external_ref,omitempty"`
+	// The agents that pinned it: its sender, its recipient or both.
+	PinnedBy []string      `json:"pinned_by,omitempty"`
+	Depth    int32         `json:"depth,omitempty"`
+	Created  time.Time     `json:"created_at"`
+	Updated  time.Time     `json:"updated_at"`
+	Messages []messageView `json:"messages,omitempty"`
 }
 
 func taskView(t *proxydb.AgentTask) taskOut {
@@ -274,6 +300,8 @@ func taskView(t *proxydb.AgentTask) taskOut {
 		v.Messages = append(v.Messages, messageView{From: m.FromName, Role: m.Role, Author: m.Author, Correction: m.Correction, Text: m.Text, At: m.CreatedAt})
 	}
 	v.AnsweredBy = AnsweredBy(t)
+	v.ExternalRef = t.ExternalRef
+	v.PinnedBy = PinnedBy(t)
 	return v
 }
 
@@ -289,6 +317,18 @@ func AnsweredBy(t *proxydb.AgentTask) string {
 		}
 	}
 	return ""
+}
+
+// PinnedBy names the agents that pinned the task.
+func PinnedBy(t *proxydb.AgentTask) []string {
+	var out []string
+	if t.PinnedByFrom {
+		out = append(out, t.FromName)
+	}
+	if t.PinnedByTo {
+		out = append(out, t.ToName)
+	}
+	return out
 }
 
 func tasksView(ts []*proxydb.AgentTask) []taskOut {

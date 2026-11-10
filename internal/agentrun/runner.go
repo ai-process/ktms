@@ -64,13 +64,21 @@ var Presets = map[string]Command{
 	"agy": {Name: "agy", Args: []string{"--mode", "plan"}, PromptArg: "-p="},
 }
 
-// Preset is a preset by name, run in dir.
-func Preset(name, dir string) (Command, error) {
+// Preset is a preset by name, run in dir, with model when it is set.
+func Preset(name, dir, model string) (Command, error) {
 	c, ok := Presets[name]
 	if !ok {
 		return Command{}, fmt.Errorf("unknown runner %q: want claude, codex, agy or --cmd", name)
 	}
 	c.Args = append([]string(nil), c.Args...)
+	if model != "" {
+		// codex takes its flags after the exec subcommand.
+		at := 0
+		if name == "codex" {
+			at = 1
+		}
+		c.Args = append(c.Args[:at], append([]string{"--model", model}, c.Args[at:]...)...)
+	}
 	c.Dir = dir
 	return c, nil
 }

@@ -416,6 +416,7 @@ func newAgents(ctx context.Context, cfg *config.Config, db *proxydb.DB, rails *g
 		// A waiting inbox answers well before the HTTP server would cut it off.
 		MaxWait:          max(time.Second, min(50*time.Second, cfg.HTTPAPITimeout-5*time.Second)),
 		CorrectionWindow: cfg.AgentsCorrectionWindow,
+		MaxPinned:        cfg.AgentsMaxPinned,
 	}, agents.NewGuard(rails), journal)
 	go svc.Sweep(ctx, time.Hour)
 	go svc.Listen(ctx)

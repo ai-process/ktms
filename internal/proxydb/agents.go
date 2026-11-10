@@ -81,6 +81,11 @@ type AgentTask struct {
 	Status       string
 	StatusReason string
 	ReasonCode   string // question, guardrail_hold or needs_owner while input-required
+	// ExternalRef ties the task to an issue elsewhere, such as PROJ-123 or a URL.
+	ExternalRef string
+	// Each side pins for itself; a task pinned by either outlives the retention sweep.
+	PinnedByFrom bool
+	PinnedByTo   bool
 	Depth        int32
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
@@ -219,9 +224,9 @@ func (d *DB) CreateAgentTask(ctx context.Context, t *AgentTask, text string, max
 			return err
 		}
 		if err := tx.QueryRow(ctx,
-			`INSERT INTO agent_task (id, context_id, from_agent, to_agent, status, status_reason, reason_code, depth, created_at, updated_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, clock_timestamp(), clock_timestamp()) RETURNING created_at, updated_at`,
-			t.ID, t.ContextID, t.FromAgent, t.ToAgent, t.Status, t.StatusReason, t.ReasonCode, t.Depth).Scan(&t.CreatedAt, &t.UpdatedAt); err != nil {
+			`INSERT INTO agent_task (id, context_id, from_agent, to_agent, status, status_reason, reason_code, external_ref, depth, created_at, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, clock_timestamp(), clock_timestamp()) RETURNING created_at, updated_at`,
+			t.ID, t.ContextID, t.FromAgent, t.ToAgent, t.Status, t.StatusReason, t.ReasonCode, t.ExternalRef, t.Depth).Scan(&t.CreatedAt, &t.UpdatedAt); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx,
@@ -343,6 +348,78 @@ func (d *DB) AddAgentCorrection(ctx context.Context, taskID, fromAgent, author, 
 	return t, err
 }
 
+// Sides of a task for TaskFilter.Pinned.
+const (
+	PinnedFrom   = "from"
+	PinnedTo     = "to"
+	PinnedEither = "either"
+)
+
+// ErrTooManyPins is a pin beyond the limit of one agent.
+var ErrTooManyPins = errors.New("proxydb: too many pinned tasks")
+
+// SetAgentTaskPinned pins or unpins a task on byAgent's side; ErrNotFound when
+// byAgent is neither its sender nor its recipient. maxPinned bounds the tasks
+// byAgent has pinned, counted under a lock on that agent; 0 means no bound.
+// It leaves updated_at alone, so a pin neither renews the retention of a task
+// nor reopens its correction window.
+func (d *DB) SetAgentTaskPinned(ctx context.Context, taskID, byAgent string, pinned bool, maxPinned int64) (*AgentTask, error) {
+	var t *AgentTask
+	err := pgx.BeginFunc(ctx, d.pool, func(tx pgx.Tx) error {
+		var from, to string
+		var byFrom, byTo bool
+		if err := tx.QueryRow(ctx, `SELECT from_agent, to_agent, pinned_by_from, pinned_by_to FROM agent_task WHERE id = $1`, taskID).
+			Scan(&from, &to, &byFrom, &byTo); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		col, was := "pinned_by_from", byFrom
+		switch byAgent {
+		case from:
+		case to:
+			col, was = "pinned_by_to", byTo
+		default:
+			return ErrNotFound
+		}
+		if was != pinned {
+			if pinned && maxPinned > 0 {
+				if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('agent_pins:' || $1))`, byAgent); err != nil {
+					return err
+				}
+				var n int64
+				if err := tx.QueryRow(ctx,
+					`SELECT count(*) FROM agent_task WHERE (from_agent = $1 AND pinned_by_from) OR (to_agent = $1 AND pinned_by_to)`, byAgent).Scan(&n); err != nil {
+					return err
+				}
+				if n >= maxPinned {
+					return ErrTooManyPins
+				}
+			}
+			if _, err := tx.Exec(ctx, `UPDATE agent_task SET `+col+` = $2 WHERE id = $1`, taskID, pinned); err != nil {
+				return err
+			}
+		}
+		var err error
+		t, err = getAgentTask(ctx, tx, taskID)
+		return err
+	})
+	return t, err
+}
+
+// ContextRef is the external_ref of the first task of a conversation, the one
+// that opened it; "" for none.
+func (d *DB) ContextRef(ctx context.Context, contextID string) (string, error) {
+	var ref string
+	err := d.pool.QueryRow(ctx,
+		`SELECT external_ref FROM agent_task WHERE context_id = $1 ORDER BY created_at, id LIMIT 1`, contextID).Scan(&ref)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return ref, err
+}
+
 // AgentsChannel is the Postgres channel that names, after each commit, the
 // agents whose tasks changed; waiting inbox calls of every replica listen.
 const AgentsChannel = "ktms_agents"
@@ -383,14 +460,14 @@ func (d *DB) ListenAgents(ctx context.Context, wake func(keyID string)) error {
 }
 
 const taskColumns = `t.id, t.context_id, t.from_agent, fa.name, t.to_agent, ta.name, t.status, t.status_reason,
-	t.reason_code, t.depth, t.created_at, t.updated_at`
+	t.reason_code, t.external_ref, t.pinned_by_from, t.pinned_by_to, t.depth, t.created_at, t.updated_at`
 
 const taskJoins = ` FROM agent_task t JOIN agent fa ON fa.key_id = t.from_agent JOIN agent ta ON ta.key_id = t.to_agent`
 
 func scanTask(row pgx.Row) (*AgentTask, error) {
 	var t AgentTask
 	err := row.Scan(&t.ID, &t.ContextID, &t.FromAgent, &t.FromName, &t.ToAgent, &t.ToName, &t.Status, &t.StatusReason,
-		&t.ReasonCode, &t.Depth, &t.CreatedAt, &t.UpdatedAt)
+		&t.ReasonCode, &t.ExternalRef, &t.PinnedByFrom, &t.PinnedByTo, &t.Depth, &t.CreatedAt, &t.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -459,8 +536,12 @@ type TaskFilter struct {
 	// Only waiting for these reasons (question, guardrail_hold, needs_owner).
 	ReasonCodes []string
 	// Only tasks changed after this moment; zero for any.
-	Since time.Time
-	Limit int
+	Since       time.Time
+	ExternalRef string
+	// Only pinned tasks: PinnedFrom (by their sender), PinnedTo (by their
+	// recipient) or PinnedEither.
+	Pinned string
+	Limit  int
 }
 
 // ListAgentTasks lists tasks without their messages, most recently changed first.
@@ -479,8 +560,11 @@ func (d *DB) ListAgentTasks(ctx context.Context, f TaskFilter) ([]*AgentTask, er
 		   AND (cardinality($4::text[]) = 0 OR t.status = ANY($4))
 		   AND (cardinality($6::text[]) = 0 OR t.reason_code = ANY($6))
 		   AND ($7::timestamptz IS NULL OR t.updated_at > $7)
+		   AND ($8 = '' OR t.external_ref = $8)
+		   AND ($9 = '' OR ($9 IN ('from', 'either') AND t.pinned_by_from) OR ($9 IN ('to', 'either') AND t.pinned_by_to))
 		 ORDER BY t.updated_at DESC LIMIT $5`,
-		nullable(f.ToAgent), nullable(f.FromAgent), nullable(f.Agent), nonNil(f.Statuses), limit, nonNil(f.ReasonCodes), nullableTime(f.Since))
+		nullable(f.ToAgent), nullable(f.FromAgent), nullable(f.Agent), nonNil(f.Statuses), limit, nonNil(f.ReasonCodes), nullableTime(f.Since),
+		f.ExternalRef, f.Pinned)
 	if err != nil {
 		return nil, err
 	}
@@ -517,9 +601,9 @@ func (d *DB) CountAgentTasks(ctx context.Context) (map[string]int64, error) {
 }
 
 // DeleteAgentTasksBefore removes tasks unchanged since before cutoff, with
-// their messages, and reports how many went.
+// their messages, and reports how many went. Pinned tasks stay.
 func (d *DB) DeleteAgentTasksBefore(ctx context.Context, cutoff time.Time) (int64, error) {
-	tag, err := d.pool.Exec(ctx, `DELETE FROM agent_task WHERE updated_at < $1`, cutoff)
+	tag, err := d.pool.Exec(ctx, `DELETE FROM agent_task WHERE updated_at < $1 AND NOT (pinned_by_from OR pinned_by_to)`, cutoff)
 	if err != nil {
 		return 0, err
 	}

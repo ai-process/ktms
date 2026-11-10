@@ -45,8 +45,9 @@ func (a *app) agentsCmd() *cobra.Command {
 	ls.Flags().StringVar(&owner, "owner", "", "only this person's agents")
 
 	var tFormat string
-	var open bool
+	var open, pinnedOnly bool
 	var lim int32
+	var ref string
 	var statuses, reasons []string
 	tasks := &cobra.Command{
 		Use: "tasks AGENT", Short: "Tasks an agent sent or received, most recent first", Args: cobra.ExactArgs(1),
@@ -68,7 +69,8 @@ func (a *app) agentsCmd() *cobra.Command {
 				return err
 			}
 			return a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
-				res, err := c.ListAgentTasks(ctx, &pb.ListAgentTasksRequest{Agent: args[0], OpenOnly: open, Limit: lim, Statuses: statuses, ReasonCodes: reasons})
+				res, err := c.ListAgentTasks(ctx, &pb.ListAgentTasksRequest{Agent: args[0], OpenOnly: open, Limit: lim, Statuses: statuses, ReasonCodes: reasons,
+					ExternalRef: ref, PinnedOnly: pinnedOnly})
 				if err != nil {
 					return err
 				}
@@ -78,9 +80,9 @@ func (a *app) agentsCmd() *cobra.Command {
 				var rows [][]string
 				for _, t := range res.GetTasks() {
 					rows = append(rows, []string{t.GetTaskId(), t.GetFrom(), t.GetTo(), t.GetStatus(), orDash(t.GetReasonCode()), strconv.Itoa(int(t.GetDepth())),
-						orDash(t.GetStatusReason()), when(t.GetUpdatedAt())})
+						orDash(t.GetExternalRef()), orDash(t.GetStatusReason()), when(t.GetUpdatedAt())})
 				}
-				return p.rows([]string{"TASK", "FROM", "TO", "STATUS", "WAITS ON", "DEPTH", "REASON", "UPDATED"}, rows)
+				return p.rows([]string{"TASK", "FROM", "TO", "STATUS", "WAITS ON", "DEPTH", "REF", "REASON", "UPDATED"}, rows)
 			})
 		},
 	}
@@ -90,6 +92,8 @@ func (a *app) agentsCmd() *cobra.Command {
 	tasks.Flags().StringSliceVar(&statuses, "status", nil,
 		"only tasks in these statuses, repeatable or comma-separated: "+strings.Join(proxydb.TaskStatuses, ", ")+"; with --open, the open ones among them")
 
+	tasks.Flags().StringVar(&ref, "ref", "", "only tasks tied to this external_ref, such as PROJ-123")
+	tasks.Flags().BoolVar(&pinnedOnly, "pinned", false, "only tasks pinned by either side")
 	tasks.Flags().StringSliceVar(&reasons, "reason", nil,
 		"only input-required tasks waiting for these reasons: "+strings.Join(proxydb.ReasonCodes, ", ")+" (needs_owner: the agent asks its own person)")
 
@@ -116,7 +120,14 @@ func (a *app) agentsCmd() *cobra.Command {
 				if t.GetAnsweredBy() == "owner" {
 					fmt.Fprint(a.stdout, ", answered by the owner")
 				}
-				fmt.Fprintf(a.stdout, "\ncontext %s, depth %d\n", t.GetContextId(), t.GetDepth())
+				fmt.Fprintf(a.stdout, "\ncontext %s, depth %d", t.GetContextId(), t.GetDepth())
+				if t.GetExternalRef() != "" {
+					fmt.Fprintf(a.stdout, ", ref %s", t.GetExternalRef())
+				}
+				if len(t.GetPinnedBy()) > 0 {
+					fmt.Fprintf(a.stdout, ", pinned by %s", strings.Join(t.GetPinnedBy(), ", "))
+				}
+				fmt.Fprintln(a.stdout)
 				for _, m := range t.GetMessages() {
 					who := m.GetFrom()
 					if m.GetAuthor() == "owner" {
