@@ -17,6 +17,8 @@ import (
 
 func (a *app) agentsRunCmd() *cobra.Command {
 	var runner, model, command, dir, keyFile, pauseFile string
+	var skills, repos []string
+	var desc string
 	var interval, timeout time.Duration
 	var once bool
 	cmd := &cobra.Command{
@@ -29,11 +31,12 @@ and send what the CLI printed back as the reply. The CLI ends its answer with a 
 "STATUS: failed"; without one the answer completes the task.
 
 The presets run read-only: claude with only Read, Grep and Glob and no MCP servers,
-codex in its read-only sandbox, agy in plan mode. --cmd runs your own program with the
+codex in its read-only sandbox, agy in plan mode (a run it ends at a refused shell command
+is resumed once). --description, --skill and --repo set the agent's card. --cmd runs your own program with the
 prompt on stdin. Tasks are answered one at a time; run one per agent key. While
 --pause-file exists no task is taken.`,
 		Args: cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			key, err := agentKey(keyFile)
 			if err != nil {
 				return err
@@ -61,6 +64,9 @@ prompt on stdin. Tasks are answered one at a time; run one per agent key. While
 			c := &agentrun.Client{Endpoint: strings.TrimRight(base, "/") + "/mcp/agents", Key: key, HTTP: a.t.httpClient(), Version: version}
 			defer c.Close()
 			cfg := agentrun.Config{Interval: interval, Timeout: timeout, PauseFile: pauseFile, Logf: logf}
+			if err := runCard(context.Background(), cmd, c, logf, desc, skills, repos); err != nil {
+				return err
+			}
 
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
@@ -79,9 +85,48 @@ prompt on stdin. Tasks are answered one at a time; run one per agent key. While
 	f.StringVar(&keyFile, "agent-key-file", "", "file holding the agent's key (default: KTMS_AGENT_KEY)")
 	f.StringVar(&pauseFile, "pause-file", "", "while this file exists, take no task")
 	f.DurationVar(&interval, "interval", 15*time.Second, "time between inbox polls when KTMS cannot wait (before 1.6), and after an error")
-	f.DurationVar(&timeout, "task-timeout", 15*time.Minute, "longest run of the CLI on one task; then the task fails")
+	f.DurationVar(&timeout, "task-timeout", 30*time.Minute, "longest run of the CLI on one task; then the task fails")
+	f.StringVar(&desc, "description", "", "set the agent's card: what it can help with")
+	f.StringSliceVar(&skills, "skill", nil, "set the card's skills, such as code-review; repeatable")
+	f.StringSliceVar(&repos, "repo", nil, "set the card's repositories; repeatable")
 	f.BoolVar(&once, "once", false, "answer the tasks due now and exit")
 	return cmd
+}
+
+// runCard changes the fields of the agent's card given as flags, and warns
+// when the card says nothing, as no one finds the agent by what it does.
+func runCard(ctx context.Context, cmd *cobra.Command, c *agentrun.Client, logf func(string, ...any), desc string, skills, repos []string) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	f := cmd.Flags()
+	set := f.Changed("description") || f.Changed("skill") || f.Changed("repo")
+	card, err := c.Card(ctx)
+	if err != nil {
+		if !set {
+			logf("reading the agent's card: %v", err) // the inbox may still work
+			return nil
+		}
+		return err
+	}
+	if set {
+		if f.Changed("description") {
+			card.Description = desc
+		}
+		if f.Changed("skill") {
+			card.Skills = skills
+		}
+		if f.Changed("repo") {
+			card.Repos = repos
+		}
+		if card, err = c.SetCard(ctx, card); err != nil {
+			return err
+		}
+		logf("card of %s updated", card.Name)
+	}
+	if card.Description == "" && len(card.Skills) == 0 {
+		logf("the card of %s is empty, so ktms inbox find will not find it by what it does; set it with --description and --skill", card.Name)
+	}
+	return nil
 }
 
 func agentKey(file string) (string, error) {

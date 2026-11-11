@@ -3,6 +3,7 @@ package agentrun
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,7 +64,9 @@ func (f *fakeInbox) Reply(_ context.Context, id, text, status string, _ bool) er
 		if f.tasks[i].TaskID == id {
 			f.tasks[i].Status = status
 			f.tasks[i].Updated = f.tick()
-			f.tasks[i].Messages = append(f.tasks[i].Messages, Message{From: "me", Role: "agent", Text: text})
+			if text != "" { // as the server: a bare status change adds no message
+				f.tasks[i].Messages = append(f.tasks[i].Messages, Message{From: "me", Role: "agent", Text: text})
+			}
 		}
 	}
 	return nil
@@ -102,6 +105,7 @@ func TestDue(t *testing.T) {
 		"held":              {Task{Status: "input-required", Reason: "guardrail: injection", Messages: []Message{user}}, false},
 		"progress note":     {task("1", "working", user, Message{Role: "agent", Text: "halfway"}), false},
 		"claimed, died":     {task("1", "working", user, Message{Role: "agent", Text: Claim}), true},
+		"bare claim, died":  {task("1", "working", user), true},
 		"owner hands back":  {task("1", "working", user, Message{Role: "agent", Author: "owner", Text: "go ahead, share it"}), true},
 		"owner answered":    {task("1", "completed", user, Message{Role: "agent", Author: "owner", Text: "done"}), false},
 		"owner asks sender": {task("1", "input-required", user, Message{Role: "agent", Author: "owner", Text: "which?"}), false},
@@ -154,7 +158,7 @@ func TestOnce(t *testing.T) {
 	if err := Once(ctx, in, r, Config{}); err != nil {
 		t.Fatal(err)
 	}
-	want := []reply{{"old", Claim, "working"}, {"old", "Which branch?", "input-required"}, {"new", Claim, "working"}, {"new", "Which branch?", "input-required"}}
+	want := []reply{{"old", "", "working"}, {"old", "Which branch?", "input-required"}, {"new", "", "working"}, {"new", "Which branch?", "input-required"}}
 	if len(in.replies) != len(want) {
 		t.Fatalf("replies = %+v", in.replies)
 	}
@@ -182,6 +186,7 @@ func TestOnceFailures(t *testing.T) {
 		"error":   {&fakeRunner{out: "/home/me/secret path", err: errors.New("exit status 2")}, Config{}, "failed to run"},
 		"timeout": {&fakeRunner{wait: time.Second}, Config{Timeout: 20 * time.Millisecond}, "did not finish"},
 		"silent":  {&fakeRunner{out: "\n"}, Config{}, "no answer"},
+		"refused": {&fakeRunner{err: fmt.Errorf("agy: %w", &Refused{Actions: []string{"command"}})}, Config{}, "was refused what it tried (command)"},
 	}
 	for name, c := range cases {
 		in := &fakeInbox{tasks: []Task{task("t", "submitted", Message{Role: "user", Text: "x"})}}
@@ -255,15 +260,57 @@ func TestCommandStdinAndArg(t *testing.T) {
 		t.Fatal("unknown preset accepted")
 	}
 	for name, want := range map[string]string{
-		"agy":   "--model m --mode plan",
+		"agy":   "--model m --mode plan --output-format json",
 		"codex": "exec --model m --sandbox read-only -",
 	} {
 		if c, err := Preset(name, ".", "m"); err != nil || strings.Join(c.Args, " ") != want {
 			t.Errorf("%s with a model: %q, %v", name, c.Args, err)
 		}
 	}
-	if c, _ := Preset("agy", ".", ""); strings.Join(c.Args, " ") != "--mode plan" {
+	if c, _ := Preset("agy", ".", ""); strings.Join(c.Args, " ") != "--mode plan --output-format json" {
 		t.Errorf("agy without a model: %q", c.Args)
+	}
+}
+
+// fakeAgy stands for agy in print mode with JSON output: a fresh run ends on a
+// refused command, and a run resuming its conversation answers.
+const fakeAgy = `case "$*" in
+*never*) printf '{"conversation_id":"c2","response":"","denied_actions":[{"action":"command"}]}';;
+*"--conversation c1 -p=Shell"*) printf '{"conversation_id":"c1","response":"see file://%s/a.go\\nSTATUS: completed"}' "$PWD";;
+*--conversation*) echo "resumed the wrong conversation: $*" >&2; exit 3;;
+*) printf '{"conversation_id":"c1","response":"","denied_actions":[{"action":"command"}]}';;
+esac`
+
+func TestAgyResumesARefusedRun(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "agy")
+	if err := os.WriteFile(script, []byte(fakeAgy), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	c := Command{Name: "sh", Args: []string{script}, Dir: dir, PromptArg: "-p=", Agy: true}
+	out, err := c.Run(context.Background(), "review it")
+	if err != nil || out != "see a.go\nSTATUS: completed" {
+		t.Fatalf("resumed run = %q, %v", out, err)
+	}
+	// Refused again after the resume: no answer, and the reason.
+	c.Args = append(c.Args, "never")
+	var ref *Refused
+	if out, err := c.Run(context.Background(), "review it"); !errors.As(err, &ref) || fmt.Sprint(ref.Actions) != "[command]" || out != "" {
+		t.Fatalf("refused twice = %q, %v", out, err)
+	}
+	// A notice before the result is skipped; JSON that is not agy's result is the answer.
+	for out, want := range map[string]string{
+		"notice: update available\n{\"conversation_id\":\"c3\",\"response\":\"LGTM\"}": "LGTM",
+		`{"verdict":"ok"}`: `{"verdict":"ok"}`,
+	} {
+		if got := agyResult(out).Response; got != want {
+			t.Errorf("agyResult(%q) = %q, want %q", out, got, want)
+		}
+	}
+	// A plain-text answer still comes through.
+	c = Command{Name: "echo", PromptArg: "-p=", Agy: true}
+	if out, err := c.Run(context.Background(), "hi"); err != nil || strings.TrimSpace(out) != "-p=hi" {
+		t.Fatalf("text output = %q, %v", out, err)
 	}
 }
 

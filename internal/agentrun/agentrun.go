@@ -7,6 +7,7 @@ package agentrun
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -55,8 +56,10 @@ type Runner interface {
 	Run(ctx context.Context, prompt string) (string, error)
 }
 
-// Claim is the reply that marks a task taken. A task whose last message is
-// the claim was taken by a run that died, so it is due again.
+// Claim is the reply that marked a task taken before the sidecar took tasks
+// with a bare status change. A task whose last message is the claim, or a
+// working task whose last message is not an answer, was taken by a run that
+// died, so it is due again.
 const Claim = "Working on it."
 
 // Due reports whether a task waits for this agent: open, not waiting for its
@@ -96,7 +99,7 @@ func (c Config) withDefaults() Config {
 		c.Wait = 50 * time.Second
 	}
 	if c.Timeout <= 0 {
-		c.Timeout = 15 * time.Minute
+		c.Timeout = 30 * time.Minute
 	}
 	if c.MaxPrompt <= 0 {
 		c.MaxPrompt = 100 << 10
@@ -186,7 +189,8 @@ func answer(ctx context.Context, in Inbox, r Runner, cfg Config, task Task) {
 	log := func(format string, args ...any) {
 		cfg.Logf("task %s from %s: "+format, append([]any{task.TaskID, task.From}, args...)...)
 	}
-	if err := in.Reply(ctx, task.TaskID, Claim, "working", false); err != nil {
+	// A bare status change: the sender sees the task taken, with no message.
+	if err := in.Reply(ctx, task.TaskID, "", "working", false); err != nil {
 		log("not taken: %v", err)
 		return
 	}
@@ -204,6 +208,14 @@ func answer(ctx context.Context, in Inbox, r Runner, cfg Config, task Task) {
 		// The runner's own output and errors stay local: they may name paths
 		// and settings of this machine.
 		text, status = fmt.Sprintf("The agent did not finish within %s.", cfg.Timeout), "failed"
+	case errors.Is(err, ErrRefused):
+		log("runner failed: %v", err)
+		what := "a tool"
+		if ref := (*Refused)(nil); errors.As(err, &ref) && len(ref.Actions) > 0 {
+			what = strings.Join(ref.Actions, ", ")
+		}
+		text = fmt.Sprintf("The agent stopped without an answer: it runs read-only, and its CLI was refused what it tried (%s). Send what it needs, such as the diff, in the message.", what)
+		status = "failed"
 	case err != nil:
 		log("runner failed: %v", err)
 		text, status = "The agent failed to run; its owner can see why in the sidecar's log.", "failed"

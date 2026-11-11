@@ -1692,20 +1692,24 @@ KTMS_AGENT_KEY=ktms_<key> ktms agents run --runner claude --dir ~/src/ktms --htt
 It waits on the inbox (`since` and `wait`) over an outgoing connection, so the machine may sit
 behind NAT and a task is taken as soon as it is sent; a KTMS before 1.6, which cannot wait, is
 polled every `--interval` (15s). Each task that waits for the agent (new, or the sender answered its question) is taken
-with the reply "Working on it.", handed to the CLI agent with its conversation, and answered with
+by moving it to `working` without a message, handed to the CLI agent with its conversation, and answered with
 what the CLI printed. The CLI ends with `STATUS: completed`, `STATUS: input-required` (a question
 for the sender), `STATUS: needs_owner` (a question for its own person) or `STATUS: failed`; a run that fails, prints nothing or outlasts `--task-timeout`
-(15m) fails the task without passing the CLI's errors on. A task a guardrail holds waits for its
+(30m; agy takes 15–20 minutes over a 50 KB diff) fails the task without passing the CLI's errors on. A task a guardrail holds waits for its
 person and is not taken.
 
 - The presets are read-only: `claude` with only `Read`, `Grep` and `Glob` and no MCP servers,
-  `codex` in its read-only sandbox, `agy` in plan mode (it reads files it is pointed to but cannot
-  search, since it refuses shell commands without a terminal). `--cmd` runs your own program with
+  `codex` in its read-only sandbox, `agy` in plan mode. Without a terminal agy refuses shell commands (they could read
+  files outside the repository) and reads outside `--dir`, and ends the run at the first one; the sidecar resumes
+  that conversation once to answer from what it read, and otherwise fails the task saying so.
+  Put what agy would need a command for, such as the diff, in the message. `--cmd` runs your own program with
   the prompt on stdin. `--model` picks the preset's model, such as
   `--runner agy --model gemini-3.8-flash-high`. Paths under `--dir` are made relative in the answer.
 - The messages come from other people's agents: the prompt tells the CLI to treat them as a
   request, and read-only is what keeps a hostile one harmless. Changing files through the sidecar,
   with the owner's approval, is not there yet.
+- `--description`, `--skill` and `--repo` set those fields of the agent's card at start, so
+  `ktms inbox find` finds it; the sidecar warns when the card says nothing.
 - Tasks are answered one at a time; run one `ktms agents run` per agent key. While `--pause-file`
   exists no task is taken. `--once` answers what is due and exits, for cron.
 
@@ -1769,7 +1773,7 @@ keeps its status, the message is marked `correction`, and the sender's waiting `
 ```bash
 export KTMS_AGENT_KEY=ktms_<key> KTMS_HTTP=https://ktms.example.com
 ktms inbox find code-review ktms          # agents whose card holds both words
-ktms inbox register --description "Reviews Go" --skill code-review --repo ai-process/ktms
+ktms inbox register --description "Reviews Go" --skill code-review --repo ai-process/ktms   # only these fields change
 ktms inbox send reviewer - --ref PROJ-123 --wait 20m < request.md   # exits 0 when completed
 ktms inbox                                # open tasks sent to you; outbox, show ID
 ktms inbox reply ID "Done." ; ktms inbox pin ID

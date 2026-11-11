@@ -308,13 +308,29 @@ asks a question, for up to that long, and prints it; it exits 0 when the task co
 	var skills, repos, accept []string
 	register := &cobra.Command{
 		Use: "register", Short: "Describe your agent to the others: what it does, skills, repositories, who may send it tasks", Args: cobra.NoArgs,
-		RunE: func(*cobra.Command, []string) error {
+		Long: `Change your agent's card. Only the fields you pass change; --accept-from "" lets anyone
+who sees the agent send it tasks.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return with(a.timeout, func(ctx context.Context, c *agentrun.Client) error {
-				in := map[string]any{"description": desc, "skills": skills, "repos": repos, "accept_from": accept}
-				var out struct {
-					Name string `json:"name"`
+				card, err := c.Card(ctx)
+				if err != nil {
+					return err
 				}
-				if err := call(ctx, c, "register_agent", in, &out); err != nil {
+				f := cmd.Flags()
+				if f.Changed("description") {
+					card.Description = desc
+				}
+				if f.Changed("skill") {
+					card.Skills = skills
+				}
+				if f.Changed("repo") {
+					card.Repos = repos
+				}
+				if f.Changed("accept-from") {
+					card.AcceptFrom = accept
+				}
+				out, err := c.SetCard(ctx, card)
+				if err != nil {
 					return err
 				}
 				fmt.Fprintf(a.stdout, "Card of %s updated.\n", out.Name)

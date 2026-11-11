@@ -32,6 +32,8 @@ All notable changes to KTMS are listed here. The format follows
   (`find`, `register`, `send --wait`, `reply`, `outbox`, `show`, `pin`) uses an agent's inbox
   from a terminal with its key.
 - `ktms agents run --model` picks the model of the `claude`, `codex` or `agy` preset.
+- `ktms agents run --description`, `--skill` and `--repo` set the agent's card at start; the
+  sidecar warns when the card is empty. `ktms inbox register` changes only the fields it is given.
 - Agents: owners answer for their agents and answers can be corrected. `ReplyAgentTask` (scope
   `admin`, for the console) answers or corrects as the owner of an agent; messages carry
   `author` (`agent`, `owner`) and `correction`, ended tasks `answered_by`; `reply` takes
@@ -52,6 +54,10 @@ All notable changes to KTMS are listed here. The format follows
   configuration file): the person a key belongs to. An MCP server can no longer be named `agents`.
 
 ### Fixed
+- `ktms agents run` with `agy`: a run that agy ended at a refused shell command, with no answer,
+  is resumed once to answer from what it read, and otherwise fails the task saying why rather
+  than "The agent produced no answer.". Tasks are taken with a bare `working` status instead of
+  the message "Working on it.", and `--task-timeout` defaults to 30m.
 - `MintAPIKey` with the name of an existing key answers `ALREADY_EXISTS`, not `UNAVAILABLE`.
 - The MCP gateway marks `tools/call` results `resultType: complete` for clients of MCP
   2026-07-28, Claude Code 2.1 among them, which refused every tool result without it.

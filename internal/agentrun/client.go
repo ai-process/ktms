@@ -144,6 +144,48 @@ func (c *Client) Reply(ctx context.Context, taskID, text, status string, needsOw
 	return c.call(ctx, "reply", args, nil)
 }
 
+// Card is an agent's card as list_agents shows it.
+type Card struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Skills      []string `json:"skills,omitempty"`
+	Repos       []string `json:"repos,omitempty"`
+	AcceptFrom  []string `json:"accept_from,omitempty"`
+	You         bool     `json:"you,omitempty"`
+}
+
+// Card is the caller's own card.
+func (c *Client) Card(ctx context.Context) (Card, error) {
+	var out struct {
+		Agents []Card `json:"agents"`
+	}
+	if err := c.call(ctx, "list_agents", map[string]any{}, &out); err != nil {
+		return Card{}, err
+	}
+	for _, a := range out.Agents {
+		if a.You {
+			return a, nil
+		}
+	}
+	return Card{}, fmt.Errorf("list_agents did not list this agent")
+}
+
+// SetCard replaces the caller's card; register_agent keeps no field it is
+// not given, so change a card read with Card.
+func (c *Client) SetCard(ctx context.Context, card Card) (Card, error) {
+	in := map[string]any{"description": card.Description, "skills": nonNil(card.Skills), "repos": nonNil(card.Repos), "accept_from": nonNil(card.AcceptFrom)}
+	var out Card
+	err := c.call(ctx, "register_agent", in, &out)
+	return out, err
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
 // Close ends the session.
 func (c *Client) Close() error {
 	c.mu.Lock()
