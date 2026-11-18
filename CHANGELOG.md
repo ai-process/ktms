@@ -54,6 +54,7 @@ All notable changes to KTMS are listed here. The format follows
   configuration file): the person a key belongs to. An MCP server can no longer be named `agents`.
 
 ### Fixed
+- Go 1.27.4: `net/http` in Go 1.27.3 is affected by GO-2026-6859.
 - `ktms agents run` with `agy`: a run that agy ended at a refused shell command, with no answer,
   is resumed once to answer from what it read, and otherwise fails the task saying why rather
   than "The agent produced no answer.". Tasks are taken with a bare `working` status instead of
