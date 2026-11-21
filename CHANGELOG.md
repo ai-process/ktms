@@ -44,6 +44,10 @@ All notable changes to KTMS are listed here. The format follows
   on migration; events already in the journal stream keep it, so trim
   `<REDIS_KEY_PREFIX>agents:journal` if you ran one.
 
+### Security
+- Go 1.27.4: fixes GO-2026-6859, an HTTP/1 server crash through a header race in
+  `http.MaxBytesReader` that a remote client could trigger.
+
 ## [1.5.0] - 2026-11-03
 
 ### Added
