@@ -123,10 +123,12 @@ func TranslateByPrompt(ctx context.Context, a ClientAdapter, req *TranslateReque
 		}(ch)
 	}
 	wg.Wait()
-	out.Usage.Characters = SourceCharacters(req.Texts)
 	if firstErr != nil {
+		// Tokens spent are billed; characters only for a translation delivered,
+		// or every model the chain falls through would charge them again.
 		return out, firstErr
 	}
+	out.Usage.Characters = SourceCharacters(req.Texts)
 	return out, nil
 }
 

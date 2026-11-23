@@ -245,11 +245,12 @@ func (s *ProxyServer) explainMedia(ctx context.Context, id *apikeys.Identity, in
 		caps:     append([]string{capability}, in.GetCapabilities()...),
 	}
 	if in.GetModality() == modalityTranslate {
-		if in.GetTargetLanguage() == "" {
-			out.Error = statusText(status.Error(codes.InvalidArgument, "bad_request: target_language is required for translate"))
+		source, target, err := languageTags(in.GetSourceLanguage(), in.GetTargetLanguage())
+		if err != nil {
+			out.Error = statusText(err)
 			return out
 		}
-		q.pair = &languagePair{source: in.GetSourceLanguage(), target: in.GetTargetLanguage()}
+		q.pair = &languagePair{source: source, target: target}
 	}
 	if v, err := apikeys.ParseDataClassification(in.GetDataClassification(), false); err != nil {
 		out.Error = statusText(status.Error(codes.InvalidArgument, "bad_request: "+err.Error()))

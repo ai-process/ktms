@@ -207,6 +207,11 @@ func TestTranslateMismatchRetriesThenFallsBack(t *testing.T) {
 	if bad.count() != 2 {
 		t.Errorf("mismatching model called %d times, want 2 (one retry)", bad.count())
 	}
+	// The failed model bills its tokens only, the serving one the characters.
+	ev := tracker.list()
+	if len(ev) != 2 || ev[0].meta["characters"] != "0" || ev[1].meta["characters"] != "2" || ev[0].cost != 360_000 {
+		t.Errorf("usage events = %+v", ev)
+	}
 }
 
 func TestTranslateMismatchRecoversOnRetry(t *testing.T) {
@@ -347,6 +352,10 @@ func TestExplainRouteTranslate(t *testing.T) {
 	out := s.ExplainRoute(context.Background(), apikeys.IdentityFrom(testIdentity()), &pb.ExplainRouteRequest{Modality: "translate", SourceLanguage: "fr", TargetLanguage: "de"})
 	if out.GetError() != "" || out.GetRule() != "translate-default" {
 		t.Fatalf("explain = %+v", out)
+	}
+	bad := s.ExplainRoute(context.Background(), apikeys.IdentityFrom(testIdentity()), &pb.ExplainRouteRequest{Modality: "translate", TargetLanguage: "*"})
+	if !strings.HasPrefix(bad.GetError(), "INVALID_ARGUMENT: bad_request") {
+		t.Errorf("explain with target * = %q", bad.GetError())
 	}
 	if len(out.GetCandidates()) != 2 || out.GetCandidates()[0].GetDropped() != dropLanguagePair || out.GetCandidates()[1].GetDropped() != "" {
 		t.Errorf("candidates = %v", out.GetCandidates())

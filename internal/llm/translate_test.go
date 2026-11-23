@@ -52,8 +52,8 @@ func TestTranslateByPromptChecksReply(t *testing.T) {
 		if !errors.As(err, &mm) || !ShouldSkipToNextModel(err) {
 			t.Errorf("%s: err = %v, want a mismatch that skips to the next model", name, err)
 		}
-		// Both attempts were spent, so both are billed.
-		if res == nil || res.Usage.Input != 20 {
+		// Both attempts were spent, so their tokens are billed; characters are not.
+		if res == nil || res.Usage.Input != 20 || res.Usage.Characters != 0 {
 			t.Errorf("%s: usage = %+v, want two attempts", name, res)
 		}
 	}

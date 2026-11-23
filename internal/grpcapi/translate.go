@@ -106,14 +106,18 @@ func (s *ProxyServer) Translate(ctx context.Context, req *pb.TranslateRequest) (
 			} else {
 				res, err = llm.TranslateByPrompt(callCtx, adapter, tr, userID, plan.meta)
 			}
+			if err == nil && (res == nil || len(res.Translations) != len(tr.Texts)) {
+				err = &llm.TranslationMismatchError{Reason: "engine returned a different number of translations"}
+			}
 			if err != nil {
+				// A failed attempt bills its tokens, never the characters: the
+				// model that does translate charges those.
 				if res != nil {
-					return res.Usage, err
+					u := res.Usage
+					u.Characters = 0
+					return u, err
 				}
 				return llm.TokensUsage{}, err
-			}
-			if len(res.Translations) != len(tr.Texts) {
-				return res.Usage, &llm.TranslationMismatchError{Reason: "engine returned a different number of translations"}
 			}
 			out = res
 			return res.Usage, nil
@@ -137,6 +141,8 @@ func (s *ProxyServer) Translate(ctx context.Context, req *pb.TranslateRequest) (
 		Usage: &pb.TokensUsage{
 			Input:      int64(out.Usage.Input),
 			Output:     int64(out.Usage.Output),
+			CacheRead:  int64(out.Usage.CacheRead),
+			CacheWrite: int64(out.Usage.CacheWrite),
 			Characters: int64(out.Usage.Characters),
 		},
 	}
@@ -177,15 +183,9 @@ func translateRequestFromProto(req *pb.TranslateRequest) (*llm.TranslateRequest,
 	if size > maxTranslateBytes {
 		return nil, status.Errorf(codes.InvalidArgument, "bad_request: texts total %d bytes, at most %d per call", size, maxTranslateBytes)
 	}
-	target := strings.TrimSpace(req.GetTargetLanguage())
-	if target == "" {
-		return nil, status.Error(codes.InvalidArgument, "bad_request: target_language is required")
-	}
-	source := strings.TrimSpace(req.GetSourceLanguage())
-	for _, tag := range []string{source, target} {
-		if tag != "" && (tag == registry.AnyLanguage || !registry.ValidLanguageTag(tag)) {
-			return nil, status.Errorf(codes.InvalidArgument, "bad_request: language %q: want a BCP-47 tag such as de or pt-BR", tag)
-		}
+	source, target, err := languageTags(req.GetSourceLanguage(), req.GetTargetLanguage())
+	if err != nil {
+		return nil, err
 	}
 	format := strings.ToLower(strings.TrimSpace(req.GetFormat()))
 	switch format {
@@ -202,4 +202,19 @@ func translateRequestFromProto(req *pb.TranslateRequest) (*llm.TranslateRequest,
 		Format:         format,
 		ActionID:       req.GetActionId(),
 	}, nil
+}
+
+// languageTags validates a request's pair, as Translate and ExplainRoute
+// both take it: target required, neither "*" nor a malformed tag.
+func languageTags(source, target string) (string, string, error) {
+	source, target = strings.TrimSpace(source), strings.TrimSpace(target)
+	if target == "" {
+		return "", "", status.Error(codes.InvalidArgument, "bad_request: target_language is required")
+	}
+	for _, tag := range []string{source, target} {
+		if tag != "" && (tag == registry.AnyLanguage || !registry.ValidLanguageTag(tag)) {
+			return "", "", status.Errorf(codes.InvalidArgument, "bad_request: language %q: want a BCP-47 tag such as de or pt-BR", tag)
+		}
+	}
+	return source, target, nil
 }
