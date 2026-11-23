@@ -434,7 +434,7 @@ real_path() { (cd "$1" 2>/dev/null && pwd -P) || printf '%s' "${1%/}"; }
 
 detect_legacy() {
 	LEGACY_IDS="" LEGACY_DIR="" LEGACY_NODE_ID="" LEGACY_MODELS=""
-	for id in node ollama mt; do
+	for id in node ollama; do
 		if [ -f "$(legacy_file "$id")" ] || [ -n "$(label_pid "$(legacy_label "$id")")" ]; then LEGACY_IDS="$LEGACY_IDS $id"; fi
 	done
 	f=$(legacy_file node)
@@ -608,7 +608,7 @@ ensure_ollama() {
 
 # find_mt_python prints a Python CTranslate2 has wheels for (3.11-3.13).
 find_mt_python() {
-	for py in ${KTMS_MT_PYTHON:-} python3.12 python3.13 python3.11 python3; do
+	for py in "${KTMS_MT_PYTHON:-python3.12}" python3.12 python3.13 python3.11 python3; do
 		command -v "$py" >/dev/null 2>&1 || continue
 		v=$("$py" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null) || continue
 		case $v in 3.11 | 3.12 | 3.13) command -v "$py"; return 0 ;; esac
@@ -1002,7 +1002,7 @@ do_uninstall() {
 	cleanup_legacy
 	step "Removing the node"
 	uninstall_tray
-	for id in node ollama; do
+	for id in node ollama mt; do
 		svc_stop "$id"
 		if [ "$OS" = linux ]; then systemctl --user disable "$(svc_label "$id").service" >/dev/null 2>&1 || true; fi
 		rm -f "$(svc_file "$id")"

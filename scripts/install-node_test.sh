@@ -76,6 +76,7 @@ eq "ollama engine flags" "--engine ollama --engine-url http://127.0.0.1:11435" "
 eq "mt launch agent label" "com.ktms.mt" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; OS=darwin; svc_label mt)"
 eq "mt systemd unit" "ktms-mt" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; OS=linux; svc_label mt)"
 eq "ollama launch agent label" "com.ktms.ollama" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; OS=darwin; svc_label ollama)"
+has "uninstall removes the mt service" 'for id in node ollama mt' "$(sed -n '/^do_uninstall()/,/^}/p' "$SCRIPT")"
 has "mt service env" "KTMS_MT_CONFIG=/b/mt/config.toml" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; BASE=/b; mt_env)"
 has "mt pip source from the release" "ktms-mt[convert] @ https://github.com/ai-process/ktms/archive/refs/tags/v1.6.0.tar.gz#subdirectory=mt" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; AGENT_TAG=v1.6.0; mt_source)"
 

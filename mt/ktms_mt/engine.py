@@ -139,6 +139,9 @@ class Translator:
     def pick(self, bundle: Bundle, source, target):
         if bundle.target not in ("*", target):
             raise UnsupportedPair(f"this model translates into {bundle.target}, not {target}")
+        if bundle.any_engine and source in ("", "und"):
+            # Many-to-many models need the source tag; there is no fallback to send it to.
+            raise UnsupportedPair("could not detect the source language; pass source_language")
         name = bundle.any_engine or bundle.pairs.get(source) or bundle.fallback
         if not name:
             raise UnsupportedPair(f"no model for {source} to {target}")

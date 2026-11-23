@@ -15,6 +15,7 @@ import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlsplit
 
 from . import __version__
 from .catalog import engines_of
@@ -82,18 +83,19 @@ class Handler(BaseHTTPRequestHandler):
         return got.startswith("Bearer ") and hmac.compare_digest(got[7:], key)
 
     def do_GET(self):
-        if self.path == "/health":
+        path = urlsplit(self.path).path
+        if path == "/health":
             return self._send(200, {"status": "ok", "version": __version__})
         if not self._authorized():
             return self._error(401, "unauthorized", "invalid bearer token")
-        if self.path == "/v1/models":
+        if path == "/v1/models":
             data = [{"id": mid, "object": "model", "owned_by": "ktms-mt", "capabilities": ["translate"],
                      "languages": languages(b)} for mid, b in self.translator.models.items()]
             return self._send(200, {"object": "list", "data": data})
         self._error(404, "not_found", "no such route")
 
     def do_POST(self):
-        if self.path != "/v1/translate":
+        if urlsplit(self.path).path != "/v1/translate":
             return self._error(404, "not_found", "no such route")
         if not self._authorized():
             return self._error(401, "unauthorized", "invalid bearer token")
@@ -102,6 +104,8 @@ class Handler(BaseHTTPRequestHandler):
             if n > MAX_BODY:
                 return self._error(400, "bad_request", "body too large")
             req = json.loads(self.rfile.read(n) or b"{}")
+            if not isinstance(req, dict):
+                raise BadRequest("the body must be a JSON object")
             texts = req.get("texts")
             if not isinstance(texts, list) or not all(isinstance(t, str) for t in texts):
                 raise BadRequest("texts must be a list of strings")

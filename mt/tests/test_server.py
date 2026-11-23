@@ -117,6 +117,10 @@ class ServerTest(unittest.TestCase):
         self.assertEqual((status, doc["error"]["code"]), (400, "bad_request"))
         status, _ = self.call("/v1/translate", {"texts": ["x"], "target_language": "de"}, key="wrong")
         self.assertEqual(status, 401)
+        status, doc = self.call("/v1/translate", [])
+        self.assertEqual((status, doc["error"]["code"]), (400, "bad_request"))
+        status, _ = self.call("/v1/models?x=1")
+        self.assertEqual(status, 200)
 
 
 class ConfigTest(unittest.TestCase):
@@ -126,11 +130,12 @@ class ConfigTest(unittest.TestCase):
         from ktms_mt.config import load, write
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "config.toml")
-            cfg = Config(models_dir=d, port=12000, served=["opus-mt-de"])
+            cfg = Config(models_dir=d, port=12000, served=["opus-mt-de"], device="mps", compute_type="float16", max_batch_tokens=2048)
             cfg.custom["mine"] = Bundle(target="de", pairs={"en": "opus-mt-en-de"})
             write(path, cfg)
             got = load(path)
             self.assertEqual((got.port, got.served, got.custom["mine"].pairs), (12000, ["opus-mt-de", "mine"], {"en": "opus-mt-en-de"}))
+            self.assertEqual((got.device, got.compute_type, got.max_batch_tokens), ("mps", "float16", 2048))
 
 
 if __name__ == "__main__":

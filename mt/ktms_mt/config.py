@@ -1,5 +1,6 @@
 """Server configuration: a TOML file written by `ktms-mt fetch`."""
 
+import json
 import os
 import tomllib
 from dataclasses import dataclass, field
@@ -59,14 +60,26 @@ def bundle(cfg, mid):
     raise ValueError(f"unknown model {mid}: not in the catalog nor in [models.{mid}]")
 
 
+SERVER_FIELDS = ["host", "port", "models_dir", "api_key", "device", "compute_type", "threads", "max_concurrency",
+                 "max_batch_tokens", "max_segment_tokens", "beam_size", "max_texts"]
+
+
+def _toml(v):
+    return json.dumps(v) if isinstance(v, str) else str(v).lower() if isinstance(v, bool) else str(v)
+
+
 def write(path, cfg):
-    """Rewrites the [server] port/models_dir and the served list, keeping custom models."""
+    """Rewrites the file from cfg: every server setting, the served list and custom models."""
     # Top-level keys come before the first table, or TOML files them under it.
     lines = ["# ktms-mt configuration; `ktms-mt fetch MODEL` adds to `serve`.",
-             "serve = [" + ", ".join(f'"{m}"' for m in cfg.served if m not in cfg.custom) + "]", "", "[server]",
-             f'host = "{cfg.host}"', f"port = {cfg.port}", f'models_dir = "{cfg.models_dir}"',
-             f"threads = {cfg.threads}", f"max_concurrency = {cfg.max_concurrency}",
-             f"beam_size = {cfg.beam_size}", ""]
+             "serve = [" + ", ".join(f'"{m}"' for m in cfg.served if m not in cfg.custom) + "]", "", "[server]"]
+    for k in SERVER_FIELDS:
+        v = getattr(cfg, k)
+        # An empty api_key stays out: KTMS_MT_API_KEY may set it instead.
+        if k == "api_key" and (not v or os.environ.get("KTMS_MT_API_KEY")):
+            continue
+        lines.append(f"{k} = {_toml(v)}")
+    lines.append("")
     for mid, b in cfg.custom.items():
         lines.append(f"[models.{mid}]")
         lines.append(f'target = "{b.target}"')
