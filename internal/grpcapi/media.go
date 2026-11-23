@@ -266,9 +266,11 @@ func (s *ProxyServer) planMediaFor(ctx context.Context, id *apikeys.Identity, q 
 	}
 	restricted := restrictedCall(ctx, id)
 	if restricted {
+		before := models
 		if models, err = nodeModels(models, q.modality); err != nil {
 			return nil, err
 		}
+		tr.placed(before, models)
 	}
 
 	meta := usageMeta(routing, id)

@@ -59,23 +59,29 @@ func (s *ProxyServer) Translate(ctx context.Context, req *pb.TranslateRequest) (
 			sent = append(sent, i)
 		}
 	}
-	if len(sent) == 0 || (tr.SourceLanguage != "" && strings.EqualFold(tr.SourceLanguage, tr.TargetLanguage)) {
-		return passthrough(req.GetTexts(), tr.SourceLanguage), nil
+	// The route is still planned, so a forbidden override or a missing rule
+	// fails the same way; only the pair filter is skipped.
+	skip := len(sent) == 0 || (tr.SourceLanguage != "" && strings.EqualFold(tr.SourceLanguage, tr.TargetLanguage))
+	pair := &languagePair{source: tr.SourceLanguage, target: tr.TargetLanguage}
+	if skip {
+		pair = nil
 	}
-	tr.Texts = make([]string, len(sent))
-	for j, i := range sent {
-		tr.Texts[j] = all[i]
-	}
-
 	plan, err := s.planMediaFor(ctx, id, mediaQuery{
 		attrs:    req.GetAttributes(),
 		override: req.GetModelOverride(),
 		modality: modalityTranslate,
 		caps:     []string{registry.CapabilityTranslate},
-		pair:     &languagePair{source: tr.SourceLanguage, target: tr.TargetLanguage},
+		pair:     pair,
 	}, nil)
 	if err != nil {
 		return nil, err
+	}
+	if skip {
+		return passthrough(req.GetTexts(), tr.SourceLanguage), nil
+	}
+	tr.Texts = make([]string, len(sent))
+	for j, i := range sent {
+		tr.Texts[j] = all[i]
 	}
 
 	// Input plus about as much output: a translation is the length of its source.

@@ -92,8 +92,10 @@ func TranslateByPrompt(ctx context.Context, a ClientAdapter, req *TranslateReque
 	if a == nil {
 		return nil, ErrTranslationUnsupported
 	}
-	chunks := chunkTexts(req.Texts)
-	out := &TranslateResult{Translations: make([]Translation, len(req.Texts))}
+	items, owner, seps := splitLongTexts(req.Texts, promptChunkRunes)
+	chunks := chunkTexts(items)
+	parts := make([]Translation, len(items))
+	out := &TranslateResult{}
 	var (
 		mu       sync.Mutex
 		firstErr error
@@ -108,7 +110,7 @@ func TranslateByPrompt(ctx context.Context, a ClientAdapter, req *TranslateReque
 		go func(ch textChunk) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			res, usage, err := translateChunk(ctx, a, req, req.Texts[ch.start:ch.end], userID, meta)
+			res, usage, err := translateChunk(ctx, a, req, items[ch.start:ch.end], userID, meta)
 			mu.Lock()
 			defer mu.Unlock()
 			out.Usage = out.Usage.Add(usage)
@@ -119,7 +121,7 @@ func TranslateByPrompt(ctx context.Context, a ClientAdapter, req *TranslateReque
 				}
 				return
 			}
-			copy(out.Translations[ch.start:ch.end], res)
+			copy(parts[ch.start:ch.end], res)
 		}(ch)
 	}
 	wg.Wait()
@@ -128,8 +130,68 @@ func TranslateByPrompt(ctx context.Context, a ClientAdapter, req *TranslateReque
 		// or every model the chain falls through would charge them again.
 		return out, firstErr
 	}
+	out.Translations = joinParts(parts, owner, seps, len(req.Texts))
 	out.Usage.Characters = SourceCharacters(req.Texts)
 	return out, nil
+}
+
+// splitLongTexts cuts a text over limit runes at a paragraph, line, sentence
+// or word boundary: one text could otherwise need more output than a model's
+// ceiling. owner maps each item to its text; seps is the whitespace after it.
+func splitLongTexts(texts []string, limit int) (items []string, owner []int, seps []string) {
+	for i, t := range texts {
+		for utf8.RuneCountInString(t) > limit {
+			head := t[:runeOffset(t, limit)]
+			cut := lastBoundary(head)
+			sepEnd := cut
+			for sepEnd < len(t) && strings.ContainsRune(" \t\r\n", rune(t[sepEnd])) {
+				sepEnd++
+			}
+			items, owner, seps = append(items, t[:cut]), append(owner, i), append(seps, t[cut:sepEnd])
+			t = t[sepEnd:]
+		}
+		items, owner, seps = append(items, t), append(owner, i), append(seps, "")
+	}
+	return items, owner, seps
+}
+
+// lastBoundary is the byte offset to cut head at: after the last paragraph
+// break, line break, sentence end or space past its first half, else its end.
+func lastBoundary(head string) int {
+	half := len(head) / 2
+	for _, mark := range []string{"\n\n", "\n", ". ", "! ", "? ", "。", " "} {
+		if i := strings.LastIndex(head, mark); i > half {
+			if strings.TrimSpace(mark) != "" {
+				return i + len(strings.TrimRight(mark, " "))
+			}
+			return i
+		}
+	}
+	return len(head)
+}
+
+func runeOffset(s string, n int) int {
+	for i := range s {
+		if n == 0 {
+			return i
+		}
+		n--
+	}
+	return len(s)
+}
+
+func joinParts(parts []Translation, owner []int, seps []string, n int) []Translation {
+	out := make([]Translation, n)
+	seen := make([]bool, n)
+	for k, p := range parts {
+		i := owner[k]
+		if !seen[i] {
+			out[i].DetectedSourceLanguage = p.DetectedSourceLanguage
+			seen[i] = true
+		}
+		out[i].Text += p.Text + seps[k]
+	}
+	return out
 }
 
 type textChunk struct{ start, end int }

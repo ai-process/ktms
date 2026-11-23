@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestChunkTexts(t *testing.T) {
@@ -68,5 +69,25 @@ func TestTranslateByPromptChecksReply(t *testing.T) {
 	}
 	if res.Usage.Characters != 6 {
 		t.Errorf("characters = %d, want 6", res.Usage.Characters)
+	}
+}
+
+func TestSplitLongTexts(t *testing.T) {
+	long := strings.Repeat("Ein Satz hier. ", 30) + "\n\n" + strings.Repeat("wort ", 60)
+	texts := []string{"short", long}
+	items, owner, seps := splitLongTexts(texts, 100)
+	if len(items) < 4 || owner[0] != 0 || owner[len(owner)-1] != 1 {
+		t.Fatalf("items = %d, owner = %v", len(items), owner)
+	}
+	parts := make([]Translation, len(items))
+	for k, it := range items {
+		if n := utf8.RuneCountInString(it); n > 100 {
+			t.Fatalf("item %d has %d runes", k, n)
+		}
+		parts[k] = Translation{Text: it, DetectedSourceLanguage: "de"}
+	}
+	got := joinParts(parts, owner, seps, len(texts))
+	if got[0].Text != "short" || got[1].Text != long || got[1].DetectedSourceLanguage != "de" {
+		t.Fatalf("rejoined text differs: %q", got[1].Text)
 	}
 }

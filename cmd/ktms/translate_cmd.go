@@ -98,6 +98,13 @@ served each line and the detected language.`,
 				batch, size = batch[:0], 0
 				return nil
 			}
+			// Checked before the first call, so a long line fails fast instead of
+			// after part of the file was translated and paid for.
+			for i, l := range lines {
+				if len(l) > translateBatchBytes {
+					return usageError{fmt.Errorf("line %d is %d KiB; split it, at most %d KiB per line", i+1, len(l)>>10, translateBatchBytes>>10)}
+				}
+			}
 			for i, l := range lines {
 				out[i].Text = l
 				if strings.TrimSpace(l) == "" {

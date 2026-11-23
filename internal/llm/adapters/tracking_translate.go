@@ -103,6 +103,8 @@ func (t *TrackingAdapter) Translate(ctx context.Context, req *llm.TranslateReque
 		}
 	}
 	if err != nil {
+		// As in the gateway's budget: a failed attempt bills tokens, never characters.
+		usage.Characters = 0
 		msg := err.Error()
 		if len(msg) > 300 {
 			msg = msg[:300]
