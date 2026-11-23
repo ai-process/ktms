@@ -99,7 +99,7 @@ From a clone, with an AI assistant, or from scratch with `ktms init`: [Quick sta
 | Term | Meaning |
 | --- | --- |
 | **Client key** | A `ktms_…` API key a service calls Keystone with. Has scopes (`generate`, `admin`, `admin:read`, `mcp`, …) and an optional policy with limits. → [API keys](docs/configuration.md#1-api-keys) |
-| **Vendor key** | A provider's API key (OpenAI, Anthropic, …), stored encrypted; may be shared or belong to one client. → [Vendor keys](docs/configuration.md#2-vendor-keys-per-client) |
+| **Vendor key** | A provider's API key (OpenAI, Anthropic, …), stored encrypted and assigned to one client key. → [Vendor keys](docs/configuration.md#2-vendor-keys-per-client) |
 | **Model** | A vendor model registered in Keystone with its prices, limits and capabilities. → [Models](docs/configuration.md#3-models) |
 | **Rule** | Maps an effort and attributes to an ordered model chain; the first matching rule by priority wins. → [Rules](docs/configuration.md#4-rules) |
 | **Effort** | `LOW`, `MEDIUM` or `HIGH`: how much model a request needs. The only routing field Keystone understands; with the HTTP model `auto` a judge can pick it. → [Concepts](docs/concepts.md#concepts) |

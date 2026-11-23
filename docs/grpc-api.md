@@ -170,8 +170,8 @@ grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
 
 `SynthesizeSpeech` takes `text` (read verbatim) and an optional `language` and returns OGG/Opus
 `audio`. `GenerateImage` takes a `prompt` and returns `image` bytes with a `mime_type`.
-Both accept `attributes`, `action_id` and `model_override`, and need the rules described
-[above](configuration.md#speech-image-and-judgment-rules).
+Both accept `attributes`, `action_id` and `model_override`, and need the rules in
+[Speech, image and judgment rules](configuration.md#speech-image-and-judgment-rules).
 
 ## Judge
 
