@@ -84,6 +84,7 @@ func TestGatewayAllowlistAndKeySwap(t *testing.T) {
 		{"GET", "/v1/chat/completions", 405},
 		{"POST", "/v1/models", 405},
 		{"GET", "/v1/decisions", 405},
+		{"GET", "/v1/translate", 405},
 	} {
 		req, _ := http.NewRequest(c.method, srv.URL+c.path, strings.NewReader(`{}`))
 		req.Header.Set("Authorization", "Bearer access-key")
@@ -264,5 +265,22 @@ func TestGatewayAllowsDecisions(t *testing.T) {
 	}
 	if gotAuth.Load() != "Bearer engine-secret" {
 		t.Fatalf("engine saw %q, want Bearer engine-secret", gotAuth.Load())
+	}
+}
+
+func TestGatewayAllowsTranslate(t *testing.T) {
+	_, srv, hits := newTestGateway(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"translations":[{"text":"gut"}]}`)
+	}))
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/translate", strings.NewReader(`{"model":"opus-mt-de","texts":["good"]}`))
+	req.Header.Set("Authorization", "Bearer access-key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || hits.Load() != 1 {
+		t.Fatalf("POST /v1/translate status %d, engine hits %d", resp.StatusCode, hits.Load())
 	}
 }

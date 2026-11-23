@@ -1016,6 +1016,49 @@ The installer also refuses to run Ollama on an address another process already l
 (another Ollama, say), since the model would be pulled into that one; it names the process. Stop
 it, or set `KTMS_OLLAMA_ADDR=127.0.0.1:PORT`.
 
+### A translation node
+
+`--engine mt` installs [ktms-mt](mt/README.md) instead of Ollama: a Python venv with
+CTranslate2, the Opus-MT models converted to int8, and a service on `127.0.0.1:11436`; the node
+agent then runs with `--engine mt`. Its models declare only `translate`, so they serve `Translate`
+and never a chat. Python 3.11–3.13 must be installed.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ai-process/ktms/vX.Y.Z/scripts/install-node.sh | sh -s -- \
+  --proxy proxy.example.com --node-id anna-mt --engine mt --model opus-mt-de
+```
+
+The admin registers the model like any local one, with its pairs:
+
+```yaml
+- id: opus-mt-de
+  vendor: local
+  efforts: [EFFORT_LOW]
+  capabilities: [translate]
+  languages: {source: ["*"], target: [de]}
+```
+
+`opus-mt-de` translates English, French, Spanish and Italian with direct Opus-MT pairs and every
+other language through a multilingual model; `ktms-mt catalog` lists the others (single pairs,
+M2M100, MADLAD-400). Any server that speaks the same `/v1/models` and `/v1/translate` contract
+can take its place behind `--engine mt`. When the node stops, the translate rule falls through to
+the next model of its chain, a chat model translating by prompt.
+
+Measured on an Apple M1 Pro (10 cores, 32 GB), `opus-mt-de`, int8 on the CPU, greedy decoding
+(`beam_size = 1`, the default), hotel reviews of 183 characters on average in English, French,
+Spanish, Italian and Dutch:
+
+| Path | Reviews per minute | Characters per second |
+| --- | --- | --- |
+| `ktms-mt bench`, batches of 128 | 1,869 | 5,670 |
+| Through Keystone: `ktms translate`, 128 texts per call, one client | 1,475 | 4,480 |
+| The same, two clients at once | 1,097 | 3,330 |
+| `ktms-mt bench`, `beam_size = 2` | 900 | 2,730 |
+| `ktms-mt bench`, `device = "mps"` (CTranslate2's experimental Apple GPU backend), beam 2 | 536 | 1,630 |
+
+Throughput follows characters: reviews of 400 characters go at about 670 a minute through
+Keystone. One stream of large batches is fastest; CTranslate2 already uses every core.
+
 ### If the node does not show up
 
 Run the same command with `--doctor`. It says in plain words what is wrong: Ollama not answering,

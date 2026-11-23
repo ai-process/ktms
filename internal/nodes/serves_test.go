@@ -20,15 +20,19 @@ func TestServes(t *testing.T) {
 	}
 	for name, tc := range map[string]struct {
 		nodes listed
+		cap   string
 		want  bool
 	}{
-		"healthy":    {listed{node(pb.NodeState_NODE_STATE_HEALTHY)}, true},
-		"suspect":    {listed{node(pb.NodeState_NODE_STATE_SUSPECT)}, true},
-		"draining":   {listed{node(pb.NodeState_NODE_STATE_DRAINING)}, false},
-		"judge only": {listed{node(pb.NodeState_NODE_STATE_HEALTHY, registry.CapabilityJudge)}, false},
-		"none":       {nil, false},
+		"healthy":            {listed{node(pb.NodeState_NODE_STATE_HEALTHY)}, "", true},
+		"suspect":            {listed{node(pb.NodeState_NODE_STATE_SUSPECT)}, "", true},
+		"draining":           {listed{node(pb.NodeState_NODE_STATE_DRAINING)}, "", false},
+		"judge only":         {listed{node(pb.NodeState_NODE_STATE_HEALTHY, registry.CapabilityJudge)}, "", false},
+		"translate only":     {listed{node(pb.NodeState_NODE_STATE_HEALTHY, registry.CapabilityTranslate)}, "", false},
+		"translate for MT":   {listed{node(pb.NodeState_NODE_STATE_HEALTHY, registry.CapabilityTranslate)}, registry.CapabilityTranslate, true},
+		"chat for translate": {listed{node(pb.NodeState_NODE_STATE_HEALTHY)}, registry.CapabilityTranslate, false},
+		"none":               {nil, "", false},
 	} {
-		if got, err := Serves(context.Background(), tc.nodes, "m"); err != nil || got != tc.want {
+		if got, err := Serves(context.Background(), tc.nodes, "m", tc.cap); err != nil || got != tc.want {
 			t.Errorf("%s: Serves = %v %v, want %v", name, got, err, tc.want)
 		}
 	}

@@ -62,7 +62,7 @@ func (s *Selector) SelectNodeForCapability(ctx context.Context, modelID string, 
 					if !hasCapability(m.Capabilities, capability) {
 						continue
 					}
-				} else if isJudgeOnly(m.Capabilities) {
+				} else if servesNoChat(m.Capabilities) {
 					continue
 				}
 				if perf, ok := n.Perf[modelID]; ok {
@@ -240,38 +240,47 @@ func (s *Selector) SelectNodeForCapability(ctx context.Context, modelID string, 
 // eligibleSpec is the node's spec for modelID if the node may take it at all,
 // before capacity and load balancing; nil otherwise.
 func eligibleSpec(n *NodeSnapshot, modelID, capability string) *pb.NodeModelSpec {
+	m := listedSpec(n, modelID)
+	switch {
+	case m == nil:
+		return nil
+	case capability != "":
+		if !hasCapability(m.Capabilities, capability) {
+			return nil
+		}
+	case servesNoChat(m.Capabilities):
+		return nil
+	}
+	return m
+}
+
+// listedSpec is the node's spec for modelID if the node takes calls at all.
+func listedSpec(n *NodeSnapshot, modelID string) *pb.NodeModelSpec {
 	if n.State == pb.NodeState_NODE_STATE_OFFLINE ||
 		n.State == pb.NodeState_NODE_STATE_DRAINING ||
 		n.State == pb.NodeState_NODE_STATE_PAUSED {
 		return nil
 	}
 	for _, m := range n.Meta.Models {
-		if m.ModelId != modelID {
-			continue
+		if m.ModelId == modelID {
+			return m
 		}
-		if capability != "" {
-			if !hasCapability(m.Capabilities, capability) {
-				return nil
-			}
-		} else if isJudgeOnly(m.Capabilities) {
-			return nil
-		}
-		return m
 	}
 	return nil
 }
 
-// Serves reports whether some node may take modelID now, by the same filter
-// SelectNode applies; ExplainRoute asks it instead of guessing.
+// Serves reports whether some node may take modelID now for a call needing
+// capability ("" for chat), by the filter SelectNode applies; ExplainRoute
+// asks it instead of guessing.
 func Serves(ctx context.Context, mgr interface {
 	ListNodes(context.Context) ([]*NodeSnapshot, error)
-}, modelID string) (bool, error) {
+}, modelID, capability string) (bool, error) {
 	nodes, err := mgr.ListNodes(ctx)
 	if err != nil {
 		return false, err
 	}
 	for _, n := range nodes {
-		if eligibleSpec(n, modelID, "") != nil {
+		if eligibleSpec(n, modelID, capability) != nil {
 			return true, nil
 		}
 	}
@@ -287,6 +296,14 @@ func hasCapability(caps []string, target string) bool {
 	return false
 }
 
+// isJudgeOnly marks a registry model that only judges. A registry model that
+// declares only translate may still be a chat model translating by prompt.
 func isJudgeOnly(caps []string) bool {
 	return len(caps) == 1 && caps[0] == registry.CapabilityJudge
+}
+
+// servesNoChat marks a node's model spec that only judges or only translates:
+// a decision or MT engine cannot answer a chat completion.
+func servesNoChat(caps []string) bool {
+	return len(caps) == 1 && (caps[0] == registry.CapabilityJudge || caps[0] == registry.CapabilityTranslate)
 }

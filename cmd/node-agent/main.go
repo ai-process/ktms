@@ -97,7 +97,7 @@ func newSettings(name string) *settings {
 		nodeName:      fs.String("node-name", "", "Human-readable node name"),
 		engineURL:     fs.String("engine-url", "", "Local engine URL the agent polls (default "+nodeagent.DefaultEngineURL+", or --endpoint if only that is set)"),
 		endpoint:      fs.String("endpoint", "", "Address the proxy dials to reach the engine (default: --engine-url)"),
-		engine:        fs.String("engine", "ollama", "Inference engine (ollama, vllm, tgi, llamacpp, freetoken, decisions)"),
+		engine:        fs.String("engine", "ollama", "Inference engine (ollama, vllm, tgi, llamacpp, freetoken, decisions, mt)"),
 		keyFile:       fs.String("node-key-file", "", "Path to file containing node authentication key"),
 		baseWeight:    fs.Float64("base-weight", 100.0, "Base routing weight"),
 		maxConcurrent: fs.Uint("max-concurrent", 16, "Maximum concurrent requests the proxy sends here (freetoken: 4)"),

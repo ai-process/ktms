@@ -8,6 +8,13 @@ All notable changes to KTMS are listed here. The format follows
 ## [Unreleased]
 
 ### Added
+- Translation nodes: node engine `mt` (`ktms-node --engine mt`, `MTInspector`, doctor hints) and
+  the `translate_http` adapter, which sends `Translate` to a node MT engine over the node gateway
+  (now also allowing `POST /v1/translate`); a chat model on a node keeps translating by prompt.
+  Node models that only translate never take chat. `ktms-mt` (in `mt/`) is the reference engine:
+  Opus-MT, M2M100 and MADLAD-400 on CTranslate2 (int8 CPU, or the experimental Apple GPU backend),
+  language detection with fastText, batching and sentence splitting; `install-node.sh --engine mt
+  --model opus-mt-de` installs it with its models and services.
 - Translation as a modality: `GatewayService.Translate` and `POST /v1/translate` translate a batch
   of texts (up to 128, 256 KiB) in order, routed like `Judge` by a rule naming
   `attributes["modality"] = "translate"` over models with the `translate` capability. Models

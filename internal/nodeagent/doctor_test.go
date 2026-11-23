@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -583,5 +584,21 @@ func TestDoctorStats(t *testing.T) {
 	}
 	if fs := newDoctor(AgentConfig{}).checkStats(); len(fs) != 0 {
 		t.Errorf("--stats=false: %+v", fs)
+	}
+}
+
+func TestMTInspectorTagsTranslate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"data":[{"id":"opus-mt-de","capabilities":["translate","chat"]},{"id":"opus-mt-mul-de"}]}`)
+	}))
+	defer srv.Close()
+	specs, err := GetInspector("mt").Inspect(context.Background(), srv.URL, "")
+	if err != nil || len(specs) != 2 {
+		t.Fatalf("Inspect = %v, %v", specs, err)
+	}
+	for _, s := range specs {
+		if len(s.Capabilities) != 1 || s.Capabilities[0] != "translate" {
+			t.Errorf("%s capabilities = %v", s.ModelId, s.Capabilities)
+		}
 	}
 }
