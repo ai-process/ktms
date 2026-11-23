@@ -21,6 +21,7 @@ var controlCommands = map[string]func(args []string, stdout, stderr io.Writer) i
 	"level":    runLevel,
 	"resume":   runResume,
 	"settings": runSettings,
+	"engine":   runEngine,
 }
 
 func controlFlags(name string, stderr io.Writer) (*flag.FlagSet, *string) {
@@ -219,6 +220,16 @@ func printStatus(w io.Writer, s *nodeagent.Status, now time.Time) {
 		}
 		fmt.Fprintf(w, "Models %s\n", strings.Join(ms, ", "))
 	}
+	for _, e := range s.Engines {
+		state := "up"
+		switch {
+		case e.Paused:
+			state = "paused"
+		case !e.Up:
+			state = "down: " + e.Error
+		}
+		fmt.Fprintf(w, "Engine %s %s, models %s\n", e.Name, state, strings.Join(e.Models, ", "))
+	}
 	if g := s.GPU; g != nil {
 		fmt.Fprintf(w, "GPU %.0f%%, %d°C, VRAM %.1f/%.1f GB free\n", g.UtilPercent, g.TempC, float64(g.VRAMFreeMB)/1024, float64(g.VRAMTotalMB)/1024)
 	}
@@ -266,4 +277,23 @@ func clock(t, now time.Time) string {
 		return t.Format("Mon 15:04")
 	}
 	return t.Format("15:04")
+}
+
+// runEngine is `engine pause|resume NAME`: one engine of a node with several.
+func runEngine(args []string, stdout, stderr io.Writer) int {
+	fs, socket := controlFlags("engine", stderr)
+	fs.Usage = func() { fmt.Fprintln(stderr, "usage: ktms-node engine pause|resume ENGINE") }
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 2 || (fs.Arg(0) != "pause" && fs.Arg(0) != "resume") {
+		fs.Usage()
+		return 2
+	}
+	s, err := nodeagent.NewControlClient(*socket).PauseEngine(context.Background(), fs.Arg(1), fs.Arg(0) == "pause")
+	if err != nil {
+		return controlFailed(stderr, "engine "+fs.Arg(0), err)
+	}
+	printStatus(stdout, s, time.Now())
+	return 0
 }

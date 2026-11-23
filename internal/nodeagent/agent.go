@@ -30,11 +30,12 @@ type AgentConfig struct {
 	EngineURL      string // where the agent itself polls the engine; local, never reported
 	Endpoint       string // address the proxy dials, as reported at registration
 	Engine         string
-	NodeAuthToken  string   // bearer the proxy presents to Endpoint; replaced by a generated key when exposing
-	EngineToken    string   // bearer the engine itself requires, if any
-	OnlyModels     []string // when set, report only these engine models
-	JudgeModels    []string // models to tag with capability "judge"
-	Expose         string   // ExposeNone or ExposeCloudflared
+	ExtraEngines   []EngineSpec // engines served beside Engine, behind the built-in gateway
+	NodeAuthToken  string       // bearer the proxy presents to Endpoint; replaced by a generated key when exposing
+	EngineToken    string       // bearer the engine itself requires, if any
+	OnlyModels     []string     // when set, report only these engine models
+	JudgeModels    []string     // models to tag with capability "judge"
+	Expose         string       // ExposeNone or ExposeCloudflared
 	CloudflaredBin string
 	BaseWeight     float64
 	MaxConcurrent  uint32
@@ -64,6 +65,9 @@ type Agent struct {
 	loadOK     bool     // last engine load scrape succeeded
 	loadWarned bool     // a failed scrape was logged; repeats stay quiet
 	gateway    *Gateway // nil unless exposed through the built-in gateway
+
+	engines       engineView // last inspection of every engine; under mu
+	enginesPaused []string   // engines the owner paused; under mu
 
 	pause      pauseState
 	stats      statsState
@@ -134,10 +138,7 @@ func (a *Agent) dialCredentials() credentials.TransportCredentials {
 
 // snapshot reads what the proxy tracks per node: engine models and GPU state.
 func (a *Agent) snapshot(ctx context.Context) ([]*pb.NodeModelSpec, *pb.NodeResources) {
-	models, err := a.inspector.Inspect(ctx, a.cfg.EngineURL, a.cfg.EngineToken)
-	if err != nil {
-		log.Warn().Err(err).Msg("engine inspection failed, reporting no models")
-	}
+	models := a.inspectEngines(ctx)
 	models = FilterModels(models, a.cfg.OnlyModels)
 	if len(a.cfg.JudgeModels) > 0 {
 		models = TagJudgeModels(models, a.cfg.JudgeModels)
@@ -260,6 +261,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			return fmt.Errorf("schedule: %w (check it with: ktms-node schedule --file %s)", err, a.cfg.ScheduleFile)
 		}
 	}
+	a.loadEnginePauses()
 	a.pause.override = loadOverride(a.overrideFile(), a.now())
 	a.setOverride(a.pause.override) // arms the timer that ends it
 	a.refreshLevel()

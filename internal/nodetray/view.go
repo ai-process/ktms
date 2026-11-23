@@ -38,6 +38,41 @@ type View struct {
 	CanResume    bool   // a manual level is in force
 	ScheduleKTMS bool   // the "Schedule set by KTMS" checkbox
 	Ticking      bool   // the title counts down: redraw every second
+
+	Engines []EngineLine // one per engine of a node with several; none otherwise
+}
+
+// EngineLine is one engine in the menu, with the action its submenu offers.
+type EngineLine struct {
+	Name   string
+	Title  string // "mt · translation · opus-mt-de"
+	Action string // "Pause mt" or "Resume mt"
+	Paused bool
+}
+
+// MaxEngines is how many engine lines the menu has room for.
+const MaxEngines = 4
+
+func engineLines(s *nodeagent.Status) []EngineLine {
+	var out []EngineLine
+	for _, e := range s.Engines {
+		l := EngineLine{Name: e.Name, Paused: e.Paused, Action: "Pause " + e.Name}
+		state := strings.Join(e.Models, ", ")
+		switch {
+		case e.Paused:
+			state, l.Action = "paused", "Resume "+e.Name
+		case !e.Up:
+			state = "not answering"
+		case state == "":
+			state = "no models"
+		}
+		l.Title = shorten(e.Name+" · "+state, 60)
+		out = append(out, l)
+		if len(out) == MaxEngines {
+			break
+		}
+	}
+	return out
 }
 
 // StopNow is the request behind "Stop now": it cuts the running requests and
@@ -64,6 +99,7 @@ func Build(s *nodeagent.Status, err error, now time.Time) View {
 	}
 	v.Connected = true
 	v.Header += " · " + s.NodeID
+	v.Engines = engineLines(s)
 	v.ScheduleKTMS = s.ScheduleSource == nodeagent.ScheduleSourceKTMS
 	lvl := s.Level.Effective
 

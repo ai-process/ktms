@@ -8,6 +8,13 @@ All notable changes to KTMS are listed here. The format follows
 ## [Unreleased]
 
 ### Added
+- Several engines behind one node: `ktms-node --extra-engine mt=http://127.0.0.1:11436` (repeatable,
+  with `--expose cloudflared`) serves another engine beside the primary one, and the node's gateway
+  routes each request to the engine of its model; `/v1/models` lists them all. The status and
+  doctor report each engine. `ktms-node engine pause|resume ENGINE` and the tray's engine lines
+  pause one engine, which stops offering its models to KTMS while the others keep serving; the
+  pause outlives a restart. `install-node.sh --engine ollama,mt --mt-model opus-mt-de` installs
+  Ollama and ktms-mt together, and a re-run without `--engine` keeps the installed engines.
 - Translation nodes: node engine `mt` (`ktms-node --engine mt`, `MTInspector`, doctor hints) and
   the `translate_http` adapter, which sends `Translate` to a node MT engine over the node gateway
   (now also allowing `POST /v1/translate`); a chat model on a node keeps translating by prompt.
