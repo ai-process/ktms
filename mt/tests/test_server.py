@@ -74,6 +74,13 @@ class TranslatorTest(unittest.TestCase):
         pieces, joiners = split_text("a b. c d.\n\ne", str.split, max_tokens=2)
         self.assertEqual("".join(p + j for p, j in zip(pieces, joiners)), "a b. c d.\n\ne")
 
+    def test_split_text_keeps_whitespace_and_splits_run_on(self):
+        text = "  a b.   c d.\n\t e f g h i j k l m\n"
+        pieces, joiners = split_text(text, str.split, max_tokens=3)
+        self.assertEqual("".join(p + j for p, j in zip(pieces, joiners)), text)
+        self.assertTrue(all(len(p.split()) <= 3 for p in pieces))
+        self.assertIn("e f g", pieces)
+
 
 class ServerTest(unittest.TestCase):
     @classmethod

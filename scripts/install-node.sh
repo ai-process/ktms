@@ -42,7 +42,7 @@ Required:
                          a translation model from `ktms-mt catalog`, e.g. opus-mt-de
 
 Options:
-  --engine ENGINE        ollama (default) or mt: the ktms-mt machine-translation server
+  --engine ENGINE        ollama or mt (default: the installed one, else ollama): the ktms-mt machine-translation server
                          (CTranslate2, Opus-MT), in a Python venv; needs Python 3.11-3.13
   --name NAME            human-readable node name (default: node id)
   --max-concurrency N    parallel requests this machine serves (default 1)
@@ -69,7 +69,7 @@ EOF
 # ---- arguments -------------------------------------------------------------
 
 parse_args() {
-	PROXY="" NODE_ID="" MODEL="" NAME="" ENGINE=ollama MAXC=1 CTX=8192 VERSION="latest"
+	PROXY="" NODE_ID="" MODEL="" NAME="" ENGINE="" MAXC=1 CTX=8192 VERSION="latest"
 	KEY_SRC="" NEW_KEY=0 PLAINTEXT=0 ENDPOINT="" TRAY=0 UPGRADE=0 DRY_RUN=0 UNINSTALL=0 DOCTOR=0 KEEP_LEGACY=0 PURGE_BACKUPS=0 SCHEDULE_SRC=""
 	while [ $# -gt 0 ]; do
 		opt=$1 val="" shift_n=1
@@ -101,7 +101,7 @@ parse_args() {
 		shift "$shift_n"
 	done
 	[ "$PURGE_BACKUPS" = 0 ] || [ "$UNINSTALL" = 1 ] || die "--purge-backups only goes with --uninstall"
-	case $ENGINE in ollama | mt) ;; *) die "--engine must be ollama or mt" ;; esac
+	case $ENGINE in "" | ollama | mt) ;; *) die "--engine must be ollama or mt" ;; esac
 	[ "$UNINSTALL" = 1 ] && return 0
 	[ -n "$PROXY" ] || die "--proxy is required (see --help)"
 	[ -n "$NODE_ID" ] || die "--node-id is required"
@@ -1093,6 +1093,11 @@ main() {
 	parse_args "$@"
 	[ "$UNINSTALL" = 1 ] && { do_uninstall; return 0; }
 	detect_platform
+	# A re-run without --engine keeps the installed engine instead of replacing it.
+	if [ -z "$ENGINE" ]; then
+		ENGINE=ollama
+		[ ! -f "$(svc_file mt)" ] || ENGINE=mt
+	fi
 	if [ "$DOCTOR" = 1 ]; then
 		[ -x "$BASE/bin/ktms-node" ] || die "no node is installed in $BASE; run the installer without --doctor first"
 		run_doctor

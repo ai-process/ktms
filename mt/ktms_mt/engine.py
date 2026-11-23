@@ -8,7 +8,8 @@ from dataclasses import dataclass
 
 from .catalog import Bundle
 
-SENTENCE_END = re.compile(r"(?<=[.!?…。！？])\s+")
+SENTENCE_SPLIT = re.compile(r"(?<=[.!?…。！？])(\s+)")
+WORDS = re.compile(r"(\s+)")
 TAG = re.compile(r"(<[^>]*>)")
 RAW_TEXT_TAGS = re.compile(r"<(script|style)\b", re.I)
 
@@ -18,6 +19,10 @@ class UnsupportedPair(Exception):
 
 
 class BadRequest(Exception):
+    pass
+
+
+class ModelNotFound(Exception):
     pass
 
 
@@ -99,32 +104,63 @@ class Engine:
 
 
 def split_text(text, tokenize, max_tokens=200):
-    """Lines, then sentences, grouped up to max_tokens. Returns (pieces, joiners):
-    the text is "".join(p + j) of the translated pieces and these joiners."""
+    """Lines, then sentences (then words, for a run-on sentence), grouped up to
+    max_tokens. Returns (pieces, joiners): the text is "".join(p + j) of the
+    translated pieces and these joiners, so whitespace between pieces survives."""
     pieces, joiners = [], []
+
+    def gap(s):
+        if pieces:
+            joiners[-1] += s
+        else:
+            pieces.append("")
+            joiners.append(s)
+
     lines = text.split("\n")
     for li, line in enumerate(lines):
         end = "\n" if li < len(lines) - 1 else ""
-        if not line.strip():
-            if pieces:
-                joiners[-1] += line + end
-            else:
-                pieces.append("")
-                joiners.append(line + end)
+        lead, body, trail = edge_space(line)
+        if not body:
+            gap(line + end)
             continue
-        group, group_len = [], 0
-        for sent in SENTENCE_END.split(line.strip()):
-            n = len(tokenize(sent))
-            if group and group_len + n > max_tokens:
-                pieces.append(" ".join(group))
-                joiners.append(" ")
-                group, group_len = [], 0
-            group.append(sent)
-            group_len += n
-        if group:
-            pieces.append(" ".join(group))
-            joiners.append(end)
+        if lead:
+            gap(lead)
+        units = []  # (text, whitespace after it, tokens)
+        parts = SENTENCE_SPLIT.split(body)
+        for k in range(0, len(parts), 2):
+            units.extend(fit(parts[k], parts[k + 1] if k + 1 < len(parts) else "", tokenize, max_tokens))
+        group, n_group = [], 0
+        for u in units:
+            if group and n_group + u[2] > max_tokens:
+                pieces.append("".join(t + s for t, s, _ in group[:-1]) + group[-1][0])
+                joiners.append(group[-1][1])
+                group, n_group = [], 0
+            group.append(u)
+            n_group += u[2]
+        pieces.append("".join(t + s for t, s, _ in group[:-1]) + group[-1][0])
+        joiners.append(group[-1][1] + trail + end)
     return pieces, joiners
+
+
+def fit(sent, sep, tokenize, max_tokens):
+    """A sentence longer than max_tokens split at word boundaries: the engine
+    truncates past its input limit, which would drop text silently."""
+    n = len(tokenize(sent))
+    if n <= max_tokens:
+        return [(sent, sep, n)]
+    out, cur, n_cur = [], [], 0
+    words = WORDS.split(sent)
+    for k in range(0, len(words), 2):
+        w, space = words[k], words[k + 1] if k + 1 < len(words) else ""
+        nw = len(tokenize(w)) if w else 0
+        if cur and n_cur + nw > max_tokens:
+            out.append(("".join(cur[:-1]), cur[-1], n_cur))
+            cur, n_cur = [], 0
+        cur += [w, space]
+        n_cur += nw
+    if cur:
+        out.append(("".join(cur[:-1]), sep, n_cur))
+    return out
 
 
 class Translator:
@@ -150,7 +186,7 @@ class Translator:
     def translate(self, model_id, texts, source, target, fmt="text"):
         bundle = self.models.get(model_id)
         if bundle is None:
-            raise KeyError(model_id)
+            raise ModelNotFound(model_id)
         if not target:
             raise BadRequest("target_language is required")
         target = primary(target)

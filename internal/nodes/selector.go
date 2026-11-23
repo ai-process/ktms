@@ -302,8 +302,16 @@ func isJudgeOnly(caps []string) bool {
 	return len(caps) == 1 && caps[0] == registry.CapabilityJudge
 }
 
-// servesNoChat marks a node's model spec that only judges or only translates:
+// servesNoChat marks a node's model spec that only judges and/or translates:
 // a decision or MT engine cannot answer a chat completion.
 func servesNoChat(caps []string) bool {
-	return len(caps) == 1 && (caps[0] == registry.CapabilityJudge || caps[0] == registry.CapabilityTranslate)
+	if len(caps) == 0 {
+		return false
+	}
+	for _, c := range caps {
+		if c != registry.CapabilityJudge && c != registry.CapabilityTranslate {
+			return false
+		}
+	}
+	return true
 }

@@ -28,6 +28,7 @@ func TestServes(t *testing.T) {
 		"draining":           {listed{node(pb.NodeState_NODE_STATE_DRAINING)}, "", false},
 		"judge only":         {listed{node(pb.NodeState_NODE_STATE_HEALTHY, registry.CapabilityJudge)}, "", false},
 		"translate only":     {listed{node(pb.NodeState_NODE_STATE_HEALTHY, registry.CapabilityTranslate)}, "", false},
+		"MT tagged judge":    {listed{node(pb.NodeState_NODE_STATE_HEALTHY, registry.CapabilityTranslate, registry.CapabilityJudge)}, "", false},
 		"translate for MT":   {listed{node(pb.NodeState_NODE_STATE_HEALTHY, registry.CapabilityTranslate)}, registry.CapabilityTranslate, true},
 		"chat for translate": {listed{node(pb.NodeState_NODE_STATE_HEALTHY)}, registry.CapabilityTranslate, false},
 		"none":               {nil, "", false},

@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 from . import __version__
 from .catalog import engines_of
 from .config import bundle, engine_recipe
-from .engine import BadRequest, Engine, Translator, UnsupportedPair
+from .engine import BadRequest, Engine, ModelNotFound, Translator, UnsupportedPair
 
 log = logging.getLogger("ktms-mt")
 MAX_BODY = 4 << 20
@@ -120,7 +120,7 @@ class Handler(BaseHTTPRequestHandler):
             log.info("translated %d texts, %d chars with %s in %.0f ms", len(texts), usage["characters"], mid,
                      (time.monotonic() - start) * 1000)
             self._send(200, {"model": mid, "translations": out, "usage": usage})
-        except KeyError as e:
+        except ModelNotFound as e:
             self._error(404, "model_not_found", f"model {e} is not served here")
         except (BadRequest, json.JSONDecodeError, ValueError) as e:
             self._error(400, "bad_request", str(e))

@@ -29,7 +29,9 @@ contract can stand in for it.
 One translation per text, in order. An empty `source_language` means detect each text. Errors are
 `{"error": {"code", "message"}}`: 400 `bad_request` or `unsupported_language_pair` (KTMS moves on
 to the next model of the chain), 401, 404 `model_not_found` (also moves on), 500 `engine_error`.
-`GET /health` needs no key. With `KTMS_MT_API_KEY` (or `api_key` in the config) set, the other
+A batch is translated whole or not at all: one text in a language the bundle has no model for
+fails the call, and KTMS sends the batch to the next model. Bundles with a `fallback`, such as
+`opus-mt-de`, never hit this on detected languages. `GET /health` needs no key. With `KTMS_MT_API_KEY` (or `api_key` in the config) set, the other
 routes need `Authorization: Bearer <key>`; give the node agent the same key in `NODE_AUTH_TOKEN`.
 
 ## Install
