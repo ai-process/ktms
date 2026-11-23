@@ -62,8 +62,11 @@ func ToStatus(err error) error {
 		return status.Error(codes.FailedPrecondition, "not_configured")
 	case errors.Is(err, ErrModelAccessDenied):
 		return status.Error(codes.PermissionDenied, "model access denied by key or team policy")
-	case errors.Is(err, ErrNoCapableModel), errors.Is(err, llm.ErrJudgmentUnsupported), errors.Is(err, llm.ErrEmbeddingUnsupported):
+	case errors.Is(err, ErrNoCapableModel), errors.Is(err, llm.ErrJudgmentUnsupported), errors.Is(err, llm.ErrEmbeddingUnsupported),
+		errors.Is(err, llm.ErrTranslationUnsupported):
 		return status.Error(codes.FailedPrecondition, "no_capable_model")
+	case errors.Is(err, llm.ErrUnsupportedLanguagePair):
+		return status.Error(codes.FailedPrecondition, "unsupported_language_pair")
 	case errors.Is(err, ErrNoVendorKey):
 		return status.Error(codes.FailedPrecondition, "no_vendor_key")
 	case errors.Is(err, llm.ErrOutputTruncated):

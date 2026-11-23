@@ -165,10 +165,20 @@ func ValidateModel(m *proxydb.Model) error {
 	}
 	if m.RPM < 0 || m.PriceInPerMtok < 0 || m.PriceOutPerMtok < 0 ||
 		m.PriceInPeakPerMtok < 0 || m.PriceOutPeakPerMtok < 0 ||
-		m.PriceCacheReadPerMtok < 0 || m.PriceCacheWritePerMtok < 0 ||
+		m.PriceCacheReadPerMtok < 0 || m.PriceCacheWritePerMtok < 0 || m.PricePerMillionChars < 0 ||
 		m.DailyTokensPerKey < 0 || m.DailyTokensPerUser < 0 ||
 		m.QueueTimeoutMs < 0 {
 		return fmt.Errorf("model %s: negative limits, prices, or queue timeout", m.ID)
+	}
+	// Explicit even for "any": an MT engine registered without its pairs would
+	// otherwise take every pair and fail each call.
+	if HasCapability(m, CapabilityTranslate) && (len(m.LanguagesSource) == 0 || len(m.LanguagesTarget) == 0) {
+		return fmt.Errorf("model %s: translate models declare languages.source and languages.target (\"*\" for any)", m.ID)
+	}
+	for _, l := range append(append([]string(nil), m.LanguagesSource...), m.LanguagesTarget...) {
+		if !ValidLanguageTag(l) {
+			return fmt.Errorf("model %s: language %q: want a BCP-47 tag such as de or pt-BR, or *", m.ID, l)
+		}
 	}
 	if m.BudgetGraceMargin < -1.0 || m.BudgetGraceMargin > 1.0 {
 		return fmt.Errorf("model %s: budget grace margin must be between -1.0 and 1.0", m.ID)

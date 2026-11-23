@@ -186,6 +186,24 @@
           "id": {
             "type": "string"
           },
+          "languages": {
+            "additionalProperties": false,
+            "properties": {
+              "source": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "target": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
           "price_cache_read_per_mtok": {
             "type": "number"
           },
@@ -208,6 +226,9 @@
             "type": "number"
           },
           "price_out_per_mtok": {
+            "type": "number"
+          },
+          "price_per_million_chars": {
             "type": "number"
           },
           "queue_timeout_ms": {

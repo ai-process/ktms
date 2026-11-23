@@ -64,7 +64,8 @@ func IsRetryableError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, ErrNoAudioContent) || errors.Is(err, ErrJudgmentUnsupported) || errors.Is(err, ErrEmbeddingUnsupported) {
+	if errors.Is(err, ErrNoAudioContent) || errors.Is(err, ErrJudgmentUnsupported) || errors.Is(err, ErrEmbeddingUnsupported) ||
+		errors.Is(err, ErrTranslationUnsupported) || errors.Is(err, ErrUnsupportedLanguagePair) {
 		return true
 	}
 	if code, ok := ExtractHTTPStatusCode(err); ok {

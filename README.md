@@ -772,6 +772,8 @@ self-hosted OpenAI-compatible server such as Ollama or llama.cpp; the model's `e
     "price_cache_write_per_mtok": 0,
     "daily_tokens_per_key": 50000000,       // per API key per UTC day, 0 = unlimited
     "daily_tokens_per_user": 500000,        // per attributes["user_id"] (or svc:<key_name> fallback) per UTC day
+    "languages": {"source": ["*"], "target": ["*"]}, // translate models only: the pairs served
+    "price_per_million_chars": 0,           // translate: per million source characters, added to tokens
     "enabled": true } }
 ```
 
@@ -808,6 +810,7 @@ Capabilities a model may declare:
 | `tts` | Can serve `SynthesizeSpeech`. |
 | `image` | Can serve `GenerateImage`. |
 | `judge` | Can serve `Judge` (TypeSafe `jev-latest`, OpenAI `gpt-6-luna`). |
+| `translate` | Can serve `Translate`: a chat model by prompt, a node MT model natively. Declares `languages` (see [Translation](#translation)). |
 | `embedding_input` | A judge model that scores raw latent vectors in `JudgeRequest.state_media` (`EmbeddingPart`). |
 
 ### 4. Rules
@@ -909,7 +912,7 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"name":"search-ser
 ### Speech, image and judgment rules
 
 These modalities carry no effort. The proxy routes them at `EFFORT_LOW` with a reserved
-`attributes["modality"]` set to `tts`, `image` or `judge`, and only rules that name that
+`attributes["modality"]` set to `tts`, `image`, `judge` or `translate`, and only rules that name that
 modality can match, over models that declare the matching capability:
 
 ```json
@@ -1096,6 +1099,7 @@ ktms keys mint billing --team acme/search --rpm 120
 echo "$OPENAI_KEY" | ktms vendor-keys set billing openai
 ktms keys policy set billing --allowed-models gpt-4o-mini --tpm 200000
 ktms chat "Say hi"                            # the answer, then rule, model and vendor
+ktms translate --to de reviews.txt            # one translation per line, see Translation
 ktms limits set key billing day 5             # USD per UTC day; * sets the default
 ktms spend get key billing                    # or user ID, team org/team
 ktms route explain billing --effort high      # where it would go, and why
@@ -1115,7 +1119,8 @@ such a request would go: the rule, every model of its chain kept or dropped with
 vendor key, key or team policy, capability, placement, circuit open, vendor paused, no node), and
 what a call would try. It runs Keystone's own routing (`AdminService/ExplainRoute`), calls no vendor
 or judge and spends nothing; rate limits and budgets are not checked. With `--auto` and no effort it
-shows the judge's fallback, medium.
+shows the judge's fallback, medium. `--modality translate --from fr --to de` (or `judge`, `tts`,
+`image`) explains that RPC's route instead, models without the language pair dropped as `language_pair`.
 
 `admin:read` is enough for everything that only reads (`list`, `get`, `route explain`,
 `config plan|export`).
@@ -1393,6 +1398,71 @@ or instead of `state_json`. Each media kind narrows the chain to judge models th
 
 Supported decision vendors are [TypeSafe](https://typesafe.ai) (`jev-latest`, billing input only) and [OpenAI](https://openai.com) (`gpt-6-luna`, billing input and output tokens); both write no text and declare the `judge` capability.
 
+### Translation
+
+`Translate` (HTTP `POST /v1/translate`, same JSON) translates a batch of texts. The client always
+makes the same call; which engine translates is the translate rule's choice — a local MT model on
+a node, any chat model by prompt, a cloud MT vendor — with the usual fallback, limits, guardrails
+and usage reporting. Comparing engines is a config change, not a code change.
+
+```json
+{"texts": ["Great location, friendly staff.", "Chambre trop petite."],
+ "source_language": "",          // BCP-47; empty detects each text
+ "target_language": "de",
+ "format": "text",               // or "html": tags and attributes are kept
+ "attributes": {"pipeline": "reviews"}, "action_id": "reviews.translate"}
+```
+
+The reply holds one `translations[]` entry per text, in order (`text`,
+`detected_source_language`), with `resolved_model`, `matched_rule` and `usage` (tokens as the
+engine counts them, and `characters`). Limits: 128 texts and 256 KiB per call. Blank texts come
+back as they are, and a `source_language` equal to the target returns the texts without a call.
+
+Models that translate declare the `translate` capability and the pairs they serve; a model
+without the request's pair is skipped, not tried. `"de"` also covers `"de-AT"`; list regional or
+script variants (`zh-Hant`) where a model must not take them all.
+
+```yaml
+models:
+  - id: opus-mt-de              # a node MT model (ktms-mt, see Run a node)
+    vendor: local
+    efforts: [EFFORT_LOW]
+    capabilities: [translate]
+    languages: {source: [en, fr, es, it, nl, pt, pl, ru, tr], target: [de]}
+  - id: gemma4:26b              # any chat model, by prompt
+    vendor: local
+    efforts: [EFFORT_LOW]
+    capabilities: [translate]
+    languages: {source: ["*"], target: ["*"]}
+  - id: gemini-2.5-flash
+    vendor: google
+    efforts: [EFFORT_LOW, EFFORT_MEDIUM]
+    capabilities: [translate]
+    languages: {source: ["*"], target: ["*"]}
+    price_in_per_mtok: 0.30
+    price_out_per_mtok: 2.50
+rules:
+  - name: translate             # local MT first, then the local LLM, then the cloud
+    priority: 170
+    attributes: {modality: translate}
+    use: [opus-mt-de, gemma4:26b, gemini-2.5-flash]
+  - name: translate-gemma       # a pipeline that asks for Gemma by an attribute
+    priority: 171
+    attributes: {modality: translate, engine: gemma}
+    use: [gemma4:26b, gemini-2.5-flash]
+```
+
+A chat model translates through a prompt Keystone writes: the texts go as JSON data, the reply
+is structured output with one item per text, and Keystone checks the count and the ids before
+answering. A reply that does not line up is retried once on the same model, then the chain moves
+on. Batches are split into chunks of up to 32 texts.
+
+Usage goes to light-tokenmeter like any call: `action_id` defaults to `translate`, tokens are
+reported as usual, the character count goes in `meta.characters`, and `cost_nanousd` adds
+`price_per_million_chars` (for engines billed by character) to the token price. Spend limits
+count both. `ktms translate --to de [--from en] [FILE|-]` translates a file line by line, and
+`ktms route explain KEY --modality translate --from fr --to de` shows which models a pair reaches.
+
 ### Embeddings
 
 Vector representations of text. Vector space isolation is strictly enforced: `auto` model routing and cross-model fallbacks are disallowed to prevent corrupting downstream vector indices. Models must declare the `embedding` capability.
@@ -1445,6 +1515,7 @@ curl -s localhost:8080/v1/chat/completions \
 | `POST /v1/decisions` | `Judge` | OpenAI Decisions API format (`predicate`, `choice`, `score`). `input` is JSON state, or an array of `input_text`/`text`, `input_image`/`image_url`, `input_audio` and `input_embedding` parts for multimodal state. |
 | `POST /v1/decisions/rollouts` | `EvaluateRollouts` | Batch trajectory and rollout candidate evaluation for agentic workflows with candidate ranking. |
 | `POST /v1/judge` | `Judge` | Protobuf JSON of `JudgeRequest` / `JudgeResponse`. |
+| `POST /v1/translate` | `Translate` | Protobuf JSON of `TranslateRequest` / `TranslateResponse` (see [Translation](#translation)). |
 | `GET /v1/models`, `GET /v1/models/{id}` | `ListModels` | Only models the key holds a vendor credential for. |
 
 Authentication is `Authorization: Bearer ktms_…` (legacy `llm_…` keys are also supported). Response headers provide full observability:
@@ -1535,7 +1606,7 @@ Errors use OpenAI's shape, `{"error": {"message", "type", "param", "code"}}`, an
 
 | HTTP | `type` | `code` examples |
 | --- | --- | --- |
-| 400 | `invalid_request_error` | `output_truncated`, `no_capable_model`, `no_vendor_key`, `not_configured`; validation messages |
+| 400 | `invalid_request_error` | `output_truncated`, `no_capable_model`, `unsupported_language_pair`, `no_vendor_key`, `not_configured`; validation messages |
 | 401 / 403 | `authentication_error` / `permission_error` | missing or invalid key, missing scope |
 | 429 | `rate_limit_error` | `throttled:rpm`, `throttled:key_rpm`, `throttled:key_tpm`, `throttled:budget_key`, `throttled:budget_user` (with `Retry-After`) |
 | 429 | `insufficient_quota` | `insufficient_quota`; the message names the cap, e.g. `throttled:spend_key_daily`. `Retry-After` is the seconds until the period resets (UTC midnight or month start). |
@@ -1971,6 +2042,7 @@ lexical hash encoder that folds case, homoglyphs, zero-width and spaced-out lett
 | `PERMISSION_DENIED` | `model "<id>" not allowed for <key\|team>`, `no models in chain allowed for <key\|team>`, `model access denied by key or team policy` (batch) | The key's or its team's `allowed_models` excludes that model. |
 | `FAILED_PRECONDITION` | `output_truncated` | Raise `max_output_tokens`; don't retry as-is. |
 | `FAILED_PRECONDITION` | `no_capable_model` | No model in the matched chain can serve this request, modality, or batch capability. |
+| `FAILED_PRECONDITION` | `unsupported_language_pair` | `Translate`: models of the chain can translate, but none declares this pair. Add a model for it or a `*` fallback. |
 | `FAILED_PRECONDITION` | `no_vendor_key` | The client key holds no credential for the chain's vendors. `local` models never cause this. |
 | `FAILED_PRECONDITION` | `not_configured` | No models/rules configured yet. |
 | `FAILED_PRECONDITION` | `batch not configured` | Batch processing is not enabled/configured on the proxy (no batch store). |

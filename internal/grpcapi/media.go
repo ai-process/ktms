@@ -194,6 +194,24 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 	if id == nil {
 		return nil, status.Error(codes.Unauthenticated, "no identity")
 	}
+	return s.planMediaFor(ctx, id, mediaQuery{attrs: attrs, override: override, modality: modality, caps: capabilities}, nil)
+}
+
+// mediaQuery is what a non-text call routes by. pair narrows a translate
+// chain to the models declaring the language pair.
+type mediaQuery struct {
+	attrs    map[string]string
+	override string
+	modality string
+	caps     []string
+	pair     *languagePair
+}
+
+type languagePair struct{ source, target string }
+
+// planMediaFor is planMedia for a known identity, recording into tr when
+// ExplainRoute asks; a nil trace costs a real call nothing.
+func (s *ProxyServer) planMediaFor(ctx context.Context, id *apikeys.Identity, q mediaQuery, tr *routeTrace) (*mediaPlan, error) {
 	snap := s.snapshots.Snapshot()
 	if !snap.Configured() {
 		return nil, router.ToStatus(router.ErrNotConfigured)
@@ -201,43 +219,54 @@ func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, ov
 
 	// The modality is the proxy's to state, not the caller's: rules match on it
 	// and a caller could otherwise route image work to a speech chain.
-	routing := routingAttributes(attrs, id)
-	routing[ModalityAttribute] = modality
+	routing := routingAttributes(q.attrs, id)
+	routing[ModalityAttribute] = q.modality
 
 	var chain []string
 	var ruleName string
-	if override != "" {
-		if !id.CanAccessModel(override) {
-			return nil, status.Errorf(codes.PermissionDenied, "model %q not allowed for %s", override, id.DeniedBy(override))
+	if q.override != "" {
+		chain = []string{q.override}
+		tr.start(router.RouteModeOverride, chain, nil)
+		if !id.CanAccessModel(q.override) {
+			tr.add(router.Candidate{ID: q.override, Model: snap.Models[q.override], Dropped: id.DeniedBy(q.override) + "_policy"})
+			return nil, status.Errorf(codes.PermissionDenied, "model %q not allowed for %s", q.override, id.DeniedBy(q.override))
 		}
-		if _, ok := snap.Models[override]; !ok {
-			return nil, status.Errorf(codes.InvalidArgument, "bad_request: unknown model %q", override)
+		if _, ok := snap.Models[q.override]; !ok {
+			tr.add(router.Candidate{ID: q.override, Dropped: router.DropNotFound})
+			return nil, status.Errorf(codes.InvalidArgument, "bad_request: unknown model %q", q.override)
 		}
-		chain = []string{override}
 	} else {
 		// Only rules that name the modality: a text rule matching on subject
 		// alone would otherwise win and yield a chain with nothing capable.
-		rule := router.MatchModality(snap, mediaEffort, ModalityAttribute, modality, routing)
+		rule := router.MatchModality(snap, mediaEffort, ModalityAttribute, q.modality, routing)
 		if rule == nil {
 			return nil, status.Errorf(codes.FailedPrecondition,
-				"no_capable_model: no %s rule configured", modality)
+				"no_capable_model: no %s rule configured", q.modality)
 		}
 		canaryKey := router.CanaryKey(routing)
 		chain = router.ResolveChain(rule, canaryKey)
 		ruleName = rule.Name
+		tr.start(router.RouteModeDirect, chain, rule)
 	}
+	tr.matched(mediaEffort)
 
-	models, err := router.FilterChain(snap, chain, id.KeyID, mediaEffort, false, capabilities...)
+	models, err := tr.filter(snap, chain, id.KeyID, mediaEffort, false, q.caps)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
+	if q.pair != nil {
+		if models, err = tr.languagePair(models, q.pair); err != nil {
+			return nil, err
+		}
+	}
 
+	tr.policy(ctx, id, models)
 	if models, err = teamModels(ctx, id, models); err != nil {
 		return nil, err
 	}
 	restricted := restrictedCall(ctx, id)
 	if restricted {
-		if models, err = nodeModels(models, modality); err != nil {
+		if models, err = nodeModels(models, q.modality); err != nil {
 			return nil, err
 		}
 	}

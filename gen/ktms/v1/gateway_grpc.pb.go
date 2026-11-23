@@ -26,6 +26,7 @@ const (
 	GatewayService_Judge_FullMethodName              = "/ktms.v1.GatewayService/Judge"
 	GatewayService_GetEmbeddings_FullMethodName      = "/ktms.v1.GatewayService/GetEmbeddings"
 	GatewayService_JudgeStream_FullMethodName        = "/ktms.v1.GatewayService/JudgeStream"
+	GatewayService_Translate_FullMethodName          = "/ktms.v1.GatewayService/Translate"
 	GatewayService_EvaluateRollouts_FullMethodName   = "/ktms.v1.GatewayService/EvaluateRollouts"
 	GatewayService_ListModels_FullMethodName         = "/ktms.v1.GatewayService/ListModels"
 	GatewayService_SubmitBatch_FullMethodName        = "/ktms.v1.GatewayService/SubmitBatch"
@@ -53,7 +54,7 @@ const (
 // "model access denied by key or team policy" for batches); do not retry.
 // FAILED_PRECONDITION: "output_truncated" (raise max_output_tokens, do not
 // retry as-is), "request_too_large" (above a minute of the key's tpm_limit), "no_capable_model", "no_vendor_key", "not_configured",
-// "batch not configured".
+// "batch not configured", "unsupported_language_pair" (Translate: no model declares the pair).
 // INVALID_ARGUMENT: "guardrail_violation" (PII or prompt injection detected),
 // "bad_request: <message>" (validation errors, empty batch, duplicate custom_id).
 // UNIMPLEMENTED: "ffmpeg_missing: <hint>" (Gemini speech synthesis without ffmpeg).
@@ -81,6 +82,12 @@ type GatewayServiceClient interface {
 	// agent evaluation and robotics control loops.
 	// Experimental: may change in a 1.x minor release (README, API stability).
 	JudgeStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[JudgeRequest, JudgeResponse], error)
+	// Translate translates a batch of texts. It routes like Judge: EFFORT_LOW
+	// plus a reserved attributes["modality"] of "translate", chain filtered to
+	// models declaring the "translate" capability and the language pair (see
+	// ModelLanguages). FAILED_PRECONDITION "unsupported_language_pair" when
+	// capable models exist but none serves the pair.
+	Translate(ctx context.Context, in *TranslateRequest, opts ...grpc.CallOption) (*TranslateResponse, error)
 	// EvaluateRollouts scores candidate trajectories against state and criteria
 	// for speculative decoding and Best-of-N selection.
 	// Experimental: may change in a 1.x minor release (README, API stability).
@@ -183,6 +190,16 @@ func (c *gatewayServiceClient) JudgeStream(ctx context.Context, opts ...grpc.Cal
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type GatewayService_JudgeStreamClient = grpc.BidiStreamingClient[JudgeRequest, JudgeResponse]
 
+func (c *gatewayServiceClient) Translate(ctx context.Context, in *TranslateRequest, opts ...grpc.CallOption) (*TranslateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TranslateResponse)
+	err := c.cc.Invoke(ctx, GatewayService_Translate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *gatewayServiceClient) EvaluateRollouts(ctx context.Context, in *EvaluateRolloutsRequest, opts ...grpc.CallOption) (*EvaluateRolloutsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EvaluateRolloutsResponse)
@@ -262,7 +279,7 @@ func (c *gatewayServiceClient) CancelBatch(ctx context.Context, in *CancelBatchR
 // "model access denied by key or team policy" for batches); do not retry.
 // FAILED_PRECONDITION: "output_truncated" (raise max_output_tokens, do not
 // retry as-is), "request_too_large" (above a minute of the key's tpm_limit), "no_capable_model", "no_vendor_key", "not_configured",
-// "batch not configured".
+// "batch not configured", "unsupported_language_pair" (Translate: no model declares the pair).
 // INVALID_ARGUMENT: "guardrail_violation" (PII or prompt injection detected),
 // "bad_request: <message>" (validation errors, empty batch, duplicate custom_id).
 // UNIMPLEMENTED: "ffmpeg_missing: <hint>" (Gemini speech synthesis without ffmpeg).
@@ -290,6 +307,12 @@ type GatewayServiceServer interface {
 	// agent evaluation and robotics control loops.
 	// Experimental: may change in a 1.x minor release (README, API stability).
 	JudgeStream(grpc.BidiStreamingServer[JudgeRequest, JudgeResponse]) error
+	// Translate translates a batch of texts. It routes like Judge: EFFORT_LOW
+	// plus a reserved attributes["modality"] of "translate", chain filtered to
+	// models declaring the "translate" capability and the language pair (see
+	// ModelLanguages). FAILED_PRECONDITION "unsupported_language_pair" when
+	// capable models exist but none serves the pair.
+	Translate(context.Context, *TranslateRequest) (*TranslateResponse, error)
 	// EvaluateRollouts scores candidate trajectories against state and criteria
 	// for speculative decoding and Best-of-N selection.
 	// Experimental: may change in a 1.x minor release (README, API stability).
@@ -330,6 +353,9 @@ func (UnimplementedGatewayServiceServer) GetEmbeddings(context.Context, *GetEmbe
 }
 func (UnimplementedGatewayServiceServer) JudgeStream(grpc.BidiStreamingServer[JudgeRequest, JudgeResponse]) error {
 	return status.Error(codes.Unimplemented, "method JudgeStream not implemented")
+}
+func (UnimplementedGatewayServiceServer) Translate(context.Context, *TranslateRequest) (*TranslateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Translate not implemented")
 }
 func (UnimplementedGatewayServiceServer) EvaluateRollouts(context.Context, *EvaluateRolloutsRequest) (*EvaluateRolloutsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method EvaluateRollouts not implemented")
@@ -478,6 +504,24 @@ func _GatewayService_JudgeStream_Handler(srv interface{}, stream grpc.ServerStre
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type GatewayService_JudgeStreamServer = grpc.BidiStreamingServer[JudgeRequest, JudgeResponse]
 
+func _GatewayService_Translate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TranslateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayServiceServer).Translate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GatewayService_Translate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayServiceServer).Translate(ctx, req.(*TranslateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _GatewayService_EvaluateRollouts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(EvaluateRolloutsRequest)
 	if err := dec(in); err != nil {
@@ -612,6 +656,10 @@ var GatewayService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetEmbeddings",
 			Handler:    _GatewayService_GetEmbeddings_Handler,
+		},
+		{
+			MethodName: "Translate",
+			Handler:    _GatewayService_Translate_Handler,
 		},
 		{
 			MethodName: "EvaluateRollouts",
