@@ -17,7 +17,7 @@ func ValidLanguageTag(tag string) bool {
 		return true
 	}
 	parts := strings.Split(tag, "-")
-	if n := len(parts[0]); n < 2 || n > 3 {
+	if n := len(parts[0]); n < 2 || n > 3 || strings.ContainsAny(parts[0], "0123456789") {
 		return false
 	}
 	for _, p := range parts {

@@ -12,7 +12,7 @@ func TestValidLanguageTag(t *testing.T) {
 			t.Errorf("%q refused", ok)
 		}
 	}
-	for _, bad := range []string{"", "german", "de_DE", "d", "de-", "-de", "de--DE", "de-toolongsubtag"} {
+	for _, bad := range []string{"", "german", "de_DE", "d", "de-", "-de", "de--DE", "de-toolongsubtag", "12", "e1"} {
 		if ValidLanguageTag(bad) {
 			t.Errorf("%q accepted", bad)
 		}
