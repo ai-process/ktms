@@ -1101,7 +1101,7 @@ main() {
 	step "Checking this machine ($OS/$ARCH)"
 	if [ "$ENGINE" = mt ]; then
 		find_mt_python >/dev/null || die "--engine mt needs Python 3.11, 3.12 or 3.13 (python.org or Homebrew); set KTMS_MT_PYTHON to its path"
-		say "Translation model $MODEL: about 0.3 GB per Opus-MT pair on disk and in memory, on the CPU (int8)."
+		say "Translation model $MODEL: about 80 MB per Opus-MT pair (230 MB for the multilingual one) on disk and in memory, on the CPU (int8), plus about 1 GB for PyTorch, used only to convert models."
 	else
 		note_foreign_ollama
 		check_resources
