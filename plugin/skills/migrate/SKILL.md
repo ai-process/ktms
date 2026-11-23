@@ -21,7 +21,7 @@ description: Plan and prepare a migration to Keystone (KTMS) from LiteLLM Proxy 
 Clients stop picking aliases: they send an effort (`auto`, `auto:low|medium|high`) and
 attributes. On `/v1`, penalties are accepted and ignored and `n` must be 1; `temperature`,
 `top_p`, `stop` and `seed` reach the model as far as it takes them (Keystone 1.4 and earlier
-ignore them, see [Sampling](https://github.com/ai-process/ktms/blob/main/README.md#sampling)).
+ignore them, see [Sampling](https://github.com/ai-process/ktms/blob/main/docs/grpc-api.md#sampling)).
 Flag every client that depends on them.
 
 ## Steps
@@ -39,6 +39,6 @@ Flag every client that depends on them.
    compare errors, latency and spend for a few days (`tokenmeter usage summary --group-by
    model`), then switch, keeping the old setup ready to roll back for a week.
 
-Ask about anything that does not map with confidence. Sources: [Concepts](https://github.com/ai-process/ktms/blob/main/README.md#concepts),
-[Setting it up: keys, models, rules](https://github.com/ai-process/ktms/blob/main/README.md#setting-it-up-keys-models-rules),
-[OpenAI-compatible HTTP API](https://github.com/ai-process/ktms/blob/main/README.md#openai-compatible-http-api).
+Ask about anything that does not map with confidence. Sources: [Concepts](https://github.com/ai-process/ktms/blob/main/docs/concepts.md#concepts),
+[Setting it up: keys, models, rules](https://github.com/ai-process/ktms/blob/main/docs/configuration.md#setting-it-up-keys-models-rules),
+[OpenAI-compatible HTTP API](https://github.com/ai-process/ktms/blob/main/docs/http-api.md#openai-compatible-http-api).

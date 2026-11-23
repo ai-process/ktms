@@ -2,7 +2,7 @@
 
 All notable changes to KTMS are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
-[semantic versioning](https://semver.org); see [API stability](README.md#api-stability) for what
+[semantic versioning](https://semver.org); see [API stability](docs/stability.md#api-stability) for what
 1.x keeps compatible.
 
 ## [Unreleased]
@@ -317,7 +317,7 @@ Tools for people and AI assistants: the `ktms` CLI, `ktms mcp`, a dry run of rou
 ## [1.0.0] - 2026-10-23
 
 The first stable release of Keystone. The Model Switchboard. (KTMS). From here on, the public API
-listed in [API stability](README.md#api-stability) changes incompatibly only in a new major
+listed in [API stability](docs/stability.md#api-stability) changes incompatibly only in a new major
 version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.14.x first.
 
 ### Added
@@ -395,7 +395,7 @@ version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.
 - Signed releases: images and `checksums.txt` are signed with keyless cosign; images carry an
   SBOM and SLSA provenance, archives an SPDX SBOM. See SECURITY.md, Verifying a Release.
 - `govulncheck` for linux and darwin on every pull request and before every release.
-- The public API for 1.x is defined in the README ([API stability](README.md#api-stability)),
+- The public API for 1.x is defined in the README ([API stability](docs/stability.md#api-stability)),
   with experimental elements marked `Experimental:` in the proto.
 - A startup warning when the deprecated `LLMPROXY_ENCRYPTION_KEYS` is used instead of
   `KTMS_ENCRYPTION_KEYS`.

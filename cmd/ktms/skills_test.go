@@ -23,7 +23,7 @@ var tokenmeterTools = []string{"usage_summary", "top_spenders", "cost_per_action
 
 var (
 	codeSpan = regexp.MustCompile("`([^`]+)`")
-	mdLink   = regexp.MustCompile(`\]\((https://github\.com/ai-process/(ktms|light-tokenmeter)/blob/main/README\.md)#([^)]+)\)`)
+	mdLink   = regexp.MustCompile(`\]\((https://github\.com/ai-process/(ktms|light-tokenmeter)/blob/main/((?:docs/)?[\w-]+\.md))#([^)]+)\)`)
 	// A tool name: a verb these servers use and more words, or health.
 	toolName = regexp.MustCompile(`^((list|get|config|mint|revoke|set|delete|drain|explain|usage|top|cost)_[a-z_]+|health)$`)
 	// Fields the skills name that look like tool names.
@@ -32,16 +32,21 @@ var (
 )
 
 // TestSkills fails on a skill that names a command, flag, MCP tool or README
-// section this version lacks: an assistant would follow it into an error.
+// section (README or docs/) this version lacks: an assistant would follow it into an error.
 func TestSkills(t *testing.T) {
 	dirs, err := filepath.Glob("../../plugin/skills/*/SKILL.md")
 	if err != nil || len(dirs) == 0 {
 		t.Fatalf("no skills found: %v", err)
 	}
 	ktmsTools := mcpToolNames(t)
-	anchors := map[string]map[string]bool{"ktms": readmeAnchors(t, "../../README.md")}
+	// Keyed by repository and file: ktms's README and docs/, light-tokenmeter's README.
+	anchors := map[string]map[string]bool{"ktms/README.md": readmeAnchors(t, "../../README.md")}
+	docs, _ := filepath.Glob("../../docs/*.md")
+	for _, p := range docs {
+		anchors["ktms/docs/"+filepath.Base(p)] = readmeAnchors(t, p)
+	}
 	if p := os.Getenv("TOKENMETER_README"); p != "" {
-		anchors["light-tokenmeter"] = readmeAnchors(t, p)
+		anchors["light-tokenmeter/README.md"] = readmeAnchors(t, p)
 	}
 	tmTools := tokenmeterTools
 	if p := os.Getenv("TOKENMETER_MCP_SRC"); p != "" {
@@ -55,7 +60,7 @@ func TestSkills(t *testing.T) {
 		}
 	}
 	tmBin := os.Getenv("TOKENMETER_BIN")
-	if tmBin == "" || anchors["light-tokenmeter"] == nil {
+	if tmBin == "" || anchors["light-tokenmeter/README.md"] == nil {
 		t.Log("TOKENMETER_BIN or TOKENMETER_README unset: light-tokenmeter commands and links are not checked")
 	}
 
@@ -88,8 +93,12 @@ func TestSkills(t *testing.T) {
 			}
 		}
 		for _, m := range mdLink.FindAllStringSubmatch(text, -1) {
-			if a := anchors[m[2]]; a != nil && !a[m[3]] {
-				t.Errorf("%s: %s#%s: no such section", dir, m[1], m[3])
+			a, ok := anchors[m[2]+"/"+m[3]]
+			switch {
+			case !ok && m[2] == "ktms":
+				t.Errorf("%s: %s: no such document", dir, m[1])
+			case ok && !a[m[4]]:
+				t.Errorf("%s: %s#%s: no such section", dir, m[1], m[4])
 			}
 		}
 	}
@@ -275,8 +284,8 @@ func TestSkillChecksCatchStaleCommands(t *testing.T) {
 			t.Errorf("checkKtms(%q) = %q", span, got)
 		}
 	}
-	a := readmeAnchors(t, "../../README.md")
-	if !a["5-spend-limits-optional"] || !a["command-line-tool"] || a["no-such-section"] {
+	a := readmeAnchors(t, "../../docs/configuration.md")
+	if !a["5-spend-limits-optional"] || !a["configuration-as-a-file"] || a["no-such-section"] {
 		t.Error("README anchors are not computed as GitHub does")
 	}
 }

@@ -31,16 +31,16 @@ monitoring.
 ## Deliver
 
 1. The files, every secret as a reference to the store, probes on `/readyz`, two or more
-   Keystone replicas on Kubernetes, resources from [Sizing](https://github.com/ai-process/ktms/blob/main/README.md#sizing).
+   Keystone replicas on Kubernetes, resources from [Sizing](https://github.com/ai-process/ktms/blob/main/docs/operations.md#sizing).
 2. A runbook: generate the keyring and tokens (commands, not values); start with
    `BOOTSTRAP_ADMIN_KEY`; on an empty Keystone the user runs `ktms init` in their own terminal
    (it asks for the admin and vendor keys without echo, so they never reach the chat);
    `ktms keys mint console --scopes admin` and a viewer key with `--scopes admin:read`; put them
    in the store; remove the bootstrap key; restart.
-3. NetworkPolicies or a firewall note; the alert rules from [Metrics and alerts](https://github.com/ai-process/ktms/blob/main/README.md#metrics-and-alerts).
+3. NetworkPolicies or a firewall note; the alert rules from [Metrics and alerts](https://github.com/ai-process/ktms/blob/main/docs/operations.md#metrics-and-alerts).
 4. Check after start: `ktms health` shows both probes 200 and the version; `ktms config plan`
    against the repository's `ktms.yaml` shows no surprise.
 
-Use only environment variables the sources name. Sources: [Installation](https://github.com/ai-process/ktms/blob/main/README.md#installation),
-[Configuration reference](https://github.com/ai-process/ktms/blob/main/README.md#configuration-reference), [Production checklist](https://github.com/ai-process/ktms/blob/main/README.md#production-checklist),
+Use only environment variables the sources name. Sources: [Installation](https://github.com/ai-process/ktms/blob/main/docs/install.md#installation),
+[Configuration reference](https://github.com/ai-process/ktms/blob/main/docs/configuration.md#configuration-reference), [Production checklist](https://github.com/ai-process/ktms/blob/main/docs/install.md#production-checklist),
 light-tokenmeter [Authentication](https://github.com/ai-process/light-tokenmeter/blob/main/README.md#authentication).

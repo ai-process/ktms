@@ -22,8 +22,8 @@ Guidelines and invariants for AI agents working in this codebase, synthesized fr
 - **Standardized error responses:** Per-item batch errors must always contain `code`, `reason`, and `message`, constructed via shared helpers using gRPC codes.
 
 ## 5. Contracts & Documentation
-- **Keep contracts in lockstep:** Any behavioral change (such as fallback identities affecting quotas) must be updated across proto comments, generated code (`make proto`), README tables, and PR descriptions.
-- **Config parity:** Every configuration environment variable must match across `config.go`, `env.example`, and `README.md`.
+- **Keep contracts in lockstep:** Any behavioral change (such as fallback identities affecting quotas) must be updated across proto comments, generated code (`make proto`), docs tables, and PR descriptions.
+- **Config parity:** Every configuration environment variable must match across `config.go`, `env.example`, and `docs/configuration.md`.
 
 ## 6. Code & Communication Hygiene
 - **Code comments:** Keep comments to 3 lines maximum explaining *why*, never *what*.

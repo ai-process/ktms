@@ -221,7 +221,7 @@ var (
 
 	// DependencyErrorsTotal counts failed calls to Redis, Postgres and the usage
 	// collector, labelled by what the call was for; each one means a limit was
-	// skipped, a feature degraded or a request refused, as the README table says.
+	// skipped, a feature degraded or a request refused, as docs/operations.md says.
 	DependencyErrorsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "ktms",
