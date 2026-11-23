@@ -36,6 +36,9 @@ func TestServesLanguagePair(t *testing.T) {
 		{anyModel, "ja", "ko", true},
 		{star, "ja", "de-CH", true},
 		{star, "ja", "de", false},
+		{&proxydb.Model{LanguagesSource: []string{"*"}, LanguagesTarget: []string{"zh-Hant"}}, "en", "zh-Hant-TW", true},
+		{&proxydb.Model{LanguagesSource: []string{"*"}, LanguagesTarget: []string{"zh-Hant"}}, "en", "zh-Hans", false},
+		{&proxydb.Model{LanguagesSource: []string{"*"}, LanguagesTarget: []string{"de"}}, "en", "den", false},
 	}
 	for _, c := range cases {
 		if got := ServesLanguagePair(c.m, c.src, c.dst); got != c.want {

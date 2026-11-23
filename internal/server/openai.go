@@ -1216,6 +1216,7 @@ func (a *OpenAIAPI) translate(ctx context.Context, w http.ResponseWriter, r *htt
 		return err
 	}
 	setResolvedHeaders(w, resp.ResolvedVendor, resp.MatchedRule)
+	setObservabilityHeader(w, "Model", resp.ResolvedModel)
 	out, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(resp)
 	if err != nil {
 		return status.Error(codes.Internal, "cannot encode response")

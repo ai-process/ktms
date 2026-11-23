@@ -120,7 +120,7 @@ served each line and the detected language.`,
 			w := bufio.NewWriter(a.stdout)
 			for _, l := range out {
 				// One line in, one line out, so the output lines up with the input.
-				fmt.Fprintln(w, strings.ReplaceAll(l.Result, "\n", " "))
+				fmt.Fprintln(w, lineBreaks.Replace(l.Result))
 			}
 			return w.Flush()
 		},
@@ -136,6 +136,10 @@ served each line and the detected language.`,
 	outputFlag(cmd, &output)
 	return cmd
 }
+
+// lineBreaks keeps one translation on one output line; a bare \r would send
+// the terminal back to column 0.
+var lineBreaks = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ")
 
 type translateReply struct {
 	Translations []struct {

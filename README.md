@@ -772,7 +772,7 @@ self-hosted OpenAI-compatible server such as Ollama or llama.cpp; the model's `e
     "price_cache_write_per_mtok": 0,
     "daily_tokens_per_key": 50000000,       // per API key per UTC day, 0 = unlimited
     "daily_tokens_per_user": 500000,        // per attributes["user_id"] (or svc:<key_name> fallback) per UTC day
-    "languages": {"source": ["*"], "target": ["*"]}, // translate models only: the pairs served
+    "languages": {"source": ["*"], "target": ["*"]}, // required on translate models: the pairs served
     "price_per_million_chars": 0,           // translate: per million source characters, added to tokens
     "enabled": true } }
 ```
@@ -1419,8 +1419,8 @@ engine counts them, and `characters`). Limits: 128 texts and 256 KiB per call. B
 back as they are, and a `source_language` equal to the target returns the texts without a call.
 
 Models that translate declare the `translate` capability and the pairs they serve; a model
-without the request's pair is skipped, not tried. `"de"` also covers `"de-AT"`; list regional or
-script variants (`zh-Hant`) where a model must not take them all.
+without the request's pair is skipped, not tried. `languages` is required on a translate model (`"*"` for
+any). A tag covers its longer variants: `"de"` takes `"de-AT"`, `"zh-Hant"` takes `"zh-Hant-TW"`.
 
 ```yaml
 models:

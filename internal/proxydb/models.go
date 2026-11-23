@@ -99,8 +99,8 @@ type Model struct {
 	QueueTimeoutMs         int32
 	BudgetGraceMargin      float64
 	Enabled                bool
-	// Translate: language pairs served (empty = any) and a price per million
-	// source characters, added to the token price.
+	// Translate: language pairs served ("*" for any, required on translate
+	// models) and a price per million source characters, added to tokens.
 	LanguagesSource      []string
 	LanguagesTarget      []string
 	PricePerMillionChars float64

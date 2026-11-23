@@ -246,8 +246,8 @@ message ModelInfo {
 }
 
 // ModelLanguages are the language pairs a translate model serves: any source
-// to any target listed. BCP-47 tags; empty or "*" means any. "de" also covers
-// "de-DE" in a request.
+// to any target listed. BCP-47 tags, "*" for any; a translate model must list
+// both. A tag covers its longer variants: "de" takes "de-AT".
 message ModelLanguages {
   repeated string source = 1;
   repeated string target = 2;

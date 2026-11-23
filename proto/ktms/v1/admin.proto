@@ -37,8 +37,8 @@ message ModelSpec {
   // and 1.25x to write, bedrock 0.25x and 1.25x, any other vendor 1x.
   double price_cache_read_per_mtok = 19;
   double price_cache_write_per_mtok = 20;
-  // Translate models: the language pairs served (unset = any) and a price per
-  // million source characters, added to any token price.
+  // Translate models: the language pairs served (required, "*" for any) and a
+  // price per million source characters, added to any token price.
   ModelLanguages languages = 21;
   double price_per_million_chars = 22;
 }

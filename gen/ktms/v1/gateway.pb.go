@@ -2093,8 +2093,8 @@ func (x *ModelInfo) GetPricePerMillionChars() float64 {
 }
 
 // ModelLanguages are the language pairs a translate model serves: any source
-// to any target listed. BCP-47 tags; empty or "*" means any. "de" also covers
-// "de-DE" in a request.
+// to any target listed. BCP-47 tags, "*" for any; a translate model must list
+// both. A tag covers its longer variants: "de" takes "de-AT".
 type ModelLanguages struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Source        []string               `protobuf:"bytes,1,rep,name=source,proto3" json:"source,omitempty"`

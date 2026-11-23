@@ -52,8 +52,8 @@ type ModelSpec struct {
 	// and 1.25x to write, bedrock 0.25x and 1.25x, any other vendor 1x.
 	PriceCacheReadPerMtok  float64 `protobuf:"fixed64,19,opt,name=price_cache_read_per_mtok,json=priceCacheReadPerMtok,proto3" json:"price_cache_read_per_mtok,omitempty"`
 	PriceCacheWritePerMtok float64 `protobuf:"fixed64,20,opt,name=price_cache_write_per_mtok,json=priceCacheWritePerMtok,proto3" json:"price_cache_write_per_mtok,omitempty"`
-	// Translate models: the language pairs served (unset = any) and a price per
-	// million source characters, added to any token price.
+	// Translate models: the language pairs served (required, "*" for any) and a
+	// price per million source characters, added to any token price.
 	Languages            *ModelLanguages `protobuf:"bytes,21,opt,name=languages,proto3" json:"languages,omitempty"`
 	PricePerMillionChars float64         `protobuf:"fixed64,22,opt,name=price_per_million_chars,json=pricePerMillionChars,proto3" json:"price_per_million_chars,omitempty"`
 	unknownFields        protoimpl.UnknownFields

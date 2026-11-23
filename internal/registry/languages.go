@@ -34,8 +34,8 @@ func ValidLanguageTag(tag string) bool {
 }
 
 // ServesLanguagePair reports whether m declares the pair. An empty source in
-// the request matches any: the engine detects it. "de" also covers "de-AT";
-// a model that must not take every regional or script variant lists them.
+// the request matches any: the engine detects it. A declared tag covers its
+// longer variants; an empty list (never on a valid translate model) is any.
 func ServesLanguagePair(m *proxydb.Model, source, target string) bool {
 	return languageListed(m.LanguagesSource, source) && languageListed(m.LanguagesTarget, target)
 }
@@ -44,9 +44,10 @@ func languageListed(list []string, tag string) bool {
 	if len(list) == 0 || tag == "" {
 		return true
 	}
-	primary, _, _ := strings.Cut(tag, "-")
+	// RFC 4647 basic filtering: "zh-Hant" covers "zh-Hant-TW", "de" covers "de-AT".
 	for _, l := range list {
-		if l == AnyLanguage || strings.EqualFold(l, tag) || strings.EqualFold(l, primary) {
+		if l == AnyLanguage || strings.EqualFold(l, tag) ||
+			(len(tag) > len(l) && tag[len(l)] == '-' && strings.EqualFold(l, tag[:len(l)])) {
 			return true
 		}
 	}
