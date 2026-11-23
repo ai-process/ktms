@@ -78,7 +78,9 @@ eq "both engines flags" "--engine ollama --engine-url http://127.0.0.1:11435 --e
 eq "both engines run ollama" "yes" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; ENGINE=ollama,mt; has_engine ollama && echo yes)"
 eq "both engines run mt" "yes" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; ENGINE=ollama,mt; has_engine mt && echo yes)"
 eq "ollama alone runs no mt" "no" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; ENGINE=ollama; has_engine mt || echo no)"
+# shellcheck disable=SC2030 # each $(...) sets its own ENGINE on purpose
 eq "ollama beside mt keeps a slot for translation" "OLLAMA_NUM_PARALLEL=1" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; ENGINE=ollama,mt MAXC=2 CTX=8192; ollama_env | grep PARALLEL)"
+# shellcheck disable=SC2031 # parse_args sets ENGINE in this same subshell
 eq "--engine mt,ollama is ollama,mt" "ollama,mt" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; parse_args --proxy p --node-id n --model gemma --engine mt,ollama; echo "$ENGINE")"
 eq "--mt-model needs both engines" "1" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; if (parse_args --proxy p --node-id n --model gemma --engine ollama --mt-model opus-mt-de) >/dev/null 2>&1; then echo 0; else echo 1; fi)"
 eq "mt launch agent label" "com.ktms.mt" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; OS=darwin; svc_label mt)"
