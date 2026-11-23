@@ -1,5 +1,5 @@
 #!/bin/sh
-# Proves the upgrade promise in README "API stability": an older release's
+# Proves the upgrade promise in docs/stability.md: an older release's
 # database must keep working under this build, and under the old one again.
 # Env: PREV (tags to upgrade from), CUR (tag being released), NEW_IMAGE.
 set -eu

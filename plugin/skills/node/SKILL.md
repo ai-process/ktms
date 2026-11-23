@@ -32,5 +32,5 @@ description: Add a local inference node (Ollama, vLLM, llama.cpp on a Mac or a G
 - `ktms chat --model auto:nodes-only:low "hello"` reports vendor `local`; with the node
   stopped, a normal call falls back to the cloud (`ktms nodes drain ID` to stop sending it work).
 
-Sources: [Run a node](https://github.com/ai-process/ktms/blob/main/README.md#run-a-node), [FreeToken](https://github.com/ai-process/ktms/blob/main/README.md#freetoken), [If the node does not show up](https://github.com/ai-process/ktms/blob/main/README.md#if-the-node-does-not-show-up),
-[Choosing a model and placement](https://github.com/ai-process/ktms/blob/main/README.md#choosing-a-model-and-placement).
+Sources: [Run a node](https://github.com/ai-process/ktms/blob/main/docs/nodes.md#run-a-node), [FreeToken](https://github.com/ai-process/ktms/blob/main/docs/nodes.md#freetoken), [If the node does not show up](https://github.com/ai-process/ktms/blob/main/docs/nodes.md#if-the-node-does-not-show-up),
+[Choosing a model and placement](https://github.com/ai-process/ktms/blob/main/docs/http-api.md#choosing-a-model-and-placement).

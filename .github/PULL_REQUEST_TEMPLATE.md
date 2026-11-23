@@ -20,7 +20,7 @@
 - [ ] Code passes static analysis: `go vet ./...`
 - [ ] Race detector and unit test suite pass: `go test ./... -race`
 - [ ] Protobuf sync: ran `make proto` if changes touched `proto/`
-- [ ] Config parity verified: any new environment variables match across `internal/config/config.go`, `env.example`, and `README.md`
+- [ ] Config parity verified: any new environment variables match across `internal/config/config.go`, `env.example`, and `docs/configuration.md`
 - [ ] Security hygiene: no vendor API keys, client keys, or encryption keyrings are logged or exposed
 - [ ] Error contract adhered to: per-item errors use structured codes and reasons
 - [ ] Comments follow the 3-line max rule explaining *why*, never *what*

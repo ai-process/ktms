@@ -61,7 +61,7 @@ Every pull request is expected to adhere to our core engineering invariants:
 - **Commit before side effects:** Usage events, budget charges and other outside effects happen only after the DB transaction commits, and are written so that repeating them doesn't charge twice.
 - **Vendor cleanup on DB failure:** Clean up vendor work when the DB write fails. When a vendor job is created before the DB row, a failed or losing insert must cancel that vendor job, or a pending row is written first and then filled in.
 - **No silent error dropping:** Don't throw away errors when writing data. `_ =` and `_, _ =` are not allowed on DB writes or vendor calls. At minimum, log the error with the batch or request ID.
-- **Config parity:** Config names match the docs. Every env var is spelled the same in `internal/config/config.go`, `env.example` and the README. The `TestEnvVarDocumentationConsistency` test verifies this.
+- **Config parity:** Config names match the docs. Every env var is spelled the same in `internal/config/config.go`, `env.example` and `docs/configuration.md`. The `TestEnvVarDocumentationConsistency` test verifies this.
 - **Proto field hygiene:** Every response field is filled or marked `reserved`. Don't add a proto field the server never sets.
 - **Standardized error contracts:** One error format. Per-item errors always include `code`, `reason` and `message`, built by one shared helper with codes from `google.golang.org/grpc/codes`.
 - **Single identity helper:** One helper for user identity. Budget checks, budget charges and usage events all get the user ID from the same helper (including the `svc:<name>` fallback).
@@ -70,7 +70,7 @@ Every pull request is expected to adhere to our core engineering invariants:
 - **Vendor cancellation semantics:** Cancelling vendor jobs is a request, not a result: a local row moves to `CANCELLED` only after the vendor confirms it and its results have been fetched.
 - **Prune dead code:** When changing architecture or state transitions, remove unused methods from store implementations, worker interfaces, RPC handler interfaces, test fakes, and tests.
 - **Structured vendor errors:** Inspect SDK error types (e.g. `errors.As(err, &genai.APIError{})` with status codes) for idempotency or terminal checks instead of brittle string matching on error text.
-- **Lockstep documentation:** Keep documentation in lockstep with behavioral changes. Any change in runtime behavior (e.g. identity fallback affecting quotas) must update proto comments, generated code, README tables, and PR descriptions.
+- **Lockstep documentation:** Keep documentation in lockstep with behavioral changes. Any change in runtime behavior (e.g. identity fallback affecting quotas) must update proto comments, generated code, docs tables, and PR descriptions.
 - **Concise communication:** Keep communication, explanations, and PR descriptions concise and direct (no walls of text).
 - **No AI attribution:** Never add `Co-Authored-By` trailers or AI attribution lines to git commits or PR descriptions, and never name branches after a model or tool.
 - **Generated code sync:** `gen/` is committed; regenerate with `make proto` after editing `proto/`.

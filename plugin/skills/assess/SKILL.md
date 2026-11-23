@@ -39,24 +39,24 @@ holds it.
    reachable by them and nothing public unless clients live outside. Postgres: a database and
    user on an existing server, or a new one. Redis for limits. light-tokenmeter when spend per
    project, user or call site matters; ktms-admin for the people who run it. Size it from
-   [Sizing](https://github.com/ai-process/ktms/blob/main/README.md#sizing), a `###` section under
+   [Sizing](https://github.com/ai-process/ktms/blob/main/docs/operations.md#sizing), a `###` section under
    Operations: 1 vCPU per 1,000 RPS, memory by bodies in flight (256 MiB request, 512 MiB limit),
    and at least two replicas behind a load balancer even at low load, so one can restart while the
    other serves. Recommend one replica only for a trial.
 3. **Per service**: the smallest path. A service on the OpenAI SDK moves to the
-   [OpenAI-compatible HTTP API](https://github.com/ai-process/ktms/blob/main/README.md#openai-compatible-http-api)
+   [OpenAI-compatible HTTP API](https://github.com/ai-process/ktms/blob/main/docs/http-api.md#openai-compatible-http-api)
    by changing the base URL, the key and the model value (`auto:low|medium|high`); a service on
    another vendor's SDK moves to an OpenAI-compatible client or to gRPC, so say how much code that
    touches; gRPC suits a service that already speaks it or needs batches or judgments. Embeddings
    keep an exact model id. Propose an effort for each group of call sites and the attribution
    (`user`, `metadata.action_id`). Flag what does not map: an
-   endpoint missing from [Endpoints](https://github.com/ai-process/ktms/blob/main/README.md#endpoints)
+   endpoint missing from [Endpoints](https://github.com/ai-process/ktms/blob/main/docs/http-api.md#endpoints)
    (Responses, Assistants, Files, Realtime, transcription), `n` above 1, and code that relies on
    `temperature`, `top_p`, `stop` or `seed`: Keystone 1.4 and earlier ignore them, later versions
-   pass them on as far as the model takes them ([Sampling](https://github.com/ai-process/ktms/blob/main/README.md#sampling)).
+   pass them on as far as the model takes them ([Sampling](https://github.com/ai-process/ktms/blob/main/docs/grpc-api.md#sampling)).
 4. **What it brings and costs here**: fallbacks across vendors, per-key and per-user limits and
    budgets, vendor keys out of the services, spend per call site, local nodes; against one more
-   hop (about a millisecond, see [Resource footprint](https://github.com/ai-process/ktms/blob/main/README.md#resource-footprint)),
+   hop (about a millisecond, see [Resource footprint](https://github.com/ai-process/ktms/blob/main/docs/install.md#resource-footprint)),
    Postgres and Redis to run, and the features above that stay on the vendor. Say plainly if
    Keystone is not worth it here, for example one service with one model and no limits to keep.
 5. **The plan**: ordered steps, each with the skill that does it: `/ktms:deploy`, then
@@ -67,5 +67,5 @@ holds it.
 6. **Open questions**: what you could not see (another repository, the cloud console, traffic
    volumes) and what the answer would change.
 
-Sources: [How it works](https://github.com/ai-process/ktms/blob/main/README.md#how-it-works), [Concepts](https://github.com/ai-process/ktms/blob/main/README.md#concepts),
-[Production checklist](https://github.com/ai-process/ktms/blob/main/README.md#production-checklist).
+Sources: [How it works](https://github.com/ai-process/ktms/blob/main/README.md#how-it-works), [Concepts](https://github.com/ai-process/ktms/blob/main/docs/concepts.md#concepts),
+[Production checklist](https://github.com/ai-process/ktms/blob/main/docs/install.md#production-checklist).

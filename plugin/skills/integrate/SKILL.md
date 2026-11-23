@@ -38,7 +38,7 @@ models, it asks for an effort and Keystone's rules pick the chain.
   `action_id`.
 - Always set `max_tokens` (gRPC `max_output_tokens`); keep structured output with
   `response_format` json_schema.
-- Turn off the SDK's own retries and apply the [error contract](https://github.com/ai-process/ktms/blob/main/README.md#error-contract) once: wait
+- Turn off the SDK's own retries and apply the [error contract](https://github.com/ai-process/ktms/blob/main/docs/errors.md#error-contract) once: wait
   out `Retry-After` on 429, back off on 503, never retry configuration errors
   (`no_capable_model`, `no_vendor_key`, `not allowed for key`).
 - Log `X-KTMS-Rule`, `X-KTMS-Vendor` and the response's `model` (the model that answered) at
@@ -51,6 +51,6 @@ models, it asks for an effort and Keystone's rules pick the chain.
   effort the service uses: the chain must not end in `no_vendor_key`.
 - `ktms chat --effort low "hello"` with the service's key shows the rule and vendor that served it.
 
-Sources: [OpenAI-compatible HTTP API](https://github.com/ai-process/ktms/blob/main/README.md#openai-compatible-http-api),
-[Anthropic Messages API](https://github.com/ai-process/ktms/blob/main/README.md#anthropic-messages-api),
-[Calling Keystone](https://github.com/ai-process/ktms/blob/main/README.md#calling-keystone), [Error contract](https://github.com/ai-process/ktms/blob/main/README.md#error-contract).
+Sources: [OpenAI-compatible HTTP API](https://github.com/ai-process/ktms/blob/main/docs/http-api.md#openai-compatible-http-api),
+[Anthropic Messages API](https://github.com/ai-process/ktms/blob/main/docs/http-api.md#anthropic-messages-api),
+[Calling Keystone](https://github.com/ai-process/ktms/blob/main/docs/grpc-api.md#calling-keystone), [Error contract](https://github.com/ai-process/ktms/blob/main/docs/errors.md#error-contract).

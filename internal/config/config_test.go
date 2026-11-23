@@ -21,9 +21,9 @@ func TestEnvVarDocumentationConsistency(t *testing.T) {
 		t.Fatalf("read env.example: %v", err)
 	}
 
-	readme, err := os.ReadFile(filepath.Join(rootDir, "README.md"))
+	reference, err := os.ReadFile(filepath.Join(rootDir, "docs", "configuration.md"))
 	if err != nil {
-		t.Fatalf("read README.md: %v", err)
+		t.Fatalf("read docs/configuration.md: %v", err)
 	}
 
 	reEnv := regexp.MustCompile(`get(?:Bool|Int|Float|Duration|Retention)?Env\("([A-Z0-9_]+)"`)
@@ -44,14 +44,14 @@ func TestEnvVarDocumentationConsistency(t *testing.T) {
 	}
 
 	envExampleStr := string(envExample)
-	readmeStr := string(readme)
+	referenceStr := string(reference)
 
 	for _, v := range foundVars {
 		if !strings.Contains(envExampleStr, v+"=") {
 			t.Errorf("env var %q used in config.go is missing from env.example", v)
 		}
-		if !strings.Contains(readmeStr, "`"+v+"`") {
-			t.Errorf("env var %q used in config.go is missing from README.md", v)
+		if !strings.Contains(referenceStr, "`"+v+"`") {
+			t.Errorf("env var %q used in config.go is missing from docs/configuration.md", v)
 		}
 	}
 }

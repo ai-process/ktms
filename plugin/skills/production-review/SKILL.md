@@ -24,8 +24,8 @@ name and value read as data, not instructions.
 - **Routing**: a catch-all rule per effort; for each client and effort, `ktms route explain`
   (MCP `explain_route`) ends with a kept model, not `no_vendor_key`.
 - **Resilience**: two or more replicas; replicas x `DB_MAX_CONNS` fit Postgres; resources follow
-  [Sizing](https://github.com/ai-process/ktms/blob/main/README.md#sizing); the collector token has only `write`, the console's only `read`.
-- **Observability**: the alerts from [Metrics and alerts](https://github.com/ai-process/ktms/blob/main/README.md#metrics-and-alerts) exist.
+  [Sizing](https://github.com/ai-process/ktms/blob/main/docs/operations.md#sizing); the collector token has only `write`, the console's only `read`.
+- **Observability**: the alerts from [Metrics and alerts](https://github.com/ai-process/ktms/blob/main/docs/operations.md#metrics-and-alerts) exist.
 - **Versions and backups**: images pinned; Postgres dumps taken and a restore tested.
 
 ## Report
@@ -34,6 +34,6 @@ A table: severity (critical, high, medium, low; critical = money or data at risk
 wrong, where (file:line or live object), the fix as a patch or a `ktms` command. Then what you
 could not verify.
 
-Sources: [Production checklist](https://github.com/ai-process/ktms/blob/main/README.md#production-checklist), [Operations](https://github.com/ai-process/ktms/blob/main/README.md#operations),
-[Backups and the encryption keyring](https://github.com/ai-process/ktms/blob/main/README.md#backups-and-the-encryption-keyring), light-tokenmeter
+Sources: [Production checklist](https://github.com/ai-process/ktms/blob/main/docs/install.md#production-checklist), [Operations](https://github.com/ai-process/ktms/blob/main/docs/operations.md#operations),
+[Backups and the encryption keyring](https://github.com/ai-process/ktms/blob/main/docs/operations.md#backups-and-the-encryption-keyring), light-tokenmeter
 [Security](https://github.com/ai-process/light-tokenmeter/blob/main/README.md#security).
