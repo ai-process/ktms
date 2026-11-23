@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ktms-mt"
+version = "0.1.0"
+description = "Reference machine-translation server for Keystone (KTMS) nodes: Opus-MT, M2M100 and MADLAD-400 on CTranslate2"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = [
+  "ctranslate2>=4.5",
+  "sentencepiece>=0.2",
+  "fasttext-wheel>=0.9.2",
+  "numpy<3",
+  "certifi",
+]
+
+[project.optional-dependencies]
+# Only `ktms-mt fetch` needs these: it converts Hugging Face checkpoints to CTranslate2.
+convert = ["transformers>=4.40", "torch>=2.2", "huggingface_hub>=0.23", "sacremoses"]
+
+[project.scripts]
+ktms-mt = "ktms_mt.cli:main"
+
+[tool.setuptools]
+packages = ["ktms_mt"]

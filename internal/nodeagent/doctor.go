@@ -243,6 +243,9 @@ func (d *Doctor) checkEngine(ctx context.Context) (models []*pb.NodeModelSpec, f
 	resp, err := d.HTTP.Do(req)
 	if err != nil {
 		fix := "Start it, or point --engine-url at it. With install-node.sh: macOS `launchctl print gui/$(id -u)/com.ktms.ollama`, Linux `systemctl --user status ktms-ollama`; its Ollama listens on 127.0.0.1:11435, a stock Ollama on 11434."
+		if d.mt() {
+			fix = "Start it, or point --engine-url at it. With install-node.sh --engine mt: macOS `launchctl print gui/$(id -u)/com.ktms.mt`, Linux `systemctl --user status ktms-mt`; ktms-mt listens on 127.0.0.1:11436."
+		}
 		if freeToken {
 			fix = "Start it: ft serve --model <model> (it listens on 127.0.0.1:1919), or point --engine-url at it."
 			if _, lerr := d.LookPath("ft"); lerr != nil {
@@ -283,6 +286,9 @@ func (d *Doctor) checkModel(models []*pb.NodeModelSpec, paused bool) []Finding {
 		if d.Model != "" {
 			fix = "Download it: ollama pull " + d.Model + "."
 		}
+		if d.mt() {
+			fix = "Add one to the server: ktms-mt fetch opus-mt-de, then restart it (install-node.sh --engine mt --model opus-mt-de does both)."
+		}
 		if d.freeToken() {
 			fix = "Start ft serve with --model."
 			if d.Model != "" {
@@ -319,11 +325,16 @@ func (d *Doctor) checkModel(models []*pb.NodeModelSpec, paused bool) []Finding {
 		}
 	}
 	fix := "Download it: ollama pull " + d.Model + "."
+	if d.mt() {
+		fix = "Add it to the server: ktms-mt fetch " + d.Model + ", then restart it."
+	}
 	if d.freeToken() {
 		fix = "A FreeToken server serves one model: restart ft serve with --model for it, or --served-model-name " + d.Model + "."
 	}
 	return []Finding{{"Model", LevelProblem, fmt.Sprintf("The model %q is not installed on this engine.", d.Model), fix}}
 }
+
+func (d *Doctor) mt() bool { return strings.EqualFold(d.Cfg.Engine, registry.EngineMT) }
 
 func (d *Doctor) freeToken() bool { return strings.EqualFold(d.Cfg.Engine, registry.EngineFreeToken) }
 

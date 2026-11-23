@@ -31,6 +31,8 @@ func GetInspector(engine string) EngineInspector {
 		return &LlamaCppInspector{}
 	case "decisions":
 		return &DecisionsInspector{}
+	case registry.EngineMT:
+		return &MTInspector{}
 	case registry.EngineFreeToken:
 		return &FreeTokenInspector{}
 	default:
@@ -315,6 +317,19 @@ type DecisionsInspector struct{}
 
 func (di *DecisionsInspector) Inspect(ctx context.Context, endpoint, authToken string) ([]*pb.NodeModelSpec, error) {
 	return inspectOpenAIModels(ctx, endpoint, authToken, registry.CapabilityJudge)
+}
+
+// MTInspector inspects machine-translation servers (/v1/translate). Their
+// models translate and nothing else, so each carries only the translate
+// capability whatever the server lists.
+type MTInspector struct{}
+
+func (mi *MTInspector) Inspect(ctx context.Context, endpoint, authToken string) ([]*pb.NodeModelSpec, error) {
+	specs, err := inspectOpenAIModels(ctx, endpoint, authToken)
+	for _, s := range specs {
+		s.Capabilities = []string{registry.CapabilityTranslate}
+	}
+	return specs, err
 }
 
 // EngineController is implemented by inspectors whose engine can load and

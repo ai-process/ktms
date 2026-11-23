@@ -73,6 +73,10 @@ const CapabilityNoThinking = "no_thinking"
 // prompt: worth it for long instructions that repeat across calls.
 const CapabilityPromptCache = "prompt_cache"
 
+// EngineMT is the node engine name of a machine-translation server speaking
+// KTMS's MT contract (GET /v1/models, POST /v1/translate), such as ktms-mt.
+const EngineMT = "mt"
+
 // EngineFreeToken is the node engine name of a FreeToken server (`ft serve`).
 const EngineFreeToken = "freetoken"
 

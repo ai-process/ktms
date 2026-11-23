@@ -370,13 +370,13 @@ func (s *AdminServer) ExplainRoute(ctx context.Context, req *pb.ExplainRouteRequ
 		return nil, status.Errorf(codes.FailedPrecondition, "client key %q is revoked", req.GetApiKeyName())
 	}
 	out := s.explain(ctx, apikeys.IdentityFor(row), req)
-	s.markNodes(ctx, out)
+	s.markNodes(ctx, out, mediaCapabilities[req.GetModality()])
 	return out, nil
 }
 
 // markNodes drops local models no node may take now, by the node selector's
 // own filter. If the nodes cannot be listed, the trace still comes back.
-func (s *AdminServer) markNodes(ctx context.Context, out *pb.ExplainRouteResponse) {
+func (s *AdminServer) markNodes(ctx context.Context, out *pb.ExplainRouteResponse, capability string) {
 	asked := map[string]bool{}
 	for _, c := range out.GetCandidates() {
 		if c.GetDropped() != "" || c.GetVendor() != registry.VendorLocal {
@@ -389,9 +389,16 @@ func (s *AdminServer) markNodes(ctx context.Context, out *pb.ExplainRouteRespons
 		serves, ok := asked[c.GetModelId()]
 		if !ok {
 			var err error
-			if serves, err = nodes.Serves(ctx, s.nodeMgr, c.GetModelId()); err != nil {
+			if serves, err = nodes.Serves(ctx, s.nodeMgr, c.GetModelId(), capability); err != nil {
 				out.Error = statusText(status.Errorf(codes.Unavailable, "list nodes: %v", err))
 				return
+			}
+			// A chat model on a node translates by prompt, through chat.
+			if !serves && capability == registry.CapabilityTranslate {
+				if serves, err = nodes.Serves(ctx, s.nodeMgr, c.GetModelId(), ""); err != nil {
+					out.Error = statusText(status.Errorf(codes.Unavailable, "list nodes: %v", err))
+					return
+				}
 			}
 			asked[c.GetModelId()] = serves
 		}

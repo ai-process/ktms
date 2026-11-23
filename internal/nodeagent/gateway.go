@@ -26,7 +26,7 @@ const (
 
 // Gateway is the only door to the engine that the proxy gets: a bearer check
 // plus an allowlist of the routes it needs (/v1/chat/completions, /v1/decisions,
-// /v1/models). Everything else (pull, delete, engine admin APIs) is unreachable.
+// /v1/translate, /v1/models). Everything else (pull, delete, engine admin APIs) is unreachable.
 type Gateway struct {
 	upstream       string
 	accessKey      string
@@ -91,7 +91,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var stream bool
 	var body []byte
 	switch {
-	case r.Method == http.MethodPost && (r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/decisions" || r.URL.Path == "/v1/decisions/rollouts"):
+	case r.Method == http.MethodPost && postRoutes[r.URL.Path]:
 		var err error
 		body, err = io.ReadAll(http.MaxBytesReader(w, r.Body, maxGatewayBody))
 		if err != nil {
@@ -106,7 +106,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			stream = probe.Stream
 		}
 	case r.URL.Path == "/v1/models" && r.Method == http.MethodGet:
-	case r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/models" || r.URL.Path == "/v1/decisions" || r.URL.Path == "/v1/decisions/rollouts":
+	case r.URL.Path == "/v1/models" || postRoutes[r.URL.Path]:
 		writeGatewayError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	default:
@@ -124,6 +124,14 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(ctx)
 	}
 	g.forward(w, r, body, stream)
+}
+
+// postRoutes are the engine routes the proxy may POST to.
+var postRoutes = map[string]bool{
+	"/v1/chat/completions":   true,
+	"/v1/decisions":          true,
+	"/v1/decisions/rollouts": true,
+	"/v1/translate":          true,
 }
 
 func (g *Gateway) authorized(r *http.Request) bool {
