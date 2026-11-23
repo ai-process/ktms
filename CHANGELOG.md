@@ -8,6 +8,17 @@ All notable changes to KTMS are listed here. The format follows
 ## [Unreleased]
 
 ### Added
+- Translation as a modality: `GatewayService.Translate` and `POST /v1/translate` translate a batch
+  of texts (up to 128, 256 KiB) in order, routed like `Judge` by a rule naming
+  `attributes["modality"] = "translate"` over models with the `translate` capability. Models
+  declare `languages` (`source`, `target`, `*` for any) and the chain skips those without the
+  request's pair; none left is `FAILED_PRECONDITION unsupported_language_pair`. Any chat model
+  translates by a prompt with structured output, checked for count and order, retried once and
+  then handed to the next model. Usage goes to light-tokenmeter with `action_id` `translate`,
+  `meta.characters`, and `cost_nanousd` including the new per-model `price_per_million_chars`;
+  `TokensUsage.characters` reports the count. `ktms translate` translates a file line by line,
+  and `ExplainRoute` (`ktms route explain --modality translate --from fr --to de`) explains
+  translate, judge, speech and image routes, with the drop reason `language_pair`.
 - Agents' inbox (experimental): agents of different people talk through the MCP gateway's
   built-in server `agents` — `list_agents`, `register_agent`, `send_message`, `inbox`, `reply`,
   `get_task` and `outbox`, with A2A tasks, context ids and statuses. Agents see their own

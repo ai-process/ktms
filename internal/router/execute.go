@@ -858,7 +858,8 @@ func retrySameModel(ctx context.Context, err error, attempt int, modelID string,
 		return false
 	}
 	// These are "retryable" only so the chain advances; the same model answers alike.
-	if errors.Is(err, llm.ErrNoAudioContent) || errors.Is(err, llm.ErrJudgmentUnsupported) || errors.Is(err, llm.ErrEmbeddingUnsupported) {
+	if errors.Is(err, llm.ErrNoAudioContent) || errors.Is(err, llm.ErrJudgmentUnsupported) || errors.Is(err, llm.ErrEmbeddingUnsupported) ||
+		errors.Is(err, llm.ErrTranslationUnsupported) || errors.Is(err, llm.ErrUnsupportedLanguagePair) {
 		return false
 	}
 	wait := attemptBackoff * time.Duration(attempt)

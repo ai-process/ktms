@@ -47,6 +47,7 @@ var methodScopes = map[string]string{
 	method(pb.GatewayService_GenerateImage_FullMethodName):      apikeys.ScopeGenerate,
 	method(pb.GatewayService_Judge_FullMethodName):              apikeys.ScopeGenerate,
 	method(pb.GatewayService_GetEmbeddings_FullMethodName):      apikeys.ScopeGenerate,
+	method(pb.GatewayService_Translate_FullMethodName):          apikeys.ScopeGenerate,
 	method(pb.GatewayService_JudgeStream_FullMethodName):        apikeys.ScopeGenerate,
 	method(pb.GatewayService_EvaluateRollouts_FullMethodName):   apikeys.ScopeGenerate,
 	method(pb.GatewayService_ListModels_FullMethodName):         apikeys.ScopeGenerate,

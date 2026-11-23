@@ -105,6 +105,10 @@ const (
 // declare it, so a chat model can never be handed a judgment.
 const CapabilityJudge = "judge"
 
+// CapabilityTranslate marks models that serve Translate: MT engines natively,
+// chat models through a prompt. Their languages narrow which pairs they take.
+const CapabilityTranslate = "translate"
+
 // CapabilityEmbedding marks models that compute text vector embeddings.
 const CapabilityEmbedding = "embedding"
 

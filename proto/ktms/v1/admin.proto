@@ -37,6 +37,10 @@ message ModelSpec {
   // and 1.25x to write, bedrock 0.25x and 1.25x, any other vendor 1x.
   double price_cache_read_per_mtok = 19;
   double price_cache_write_per_mtok = 20;
+  // Translate models: the language pairs served (required, "*" for any) and a
+  // price per million source characters, added to any token price.
+  ModelLanguages languages = 21;
+  double price_per_million_chars = 22;
 }
 
 message RuleSpec {
@@ -642,6 +646,11 @@ message ExplainRouteRequest {
   string model_override = 6; // as in GenerateTextRequest
   repeated string capabilities = 7; // capabilities the request needs, e.g. "google_search"
   string data_classification = 8; // as in GenerateTextRequest
+  // A modality other than text, e.g. "translate": routes as that RPC does, by
+  // its modality rule and capability; effort and auto_route are ignored.
+  string modality = 9;
+  string source_language = 10; // translate: the pair to filter the chain by
+  string target_language = 11;
 }
 
 message RouteCandidate {
@@ -649,7 +658,7 @@ message RouteCandidate {
   string vendor = 2;
   // Why the model was dropped, empty if it stays: not_found, effort, capability, no_vendor_key,
   // key_policy, team_policy, placement, circuit_open, vendor_paused (paused_for),
-  // node_unavailable, node_pool_disabled. New reasons may appear.
+  // node_unavailable, node_pool_disabled, language_pair. New reasons may appear.
   string dropped = 3;
   google.protobuf.Duration paused_for = 4; // vendor_paused: until the vendor's Retry-After ends
 }

@@ -52,19 +52,30 @@ func Cost(m *proxydb.Model, usage llm.TokensUsage, mode Mode) int64 {
 	cost := tokensCost(input-read-write, in)
 	cost = addSat(cost, tokensCost(read, readRate))
 	cost = addSat(cost, tokensCost(write, writeRate))
-	return addSat(cost, tokensCost(int64(usage.Output), out))
+	cost = addSat(cost, tokensCost(int64(usage.Output), out))
+	// Characters are billed at one rate around the clock and in batch alike.
+	return addSat(cost, tokensCost(int64(usage.Characters), m.PricePerMillionChars))
 }
 
 // MaxInputCost is the most n input tokens can cost in mode: plain input or, if
-// dearer, all of it written to the cache. Spend reservations book it.
+// dearer, all of it written to the cache, plus the characters they can hold
+// for a model billed by character. Spend reservations book it.
 func MaxInputCost(m *proxydb.Model, n int64, mode Mode) int64 {
 	if m == nil {
 		return 0
 	}
 	in, _ := rates(m, mode)
 	_, writeRate := cacheRates(m, in)
-	return tokensCost(n, max(in, writeRate))
+	cost := tokensCost(n, max(in, writeRate))
+	if m.PricePerMillionChars > 0 && n < math.MaxInt64/maxCharsPerToken {
+		cost = addSat(cost, tokensCost(n*maxCharsPerToken, m.PricePerMillionChars))
+	}
+	return cost
 }
+
+// maxCharsPerToken bounds the characters a token estimate stands for; the
+// estimates count about four per token, so this books the worst case.
+const maxCharsPerToken = 4
 
 // Part names a priced part of the input for Rate.
 type Part int

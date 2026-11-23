@@ -21,12 +21,15 @@ type TokensUsage struct {
 	// written to it. Vendors bill each at its own rate.
 	CacheRead  int
 	CacheWrite int
+	// Characters is source text a translation is billed by, apart from tokens;
+	// zero for every other call.
+	Characters int
 }
 
 // Clamped bounds the counts to their meaning: none negative, and the cache
 // parts within Input. Pricing and usage events both rely on it.
 func (u TokensUsage) Clamped() TokensUsage {
-	u.Input, u.Output = max(u.Input, 0), max(u.Output, 0)
+	u.Input, u.Output, u.Characters = max(u.Input, 0), max(u.Output, 0), max(u.Characters, 0)
 	u.CacheRead = min(max(u.CacheRead, 0), u.Input)
 	u.CacheWrite = min(max(u.CacheWrite, 0), u.Input-u.CacheRead)
 	return u
@@ -39,6 +42,7 @@ func (u TokensUsage) Add(o TokensUsage) TokensUsage {
 		Output:     u.Output + o.Output,
 		CacheRead:  u.CacheRead + o.CacheRead,
 		CacheWrite: u.CacheWrite + o.CacheWrite,
+		Characters: u.Characters + o.Characters,
 	}
 }
 
