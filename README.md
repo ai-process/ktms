@@ -1502,8 +1502,9 @@ on. Batches are split into chunks of up to 32 texts.
 
 Usage goes to light-tokenmeter like any call: `action_id` defaults to `translate`, tokens are
 reported as usual, the character count goes in `meta.characters`, and `cost_nanousd` adds
-`price_per_million_chars` (for engines billed by character) to the token price. Spend limits
-count both. `ktms translate --to de [--from en] [FILE|-]` translates a file line by line, and
+`price_per_million_chars` (for engines billed by character) to the token price. A failed
+attempt bills its tokens only; the characters are billed once, by the translation delivered.
+Spend limits count both. `ktms translate --to de [--from en] [FILE|-]` translates a file line by line, and
 `ktms route explain KEY --modality translate --from fr --to de` shows which models a pair reaches.
 
 ### Embeddings
