@@ -42,10 +42,13 @@ Required:
                          a translation model from `ktms-mt catalog`, e.g. opus-mt-de
 
 Options:
-  --engine ENGINE        ollama or mt (default: the installed one, else ollama): the ktms-mt machine-translation server
-                         (CTranslate2, Opus-MT), in a Python venv; needs Python 3.11-3.13
+  --engine ENGINE        ollama, mt, or ollama,mt for both behind one node (default: the installed
+                         ones, else ollama). mt is the ktms-mt machine-translation server
+                         (CTranslate2, Opus-MT) in a Python venv; needs Python 3.11-3.13
+  --mt-model MODEL       with --engine ollama,mt: the translation model (default opus-mt-de)
   --name NAME            human-readable node name (default: node id)
-  --max-concurrency N    parallel requests this machine serves (default 1)
+  --max-concurrency N    parallel requests this machine serves (default 1; 2 with ollama,mt, one
+                         of them kept for translation)
   --context N            context tokens per request (default 8192)
   --version vX.Y.Z       node agent release to install (default: latest)
   --key-file PATH        read the node key from a file instead of asking
@@ -69,19 +72,19 @@ EOF
 # ---- arguments -------------------------------------------------------------
 
 parse_args() {
-	PROXY="" NODE_ID="" MODEL="" NAME="" ENGINE="" MAXC=1 CTX=8192 VERSION="latest"
+	PROXY="" NODE_ID="" MODEL="" MT_MODEL="" NAME="" ENGINE="" MAXC="" CTX=8192 VERSION="latest"
 	KEY_SRC="" NEW_KEY=0 PLAINTEXT=0 ENDPOINT="" TRAY=0 UPGRADE=0 DRY_RUN=0 UNINSTALL=0 DOCTOR=0 KEEP_LEGACY=0 PURGE_BACKUPS=0 SCHEDULE_SRC=""
 	while [ $# -gt 0 ]; do
 		opt=$1 val="" shift_n=1
 		case $1 in --*=*) opt=${1%%=*} val=${1#*=} ;; esac
 		case $opt in
-		--proxy | --node-id | --model | --name | --engine | --max-concurrency | --context | --version | --key-file | --endpoint | --schedule)
+		--proxy | --node-id | --model | --mt-model | --name | --engine | --max-concurrency | --context | --version | --key-file | --endpoint | --schedule)
 			if [ "$opt" = "$1" ]; then
 				[ $# -ge 2 ] || die "$opt needs a value"
 				val=$2 shift_n=2
 			fi
 			case $opt in
-			--proxy) PROXY=$val ;; --node-id) NODE_ID=$val ;; --model) MODEL=$val ;; --name) NAME=$val ;; --engine) ENGINE=$val ;;
+			--proxy) PROXY=$val ;; --node-id) NODE_ID=$val ;; --model) MODEL=$val ;; --mt-model) MT_MODEL=$val ;; --name) NAME=$val ;; --engine) ENGINE=$val ;;
 			--max-concurrency) MAXC=$val ;; --context) CTX=$val ;; --version) VERSION=$val ;;
 			--key-file) KEY_SRC=$val ;; --endpoint) ENDPOINT=$val ;; --schedule) SCHEDULE_SRC=$val ;;
 			esac
@@ -101,14 +104,20 @@ parse_args() {
 		shift "$shift_n"
 	done
 	[ "$PURGE_BACKUPS" = 0 ] || [ "$UNINSTALL" = 1 ] || die "--purge-backups only goes with --uninstall"
-	case $ENGINE in "" | ollama | mt) ;; *) die "--engine must be ollama or mt" ;; esac
+	case $ENGINE in
+	"" | ollama | mt) ;;
+	ollama,mt | mt,ollama) ENGINE=ollama,mt ;; # Ollama stays the primary: chat goes there
+	*) die "--engine must be ollama, mt or ollama,mt" ;;
+	esac
+	[ -z "$MT_MODEL" ] || [ "$ENGINE" = ollama,mt ] || [ -z "$ENGINE" ] || die "--mt-model goes with --engine ollama,mt"
 	[ "$UNINSTALL" = 1 ] && return 0
 	[ -n "$PROXY" ] || die "--proxy is required (see --help)"
 	[ -n "$NODE_ID" ] || die "--node-id is required"
 	[ -n "$MODEL" ] || die "--model is required"
 	case $NODE_ID in *[!A-Za-z0-9._-]*) die "--node-id may only contain letters, digits, . _ -" ;; esac
 	case $MODEL in *[!A-Za-z0-9._:/-]*) die "--model contains characters Ollama does not allow" ;; esac
-	case $MAXC in '' | *[!0-9]* | 0) die "--max-concurrency must be a positive number" ;; esac
+	case $MT_MODEL in *[!A-Za-z0-9._:/-]*) die "--mt-model contains characters that are not allowed" ;; esac
+	case $MAXC in "") ;; *[!0-9]* | 0) die "--max-concurrency must be a positive number" ;; esac
 	case $CTX in '' | *[!0-9]* | 0) die "--context must be a positive number" ;; esac
 	[ -z "$SCHEDULE_SRC" ] || [ -r "$SCHEDULE_SRC" ] || die "cannot read --schedule $SCHEDULE_SRC"
 	case $PROXY in *:*) ;; *) PROXY="$PROXY:443" ;; esac
@@ -369,7 +378,10 @@ mt_env() {
 }
 
 ollama_env() {
-	printf 'OLLAMA_HOST=%s\nOLLAMA_KEEP_ALIVE=-1\nOLLAMA_CONTEXT_LENGTH=%s\nOLLAMA_NUM_PARALLEL=%s\n' "$OLLAMA_ADDR" "$CTX" "$MAXC"
+	# Beside ktms-mt one of the node's slots is the translation's, not Ollama's.
+	par=$MAXC
+	if [ "${ENGINE:-ollama}" = ollama,mt ] && [ "$par" -gt 1 ]; then par=$((par - 1)); fi
+	printf 'OLLAMA_HOST=%s\nOLLAMA_KEEP_ALIVE=-1\nOLLAMA_CONTEXT_LENGTH=%s\nOLLAMA_NUM_PARALLEL=%s\n' "$OLLAMA_ADDR" "$CTX" "$par"
 }
 
 # ---- ports and installs from before the rename -------------------------------
@@ -643,13 +655,13 @@ ensure_mt() {
 # ensure_mt_model downloads and converts the model (idempotent) and writes the
 # server's configuration to serve it.
 ensure_mt_model() {
-	step "Preparing translation model $MODEL"
+	step "Preparing translation model $MT_MODEL"
 	ca=$("$BASE/mt/venv/bin/python" -c 'import certifi; print(certifi.where())' 2>/dev/null || true)
 	(
 		[ -z "$ca" ] || export SSL_CERT_FILE="$ca" # python.org builds ship no CA store
-		KTMS_MT_HOME="$BASE/mt/models" KTMS_MT_CONFIG="$BASE/mt/config.toml" HF_HOME="$BASE/mt/hf" "$MT_BIN" fetch "$MODEL"
+		KTMS_MT_HOME="$BASE/mt/models" KTMS_MT_CONFIG="$BASE/mt/config.toml" HF_HOME="$BASE/mt/hf" "$MT_BIN" fetch "$MT_MODEL"
 	) ||
-		die "could not prepare $MODEL (see \`$MT_BIN catalog\` for the models it knows)"
+		die "could not prepare $MT_MODEL (see \`$MT_BIN catalog\` for the models it knows)"
 }
 
 # Older cloudflared trusts the eMudhra intermediates whose keys leaked in October 2026.
@@ -832,13 +844,22 @@ write_service() { # id program args... (stdin: nothing)
 	SVC_TMP=$out
 }
 
-# engine_args are the agent's flags for the engine this node runs.
+# has_engine tells whether this node runs the engine (ollama or mt).
+has_engine() { case ",${ENGINE:-ollama}," in *",$1,"*) return 0 ;; esac; return 1; }
+
+# engine_args are the agent's flags for the engines this node runs, with the
+# models it reports: Ollama stays the primary engine when both run.
 engine_args() {
-	if [ "${ENGINE:-ollama}" = mt ]; then
-		echo "--engine mt --engine-url http://$MT_ADDR"
-	else
-		echo "--engine ollama --engine-url http://$OLLAMA_ADDR"
-	fi
+	case ${ENGINE:-ollama} in
+	mt) echo "--engine mt --engine-url http://$MT_ADDR --only-model $MODEL" ;;
+	ollama,mt) echo "--engine ollama --engine-url http://$OLLAMA_ADDR --extra-engine mt=http://$MT_ADDR --only-model $MODEL --only-model $MT_MODEL" ;;
+	*) echo "--engine ollama --engine-url http://$OLLAMA_ADDR --only-model $MODEL" ;;
+	esac
+}
+
+# agent_has_extra_engine tells whether an agent binary serves several engines.
+agent_has_extra_engine() { # binary
+	[ -x "$1" ] && "$1" --help 2>&1 | grep -q -- '-extra-engine'
 }
 
 # write_node_service renders the agent's service for the flags the given binary knows.
@@ -846,7 +867,7 @@ write_node_service() { # binary
 	bin=$1
 	# shellcheck disable=SC2046 # engine_args is two flag pairs without spaces
 	set -- "$BASE/bin/ktms-node" --proxy-addr "$PROXY" --node-id "$NODE_ID" --node-name "$NAME" \
-		$(engine_args) --only-model "$MODEL" --max-concurrent "$MAXC" --node-key-file "$BASE/key"
+		$(engine_args) --max-concurrent "$MAXC" --node-key-file "$BASE/key"
 	[ "$PLAINTEXT" = 1 ] || set -- "$@" --tls
 	if [ -n "$ENDPOINT" ]; then
 		set -- "$@" --endpoint "$ENDPOINT" --expose none
@@ -871,7 +892,7 @@ run_doctor() {
 	step "Diagnosing"
 	# shellcheck disable=SC2046
 	set -- doctor --proxy-addr "$PROXY" --node-id "$NODE_ID" --node-key-file "$BASE/key" \
-		$(engine_args) --only-model "$MODEL" --model "$MODEL"
+		$(engine_args) --model "$MODEL"
 	[ "$PLAINTEXT" = 1 ] || set -- "$@" --tls
 	agent_has_schedule "$BASE/bin/ktms-node" && set -- "$@" --schedule-file "$BASE/schedule"
 	if [ -n "$ENDPOINT" ]; then
@@ -1026,7 +1047,11 @@ print_status() {
 	ep=$(sed -n -e 's/.*node registered successfully.*endpoint=\([^ ]*\).*/\1/p' -e 's/.*node re-registered.*endpoint=\([^ ]*\).*/\1/p' "$BASE/logs/node.log" 2>/dev/null | tail -1 | sed "s/$(printf '\033')\[[0-9;]*m//g")
 	engine="Ollama on $OLLAMA_ADDR"
 	[ "$OS" = darwin ] && [ "$ARCH" = arm64 ] && engine="Ollama (Apple GPU) on $OLLAMA_ADDR"
-	[ "${ENGINE:-ollama}" = mt ] && engine="ktms-mt (CTranslate2) on $MT_ADDR"
+	case ${ENGINE:-ollama} in
+	mt) engine="ktms-mt (CTranslate2) on $MT_ADDR, model $MODEL" ;;
+	ollama,mt) engine="$engine, model $MODEL; ktms-mt (CTranslate2) on $MT_ADDR, model $MT_MODEL" ;;
+	*) engine="$engine, model $MODEL" ;;
+	esac
 	sched=$(schedule_status "$BASE/bin/ktms-node")
 	if [ -z "$sched" ]; then
 		sched="none, 100% all the time (add one with --schedule FILE)"
@@ -1041,7 +1066,7 @@ print_status() {
 
 Node $NODE_ID is running and registered.
   Proxy:   $PROXY
-  Engine:  $engine, model $MODEL
+  Engine:  $engine
   Address: ${ep:-see $BASE/logs/node.log}
   Schedule: $sched
   Stats:   $stats
@@ -1057,7 +1082,7 @@ EOF
 
 start_ollama() {
 	step "Starting the inference engine"
-	retire_engine mt
+	has_engine mt || retire_engine mt
 	if [ -n "$RUNNER" ]; then write_service ollama /usr/bin/arch -arm64 "$OLLAMA_BIN" serve; else write_service ollama "$OLLAMA_BIN" serve; fi
 	cleanup_legacy
 	check_ollama_port
@@ -1070,7 +1095,7 @@ start_ollama() {
 start_mt() {
 	ensure_mt_model
 	step "Starting the translation engine"
-	retire_engine ollama
+	has_engine ollama || retire_engine ollama
 	cleanup_legacy
 	write_service mt "$MT_BIN" serve --host "${MT_ADDR%:*}" --port "${MT_ADDR##*:}"
 	# A new model needs a restart to load, and fetch is idempotent, so always restart.
@@ -1093,21 +1118,34 @@ main() {
 	parse_args "$@"
 	[ "$UNINSTALL" = 1 ] && { do_uninstall; return 0; }
 	detect_platform
-	# A re-run without --engine keeps the installed engine instead of replacing it.
+	# A re-run without --engine keeps the installed engines instead of replacing them.
 	if [ -z "$ENGINE" ]; then
 		ENGINE=ollama
-		[ ! -f "$(svc_file mt)" ] || ENGINE=mt
+		if [ -f "$(svc_file mt)" ]; then
+			ENGINE=mt
+			[ ! -f "$(svc_file ollama)" ] || ENGINE=ollama,mt
+		fi
 	fi
+	if [ "$ENGINE" = ollama,mt ]; then
+		[ -n "$MT_MODEL" ] || MT_MODEL=opus-mt-de
+		# KTMS counts the node's requests together: one slot would queue translations behind a chat.
+		[ -n "$MAXC" ] || MAXC=2
+		[ -z "$ENDPOINT" ] || die "--engine ollama,mt needs the built-in tunnel: one address reaches both engines only through the node's gateway; drop --endpoint"
+	else
+		MT_MODEL=$MODEL
+	fi
+	[ -n "$MAXC" ] || MAXC=1
 	if [ "$DOCTOR" = 1 ]; then
 		[ -x "$BASE/bin/ktms-node" ] || die "no node is installed in $BASE; run the installer without --doctor first"
 		run_doctor
 		return $?
 	fi
 	step "Checking this machine ($OS/$ARCH)"
-	if [ "$ENGINE" = mt ]; then
+	if has_engine mt; then
 		find_mt_python >/dev/null || die "--engine mt needs Python 3.11, 3.12 or 3.13 (python.org or Homebrew); set KTMS_MT_PYTHON to its path"
-		say "Translation model $MODEL: about 80 MB per Opus-MT pair (230 MB for the multilingual one) on disk and in memory, on the CPU (int8), plus about 1 GB for PyTorch, used only to convert models."
-	else
+		say "Translation model $MT_MODEL: about 80 MB per Opus-MT pair (230 MB for the multilingual one) on disk and in memory, on the CPU (int8), plus about 1 GB for PyTorch, used only to convert models."
+	fi
+	if has_engine ollama; then
 		note_foreign_ollama
 		check_resources
 	fi
@@ -1123,7 +1161,10 @@ main() {
 			fi
 		fi
 		what="Ollama on $OLLAMA_ADDR"
-		[ "$ENGINE" = mt ] && what="ktms-mt on $MT_ADDR"
+		case $ENGINE in
+		mt) what="ktms-mt on $MT_ADDR" ;;
+		ollama,mt) what="Ollama on $OLLAMA_ADDR and ktms-mt on $MT_ADDR behind one node" ;;
+		esac
 		say "Dry run: would install into $BASE, run $what and register node $NODE_ID with $PROXY. Nothing was changed."
 		return 0
 	fi
@@ -1140,16 +1181,17 @@ main() {
 	store_key
 	stage_agent
 	install_schedule
-	if [ "$ENGINE" = mt ]; then
-		ensure_mt
-		ensure_cloudflared
-		start_mt
-	else
+	if [ "$ENGINE" = ollama,mt ] && ! agent_has_extra_engine "$BASE/bin/ktms-node.new" && ! agent_has_extra_engine "$BASE/bin/ktms-node"; then
+		die "--engine ollama,mt needs node agent 1.6.0-beta.5 or later; pass a newer --version"
+	fi
+	if has_engine mt; then ensure_mt; fi
+	if has_engine ollama; then
 		adopt_legacy_ollama
 		ensure_ollama
-		ensure_cloudflared
-		start_ollama
 	fi
+	ensure_cloudflared
+	if has_engine ollama; then start_ollama; fi
+	if has_engine mt; then start_mt; fi
 
 	step "Starting the node"
 	node_changed=$CF_CHANGED

@@ -232,7 +232,7 @@ func (a *Agent) describeNext(now time.Time) string {
 func (a *Agent) unloadTargets() []string {
 	var out []string
 	for _, m := range a.pause.models {
-		if m.GetIsWarm() {
+		if m.GetIsWarm() && a.primaryEngineModel(m.GetRemoteModelName()) {
 			out = append(out, m.GetRemoteModelName())
 		}
 	}
@@ -245,7 +245,13 @@ func (a *Agent) warmTargets() []string {
 	if len(a.pause.resident) > 0 {
 		return a.pause.resident
 	}
-	return a.cfg.OnlyModels
+	var out []string
+	for _, m := range a.cfg.OnlyModels {
+		if a.primaryEngineModel(m) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // engineCall runs a warm or unload off the loop: loading a model takes

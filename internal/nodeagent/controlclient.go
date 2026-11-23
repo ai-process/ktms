@@ -100,6 +100,16 @@ func (c *ControlClient) ClearOverride(ctx context.Context) (*Status, error) {
 	return &s, c.call(ctx, http.MethodDelete, "/v1/override", nil, &s)
 }
 
+// PauseEngine pauses (or, with paused false, resumes) one engine of a node with several.
+func (c *ControlClient) PauseEngine(ctx context.Context, name string, paused bool) (*Status, error) {
+	method := http.MethodPost
+	if !paused {
+		method = http.MethodDelete
+	}
+	var s Status
+	return &s, c.call(ctx, method, "/v1/engines/"+url.PathEscape(name)+"/pause", nil, &s)
+}
+
 func (c *ControlClient) Schedule(ctx context.Context) (*ScheduleInfo, error) {
 	var s ScheduleInfo
 	return &s, c.call(ctx, http.MethodGet, "/v1/schedule", nil, &s)

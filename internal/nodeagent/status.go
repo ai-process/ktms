@@ -29,6 +29,7 @@ type Status struct {
 	Requests        StatusRequests `json:"requests"`
 	CapacityApplied bool           `json:"capacity_applied"` // false: the proxy predates levels and routes here at 100%
 	Models          []StatusModel  `json:"models"`
+	Engines         []StatusEngine `json:"engines,omitempty"` // with more than one engine
 	GPU             *StatusGPU     `json:"gpu,omitempty"`
 	Endpoint        string         `json:"endpoint"`
 	ScheduleSource  string         `json:"schedule_source"` // local | ktms
@@ -69,6 +70,16 @@ type StatusRequests struct {
 	ProxyActive   int32  `json:"proxy_active"` // -1 when not yet known
 	EngineRunning uint32 `json:"engine_running"`
 	EngineWaiting uint32 `json:"engine_waiting"`
+}
+
+// StatusEngine is one engine of a node that runs several.
+type StatusEngine struct {
+	Name    string   `json:"name"`
+	Primary bool     `json:"primary"`
+	Up      bool     `json:"up"`
+	Error   string   `json:"error,omitempty"`
+	Paused  bool     `json:"paused"` // by the owner: its models are not offered to the proxy
+	Models  []string `json:"models"`
 }
 
 type StatusModel struct {
@@ -183,6 +194,9 @@ func (a *Agent) publish() {
 	}
 	for _, m := range p.models {
 		s.Models = append(s.Models, StatusModel{ID: m.GetModelId(), Warm: m.GetIsWarm()})
+	}
+	if len(a.cfg.ExtraEngines) > 0 {
+		s.Engines = a.engineStates()
 	}
 	if b := a.stats.beat; b.VRAMTotalMB > 0 || b.GPUUtil > 0 {
 		s.GPU = &StatusGPU{UtilPercent: b.GPUUtil, TempC: b.GPUTempC, VRAMFreeMB: b.VRAMFreeMB, VRAMTotalMB: b.VRAMTotalMB}

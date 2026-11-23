@@ -1044,6 +1044,24 @@ M2M100, MADLAD-400). Any server that speaks the same `/v1/models` and `/v1/trans
 can take its place behind `--engine mt`. When the node stops, the translate rule falls through to
 the next model of its chain, a chat model translating by prompt.
 
+**Chat and translation on one machine.** `--engine ollama,mt` runs both engines behind one node:
+one key, one tunnel, one schedule and one tray. Ollama stays the primary engine, and the node's
+gateway sends each request to the engine of its model. KTMS counts the node's requests together, so the
+installer gives such a node two slots by default and Ollama one of them: a long chat does not hold
+up translation.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ai-process/ktms/vX.Y.Z/scripts/install-node.sh | sh -s -- \
+  --proxy proxy.example.com --node-id anna --engine ollama,mt --model gemma4:26b-a4b-it-qat --mt-model opus-mt-de
+```
+
+The agent behind it runs `--engine ollama --extra-engine mt=http://127.0.0.1:11436`. An engine that
+stops leaves the others serving. The owner can pause one engine and keep the rest: `ktms-node
+engine pause mt` (or the engine's line in the tray) stops offering its models to KTMS until
+`ktms-node engine resume mt`, and the pause survives a restart. Pausing the node pauses all its
+engines; the schedule unloads and warms only Ollama's models, since ktms-mt keeps its small models
+loaded.
+
 Measured on an Apple M1 Pro (10 cores, 32 GB), `opus-mt-de`, int8 on the CPU, greedy decoding
 (`beam_size = 1`, the default), hotel reviews of 183 characters on average in English, French,
 Spanish, Italian and Dutch:
