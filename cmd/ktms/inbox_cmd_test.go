@@ -209,3 +209,16 @@ func TestAgentsRunWarnsOnAnEmptyCard(t *testing.T) {
 		t.Fatalf("agents run = %d\n%s", code, errOut)
 	}
 }
+
+func TestAgentsRunRefusesBadFlags(t *testing.T) {
+	t.Setenv("KTMS_AGENT_KEY", "agent-key")
+	for _, args := range [][]string{
+		{"--concurrency", "0", "--cmd", "true"},
+		{"--add-dir", "/tmp", "--cmd", "true"},
+		{"--add-dir", "/tmp", "--runner", "codex"},
+	} {
+		if code, _, errOut := callIn("", append([]string{"--http", "http://127.0.0.1:1", "agents", "run", "--once"}, args...)...); code == 0 {
+			t.Errorf("%v: exit 0\n%s", args, errOut)
+		}
+	}
+}

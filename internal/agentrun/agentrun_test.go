@@ -477,3 +477,74 @@ func TestPresetAddDirs(t *testing.T) {
 		t.Fatal("codex took --add-dir")
 	}
 }
+
+func TestNoRetryOfRefusalOrTimeout(t *testing.T) {
+	cases := map[string]struct {
+		r   *fakeRunner
+		cfg Config
+	}{
+		"refused": {&fakeRunner{err: &Refused{Actions: []string{"command"}}}, Config{RetryDelay: time.Millisecond}},
+		"timeout": {&fakeRunner{wait: time.Second}, Config{RetryDelay: time.Millisecond, Timeout: 20 * time.Millisecond}},
+		"silent":  {&fakeRunner{out: ""}, Config{RetryDelay: time.Millisecond}},
+	}
+	for name, c := range cases {
+		in := &fakeInbox{}
+		dueTasks(in, 1)
+		if err := Once(context.Background(), in, c.r, c.cfg); err != nil {
+			t.Fatal(err)
+		}
+		if len(c.r.prompts) != 1 || in.replies[len(in.replies)-1].status != "failed" {
+			t.Errorf("%s: %d runs, replies %+v", name, len(c.r.prompts), in.replies)
+		}
+	}
+}
+
+// Shutting down mid-run, or while waiting to retry, posts no failure: the
+// task stays due for the next run.
+func TestShutdownLeavesTheTaskDue(t *testing.T) {
+	for name, r := range map[string]*countRunner{
+		"mid-run":     {wait: time.Second},
+		"retry delay": {fail: 1},
+	} {
+		in := &fakeInbox{}
+		dueTasks(in, 1)
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		if err := Once(ctx, in, r, Config{RetryDelay: time.Second}); err != nil {
+			t.Fatal(err)
+		}
+		cancel()
+		if len(in.replies) != 1 || in.replies[0].status != "working" || !Due(in.tasks[0]) {
+			t.Errorf("%s: replies %+v", name, in.replies)
+		}
+	}
+}
+
+// A pause file created while the loop waits for a slot stops the backlog.
+func TestPauseHoldsTheBacklog(t *testing.T) {
+	pause := filepath.Join(t.TempDir(), "pause")
+	in := &fakeInbox{waits: true}
+	dueTasks(in, 2)
+	r := &countRunner{wait: 200 * time.Millisecond}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(ctx, in, r, Config{Interval: 20 * time.Millisecond, Wait: 100 * time.Millisecond, PauseFile: pause})
+	}()
+	time.Sleep(50 * time.Millisecond) // the first task runs, the second waits for its slot
+	if err := os.WriteFile(pause, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(400 * time.Millisecond)
+	r.mu.Lock()
+	runs := r.runs
+	r.mu.Unlock()
+	if err := os.Remove(pause); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(400 * time.Millisecond)
+	cancel()
+	<-done
+	if runs != 1 || r.runs != 2 {
+		t.Fatalf("runs while paused %d (want 1), after %d (want 2)", runs, r.runs)
+	}
+}

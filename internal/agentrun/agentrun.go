@@ -159,7 +159,9 @@ func Run(ctx context.Context, in Inbox, r Runner, cfg Config) error {
 			if !d.awaitSlot() {
 				break
 			}
-			since = time.Time{}
+			// Read the pause file again before taking anything.
+			d.backlog, since = false, time.Time{}
+			continue
 		}
 		start := time.Now()
 		tasks, err := in.Inbox(ctx, since, cfg.Wait)
