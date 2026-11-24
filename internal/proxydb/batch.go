@@ -17,6 +17,10 @@ import (
 // ErrBatchAlreadyExists is returned on idempotency conflict if client resubmitted.
 var ErrBatchAlreadyExists = errors.New("proxydb: batch already exists")
 
+// BatchRuleAttribute is the batch attribute holding the rule that chose its
+// model, so the poller's results and usage events name it as a live call does.
+const BatchRuleAttribute = "matched_rule"
+
 func (d *DB) CreateBatch(ctx context.Context, b *Batch, items []*BatchItem) (*Batch, error) {
 	if b.Attributes == nil {
 		b.Attributes = map[string]string{}

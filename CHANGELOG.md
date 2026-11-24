@@ -83,6 +83,9 @@ All notable changes to KTMS are listed here. The format follows
   configuration file): the person a key belongs to. An MCP server can no longer be named `agents`.
 
 ### Fixed
+- Batch results and their usage events carry the rule that chose the batch's model
+  (`matched_rule`, usage meta `rule`); it was always empty. Batches submitted before this keep none.
+- A cache hit, exact or semantic, is recorded under the call's `action_id`, not `ktms.generate_text`.
 - Go 1.27.4: `net/http` in Go 1.27.3 is affected by GO-2026-6859.
 - `ktms agents run` with `agy`: a run that agy ended at a refused shell command, with no answer,
   is resumed once to answer from what it read, and otherwise fails the task saying why rather

@@ -279,7 +279,7 @@ func (p *Poller) completeBatch(
 				},
 				ResolvedModel:  m.ID,
 				ResolvedVendor: m.Vendor,
-				MatchedRule:    b.Attributes["matched_rule"],
+				MatchedRule:    b.Attributes[proxydb.BatchRuleAttribute],
 			}
 			resBytes, _ := protojson.Marshal(respProto)
 			itemUpdate.Result = resBytes
@@ -368,6 +368,10 @@ func (p *Poller) emitUsage(
 	if b.TeamID != "" {
 		meta["team_id"] = b.TeamID
 	}
+	if rule := meta[proxydb.BatchRuleAttribute]; rule != "" {
+		meta["rule"] = rule // the key a live call's usage uses
+	}
+	delete(meta, proxydb.BatchRuleAttribute)
 	meta["batch_id"] = b.ID
 	meta["custom_id"] = customID
 	if errReason != "" {

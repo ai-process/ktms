@@ -236,6 +236,9 @@ func TestSubmitBatch_SuccessAndIdempotency(t *testing.T) {
 	}
 
 	batchID := res1.GetBatch().GetId()
+	if got := store.batches[batchID].Attributes[proxydb.BatchRuleAttribute]; got != "default-batch" {
+		t.Fatalf("stored rule = %q, want default-batch", got)
+	}
 
 	// Verify adapter received submission
 	if len(adapter.submitted) != 2 {
