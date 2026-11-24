@@ -31,8 +31,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           lint: true
-          # An explicit true would override the action's own label check.
-          breaking: ${{ !contains(github.event.pull_request.labels.*.name, 'buf skip breaking') }}
+          breaking: true
           breaking_against: "https://github.com/ai-process/ktms.git#branch=${{ github.base_ref || 'main' }}"
           push: false
 
