@@ -3,6 +3,7 @@ package mcpgw
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -10,6 +11,12 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+
+	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 // tap keeps the raw bodies of tools/call responses.
@@ -58,5 +65,56 @@ func TestCallResultCarriesResultType(t *testing.T) {
 		if !strings.Contains(b, `"resultType":"complete"`) {
 			t.Fatalf("tools/call result has no resultType: %s", b)
 		}
+	}
+}
+
+// A result that carries resultType already is passed through, and the bytes
+// callTool marshalled are reused rather than marshalled again.
+func TestCompletedSkipsAndReuses(t *testing.T) {
+	req := &mcp.CallToolRequest{}
+	var marked mcp.CallToolResult
+	if err := json.Unmarshal([]byte(`{"content":[{"type":"text","text":"up"}],"resultType":"complete"}`), &marked); err != nil {
+		t.Fatal(err)
+	}
+	if got := completed(req, &marked, nil); got != &marked {
+		t.Fatal("a result with resultType was rebuilt")
+	}
+	res := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "from res"}}}
+	raw := []byte(`{"content":[{"type":"text","text":"from raw"}]}`)
+	got := completed(req, res, raw)
+	if got == res || got.Content[0].(*mcp.TextContent).Text != "from raw" {
+		t.Fatalf("raw was not reused: %+v", got)
+	}
+	if b, _ := json.Marshal(got); !strings.HasSuffix(string(b), `"resultType":"complete"}`) {
+		t.Fatalf("no resultType: %s", b)
+	}
+	if b, _ := json.Marshal(completed(req, &mcp.CallToolResult{}, nil)); !strings.Contains(string(b), `"resultType":"complete"`) {
+		t.Fatalf("empty result: %s", b)
+	}
+}
+
+// An upstream registered as agents before the name was reserved is shadowed
+// by the inbox; the operator is told once per configuration.
+func TestShadowedUpstreamIsLogged(t *testing.T) {
+	var buf bytes.Buffer
+	prev := log.Logger
+	log.Logger = zerolog.New(&buf)
+	t.Cleanup(func() { log.Logger = prev })
+	sn := &snaps{}
+	shadowed := &registry.Snapshot{MCPServers: map[string]*registry.MCPServer{"agents": {MCPServer: proxydb.MCPServer{Name: "agents"}}}}
+	sn.s.Store(shadowed)
+	gw := New(sn, verifier{}, nil, nil, "test").WithAgents(&fakeAgents{}, 0)
+	t.Cleanup(gw.Close)
+	c := &caller{id: &apikeys.Identity{Scopes: []string{apikeys.ScopeMCP}}}
+	gw.servers(c)
+	if n := strings.Count(buf.String(), "shadows it"); n != 1 {
+		t.Fatalf("%d warnings for one snapshot: %s", n, buf.String())
+	}
+	sn.s.Store(&registry.Snapshot{MCPServers: map[string]*registry.MCPServer{}})
+	gw.servers(c)
+	sn.s.Store(shadowed)
+	gw.servers(c)
+	if n := strings.Count(buf.String(), "shadows it"); n != 2 {
+		t.Fatalf("%d warnings after the upstream came back: %s", n, buf.String())
 	}
 }

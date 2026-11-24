@@ -6058,7 +6058,7 @@ func (*SetAgentRecordingResponse) Descriptor() ([]byte, []int) {
 
 type ListAgentTasksRequest struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
-	Agent    string                 `protobuf:"bytes,1,opt,name=agent,proto3" json:"agent,omitempty"`                        // tasks this agent sent or received; required
+	Agent    string                 `protobuf:"bytes,1,opt,name=agent,proto3" json:"agent,omitempty"`                        // tasks agents of this name sent or received, revoked keys' included; required
 	OpenOnly bool                   `protobuf:"varint,2,opt,name=open_only,json=openOnly,proto3" json:"open_only,omitempty"` // submitted, working and input-required only
 	Limit    int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`                       // default 100, at most 500
 	// Only tasks in these statuses (submitted, working, input-required, completed,
@@ -6341,12 +6341,15 @@ type AgentTask struct {
 	// Why an input-required task waits: question (for its sender), guardrail_hold
 	// (a guardrail holds it for the recipient's person) or needs_owner (the
 	// recipient's agent asks its own person).
-	ReasonCode    string   `protobuf:"bytes,11,opt,name=reason_code,json=reasonCode,proto3" json:"reason_code,omitempty"`
-	AnsweredBy    string   `protobuf:"bytes,12,opt,name=answered_by,json=answeredBy,proto3" json:"answered_by,omitempty"`    // ended tasks: agent or owner, who gave the latest answer
-	ExternalRef   string   `protobuf:"bytes,13,opt,name=external_ref,json=externalRef,proto3" json:"external_ref,omitempty"` // the issue elsewhere it is about, such as PROJ-123 or a URL
-	PinnedBy      []string `protobuf:"bytes,14,rep,name=pinned_by,json=pinnedBy,proto3" json:"pinned_by,omitempty"`          // agents that pinned it past the retention sweep
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	ReasonCode  string   `protobuf:"bytes,11,opt,name=reason_code,json=reasonCode,proto3" json:"reason_code,omitempty"`
+	AnsweredBy  string   `protobuf:"bytes,12,opt,name=answered_by,json=answeredBy,proto3" json:"answered_by,omitempty"`    // ended tasks: agent or owner, who gave the latest answer
+	ExternalRef string   `protobuf:"bytes,13,opt,name=external_ref,json=externalRef,proto3" json:"external_ref,omitempty"` // the issue elsewhere it is about, such as PROJ-123 or a URL
+	PinnedBy    []string `protobuf:"bytes,14,rep,name=pinned_by,json=pinnedBy,proto3" json:"pinned_by,omitempty"`          // agents that pinned it past the retention sweep
+	// GetAgentTask keeps the first message and the newest within about 2 MiB, so the
+	// response fits a default gRPC client; this counts the messages left out between them.
+	OmittedMessages int32 `protobuf:"varint,15,opt,name=omitted_messages,json=omittedMessages,proto3" json:"omitted_messages,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *AgentTask) Reset() {
@@ -6475,6 +6478,13 @@ func (x *AgentTask) GetPinnedBy() []string {
 		return x.PinnedBy
 	}
 	return nil
+}
+
+func (x *AgentTask) GetOmittedMessages() int32 {
+	if x != nil {
+		return x.OmittedMessages
+	}
+	return 0
 }
 
 type ListAgentTasksResponse struct {
@@ -7033,7 +7043,7 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x06status\x18\x05 \x01(\tR\x06status\x12\x1e\n" +
 	"\n" +
 	"correction\x18\x06 \x01(\bR\n" +
-	"correction\"\xe5\x03\n" +
+	"correction\"\x90\x04\n" +
 	"\tAgentTask\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
@@ -7054,7 +7064,8 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\vanswered_by\x18\f \x01(\tR\n" +
 	"answeredBy\x12!\n" +
 	"\fexternal_ref\x18\r \x01(\tR\vexternalRef\x12\x1b\n" +
-	"\tpinned_by\x18\x0e \x03(\tR\bpinnedBy\"B\n" +
+	"\tpinned_by\x18\x0e \x03(\tR\bpinnedBy\x12)\n" +
+	"\x10omitted_messages\x18\x0f \x01(\x05R\x0fomittedMessages\"B\n" +
 	"\x16ListAgentTasksResponse\x12(\n" +
 	"\x05tasks\x18\x01 \x03(\v2\x12.ktms.v1.AgentTaskR\x05tasks\".\n" +
 	"\x13GetAgentTaskRequest\x12\x17\n" +

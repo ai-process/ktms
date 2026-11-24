@@ -194,7 +194,8 @@ func TestA2ACardAndAccess(t *testing.T) {
 	_, bob := f.mint("bob")
 	toolsKey, _ := f.mint("tools", "github")
 	b := strings.ToLower(bob.Name)
-	if _, err := f.svc.Register(ctx, bob, agents.Card{Description: "reviews Go", Skills: []string{"code-review"}}); err != nil {
+	desc := "reviews Go"
+	if _, err := f.svc.Register(ctx, bob, agents.Card{Description: &desc, Skills: &[]string{"code-review"}}); err != nil {
 		t.Fatal(err)
 	}
 	get := func(key, path string, hdr map[string]string) (*http.Response, map[string]any) {

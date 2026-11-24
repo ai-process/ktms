@@ -39,8 +39,8 @@ type server struct {
 	// requireKey, when set, is the only bearer token accepted, so a test can
 	// prove the gateway decrypted and sent the vendor key it stores.
 	requireKey string
-	requests atomic.Int64
-	streams  atomic.Int64
+	requests   atomic.Int64
+	streams    atomic.Int64
 }
 
 var directiveRE = regexp.MustCompile(`\[mock((?:\s+[a-z_]+=\d+)*)\s*\]`)

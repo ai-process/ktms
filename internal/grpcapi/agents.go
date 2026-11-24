@@ -64,18 +64,19 @@ func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasks
 			return nil, status.Errorf(codes.InvalidArgument, "reason code %q: want one of %s", r, strings.Join(proxydb.ReasonCodes, ", "))
 		}
 	}
-	a, err := s.db.GetAgentByName(ctx, agentName(req.GetAgent()))
-	if errors.Is(err, proxydb.ErrNotFound) {
-		return nil, status.Errorf(codes.NotFound, "no agent %q", req.GetAgent())
-	}
+	// Every key the name has had: a revoked key's tasks stay auditable by name.
+	keys, err := s.db.AgentKeysByName(ctx, agentName(req.GetAgent()))
 	if err != nil {
 		return nil, dbStatus(err)
+	}
+	if len(keys) == 0 {
+		return nil, status.Errorf(codes.NotFound, "no agent %q", req.GetAgent())
 	}
 	// An empty filter means every status, so open_only with only ended statuses must match nothing.
 	if req.GetOpenOnly() && len(statuses) == 0 {
 		return &pb.ListAgentTasksResponse{}, nil
 	}
-	tasks, err := s.db.ListAgentTasks(ctx, proxydb.TaskFilter{Agent: a.KeyID, Statuses: statuses, ReasonCodes: req.GetReasonCodes(), Limit: int(req.GetLimit()),
+	tasks, err := s.db.ListAgentTasks(ctx, proxydb.TaskFilter{Agents: keys, Statuses: statuses, ReasonCodes: req.GetReasonCodes(), Limit: int(req.GetLimit()),
 		ExternalRef: strings.TrimSpace(req.GetExternalRef()), Pinned: pinnedSide(req.GetPinnedOnly())})
 	if err != nil {
 		return nil, dbStatus(err)
@@ -115,13 +116,21 @@ func taskStatuses(requested []string, openOnly bool) ([]string, error) {
 	return open, nil
 }
 
+// adminTaskWindow bounds each of a task's first message and its newest ones, so
+// GetAgentTask stays under the 4 MiB a gRPC client takes by default.
+const adminTaskWindow = 1 << 20
+
 func (s *AdminServer) GetAgentTask(ctx context.Context, req *pb.GetAgentTaskRequest) (*pb.AgentTask, error) {
-	if uuid.Validate(req.GetTaskId()) != nil {
+	id, err := uuid.Parse(req.GetTaskId())
+	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "task_id must be a task id")
 	}
-	t, err := s.db.GetAgentTask(ctx, req.GetTaskId())
+	t, err := s.db.GetAgentTask(ctx, id.String())
 	if errors.Is(err, proxydb.ErrNotFound) {
 		return nil, status.Errorf(codes.NotFound, "no task %s", req.GetTaskId())
+	}
+	if err == nil {
+		err = s.db.WithAgentMessages(ctx, []*proxydb.AgentTask{t}, adminTaskWindow)
 	}
 	if err != nil {
 		return nil, dbStatus(err)
@@ -133,7 +142,7 @@ func taskProto(t *proxydb.AgentTask) *pb.AgentTask {
 	out := &pb.AgentTask{
 		TaskId: t.ID, ContextId: t.ContextID, From: t.FromName, To: t.ToName, Status: t.Status,
 		StatusReason: t.StatusReason, ReasonCode: t.ReasonCode, Depth: t.Depth, AnsweredBy: agents.AnsweredBy(t),
-		ExternalRef: t.ExternalRef, PinnedBy: agents.PinnedBy(t),
+		ExternalRef: t.ExternalRef, PinnedBy: agents.PinnedBy(t), OmittedMessages: int32(t.Omitted),
 		CreatedAt: timestamppb.New(t.CreatedAt), UpdatedAt: timestamppb.New(t.UpdatedAt),
 	}
 	for _, m := range t.Messages {
@@ -182,6 +191,10 @@ func (s *AdminServer) ReplyAgentTask(ctx context.Context, req *pb.ReplyAgentTask
 	case errors.Is(err, agents.ErrDenied):
 		return nil, status.Error(codes.PermissionDenied, err.Error())
 	case err != nil:
+		return nil, dbStatus(err)
+	}
+	// The console shows the conversation it answered; the service returns none.
+	if err := s.db.WithAgentMessages(ctx, []*proxydb.AgentTask{t}, adminTaskWindow); err != nil {
 		return nil, dbStatus(err)
 	}
 	return taskProto(t), nil

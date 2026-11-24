@@ -170,20 +170,30 @@ func (c *Client) Card(ctx context.Context) (Card, error) {
 	return Card{}, fmt.Errorf("list_agents did not list this agent")
 }
 
-// SetCard replaces the caller's card; register_agent keeps no field it is
-// not given, so change a card read with Card.
-func (c *Client) SetCard(ctx context.Context, card Card) (Card, error) {
-	in := map[string]any{"description": card.Description, "skills": nonNil(card.Skills), "repos": nonNil(card.Repos), "accept_from": nonNil(card.AcceptFrom)}
+// CardChange is a change to the caller's card; a nil field keeps its value,
+// an empty list clears it.
+type CardChange struct {
+	Description *string
+	Skills      []string
+	Repos       []string
+	AcceptFrom  []string
+}
+
+// UpdateCard changes the given fields of the caller's card and returns it;
+// register_agent changes only what it is passed, so nothing is read first.
+func (c *Client) UpdateCard(ctx context.Context, ch CardChange) (Card, error) {
+	in := map[string]any{}
+	if ch.Description != nil {
+		in["description"] = *ch.Description
+	}
+	for k, v := range map[string][]string{"skills": ch.Skills, "repos": ch.Repos, "accept_from": ch.AcceptFrom} {
+		if v != nil {
+			in[k] = v
+		}
+	}
 	var out Card
 	err := c.call(ctx, "register_agent", in, &out)
 	return out, err
-}
-
-func nonNil(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-	return s
 }
 
 // Close ends the session.
