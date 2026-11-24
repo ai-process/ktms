@@ -12,6 +12,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -89,6 +90,14 @@ type Config struct {
 	MaxReply    int           // bytes of a reply; the server refuses more than AGENTS_MAX_MESSAGE_BYTES
 	Logf        func(format string, args ...any)
 	Instruction string // replaces the default instruction, for a custom runner
+	// Tasks answered at once; each runs its own CLI.
+	Concurrency int
+	// Wait before the one retry of a run that failed, such as a CLI whose
+	// backend was briefly down; below zero, no retry.
+	RetryDelay time.Duration
+	// Directories the runner may read, named in the prompt so it does not
+	// spend a run on files it will be refused.
+	Dirs []string
 }
 
 func (c Config) withDefaults() Config {
@@ -112,16 +121,27 @@ func (c Config) withDefaults() Config {
 	}
 	if c.Instruction == "" {
 		c.Instruction = defaultInstruction
+		if len(c.Dirs) > 0 {
+			c.Instruction += "\nYou can read files only in " + strings.Join(c.Dirs, ", ") + "; anything else is refused, so if you need it, ask the sender to put it in a message."
+		}
+	}
+	if c.Concurrency <= 0 {
+		c.Concurrency = 1
+	}
+	if c.RetryDelay == 0 {
+		c.RetryDelay = time.Minute
 	}
 	return c
 }
 
 // Run answers the inbox until ctx ends. Each call waits on the server for the
 // next change after the newest one seen; a server that cannot wait (before
-// KTMS 1.6) is polled every Interval instead. Tasks are answered one at a
-// time, oldest first, so run one loop per agent key.
+// KTMS 1.6) is polled every Interval instead. Up to Concurrency tasks run at
+// once, oldest first, so run one loop per agent key.
 func Run(ctx context.Context, in Inbox, r Runner, cfg Config) error {
 	cfg = cfg.withDefaults()
+	d := newDispatcher(ctx, in, r, cfg)
+	defer d.wg.Wait()
 	var since time.Time
 	paused := false
 	for ctx.Err() == nil {
@@ -131,6 +151,16 @@ func Run(ctx context.Context, in Inbox, r Runner, cfg Config) error {
 		}
 		if paused {
 			sleep(ctx, cfg.Interval)
+			continue
+		}
+		if d.backlog {
+			// Due tasks found no free slot and are older than since: when one
+			// frees, read the whole inbox again.
+			if !d.awaitSlot() {
+				break
+			}
+			// Read the pause file again before taking anything.
+			d.backlog, since = false, time.Time{}
 			continue
 		}
 		start := time.Now()
@@ -148,7 +178,7 @@ func Run(ctx context.Context, in Inbox, r Runner, cfg Config) error {
 				newest = t.Updated
 			}
 		}
-		answerDue(ctx, in, r, cfg, tasks)
+		d.dispatch(tasks)
 		// A waiting server answers early only with a change; nothing new, and
 		// soon, is a server that ignores since and wait, to be polled.
 		if !newest.After(since) && time.Since(start) < cfg.Wait/2 {
@@ -166,14 +196,90 @@ func Once(ctx context.Context, in Inbox, r Runner, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	answerDue(ctx, in, r, cfg, tasks)
+	d := newDispatcher(ctx, in, r, cfg)
+	for i := len(tasks) - 1; i >= 0; i-- { // the inbox lists the newest first
+		if Due(tasks[i]) && d.awaitSlot() {
+			d.start(tasks[i])
+		}
+	}
+	d.wg.Wait()
 	return nil
 }
 
-func answerDue(ctx context.Context, in Inbox, r Runner, cfg Config, tasks []Task) {
+// dispatcher runs up to cfg.Concurrency answers at once.
+type dispatcher struct {
+	ctx     context.Context
+	in      Inbox
+	r       Runner
+	cfg     Config
+	mu      sync.Mutex
+	running map[string]bool
+	freed   chan struct{}
+	wg      sync.WaitGroup
+	backlog bool // a due task found no free slot; only the loop touches it
+}
+
+func newDispatcher(ctx context.Context, in Inbox, r Runner, cfg Config) *dispatcher {
+	return &dispatcher{ctx: ctx, in: in, r: r, cfg: cfg, running: map[string]bool{}, freed: make(chan struct{}, 1)}
+}
+
+// dispatch starts the due tasks that are not running, oldest first, while
+// slots are free.
+func (d *dispatcher) dispatch(tasks []Task) {
+	d.backlog = false
 	for i := len(tasks) - 1; i >= 0; i-- { // the inbox lists the newest first
-		if Due(tasks[i]) && ctx.Err() == nil {
-			answer(ctx, in, r, cfg, tasks[i])
+		t := tasks[i]
+		if !Due(t) || d.ctx.Err() != nil {
+			continue
+		}
+		d.mu.Lock()
+		busy, full := d.running[t.TaskID], len(d.running) >= d.cfg.Concurrency
+		d.mu.Unlock()
+		switch {
+		case busy:
+		case full:
+			d.backlog = true
+		default:
+			d.start(t)
+		}
+	}
+}
+
+func (d *dispatcher) start(t Task) {
+	d.mu.Lock()
+	if d.running[t.TaskID] {
+		d.mu.Unlock()
+		return
+	}
+	d.running[t.TaskID] = true
+	d.mu.Unlock()
+	d.wg.Add(1)
+	go func() {
+		defer d.wg.Done()
+		answer(d.ctx, d.in, d.r, d.cfg, t)
+		d.mu.Lock()
+		delete(d.running, t.TaskID)
+		d.mu.Unlock()
+		select {
+		case d.freed <- struct{}{}:
+		default:
+		}
+	}()
+}
+
+// awaitSlot waits until fewer than Concurrency tasks run; false when ctx ends.
+func (d *dispatcher) awaitSlot() bool {
+	for {
+		d.mu.Lock()
+		free := len(d.running) < d.cfg.Concurrency
+		d.mu.Unlock()
+		if free {
+			return d.ctx.Err() == nil
+		}
+		select {
+		case <-d.ctx.Done():
+			return false
+		case <-d.freed:
 		}
 	}
 }
@@ -196,7 +302,15 @@ func answer(ctx context.Context, in Inbox, r Runner, cfg Config, task Task) {
 	}
 	log("running")
 	rctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
-	out, err := r.Run(rctx, Prompt(task, cfg.Instruction, cfg.MaxPrompt))
+	prompt := Prompt(task, cfg.Instruction, cfg.MaxPrompt)
+	out, err := r.Run(rctx, prompt)
+	if err != nil && !errors.Is(err, ErrRefused) && rctx.Err() == nil && cfg.RetryDelay > 0 {
+		log("runner failed: %v; retrying in %s", err, cfg.RetryDelay)
+		sleep(rctx, cfg.RetryDelay)
+		if rctx.Err() == nil {
+			out, err = r.Run(rctx, prompt)
+		}
+	}
 	timedOut := rctx.Err() != nil
 	cancel()
 	if ctx.Err() != nil {
