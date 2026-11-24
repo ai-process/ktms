@@ -47,12 +47,14 @@ type tray struct {
 	web    *nodetray.Web
 	home   string
 
-	mu     sync.Mutex
-	status *nodeagent.Status
-	err    error
-	notes  nodetray.Notifier
-	icon   nodetray.IconKind
-	iconOK bool
+	mu        sync.Mutex
+	status    *nodeagent.Status
+	err       error
+	notes     nodetray.Notifier
+	target    nodetray.Frame // the icon at rest for the latest status
+	shown     nodetray.Frame // last drawn
+	iconOK    bool
+	animating bool
 
 	header, level, detail, notice                  *systray.MenuItem
 	p5, p10, p30, untilNext, limit, stop, resume   *systray.MenuItem
@@ -164,12 +166,20 @@ func (t *tray) update(s *nodeagent.Status, err error) {
 func (t *tray) render() {
 	t.mu.Lock()
 	v := nodetray.Build(t.status, t.err, time.Now())
-	changed := !t.iconOK || v.Icon != t.icon
-	t.icon, t.iconOK = v.Icon, true
+	t.target = nodetray.Still(v.Icon, v.Fill, v.Requests)
+	draw := false
+	switch {
+	case t.animating: // it picks up the new target
+	case t.iconOK && t.target.To != t.shown.To:
+		t.animating = true
+		go t.animate(t.shown.To)
+	case !t.iconOK || t.target != t.shown:
+		t.shown, t.iconOK, draw = t.target, true, true
+	}
 	t.mu.Unlock()
 
-	if changed {
-		systray.SetTemplateIcon(nodetray.Icon(v.Icon, true), nodetray.Icon(v.Icon, false))
+	if draw {
+		setIcon(t.target)
 	}
 	if runtime.GOOS == "darwin" {
 		systray.SetTitle(v.Title)
@@ -214,6 +224,39 @@ func (t *tray) render() {
 		e.line.Show()
 	}
 	t.mu.Unlock()
+}
+
+// animate flies squares in or out over a few frames; a count that changes
+// mid-flight starts a new flight from where the last one was headed. At rest
+// nothing redraws.
+func (t *tray) animate(from int) {
+	to, step := from, nodetray.AnimSteps
+	for {
+		t.mu.Lock()
+		tgt := t.target
+		if tgt.To != to {
+			from, to, step = to, tgt.To, 0
+		}
+		if step == nodetray.AnimSteps {
+			changed := t.shown != tgt
+			t.shown, t.animating = tgt, false
+			t.mu.Unlock()
+			if changed {
+				setIcon(tgt)
+			}
+			return
+		}
+		step++
+		f := nodetray.Frame{Kind: tgt.Kind, Level: tgt.Level, From: from, To: to, T: float64(step) / nodetray.AnimSteps}
+		t.shown = f
+		t.mu.Unlock()
+		setIcon(f)
+		time.Sleep(nodetray.AnimEvery)
+	}
+}
+
+func setIcon(f nodetray.Frame) {
+	systray.SetTemplateIcon(nodetray.Icon(f, true), nodetray.Icon(f, false))
 }
 
 // engineClicks pauses or resumes the engine in slot i.

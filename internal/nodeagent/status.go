@@ -68,6 +68,7 @@ type StatusNext struct {
 
 type StatusRequests struct {
 	ProxyActive   int32  `json:"proxy_active"` // -1 when not yet known
+	Inflight      int32  `json:"inflight"`     // running on this node now, all engines
 	EngineRunning uint32 `json:"engine_running"`
 	EngineWaiting uint32 `json:"engine_waiting"`
 }
@@ -100,6 +101,15 @@ type connState struct {
 	lastBeat        time.Time
 	lastErr         string
 	capacityApplied bool
+}
+
+// noteRequests wakes Run to publish a changed request count; it never blocks
+// the gateway, and a wake already pending covers this change too.
+func (a *Agent) noteRequests() {
+	select {
+	case a.requests <- struct{}{}:
+	default:
+	}
 }
 
 // statusHub hands the latest Status to API goroutines and wakes event
@@ -166,6 +176,7 @@ func (a *Agent) publish() {
 			ProxyActive:   p.active,
 			EngineRunning: a.stats.beat.EngineRunning,
 			EngineWaiting: a.stats.beat.EngineWaiting,
+			Inflight:      int32(a.stats.beat.EngineRunning),
 		},
 		CapacityApplied: a.conn.capacityApplied,
 		ScheduleSource:  a.source,
@@ -173,6 +184,9 @@ func (a *Agent) publish() {
 		ScheduleError:   p.schedErr,
 		CanAbort:        a.gateway != nil,
 		UpdatedAt:       now,
+	}
+	if a.gateway != nil { // live; the engine's count is only as fresh as the last heartbeat
+		s.Requests.Inflight = a.gateway.Active()
 	}
 	if p.override.activeAt(now) {
 		o := *p.override
