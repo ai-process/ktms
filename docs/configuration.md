@@ -16,7 +16,8 @@ Everything is an environment variable; see [`env.example`](../env.example).
 | `AGENTS_ENABLED` | `true` | Serve the [agents' inbox](mcp.md#agents), the gateway's built-in server `agents`. |
 | `AGENTS_MAX_DEPTH` | `5` | How deep a chain of tasks in one conversation may go. |
 | `AGENTS_MAX_MESSAGES_PER_CONTEXT` | `200` | Messages in one conversation. |
-| `AGENTS_MAX_MESSAGE_BYTES` | `65536` | Size of one message. |
+| `AGENTS_MAX_MESSAGE_BYTES` | `65536` | Size of one message, at most `1048576`. |
+| `AGENTS_MAX_TASKS_PER_PAIR_HOUR` | `100` | Tasks one agent may send another within an hour, in any conversation; `0` is unlimited. |
 | `AGENTS_TOOL_RPM` | `60` | Calls of each agents tool per key and minute; `0` is unlimited. Needs Redis. |
 | `AGENTS_RETENTION` | `720h` | Tasks unchanged this long are deleted; `0` keeps them. |
 | `AGENTS_CORRECTION_WINDOW` | `168h` | How long after its last change an ended task takes a correction of its answer. |

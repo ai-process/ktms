@@ -113,26 +113,25 @@ func runCard(ctx context.Context, cmd *cobra.Command, c *agentrun.Client, logf f
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	f := cmd.Flags()
-	set := f.Changed("description") || f.Changed("skill") || f.Changed("repo")
-	card, err := c.Card(ctx)
-	if err != nil {
-		if !set {
+	var ch agentrun.CardChange
+	if f.Changed("description") {
+		ch.Description = &desc
+	}
+	if f.Changed("skill") {
+		ch.Skills = append([]string{}, skills...)
+	}
+	if f.Changed("repo") {
+		ch.Repos = append([]string{}, repos...)
+	}
+	var card agentrun.Card
+	var err error
+	if ch.Description == nil && ch.Skills == nil && ch.Repos == nil {
+		if card, err = c.Card(ctx); err != nil {
 			logf("reading the agent's card: %v", err) // the inbox may still work
 			return nil
 		}
-		return err
-	}
-	if set {
-		if f.Changed("description") {
-			card.Description = desc
-		}
-		if f.Changed("skill") {
-			card.Skills = skills
-		}
-		if f.Changed("repo") {
-			card.Repos = repos
-		}
-		if card, err = c.SetCard(ctx, card); err != nil {
+	} else {
+		if card, err = c.UpdateCard(ctx, ch); err != nil {
 			return err
 		}
 		logf("card of %s updated", card.Name)

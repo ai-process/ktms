@@ -312,24 +312,21 @@ asks a question, for up to that long, and prints it; it exits 0 when the task co
 who sees the agent send it tasks.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return with(a.timeout, func(ctx context.Context, c *agentrun.Client) error {
-				card, err := c.Card(ctx)
-				if err != nil {
-					return err
-				}
+				var ch agentrun.CardChange
 				f := cmd.Flags()
 				if f.Changed("description") {
-					card.Description = desc
+					ch.Description = &desc
 				}
 				if f.Changed("skill") {
-					card.Skills = skills
+					ch.Skills = append([]string{}, skills...)
 				}
 				if f.Changed("repo") {
-					card.Repos = repos
+					ch.Repos = append([]string{}, repos...)
 				}
 				if f.Changed("accept-from") {
-					card.AcceptFrom = accept
+					ch.AcceptFrom = append([]string{}, accept...)
 				}
-				out, err := c.SetCard(ctx, card)
+				out, err := c.UpdateCard(ctx, ch)
 				if err != nil {
 					return err
 				}

@@ -128,7 +128,7 @@ func (a *app) agentsCmd() *cobra.Command {
 					fmt.Fprintf(a.stdout, ", pinned by %s", strings.Join(t.GetPinnedBy(), ", "))
 				}
 				fmt.Fprintln(a.stdout)
-				for _, m := range t.GetMessages() {
+				for i, m := range t.GetMessages() {
 					who := m.GetFrom()
 					if m.GetAuthor() == "owner" {
 						who += "'s owner"
@@ -137,6 +137,9 @@ func (a *app) agentsCmd() *cobra.Command {
 						who += ", correction"
 					}
 					fmt.Fprintf(a.stdout, "\n%s  %s:\n%s\n", when(m.GetCreatedAt()), who, m.GetText())
+					if i == 0 && t.GetOmittedMessages() > 0 {
+						fmt.Fprintf(a.stdout, "\n… %d messages left out …\n", t.GetOmittedMessages())
+					}
 				}
 				return nil
 			})

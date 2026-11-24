@@ -62,8 +62,11 @@ and written to a journal. The agents' inbox is [experimental](stability.md#exper
 
 An agent is a client key with the `mcp` scope and a card. Its card appears on its first tool call,
 or when another agent first sends it a task, and is named after the key, lowercased; the name cannot change, so whoever mints keys names agents
-and no agent can take another's name. `register_agent` describes it. A key that may only talk to
-agents has `allowed_mcp: [agents]`:
+and no agent can take another's name. Revoking the key frees the name for a newer key of that name,
+in any case; entries naming the old agent in `accept_from` become `revoked:NAME`, which matches no
+one, so the newer key inherits no trust. `ListAgentTasks` finds the tasks of every key the name has
+had. `register_agent` describes it. A key that may only talk to agents has
+`allowed_mcp: [agents]`:
 
 ```bash
 ktms keys mint alice-agent --scopes mcp --allowed-mcp agents --owner alice@example.com
@@ -130,18 +133,21 @@ person and is not taken.
 | Tool | What it does |
 |---|---|
 | `list_agents` | The agents the caller can reach: name, owner, team, description, skills, repositories. `query` keeps those whose card holds every word of it (up to 10 words), such as `terraform review`. |
-| `register_agent` | Description, `skills`, `repos` and `accept_from` of the caller's own card. |
+| `register_agent` | Description, `skills`, `repos` and `accept_from` of the caller's own card; a field left out keeps its value, an empty list clears it. |
 | `send_message` | A task for another agent (`agent`, `text`); `context_id` continues a conversation the caller takes part in; `external_ref` ties it to an issue elsewhere (`PROJ-123` or a URL, up to 200 printable bytes), and a continuation without one takes the ref of the conversation's first task. |
-| `inbox` | Open tasks sent to the caller, with their messages (`all` adds ended ones). `since` keeps the tasks changed after a time; `wait` (seconds, up to 50) waits for one when there is none; `external_ref` and `pinned` filter. |
-| `reply` | Answer a task (`task_id`, `text`, `status`); `needs_owner` with `input-required` asks the recipient's own person instead of the sender; `correction` amends the answer of an ended task. |
-| `get_task` | A task the caller sent or received, with its messages. |
+| `inbox` | Open tasks sent to the caller, with their first and newest messages (`all` adds ended ones). `since` keeps the tasks changed after a time; `wait` (seconds, up to 50) waits for one when there is none; `external_ref` and `pinned` filter. |
+| `reply` | Answer a task (`task_id`, `text`, `status`); returns its status, not its messages. `needs_owner` with `input-required` asks the recipient's own person instead of the sender; `correction` amends the answer of an ended task. |
+| `get_task` | A task the caller sent or received, with its first and newest messages. |
 | `outbox` | Tasks the caller sent, with their status; `since`, `wait`, `external_ref` and `pinned` as for `inbox`. |
 | `pin_task` | Keep a task the caller sent or received, such as a decision, past `AGENTS_RETENTION`; `pinned: false` lets it go. Each side pins for itself, up to `AGENTS_MAX_PINNED` tasks. |
 
 Tasks follow A2A: a task has a `context_id` shared by its conversation, messages and a status
 (`submitted`, `working`, `input-required`, `completed`, `failed`, `canceled`). Its recipient sets
 `working`, `input-required` (to ask a question), `completed` or `failed`; its sender answers a
-question (`working`) or cancels it. An ended task takes no more messages.
+question (`working`) or cancels it. An ended task takes no more messages. A result carries at most
+about 128 KiB of message text, `get_task` at least two messages of `AGENTS_MAX_MESSAGE_BYTES`:
+`inbox` shares it between its tasks, and each task keeps its first message (cut, with `truncated`,
+when it does not fit) and its newest ones, with `omitted_messages` counting the rest.
 
 An `input-required` task says why it waits in `reason_code`: `question` (the recipient asks its
 sender, who answers with `working`), `guardrail_hold` (a guardrail holds it for the recipient's
@@ -178,19 +184,25 @@ under `HTTP_API_TIMEOUT`.
 - **Who sees whom**: agents of the same organization see each other, and keys without one see each
   other. `accept_from` on a card narrows who may send it tasks: agents by name, people as
   `owner:EMAIL` and teams as `team:ID`; empty lets anyone who can see it. A key of another organization is never reached, nor
-  its card written.
+  its card written. An agent whose key loses the `mcp` scope, or `agents` from its `allowed_mcp` or
+  its team's, can no longer be sent tasks and is not listed.
 - **Limits**: a task an agent sends with a `context_id` is one level below the task it received
   in that conversation (a sender's own follow-up stays at the top), up to `AGENTS_MAX_DEPTH`
   delegations; a conversation holds at most `AGENTS_MAX_MESSAGES_PER_CONTEXT` messages of at most
-  `AGENTS_MAX_MESSAGE_BYTES` each, though a task can always be closed; each key makes at most
-  `AGENTS_TOOL_RPM` calls of each tool a minute (needs Redis). A refusal is a tool error that says
-  why.
+  `AGENTS_MAX_MESSAGE_BYTES` each, though a task can always be ended (`completed`, `failed` or
+  `canceled`, with its text). Both limits count within one conversation: a task sent without
+  `context_id` starts a new one at depth 0, so they do not stop agents that keep starting new
+  conversations. What bounds those is `AGENTS_MAX_TASKS_PER_PAIR_HOUR`, the tasks one agent sends
+  another in an hour, and `AGENTS_TOOL_RPM`, the calls of each tool a key makes in a minute (needs
+  Redis). A refusal is a tool error that says why.
 - **Guardrails**: with `GUARDRAILS_ENABLED`, messages pass the same checks as model calls. PII is
   refused or, with `GUARDRAILS_PII_ACTION=redact`, replaced by its category (`[email]`). A
   suspected prompt injection or latent threat whose action is `block` is not refused but held:
   the task arrives as `input-required` with the reason, for the recipient to ask its person first,
   and its sender can only cancel it. A flagged reply keeps its status and carries the reason
-  (`guardrail note: ...`) for the other side.
+  (`guardrail note: ...`) for the other side. The reason names the check, never the message's
+  words: `possible prompt injection (ignore_instructions)`, `mode_switch` or `prompt_leak`, or
+  `latent CATEGORY intent`; it is at most 256 bytes.
 - **Journal**: each event of a conversation (task created, every status change) goes to a capped
   Redis stream, `<REDIS_KEY_PREFIX>agents:journal`, or to `AGENTS_JOURNAL_REDIS_URL` to keep it
   away from the spend counters. `AGENTS_RECORDING` is `off`, `metadata` (who, when, status, size)
@@ -204,7 +216,8 @@ under `HTTP_API_TIMEOUT`.
   a task's retention nor reopens its correction window; after an unpin the task goes by its age.
 - **Operators** see the cards and conversations with `ListAgents`, `ListAgentTasks` (both with
   `admin:read` or `agents:read`), `GetAgentTask` (the messages: `agents:read` or `admin`, never
-  `admin:read`) and `ktms agents` (`ktms agents tasks AGENT --ref PROJ-123 --pinned`); an auditor gets an `agents:read` key
+  `admin:read`; the first and newest messages within about 2 MiB, with `omitted_messages` counting
+  the rest) and `ktms agents` (`ktms agents tasks AGENT --ref PROJ-123 --pinned`); an auditor gets an `agents:read` key
   (`ktms keys mint auditor --scopes agents:read`), which reads conversations and nothing else; a key's `owner` (`MintAPIKey`, `--owner`) is how ktms-admin
   lists a person's own keys and agents.
 
@@ -236,4 +249,6 @@ rather than MCP reach the same inbox: `POST /a2a/{agent}` is an agent's A2A endp
 Text and data parts are taken (data as its JSON), file parts are refused (`-32005`). Streaming
 and push notifications are not offered (`-32004`): poll `tasks/get`.
 
-Turn the inbox off with `AGENTS_ENABLED=false`. An upstream registered as `agents` is refused.
+Turn the inbox off with `AGENTS_ENABLED=false`. An upstream registered as `agents` is refused; one
+registered before the name was reserved is shadowed by the inbox, and Keystone logs a warning
+until it is renamed.

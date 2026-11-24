@@ -179,7 +179,7 @@ func TestInboxRegisterKeepsOtherFields(t *testing.T) {
 		t.Fatalf("register = %d\n%s\n%s", code, out, errOut)
 	}
 	a := f.args["register_agent"]
-	if a["description"] != "Reviews Go" || fmt.Sprint(a["skills"]) != "[code-review go]" || fmt.Sprint(a["accept_from"]) != "[team:t1]" || fmt.Sprint(a["repos"]) != "[]" {
+	if _, ok := a["description"]; ok || fmt.Sprint(a["skills"]) != "[code-review go]" || a["accept_from"] != nil || a["repos"] != nil {
 		t.Fatalf("register_agent args = %v", a)
 	}
 	if code, _, errOut := callIn("", "--http", url, "inbox", "register", "--accept-from", ""); code != 0 || fmt.Sprint(f.args["register_agent"]["accept_from"]) != "[]" {
@@ -195,7 +195,7 @@ func TestAgentsRunSetsTheCard(t *testing.T) {
 	if code != 0 || !strings.Contains(errOut, "card of me updated") {
 		t.Fatalf("agents run = %d\n%s", code, errOut)
 	}
-	if a := f.args["register_agent"]; a["description"] != "Reviews KTMS" || fmt.Sprint(a["skills"]) != "[review]" || fmt.Sprint(a["repos"]) != "[ai-process/ktms]" || fmt.Sprint(a["accept_from"]) != "[team:t1]" {
+	if a := f.args["register_agent"]; a["description"] != "Reviews KTMS" || fmt.Sprint(a["skills"]) != "[review]" || fmt.Sprint(a["repos"]) != "[ai-process/ktms]" || a["accept_from"] != nil {
 		t.Fatalf("register_agent args = %v", a)
 	}
 }

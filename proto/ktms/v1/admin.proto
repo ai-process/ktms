@@ -711,7 +711,7 @@ message SetAgentRecordingRequest {
 message SetAgentRecordingResponse {}
 
 message ListAgentTasksRequest {
-  string agent = 1; // tasks this agent sent or received; required
+  string agent = 1; // tasks agents of this name sent or received, revoked keys' included; required
   bool open_only = 2; // submitted, working and input-required only
   int32 limit = 3; // default 100, at most 500
   // Only tasks in these statuses (submitted, working, input-required, completed,
@@ -766,6 +766,9 @@ message AgentTask {
   string answered_by = 12; // ended tasks: agent or owner, who gave the latest answer
   string external_ref = 13; // the issue elsewhere it is about, such as PROJ-123 or a URL
   repeated string pinned_by = 14; // agents that pinned it past the retention sweep
+  // GetAgentTask keeps the first message and the newest within about 2 MiB, so the
+  // response fits a default gRPC client; this counts the messages left out between them.
+  int32 omitted_messages = 15;
 }
 
 message ListAgentTasksResponse {

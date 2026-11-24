@@ -150,11 +150,14 @@ func TestA2ABridge(t *testing.T) {
 	// Blocking send waits for the answer.
 	a2aPoll = 20 * time.Millisecond
 	go func() {
-		time.Sleep(100 * time.Millisecond)
-		inbox, _ := f.svc.Inbox(ctx, bob, agents.Query{All: false, Limit: 10})
-		for _, tk := range inbox {
-			if tk.Status == proxydb.TaskSubmitted {
-				_, _ = f.svc.Reply(ctx, bob, tk.ID, "done", proxydb.TaskCompleted, false)
+		// Wait for the task rather than a fixed delay: a slow runner creates it later.
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			inbox, _ := f.svc.Inbox(ctx, bob, agents.Query{All: false, Limit: 10})
+			for _, tk := range inbox {
+				if tk.Status == proxydb.TaskSubmitted {
+					_, _ = f.svc.Reply(ctx, bob, tk.ID, "done", proxydb.TaskCompleted, false)
+					return
+				}
 			}
 		}
 	}()
@@ -194,7 +197,8 @@ func TestA2ACardAndAccess(t *testing.T) {
 	_, bob := f.mint("bob")
 	toolsKey, _ := f.mint("tools", "github")
 	b := strings.ToLower(bob.Name)
-	if _, err := f.svc.Register(ctx, bob, agents.Card{Description: "reviews Go", Skills: []string{"code-review"}}); err != nil {
+	desc := "reviews Go"
+	if _, err := f.svc.Register(ctx, bob, agents.Card{Description: &desc, Skills: &[]string{"code-review"}}); err != nil {
 		t.Fatal(err)
 	}
 	get := func(key, path string, hdr map[string]string) (*http.Response, map[string]any) {
