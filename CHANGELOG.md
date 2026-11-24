@@ -2,12 +2,39 @@
 
 All notable changes to KTMS are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
-[semantic versioning](https://semver.org); see [API stability](README.md#api-stability) for what
+[semantic versioning](https://semver.org); see [API stability](docs/stability.md#api-stability) for what
 1.x keeps compatible.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-24
+
 ### Added
+- Several engines behind one node: `ktms-node --extra-engine mt=http://127.0.0.1:11436` (repeatable,
+  with `--expose cloudflared`) serves another engine beside the primary one, and the node's gateway
+  routes each request to the engine of its model; `/v1/models` lists them all. The status and
+  doctor report each engine. `ktms-node engine pause|resume ENGINE` and the tray's engine lines
+  pause one engine, which stops offering its models to KTMS while the others keep serving; the
+  pause outlives a restart. `install-node.sh --engine ollama,mt --mt-model opus-mt-de` installs
+  Ollama and ktms-mt together, and a re-run without `--engine` keeps the installed engines.
+- Translation nodes: node engine `mt` (`ktms-node --engine mt`, `MTInspector`, doctor hints) and
+  the `translate_http` adapter, which sends `Translate` to a node MT engine over the node gateway
+  (now also allowing `POST /v1/translate`); a chat model on a node keeps translating by prompt.
+  Node models that only translate never take chat. `ktms-mt` (in `mt/`) is the reference engine:
+  Opus-MT, M2M100 and MADLAD-400 on CTranslate2 (int8 CPU, or the experimental Apple GPU backend),
+  language detection with fastText, batching and sentence splitting; `install-node.sh --engine mt
+  --model opus-mt-de` installs it with its models and services.
+- Translation as a modality: `GatewayService.Translate` and `POST /v1/translate` translate a batch
+  of texts (up to 128, 256 KiB) in order, routed like `Judge` by a rule naming
+  `attributes["modality"] = "translate"` over models with the `translate` capability. Models
+  declare `languages` (`source`, `target`, `*` for any) and the chain skips those without the
+  request's pair; none left is `FAILED_PRECONDITION unsupported_language_pair`. Any chat model
+  translates by a prompt with structured output, checked for count and order, retried once and
+  then handed to the next model. Usage goes to light-tokenmeter with `action_id` `translate`,
+  `meta.characters`, and `cost_nanousd` including the new per-model `price_per_million_chars`;
+  `TokensUsage.characters` reports the count. `ktms translate` translates a file line by line,
+  and `ExplainRoute` (`ktms route explain --modality translate --from fr --to de`) explains
+  translate, judge, speech and image routes, with the drop reason `language_pair`.
 - Agents' inbox (experimental): agents of different people talk through the MCP gateway's
   built-in server `agents` — `list_agents`, `register_agent`, `send_message`, `inbox`, `reply`,
   `get_task` and `outbox`, with A2A tasks, context ids and statuses. Agents see their own
@@ -15,7 +42,8 @@ All notable changes to KTMS are listed here. The format follows
   depth, messages and size; `AGENTS_MAX_TASKS_PER_PAIR_HOUR` (100) bounds the tasks one agent sends
   another, which a new conversation does not reset. `register_agent` changes only the fields it is
   given; revoking a key frees its agent's name for a newer key, and entries naming the old agent in
-  `accept_from` become `revoked:NAME`, so the newer key inherits no trust; an agent whose key loses the `mcp`
+  `accept_from` become `revoked:NAME`, so the newer key inherits no trust, and `ListAgentTasks`
+  finds the tasks of every key a name has had; an agent whose key loses the `mcp`
   scope or the `agents` server drops out of reach. Tool results carry at most about 128 KiB of
   message text: `inbox` and `get_task` keep each task's first message (cut when long) and newest
   ones and count the rest in `omitted_messages`, and `reply` returns the status alone; `GetAgentTask` does the same
@@ -25,11 +53,62 @@ All notable changes to KTMS are listed here. The format follows
   to a capped Redis stream at the recording level `AGENTS_RECORDING` or the agent's own.
   `ListAgents`, `SetAgentRecording`, `ListAgentTasks`, `GetAgentTask` and `ktms agents` show them
   to an operator.
+- `ktms agents tasks --status` and `statuses` in `ListAgentTasks`: only the tasks in the given
+  A2A statuses, repeated or comma-separated; an unknown status is `INVALID_ARGUMENT`, and with
+  `--open` (`open_only`) only the open statuses among them count.
+- Scope `agents:read`: `ListAgents`, `ListAgentTasks` and `GetAgentTask` with the messages, and
+  nothing else, for whoever audits the agents' conversations. `GetAgentTask` no longer needs
+  `admin`; `admin:read` still cannot read messages. Like `admin:read`, it cannot belong to a tenant.
+- A2A bridge: `POST /a2a/{agent}` (`message/send`, `tasks/get`, `tasks/cancel`) and the agent's
+  card at `/a2a/{agent}/.well-known/agent-card.json` let A2A agents use the inbox, under the same
+  keys, limits, accounting and guardrails as the MCP server `agents`.
+- Agents: `list_agents` takes `query` (every word in the card); `send_message` and A2A
+  `message/send` (message metadata) take `external_ref`, inherited from a conversation's first
+  task and filterable in `inbox`, `outbox` and `ListAgentTasks`; `pin_task` keeps a task past
+  `AGENTS_RETENTION`, each side for itself, up to `AGENTS_MAX_PINNED` (200). `ktms inbox`
+  (`find`, `register`, `send --wait`, `reply`, `outbox`, `show`, `pin`) uses an agent's inbox
+  from a terminal with its key.
+- `ktms agents run --model` picks the model of the `claude`, `codex` or `agy` preset.
+- `ktms agents run --concurrency N` answers up to N tasks at once, each by its own CLI; tasks
+  beyond the free slots are taken as soon as one frees. A run that fails is retried once a minute
+  later. `--add-dir` (repeatable) lets the `claude` and `agy` presets read another directory, and
+  the prompt names the directories the CLI may read, so it does not spend a run on refused files.
+- `ktms agents run --description`, `--skill` and `--repo` set the agent's card at start; the
+  sidecar warns when the card is empty. `ktms inbox register` changes only the fields it is given.
+- Agents: owners answer for their agents and answers can be corrected. `ReplyAgentTask` (scope
+  `admin`, for the console) answers or corrects as the owner of an agent; messages carry
+  `author` (`agent`, `owner`) and `correction`, ended tasks `answered_by`; `reply` takes
+  `correction` within `AGENTS_CORRECTION_WINDOW` (168h). An owner's `working` answer wakes
+  `ktms agents run`, whose CLI asks its own person with `STATUS: needs_owner`.
+- Agents: `inbox` and `outbox` take `since` and `wait` (up to 50s, woken through Postgres
+  `LISTEN`/`NOTIFY` on any replica); `ktms agents run` waits instead of polling. An
+  `input-required` task carries `reason_code` (`question`, `guardrail_hold`, `needs_owner`);
+  `reply` takes `needs_owner`, `ListAgentTasks` filters by `reason_codes` and
+  `ktms agents tasks --reason`.
+- `ktms agents run`: answers an agent's inbox with a local CLI agent (`claude`, `codex`, `agy`
+  read-only, or `--cmd`), polling over an outgoing connection; `STATUS:` lines of the answer set
+  the task's status, `--pause-file` pauses it.
+- README: running Claude Code and agy as agents, headless turns included.
+- Metrics `ktms_agent_tasks` (tasks in each status, read every minute) and
+  `ktms_agent_reply_seconds` (how long a task waited for a reply, by `role` and new `status`).
 - `owner` on client keys (`MintAPIKey`, `ListAPIKeys`, `ktms keys mint --owner`, `owner` in the
   configuration file): the person a key belongs to. An MCP server can no longer be named `agents`;
   one registered earlier is shadowed by the inbox, with a warning in the log.
 
+### Changed
+- Experimental agents API: `AgentTask.omitted_messages` is field 15. Between 1.5.0 and 1.6.0 the
+  `main` branch, and so the SDKs on buf.build, had it as field 11, which the 1.6 betas and this
+  release use for `reason_code`; regenerate a client built from `main` in that window.
+
 ### Fixed
+- Batch results and their usage events carry the rule that chose the batch's model
+  (`matched_rule`, usage meta `rule`); it was always empty. Batches submitted before this keep none.
+- A cache hit, exact or semantic, is recorded under the call's `action_id`, not `ktms.generate_text`.
+- Go 1.27.4: `net/http` in Go 1.27.3 is affected by GO-2026-6859.
+- `ktms agents run` with `agy`: a run that agy ended at a refused shell command, with no answer,
+  is resumed once to answer from what it read, and otherwise fails the task saying why rather
+  than "The agent produced no answer.". Tasks are taken with a bare `working` status instead of
+  the message "Working on it.", and `--task-timeout` defaults to 30m.
 - `MintAPIKey` with the name of an existing key answers `ALREADY_EXISTS`, not `UNAVAILABLE`.
 - The MCP gateway marks `tools/call` results `resultType: complete` for clients of MCP
   2026-07-28, Claude Code 2.1 among them, which refused every tool result without it.
@@ -43,10 +122,6 @@ All notable changes to KTMS are listed here. The format follows
   `pattern`) name the rule too. Reasons stored by an earlier build are rewritten without the quote
   on migration; events already in the journal stream keep it, so trim
   `<REDIS_KEY_PREFIX>agents:journal` if you ran one.
-
-### Security
-- Go 1.27.4: fixes GO-2026-6859, an HTTP/1 server crash through a header race in
-  `http.MaxBytesReader` that a remote client could trigger.
 
 ## [1.5.0] - 2026-11-03
 
@@ -277,7 +352,7 @@ Tools for people and AI assistants: the `ktms` CLI, `ktms mcp`, a dry run of rou
 ## [1.0.0] - 2026-10-23
 
 The first stable release of Keystone. The Model Switchboard. (KTMS). From here on, the public API
-listed in [API stability](README.md#api-stability) changes incompatibly only in a new major
+listed in [API stability](docs/stability.md#api-stability) changes incompatibly only in a new major
 version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.14.x first.
 
 ### Added
@@ -355,7 +430,7 @@ version. Upgrade from 0.14.x in one step; from older 0.x releases, upgrade to 0.
 - Signed releases: images and `checksums.txt` are signed with keyless cosign; images carry an
   SBOM and SLSA provenance, archives an SPDX SBOM. See SECURITY.md, Verifying a Release.
 - `govulncheck` for linux and darwin on every pull request and before every release.
-- The public API for 1.x is defined in the README ([API stability](README.md#api-stability)),
+- The public API for 1.x is defined in the README ([API stability](docs/stability.md#api-stability)),
   with experimental elements marked `Experimental:` in the proto.
 - A startup warning when the deprecated `LLMPROXY_ENCRYPTION_KEYS` is used instead of
   `KTMS_ENCRYPTION_KEYS`.
@@ -452,7 +527,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/ai-process/ktms/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/ai-process/ktms/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/ai-process/ktms/compare/v1.3.6...v1.4.0
 [1.3.6]: https://github.com/ai-process/ktms/compare/v1.3.5...v1.3.6

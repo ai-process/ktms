@@ -263,3 +263,29 @@ func TestStopNowKeepsAManualPause(t *testing.T) {
 		t.Fatalf("with a 25-minute pause: %+v", held)
 	}
 }
+
+func TestBuildEngines(t *testing.T) {
+	if v := Build(status(nil), nil, now); len(v.Engines) != 0 {
+		t.Errorf("one engine: lines %v, want none", v.Engines)
+	}
+	v := Build(status(func(s *nodeagent.Status) {
+		s.Engines = []nodeagent.StatusEngine{
+			{Name: "ollama", Primary: true, Up: true, Models: []string{"gemma"}},
+			{Name: "mt", Up: true, Paused: true, Models: []string{"opus-mt-de"}},
+			{Name: "vllm", Error: "connection refused"},
+		}
+	}), nil, now)
+	want := []EngineLine{
+		{Name: "ollama", Title: "ollama · gemma", Action: "Pause ollama"},
+		{Name: "mt", Title: "mt · paused", Action: "Resume mt", Paused: true},
+		{Name: "vllm", Title: "vllm · not answering", Action: "Pause vllm"},
+	}
+	if len(v.Engines) != len(want) {
+		t.Fatalf("lines = %+v", v.Engines)
+	}
+	for i := range want {
+		if v.Engines[i] != want[i] {
+			t.Errorf("line %d = %+v, want %+v", i, v.Engines[i], want[i])
+		}
+	}
+}

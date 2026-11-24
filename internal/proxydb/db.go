@@ -165,7 +165,8 @@ func loadModels(ctx context.Context, q querier) ([]*Model, error) {
 		        price_in_batch_per_mtok, price_out_batch_per_mtok,
 		        daily_tokens_per_key, daily_tokens_per_user, enabled,
 		        burst, queue_timeout_ms, budget_grace_margin,
-		        price_cache_read_per_mtok, price_cache_write_per_mtok
+		        price_cache_read_per_mtok, price_cache_write_per_mtok,
+		        languages_source, languages_target, price_per_million_chars
 		 FROM model ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -179,7 +180,8 @@ func loadModels(ctx context.Context, q querier) ([]*Model, error) {
 			&m.PriceInBatchPerMtok, &m.PriceOutBatchPerMtok,
 			&m.DailyTokensPerKey, &m.DailyTokensPerUser, &m.Enabled,
 			&m.Burst, &m.QueueTimeoutMs, &m.BudgetGraceMargin,
-			&m.PriceCacheReadPerMtok, &m.PriceCacheWritePerMtok); err != nil {
+			&m.PriceCacheReadPerMtok, &m.PriceCacheWritePerMtok,
+			&m.LanguagesSource, &m.LanguagesTarget, &m.PricePerMillionChars); err != nil {
 			return nil, err
 		}
 		out = append(out, &m)
@@ -303,26 +305,36 @@ func UpsertModel(ctx context.Context, tx pgx.Tx, m *Model) error {
 	if m.Capabilities == nil {
 		m.Capabilities = []string{} // NOT NULL column; nil would insert NULL
 	}
+	src, dst := m.LanguagesSource, m.LanguagesTarget
+	if src == nil {
+		src = []string{}
+	}
+	if dst == nil {
+		dst = []string{}
+	}
 	_, err := tx.Exec(ctx,
 		`INSERT INTO model (id, vendor, endpoint, efforts, capabilities, rpm, price_in_per_mtok,
 		                    price_out_per_mtok, price_in_peak_per_mtok, price_out_peak_per_mtok,
 		                    price_in_batch_per_mtok, price_out_batch_per_mtok,
 		                    daily_tokens_per_key, daily_tokens_per_user, enabled,
 		                    burst, queue_timeout_ms, budget_grace_margin,
-		                    price_cache_read_per_mtok, price_cache_write_per_mtok)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+		                    price_cache_read_per_mtok, price_cache_write_per_mtok,
+		                    languages_source, languages_target, price_per_million_chars)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
 		 ON CONFLICT (id) DO UPDATE SET vendor = $2, endpoint = $3, efforts = $4, capabilities = $5,
 		   rpm = $6, price_in_per_mtok = $7, price_out_per_mtok = $8, price_in_peak_per_mtok = $9,
 		   price_out_peak_per_mtok = $10, price_in_batch_per_mtok = $11, price_out_batch_per_mtok = $12,
 		   daily_tokens_per_key = $13, daily_tokens_per_user = $14, enabled = $15,
 		   burst = $16, queue_timeout_ms = $17, budget_grace_margin = $18,
-		   price_cache_read_per_mtok = $19, price_cache_write_per_mtok = $20, updated_at = NOW()`,
+		   price_cache_read_per_mtok = $19, price_cache_write_per_mtok = $20,
+		   languages_source = $21, languages_target = $22, price_per_million_chars = $23, updated_at = NOW()`,
 		m.ID, m.Vendor, m.Endpoint, m.Efforts, m.Capabilities, m.RPM,
 		m.PriceInPerMtok, m.PriceOutPerMtok, m.PriceInPeakPerMtok, m.PriceOutPeakPerMtok,
 		m.PriceInBatchPerMtok, m.PriceOutBatchPerMtok,
 		m.DailyTokensPerKey, m.DailyTokensPerUser, m.Enabled,
 		m.Burst, m.QueueTimeoutMs, m.BudgetGraceMargin,
-		m.PriceCacheReadPerMtok, m.PriceCacheWritePerMtok)
+		m.PriceCacheReadPerMtok, m.PriceCacheWritePerMtok,
+		src, dst, m.PricePerMillionChars)
 	return err
 }
 

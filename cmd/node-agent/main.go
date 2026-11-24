@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -69,6 +70,7 @@ type settings struct {
 	controlSocket *string
 	onlyModels    stringList
 	judgeModels   stringList
+	extraEngines  stringList
 }
 
 // stringList is a repeatable flag whose values may also be comma separated.
@@ -97,7 +99,7 @@ func newSettings(name string) *settings {
 		nodeName:      fs.String("node-name", "", "Human-readable node name"),
 		engineURL:     fs.String("engine-url", "", "Local engine URL the agent polls (default "+nodeagent.DefaultEngineURL+", or --endpoint if only that is set)"),
 		endpoint:      fs.String("endpoint", "", "Address the proxy dials to reach the engine (default: --engine-url)"),
-		engine:        fs.String("engine", "ollama", "Inference engine (ollama, vllm, tgi, llamacpp, freetoken, decisions)"),
+		engine:        fs.String("engine", "ollama", "Inference engine (ollama, vllm, tgi, llamacpp, freetoken, decisions, mt)"),
 		keyFile:       fs.String("node-key-file", "", "Path to file containing node authentication key"),
 		baseWeight:    fs.Float64("base-weight", 100.0, "Base routing weight"),
 		maxConcurrent: fs.Uint("max-concurrent", 16, "Maximum concurrent requests the proxy sends here (freetoken: 4)"),
@@ -112,6 +114,7 @@ func newSettings(name string) *settings {
 		controlSocket: fs.String("control-socket", nodeagent.DefaultControlSocket(), "Unix socket for the owner's control API (the tray, `status`, `pause`); empty turns it off"),
 	}
 	fs.Var(&s.onlyModels, "only-model", "Report only these engine models to the proxy; repeat the flag or comma-separate (default: every model the engine has)")
+	fs.Var(&s.extraEngines, "extra-engine", "Another engine this node serves, ENGINE=URL (e.g. mt=http://127.0.0.1:11436); repeat or comma-separate. Needs --expose "+nodeagent.ExposeCloudflared+": its gateway routes each request to the engine of its model")
 	fs.Var(&s.judgeModels, "judge-model", "Model ID that serves the judge capability; repeat or comma-separate")
 	return s
 }
@@ -166,6 +169,20 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 	if *s.scheduleSrc != nodeagent.ScheduleSourceLocal && *s.scheduleSrc != nodeagent.ScheduleSourceKTMS {
 		return nodeagent.AgentConfig{}, fmt.Errorf("--schedule-source must be %s or %s", nodeagent.ScheduleSourceLocal, nodeagent.ScheduleSourceKTMS)
 	}
+	var extra []nodeagent.EngineSpec
+	for _, v := range s.extraEngines {
+		e, err := nodeagent.ParseEngineSpec(v)
+		if err != nil {
+			return nodeagent.AgentConfig{}, fmt.Errorf("--extra-engine %w", err)
+		}
+		if strings.EqualFold(e.Name, *s.engine) || slices.ContainsFunc(extra, func(x nodeagent.EngineSpec) bool { return x.Name == e.Name }) {
+			return nodeagent.AgentConfig{}, fmt.Errorf("--extra-engine: engine %s is given twice", e.Name)
+		}
+		extra = append(extra, e)
+	}
+	if len(extra) > 0 && *s.expose != nodeagent.ExposeCloudflared {
+		return nodeagent.AgentConfig{}, fmt.Errorf("--extra-engine needs --expose %s: one endpoint reaches several engines only through the built-in gateway", nodeagent.ExposeCloudflared)
+	}
 	keep, err := nodeagent.ParseRetention(*s.statsKeep)
 	if err != nil {
 		return nodeagent.AgentConfig{}, fmt.Errorf("--stats-retention: %w", err)
@@ -184,6 +201,7 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 		EngineURL:        pollURL,
 		Endpoint:         reportURL,
 		Engine:           *s.engine,
+		ExtraEngines:     extra,
 		NodeAuthToken:    nodeToken,
 		EngineToken:      engineToken,
 		OnlyModels:       s.onlyModels,

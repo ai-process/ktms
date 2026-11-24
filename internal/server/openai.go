@@ -56,6 +56,7 @@ func (a *OpenAIAPI) Register(mux *http.ServeMux) {
 	image := method(pb.GatewayService_GenerateImage_FullMethodName)
 	judge := method(pb.GatewayService_Judge_FullMethodName)
 	embeddings := method(pb.GatewayService_GetEmbeddings_FullMethodName)
+	translate := method(pb.GatewayService_Translate_FullMethodName)
 	models := method(pb.GatewayService_ListModels_FullMethodName)
 
 	mux.HandleFunc("POST /v1/chat/completions", a.wrap(chat, a.chatCompletions))
@@ -64,6 +65,7 @@ func (a *OpenAIAPI) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/judge", a.wrap(judge, a.judge))
 	mux.HandleFunc("POST /v1/decisions", a.wrap(judge, a.decisions))
 	mux.HandleFunc("POST /v1/embeddings", a.wrap(embeddings, a.embeddings))
+	mux.HandleFunc("POST /v1/translate", a.wrap(translate, a.translate))
 	mux.HandleFunc("POST /v1/decisions/rollouts", a.wrap(judge, a.decisionsRollouts))
 	mux.HandleFunc("GET /v1/models", a.wrap(models, a.listModels))
 	mux.HandleFunc("GET /v1/models/{id...}", a.wrap(models, a.getModel))
@@ -1199,6 +1201,32 @@ func (a *OpenAIAPI) judge(ctx context.Context, w http.ResponseWriter, r *http.Re
 	return nil
 }
 
+// translate takes TranslateRequest as JSON, field names as in the proto.
+func (a *OpenAIAPI) translate(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+	raw, err := io.ReadAll(http.MaxBytesReader(nil, r.Body, maxRequestBytes))
+	if err != nil {
+		return invalid("cannot read body: %v", err)
+	}
+	var req pb.TranslateRequest
+	if err := protojson.Unmarshal(raw, &req); err != nil {
+		return invalid("invalid TranslateRequest: %v", err)
+	}
+	resp, err := a.proxy.Translate(ctx, &req)
+	if err != nil {
+		return err
+	}
+	setResolvedHeaders(w, resp.ResolvedVendor, resp.MatchedRule)
+	setObservabilityHeader(w, "Model", resp.ResolvedModel)
+	out, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(resp)
+	if err != nil {
+		return status.Error(codes.Internal, "cannot encode response")
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(out)
+	return nil
+}
+
 // ---- decisions (OpenAI Decisions API wire format) ----
 
 type decisionsChoiceReq struct {
@@ -2041,6 +2069,8 @@ func apiError(w http.ResponseWriter, err error) (code int, typ, msg string, errC
 		errCode = "guardrail_violation"
 	} else if strings.HasPrefix(msg, "ffmpeg_missing") {
 		errCode = "ffmpeg_missing"
+	} else if reason, _, ok := strings.Cut(msg, ":"); ok && (reason == "no_capable_model" || reason == "unsupported_language_pair") {
+		errCode = reason
 	}
 	if st.Code() == codes.Internal && errCode == nil {
 		msg = "internal error"

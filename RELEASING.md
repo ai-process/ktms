@@ -1,6 +1,6 @@
 # Releasing Keystone. The Model Switchboard. (KTMS)
 
-For maintainers. Versions follow [API stability](README.md#api-stability): a fix is a patch, a
+For maintainers. Versions follow [API stability](docs/stability.md#api-stability): a fix is a patch, a
 feature is a minor, a break of the public API is a major.
 
 ## Steps
@@ -11,7 +11,7 @@ feature is a minor, a break of the public API is a major.
    - set `version` and `appVersion` in [`deploy/helm/ktms/Chart.yaml`](deploy/helm/ktms/Chart.yaml)
      and `version` in [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json) to
      `X.Y.Z`; the release stops when either differs from the tag;
-   - update the pinned versions in examples: `helm install … --version` in the README and
+   - update the pinned versions in examples: `helm install … --version` in [`docs/install.md`](docs/install.md) and
      [`deploy/helm/ktms/README.md`](deploy/helm/ktms/README.md), `V=` in
      [`SECURITY.md`](SECURITY.md#verifying-a-release).
 2. After it is merged, tag main and push the tag:

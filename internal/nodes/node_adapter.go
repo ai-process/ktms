@@ -455,7 +455,7 @@ func (pa *PoolAdapter) acquireSlot(ctx context.Context, userID string, estTokens
 							hasModel = true
 							break
 						}
-					} else if !isJudgeOnly(m.Capabilities) {
+					} else if !servesNoChat(m.Capabilities) {
 						hasModel = true
 						break
 					}

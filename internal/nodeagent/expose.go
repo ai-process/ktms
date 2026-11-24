@@ -61,7 +61,7 @@ func (a *Agent) startExposure(ctx context.Context) (urls <-chan string, stopped 
 	if err != nil {
 		return nil, nil, fmt.Errorf("listen for gateway: %w", err)
 	}
-	gw := NewGateway(a.cfg.EngineURL, key, a.cfg.EngineToken)
+	gw := NewMultiGateway(a.cfg.Engine, a.cfg.EngineURL, a.cfg.ExtraEngines, key, a.cfg.EngineToken)
 	gw.SetAccepting(a.pause.level != 0)
 	a.gateway = gw
 	srv := &http.Server{Handler: gw, ReadHeaderTimeout: 10 * time.Second}

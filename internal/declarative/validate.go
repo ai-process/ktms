@@ -9,10 +9,11 @@ import (
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 	"github.com/ai-process/ktms/internal/apikeys"
 	"github.com/ai-process/ktms/internal/nodeagent"
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 // KeyScopes are the scopes a client key in the file may carry.
-var KeyScopes = []string{apikeys.ScopeGenerate, apikeys.ScopeMCP, apikeys.ScopeAdmin, apikeys.ScopeAdminRead}
+var KeyScopes = []string{apikeys.ScopeGenerate, apikeys.ScopeMCP, apikeys.ScopeAdmin, apikeys.ScopeAdminRead, apikeys.ScopeAgentsRead}
 
 var efforts = []pb.Effort{pb.Effort_EFFORT_LOW, pb.Effort_EFFORT_MEDIUM, pb.Effort_EFFORT_HIGH}
 
@@ -34,6 +35,15 @@ func (c *Config) Validate() error {
 		models[m.GetId()] = true
 		if m.GetVendor() == "" {
 			bad("models[%d] %s: vendor is required", i, m.GetId())
+		}
+		if slices.Contains(m.GetCapabilities(), registry.CapabilityTranslate) &&
+			(len(m.GetLanguages().GetSource()) == 0 || len(m.GetLanguages().GetTarget()) == 0) {
+			bad("models[%d] %s: a translate model declares languages.source and languages.target (\"*\" for any)", i, m.GetId())
+		}
+		for _, l := range append(slices.Clone(m.GetLanguages().GetSource()), m.GetLanguages().GetTarget()...) {
+			if !registry.ValidLanguageTag(l) {
+				bad("models[%d] %s: language %q: want a BCP-47 tag such as de or pt-BR, or *", i, m.GetId(), l)
+			}
 		}
 	}
 
@@ -131,8 +141,10 @@ func (c *Config) Validate() error {
 				bad("api_keys[%d] %s: scope %q is not one of %s", i, k.Name, s, strings.Join(KeyScopes, ", "))
 			}
 		}
-		if slices.Contains(k.Scopes, apikeys.ScopeAdminRead) && (k.Organization != "" || k.Team != "") {
-			bad("api_keys[%d] %s: an admin:read key reads every tenant and cannot belong to an organization or team", i, k.Name)
+		for _, r := range []string{apikeys.ScopeAdminRead, apikeys.ScopeAgentsRead} {
+			if slices.Contains(k.Scopes, r) && (k.Organization != "" || k.Team != "") {
+				bad("api_keys[%d] %s: an %s key reads every tenant and cannot belong to an organization or team", i, k.Name, r)
+			}
 		}
 		if k.Team != "" && k.Organization == "" {
 			bad("api_keys[%d] %s: team %q needs its organization", i, k.Name, k.Team)

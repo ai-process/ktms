@@ -37,6 +37,6 @@ applied, like Terraform. Use it instead of one-off Admin API calls.
 - A team's cap is its `monthly_budget_usd`, not a `spend_limits` entry.
 - In CI, `ktms config plan --detailed-exitcode` exits 3 on drift; an `admin:read` key is enough.
 
-Sources: [Configuration as a file](https://github.com/ai-process/ktms/blob/main/README.md#configuration-as-a-file),
-[Setting it up: keys, models, rules](https://github.com/ai-process/ktms/blob/main/README.md#setting-it-up-keys-models-rules),
-[Command-line tool](https://github.com/ai-process/ktms/blob/main/README.md#command-line-tool).
+Sources: [Configuration as a file](https://github.com/ai-process/ktms/blob/main/docs/configuration.md#configuration-as-a-file),
+[Setting it up: keys, models, rules](https://github.com/ai-process/ktms/blob/main/docs/configuration.md#setting-it-up-keys-models-rules),
+[Command-line tool](https://github.com/ai-process/ktms/blob/main/docs/console-and-cli.md#command-line-tool).

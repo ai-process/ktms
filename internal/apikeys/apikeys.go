@@ -34,7 +34,10 @@ const (
 	ScopeAdmin = "admin"
 	// ScopeAdminRead allows the Admin API reads and nothing that changes state.
 	ScopeAdminRead = "admin:read"
-	ScopeNode      = "node"
+	// ScopeAgentsRead allows reading agents' cards and conversations, messages
+	// included, which admin:read deliberately leaves out.
+	ScopeAgentsRead = "agents:read"
+	ScopeNode       = "node"
 )
 
 // KeyPrefix marks our keys so a leaked string is recognisable in a log scan.
@@ -51,7 +54,7 @@ var (
 )
 
 // ValidScopes is the closed set the admin endpoint accepts.
-var ValidScopes = []string{ScopeGenerate, ScopeMCP, ScopeAdmin, ScopeAdminRead, ScopeNode}
+var ValidScopes = []string{ScopeGenerate, ScopeMCP, ScopeAdmin, ScopeAdminRead, ScopeAgentsRead, ScopeNode}
 
 // Store is the slice of proxydb the verifier needs, so tests can fake it.
 type Store interface {

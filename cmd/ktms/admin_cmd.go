@@ -285,7 +285,7 @@ func (a *app) keysCmd() *cobra.Command {
 		},
 	}
 	outputFlag(mint, &format)
-	mint.Flags().StringSliceVar(&scopes, "scopes", []string{"generate"}, "generate, mcp, admin or admin:read")
+	mint.Flags().StringSliceVar(&scopes, "scopes", []string{"generate"}, "generate, mcp, admin, admin:read or agents:read")
 	mint.Flags().StringVar(&org, "org", "", "organization name")
 	mint.Flags().StringVar(&team, "team", "", "team as org/team")
 	mint.Flags().StringVar(&owner, "owner", "", "the person the key belongs to, an e-mail (an agent's card shows it)")
@@ -833,17 +833,19 @@ func explainRequest(key, effort string, auto bool, attrs map[string]string, plac
 }
 
 func (a *app) routeCmd() *cobra.Command {
-	var effort, placement, model, dataClass, format string
+	var effort, placement, model, dataClass, format, modality, from, to string
 	var auto bool
 	var attrs map[string]string
 	var caps []string
 	explain := &cobra.Command{
-		Use:   "explain CLIENT_KEY [--effort E | --auto] [--attr k=v] [--placement P] [--model M] [--capability C]",
+		Use:   "explain CLIENT_KEY [--effort E | --auto | --modality M] [--attr k=v] [--placement P] [--model M] [--capability C]",
 		Short: "Show where a request with this key would go, and why each model is kept or dropped",
 		Long: `Dry-run routing on the server, on the same code as a real call: the rule a request
 would match and every model of its chain, kept or dropped with the reason
 (no vendor key, key or team policy, capability, placement, circuit open, vendor
-paused, no node). It calls no vendor or judge and spends no limit.`,
+paused, no node, language pair). It calls no vendor or judge and spends no limit.
+--modality routes as that RPC does: translate (with --to and --from), judge,
+tts or image.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			p, err := newPrinter(a.stdout, format)
@@ -853,6 +855,10 @@ paused, no node). It calls no vendor or judge and spends no limit.`,
 			req, err := explainRequest(args[0], effort, auto, attrs, placement, model, caps, dataClass)
 			if err != nil {
 				return err
+			}
+			req.Modality, req.SourceLanguage, req.TargetLanguage = modality, from, to
+			if modality == "translate" && to == "" {
+				return usageError{errors.New("--modality translate needs --to")}
 			}
 			return a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
 				res, err := c.ExplainRoute(ctx, req)
@@ -900,6 +906,10 @@ paused, no node). It calls no vendor or judge and spends no limit.`,
 	f.StringVar(&model, "model", "", "a model override instead of the rules")
 	f.StringSliceVar(&caps, "capability", nil, "capabilities the request needs, e.g. google_search")
 	f.StringVar(&dataClass, "data-classification", "", "restricted: the request stays on self-hosted nodes")
+	f.StringVar(&modality, "modality", "", "translate, judge, tts or image instead of text generation")
+	f.StringVar(&from, "from", "", "translate: source language, empty for detected")
+	f.StringVar(&to, "to", "", "translate: target language")
+	_ = explain.RegisterFlagCompletionFunc("modality", cobra.FixedCompletions([]string{"translate", "judge", "tts", "image"}, cobra.ShellCompDirectiveNoFileComp))
 	_ = explain.RegisterFlagCompletionFunc("effort", cobra.FixedCompletions([]string{"low", "medium", "high"}, cobra.ShellCompDirectiveNoFileComp))
 	outputFlag(explain, &format)
 	cmd := &cobra.Command{Use: "route", Short: "Routing"}

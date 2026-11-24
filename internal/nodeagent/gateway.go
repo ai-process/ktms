@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 const (
@@ -26,9 +28,12 @@ const (
 
 // Gateway is the only door to the engine that the proxy gets: a bearer check
 // plus an allowlist of the routes it needs (/v1/chat/completions, /v1/decisions,
-// /v1/models). Everything else (pull, delete, engine admin APIs) is unreachable.
+// /v1/translate, /v1/models). Everything else (pull, delete, engine admin APIs) is unreachable.
 type Gateway struct {
-	upstream       string
+	upstream       string // the primary engine
+	primary        string // its name
+	extra          []gatewayEngine
+	routes         atomic.Pointer[gatewayRoutes]
 	accessKey      string
 	engineToken    string
 	keepaliveAfter time.Duration
@@ -37,6 +42,15 @@ type Gateway struct {
 	paused         atomic.Bool
 	inflight       sync.Map // id -> context.CancelFunc of each engine request
 	seq            atomic.Uint64
+}
+
+type gatewayEngine struct{ name, base string }
+
+// gatewayRoutes tells which engine serves a model, and which engines the
+// owner paused; set from each inspection.
+type gatewayRoutes struct {
+	byModel map[string]string
+	paused  map[string]bool
 }
 
 // errAborted is the cause of a request the owner cut with CancelInflight.
@@ -73,6 +87,52 @@ func NewGateway(engineURL, accessKey, engineToken string) *Gateway {
 	}
 }
 
+// NewMultiGateway fronts several engines: the primary and extra, routed by
+// the model a request names.
+func NewMultiGateway(primary string, primaryURL string, extra []EngineSpec, accessKey, engineToken string) *Gateway {
+	g := NewGateway(primaryURL, accessKey, engineToken)
+	g.primary = strings.ToLower(primary)
+	for _, e := range extra {
+		g.extra = append(g.extra, gatewayEngine{name: e.Name, base: engineBaseURL(e.URL)})
+	}
+	return g
+}
+
+// SetRoutes replaces the model-to-engine map and the paused engines.
+func (g *Gateway) SetRoutes(byModel map[string]string, paused []string) {
+	rt := &gatewayRoutes{byModel: byModel, paused: map[string]bool{}}
+	for _, p := range paused {
+		rt.paused[p] = true
+	}
+	g.routes.Store(rt)
+}
+
+// pick is the engine for a request: the one serving its model, else for
+// /v1/translate an mt engine, else the primary.
+func (g *Gateway) pick(path, model string) (name, base string) {
+	name = g.primary
+	if rt := g.routes.Load(); rt != nil && rt.byModel[model] != "" {
+		name = rt.byModel[model]
+	} else if path == "/v1/translate" {
+		for _, e := range g.extra {
+			if e.name == registry.EngineMT {
+				name = e.name
+			}
+		}
+	}
+	for _, e := range g.extra {
+		if e.name == name {
+			return name, e.base
+		}
+	}
+	return name, g.upstream
+}
+
+func (g *Gateway) enginePaused(name string) bool {
+	rt := g.routes.Load()
+	return rt != nil && rt.paused[name]
+}
+
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet && r.URL.Path == "/healthz" {
 		_, _ = io.WriteString(w, "ok")
@@ -90,27 +150,36 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var stream bool
 	var body []byte
+	var model string
 	switch {
-	case r.Method == http.MethodPost && (r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/decisions" || r.URL.Path == "/v1/decisions/rollouts"):
+	case r.Method == http.MethodPost && postRoutes[r.URL.Path]:
 		var err error
 		body, err = io.ReadAll(http.MaxBytesReader(w, r.Body, maxGatewayBody))
 		if err != nil {
 			writeGatewayError(w, http.StatusRequestEntityTooLarge, "request body too large or unreadable")
 			return
 		}
-		if r.URL.Path == "/v1/chat/completions" {
-			var probe struct {
-				Stream bool `json:"stream"`
-			}
-			_ = json.Unmarshal(body, &probe) // a malformed body is the engine's to reject
-			stream = probe.Stream
+		var probe struct {
+			Stream bool   `json:"stream"`
+			Model  string `json:"model"`
 		}
+		_ = json.Unmarshal(body, &probe) // a malformed body is the engine's to reject
+		stream = probe.Stream && r.URL.Path == "/v1/chat/completions"
+		model = probe.Model
+	case r.URL.Path == "/v1/models" && r.Method == http.MethodGet && len(g.extra) > 0:
+		g.listModels(w, r)
+		return
 	case r.URL.Path == "/v1/models" && r.Method == http.MethodGet:
-	case r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/models" || r.URL.Path == "/v1/decisions" || r.URL.Path == "/v1/decisions/rollouts":
+	case r.URL.Path == "/v1/models" || postRoutes[r.URL.Path]:
 		writeGatewayError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	default:
 		writeGatewayError(w, http.StatusNotFound, "route not exposed by this node")
+		return
+	}
+	engine, base := g.pick(r.URL.Path, model)
+	if g.enginePaused(engine) {
+		writeGatewayError(w, http.StatusServiceUnavailable, "engine "+engine+" paused by the node's owner")
 		return
 	}
 	if r.Method == http.MethodPost {
@@ -123,7 +192,15 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}()
 		r = r.WithContext(ctx)
 	}
-	g.forward(w, r, body, stream)
+	g.forward(w, r, base, body, stream)
+}
+
+// postRoutes are the engine routes the proxy may POST to.
+var postRoutes = map[string]bool{
+	"/v1/chat/completions":   true,
+	"/v1/decisions":          true,
+	"/v1/decisions/rollouts": true,
+	"/v1/translate":          true,
 }
 
 func (g *Gateway) authorized(r *http.Request) bool {
@@ -139,9 +216,9 @@ type upstreamResult struct {
 // forward relays one request. After keepaliveAfter without an engine answer it
 // commits a 200 and pads the body so idle timeouts hold; a later failure goes
 // in the body, as the status is already sent.
-func (g *Gateway) forward(w http.ResponseWriter, r *http.Request, body []byte, stream bool) {
+func (g *Gateway) forward(w http.ResponseWriter, r *http.Request, base string, body []byte, stream bool) {
 	ctx := r.Context()
-	req, err := http.NewRequestWithContext(ctx, r.Method, g.upstream+r.URL.Path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, r.Method, base+r.URL.Path, bytes.NewReader(body))
 	if err != nil {
 		writeGatewayError(w, http.StatusBadGateway, "bad upstream request")
 		return
@@ -274,4 +351,45 @@ func writeGatewayError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_, _ = w.Write(gatewayErrorBody(msg))
+}
+
+// listModels merges /v1/models of the engines that are not paused; one that
+// fails is left out, and only none answering is an error.
+func (g *Gateway) listModels(w http.ResponseWriter, r *http.Request) {
+	engines := append([]gatewayEngine{{name: g.primary, base: g.upstream}}, g.extra...)
+	data := []json.RawMessage{}
+	answered := 0
+	for _, e := range engines {
+		if g.enginePaused(e.name) {
+			continue
+		}
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, e.base+"/v1/models", nil)
+		if err != nil {
+			continue
+		}
+		if g.engineToken != "" {
+			req.Header.Set("Authorization", "Bearer "+g.engineToken)
+		}
+		resp, err := g.client.Do(req)
+		if err != nil {
+			log.Warn().Err(err).Str("engine", e.name).Msg("gateway: model list failed")
+			continue
+		}
+		var list struct {
+			Data []json.RawMessage `json:"data"`
+		}
+		err = json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&list)
+		resp.Body.Close()
+		if err != nil || resp.StatusCode/100 != 2 {
+			log.Warn().Err(err).Int("status", resp.StatusCode).Str("engine", e.name).Msg("gateway: model list failed")
+			continue
+		}
+		answered++
+		data = append(data, list.Data...)
+	}
+	if answered == 0 {
+		writeGatewayError(w, http.StatusBadGateway, "no engine listed its models")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
 }

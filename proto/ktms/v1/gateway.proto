@@ -183,6 +183,8 @@ message TokensUsage {
   // Parts of input read from and written to the vendor's prompt cache.
   int64 cache_read = 3;
   int64 cache_write = 4;
+  // Source characters (Unicode code points) a Translate call was billed for.
+  int64 characters = 5;
 }
 
 message Choice {
@@ -239,6 +241,16 @@ message ModelInfo {
   // Effective prompt-cache rates, vendor defaults applied.
   double price_cache_read_per_mtok = 10;
   double price_cache_write_per_mtok = 11;
+  ModelLanguages languages = 12; // translate: the pairs the model serves
+  double price_per_million_chars = 13;
+}
+
+// ModelLanguages are the language pairs a translate model serves: any source
+// to any target listed. BCP-47 tags, "*" for any; a translate model must list
+// both. A tag covers its longer variants: "de" takes "de-AT".
+message ModelLanguages {
+  repeated string source = 1;
+  repeated string target = 2;
 }
 
 message ListModelsResponse {
@@ -266,7 +278,7 @@ message GenerateTextStreamRequest {
 // "model access denied by key or team policy" for batches); do not retry.
 // FAILED_PRECONDITION: "output_truncated" (raise max_output_tokens, do not
 // retry as-is), "request_too_large" (above a minute of the key's tpm_limit), "no_capable_model", "no_vendor_key", "not_configured",
-// "batch not configured".
+// "batch not configured", "unsupported_language_pair" (Translate: no model declares the pair).
 // INVALID_ARGUMENT: "guardrail_violation" (PII or prompt injection detected),
 // "bad_request: <message>" (validation errors, empty batch, duplicate custom_id).
 // UNIMPLEMENTED: "ffmpeg_missing: <hint>" (Gemini speech synthesis without ffmpeg).
@@ -294,6 +306,12 @@ service GatewayService {
   // agent evaluation and robotics control loops.
   // Experimental: may change in a 1.x minor release (README, API stability).
   rpc JudgeStream(stream JudgeRequest) returns (stream JudgeResponse);
+  // Translate translates a batch of texts. It routes like Judge: EFFORT_LOW
+  // plus a reserved attributes["modality"] of "translate", chain filtered to
+  // models declaring the "translate" capability and the language pair (see
+  // ModelLanguages). FAILED_PRECONDITION "unsupported_language_pair" when
+  // capable models exist but none serves the pair.
+  rpc Translate(TranslateRequest) returns (TranslateResponse);
   // EvaluateRollouts scores candidate trajectories against state and criteria
   // for speculative decoding and Best-of-N selection.
   // Experimental: may change in a 1.x minor release (README, API stability).
@@ -428,6 +446,29 @@ message GetEmbeddingsRequest {
 message GetEmbeddingsResponse {
   repeated Embedding data = 1;
   TokensUsage usage = 2;
+  string resolved_model = 3;
+  string resolved_vendor = 4;
+  string matched_rule = 5;
+}
+
+message TranslateRequest {
+  repeated string texts = 1; // up to 128 texts, 256 KiB in all; one translation each, same order
+  string source_language = 2; // BCP-47; empty means detect per text
+  string target_language = 3; // BCP-47, required
+  string format = 4; // "text" (default) or "html": tags and attributes are kept, text is translated
+  map<string, string> attributes = 5; // same routing/usage attributes as text
+  string action_id = 6; // defaults to "translate" in usage
+  string model_override = 7; // exact registry model id; bypasses rules
+}
+
+message Translation {
+  string text = 1;
+  string detected_source_language = 2; // the request's source_language when it named one
+}
+
+message TranslateResponse {
+  repeated Translation translations = 1; // one per input text, in order
+  TokensUsage usage = 2; // tokens as the engine counts them, plus source characters
   string resolved_model = 3;
   string resolved_vendor = 4;
   string matched_rule = 5;

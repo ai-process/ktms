@@ -199,3 +199,17 @@ func TestMaxInputCostCoversCacheWrites(t *testing.T) {
 		t.Fatalf("batch write rate = %v, want 1.875", got)
 	}
 }
+
+func TestCostCharacters(t *testing.T) {
+	m := &proxydb.Model{PriceInPerMtok: 1, PricePerMillionChars: 20}
+	usage := llm.TokensUsage{Input: 1000, Characters: 3000}
+	// 1000 tokens at $1/M plus 3000 characters at $20/M, at every mode alike.
+	for _, mode := range []Mode{ModeStandard, ModePeak} {
+		if got := Cost(m, usage, mode); got != 1_000_000+60_000_000 {
+			t.Errorf("mode %d: cost = %d", mode, got)
+		}
+	}
+	if got := Cost(m, llm.TokensUsage{Characters: -5}, ModeStandard); got != 0 {
+		t.Errorf("negative characters cost %d", got)
+	}
+}

@@ -73,6 +73,10 @@ const CapabilityNoThinking = "no_thinking"
 // prompt: worth it for long instructions that repeat across calls.
 const CapabilityPromptCache = "prompt_cache"
 
+// EngineMT is the node engine name of a machine-translation server speaking
+// KTMS's MT contract (GET /v1/models, POST /v1/translate), such as ktms-mt.
+const EngineMT = "mt"
+
 // EngineFreeToken is the node engine name of a FreeToken server (`ft serve`).
 const EngineFreeToken = "freetoken"
 
@@ -104,6 +108,10 @@ const (
 // text. Opt-in like the other modalities: a judge chain keeps only models that
 // declare it, so a chat model can never be handed a judgment.
 const CapabilityJudge = "judge"
+
+// CapabilityTranslate marks models that serve Translate: MT engines natively,
+// chat models through a prompt. Their languages narrow which pairs they take.
+const CapabilityTranslate = "translate"
 
 // CapabilityEmbedding marks models that compute text vector embeddings.
 const CapabilityEmbedding = "embedding"

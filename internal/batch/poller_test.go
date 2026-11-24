@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
+
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
 	"github.com/ai-process/ktms/internal/llm"
 	"github.com/ai-process/ktms/internal/proxydb"
 	"github.com/ai-process/ktms/internal/registry"
@@ -205,7 +208,7 @@ func TestPoller_ProcessSucceededBatch(t *testing.T) {
 		VendorJobName: "vendor-job-100",
 		State:         "RUNNING",
 		// A batch stored before team_id was reserved may carry a caller's own.
-		Attributes: map[string]string{"env": "prod", "user_id": "u-42", "team_id": "forged"},
+		Attributes: map[string]string{"env": "prod", "user_id": "u-42", "team_id": "forged", proxydb.BatchRuleAttribute: "batch-rule"},
 		ActionID:   "test.batch_action",
 		TeamID:     "team-real",
 	}
@@ -237,6 +240,13 @@ func TestPoller_ProcessSucceededBatch(t *testing.T) {
 	ev1 := tracker.recordedEvents[0]
 	if ev1.userID != "u-42" || ev1.actionID != "test.batch_action" || ev1.inputTokens != 100 || ev1.outputTokens != 50 {
 		t.Fatalf("unexpected event 1: %+v", ev1)
+	}
+	if ev1.meta["rule"] != "batch-rule" || ev1.meta[proxydb.BatchRuleAttribute] != "" {
+		t.Fatalf("event 1 rule meta: %+v", ev1.meta)
+	}
+	var res pb.GenerateTextResponse
+	if err := protojson.Unmarshal(db.items["b-100"][0].Result, &res); err != nil || res.GetMatchedRule() != "batch-rule" {
+		t.Fatalf("item result rule = %q, %v", res.GetMatchedRule(), err)
 	}
 	if ev1.meta["batch_id"] != "b-100" || ev1.meta["custom_id"] != "c1" || ev1.meta["env"] != "prod" || ev1.meta["team_id"] != "team-real" {
 		t.Fatalf("unexpected event 1 meta: %+v", ev1.meta)
@@ -447,5 +457,20 @@ func TestPoller_Cleanup(t *testing.T) {
 	}
 	if db.deletedOlder.IsZero() {
 		t.Fatal("expected cutoff time passed to DeleteBatchesOlderThan")
+	}
+}
+
+// A batch stored before the rule was kept names none, and a caller's own
+// "rule" attribute never reaches usage as the rule.
+func TestPoller_BatchWithoutStoredRule(t *testing.T) {
+	m := &proxydb.Model{ID: "gemini-flash", Vendor: registry.VendorGoogle}
+	tracker := &fakeUsageTracker{}
+	p := &Poller{tracker: tracker}
+	p.emitUsage(&proxydb.Batch{ID: "b-old", Attributes: map[string]string{"rule": "forged", "env": "prod"}}, m, "c1", llm.TokensUsage{}, usagev1.Status_STATUS_SUCCESS, "")
+	if len(tracker.recordedEvents) != 1 {
+		t.Fatalf("events = %d", len(tracker.recordedEvents))
+	}
+	if meta := tracker.recordedEvents[0].meta; meta["rule"] != "" || meta["env"] != "prod" {
+		t.Fatalf("meta = %+v", meta)
 	}
 }

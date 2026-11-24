@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -54,6 +55,15 @@ func (s *AdminServer) SetAgentRecording(ctx context.Context, req *pb.SetAgentRec
 }
 
 func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasksRequest) (*pb.ListAgentTasksResponse, error) {
+	statuses, err := taskStatuses(req.GetStatuses(), req.GetOpenOnly())
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range req.GetReasonCodes() {
+		if !slices.Contains(proxydb.ReasonCodes, r) {
+			return nil, status.Errorf(codes.InvalidArgument, "reason code %q: want one of %s", r, strings.Join(proxydb.ReasonCodes, ", "))
+		}
+	}
 	// Every key the name has had: a revoked key's tasks stay auditable by name.
 	keys, err := s.db.AgentKeysByName(ctx, agentName(req.GetAgent()))
 	if err != nil {
@@ -62,11 +72,12 @@ func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasks
 	if len(keys) == 0 {
 		return nil, status.Errorf(codes.NotFound, "no agent %q", req.GetAgent())
 	}
-	f := proxydb.TaskFilter{Agents: keys, Limit: int(req.GetLimit())}
-	if req.GetOpenOnly() {
-		f.Statuses = proxydb.TaskOpenStatuses
+	// An empty filter means every status, so open_only with only ended statuses must match nothing.
+	if req.GetOpenOnly() && len(statuses) == 0 {
+		return &pb.ListAgentTasksResponse{}, nil
 	}
-	tasks, err := s.db.ListAgentTasks(ctx, f)
+	tasks, err := s.db.ListAgentTasks(ctx, proxydb.TaskFilter{Agents: keys, Statuses: statuses, ReasonCodes: req.GetReasonCodes(), Limit: int(req.GetLimit()),
+		ExternalRef: strings.TrimSpace(req.GetExternalRef()), Pinned: pinnedSide(req.GetPinnedOnly())})
 	if err != nil {
 		return nil, dbStatus(err)
 	}
@@ -75,6 +86,34 @@ func (s *AdminServer) ListAgentTasks(ctx context.Context, req *pb.ListAgentTasks
 		out.Tasks = append(out.Tasks, taskProto(t))
 	}
 	return out, nil
+}
+
+// taskStatuses is the status filter of a listing, empty for any status; with
+// openOnly, the open ones among those requested, which may be none.
+func taskStatuses(requested []string, openOnly bool) ([]string, error) {
+	var out []string
+	for _, st := range requested {
+		st = strings.ToLower(strings.TrimSpace(st))
+		if !proxydb.ValidTaskStatus(st) {
+			return nil, status.Errorf(codes.InvalidArgument, "status %q: want one of %s", st, strings.Join(proxydb.TaskStatuses, ", "))
+		}
+		if !slices.Contains(out, st) {
+			out = append(out, st)
+		}
+	}
+	if !openOnly {
+		return out, nil
+	}
+	if len(out) == 0 {
+		out = proxydb.TaskStatuses
+	}
+	var open []string
+	for _, st := range out {
+		if !proxydb.TaskTerminal(st) {
+			open = append(open, st)
+		}
+	}
+	return open, nil
 }
 
 // adminTaskWindow bounds each of a task's first message and its newest ones, so
@@ -102,11 +141,68 @@ func (s *AdminServer) GetAgentTask(ctx context.Context, req *pb.GetAgentTaskRequ
 func taskProto(t *proxydb.AgentTask) *pb.AgentTask {
 	out := &pb.AgentTask{
 		TaskId: t.ID, ContextId: t.ContextID, From: t.FromName, To: t.ToName, Status: t.Status,
-		StatusReason: t.StatusReason, Depth: t.Depth, OmittedMessages: int32(t.Omitted),
+		StatusReason: t.StatusReason, ReasonCode: t.ReasonCode, Depth: t.Depth, AnsweredBy: agents.AnsweredBy(t),
+		ExternalRef: t.ExternalRef, PinnedBy: agents.PinnedBy(t), OmittedMessages: int32(t.Omitted),
 		CreatedAt: timestamppb.New(t.CreatedAt), UpdatedAt: timestamppb.New(t.UpdatedAt),
 	}
 	for _, m := range t.Messages {
-		out.Messages = append(out.Messages, &pb.AgentMessage{From: m.FromName, Role: m.Role, Text: m.Text, CreatedAt: timestamppb.New(m.CreatedAt)})
+		out.Messages = append(out.Messages, &pb.AgentMessage{From: m.FromName, Role: m.Role, Text: m.Text, CreatedAt: timestamppb.New(m.CreatedAt),
+			Author: m.Author, Correction: m.Correction})
 	}
 	return out
+}
+
+// OwnerReplier is the slice of the agents service ReplyAgentTask needs.
+type OwnerReplier interface {
+	AsOwner(ctx context.Context, name, owner string) (*proxydb.Agent, error)
+	OwnerReply(ctx context.Context, me *proxydb.Agent, taskID, text, status string) (*proxydb.AgentTask, error)
+	OwnerCorrect(ctx context.Context, me *proxydb.Agent, taskID, text string) (*proxydb.AgentTask, error)
+}
+
+// SetAgents lets ReplyAgentTask answer; without it the inbox is off.
+func (s *AdminServer) SetAgents(a OwnerReplier) { s.agents = a }
+
+func (s *AdminServer) ReplyAgentTask(ctx context.Context, req *pb.ReplyAgentTaskRequest) (*pb.AgentTask, error) {
+	if s.agents == nil {
+		return nil, status.Error(codes.FailedPrecondition, "the agents' inbox is off (AGENTS_ENABLED=false)")
+	}
+	if strings.TrimSpace(req.GetOwner()) == "" || req.GetAgent() == "" || req.GetTaskId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "agent, owner and task_id are required")
+	}
+	me, err := s.agents.AsOwner(ctx, req.GetAgent(), req.GetOwner())
+	if errors.Is(err, agents.ErrInvalid) {
+		return nil, status.Errorf(codes.NotFound, "no agent %q of %s", req.GetAgent(), req.GetOwner())
+	}
+	if err != nil {
+		return nil, dbStatus(err)
+	}
+	var t *proxydb.AgentTask
+	if req.GetCorrection() {
+		if req.GetStatus() != "" {
+			return nil, status.Error(codes.InvalidArgument, "a correction keeps the task's status: leave status empty")
+		}
+		t, err = s.agents.OwnerCorrect(ctx, me, req.GetTaskId(), req.GetText())
+	} else {
+		t, err = s.agents.OwnerReply(ctx, me, req.GetTaskId(), req.GetText(), req.GetStatus())
+	}
+	switch {
+	case errors.Is(err, agents.ErrInvalid):
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	case errors.Is(err, agents.ErrDenied):
+		return nil, status.Error(codes.PermissionDenied, err.Error())
+	case err != nil:
+		return nil, dbStatus(err)
+	}
+	// The console shows the conversation it answered; the service returns none.
+	if err := s.db.WithAgentMessages(ctx, []*proxydb.AgentTask{t}, adminTaskWindow); err != nil {
+		return nil, dbStatus(err)
+	}
+	return taskProto(t), nil
+}
+
+func pinnedSide(only bool) string {
+	if only {
+		return proxydb.PinnedEither
+	}
+	return ""
 }

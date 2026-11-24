@@ -58,6 +58,16 @@ type tray struct {
 	p5, p10, p30, untilNext, limit, stop, resume   *systray.MenuItem
 	l50, l30, l10, lOther                          *systray.MenuItem
 	ktms, schedule, stats, settings, openLog, quit *systray.MenuItem
+	engineSep                                      *systray.MenuItem
+	engines                                        [nodetray.MaxEngines]engineItem
+}
+
+// engineItem is a fixed menu slot for one engine: systray cannot insert items
+// later, so the slots are made up front and hidden while unused.
+type engineItem struct {
+	line, toggle *systray.MenuItem
+	name         string
+	paused       bool
 }
 
 func (t *tray) onReady() {
@@ -81,6 +91,16 @@ func (t *tray) onReady() {
 	t.lOther = t.limit.AddSubMenuItem("Other…", "")
 	t.stop = systray.AddMenuItem("Stop now", "Cut the requests running now; their callers get an error")
 	t.resume = systray.AddMenuItem("Resume schedule", "")
+	t.engineSep = systray.AddMenuItem("Engines", "")
+	t.engineSep.Disable()
+	for i := range t.engines {
+		e := &t.engines[i]
+		e.line = systray.AddMenuItem("", "")
+		e.toggle = e.line.AddSubMenuItem("", "The node and its other engines keep serving")
+		e.line.Hide()
+		go t.engineClicks(i)
+	}
+	t.engineSep.Hide()
 	systray.AddSeparator()
 	t.ktms = systray.AddMenuItemCheckbox("Schedule set by KTMS", "KTMS sets the schedule and load; the local schedule is ignored", false)
 	t.schedule = systray.AddMenuItem("Schedule…", "")
@@ -173,6 +193,40 @@ func (t *tray) render() {
 		t.ktms.Check()
 	} else {
 		t.ktms.Uncheck()
+	}
+	sep := ""
+	if len(v.Engines) > 0 {
+		sep = "Engines"
+	}
+	setOptional(t.engineSep, sep)
+	t.mu.Lock()
+	for i := range t.engines {
+		e := &t.engines[i]
+		if i >= len(v.Engines) {
+			e.name = ""
+			e.line.Hide()
+			continue
+		}
+		l := v.Engines[i]
+		e.name, e.paused = l.Name, l.Paused
+		e.line.SetTitle(l.Title)
+		e.toggle.SetTitle(l.Action)
+		e.line.Show()
+	}
+	t.mu.Unlock()
+}
+
+// engineClicks pauses or resumes the engine in slot i.
+func (t *tray) engineClicks(i int) {
+	e := &t.engines[i]
+	for range e.toggle.ClickedCh {
+		t.mu.Lock()
+		name, paused := e.name, e.paused
+		t.mu.Unlock()
+		if name == "" {
+			continue
+		}
+		t.call(func(ctx context.Context) error { _, err := t.client.PauseEngine(ctx, name, !paused); return err })
 	}
 }
 

@@ -37,6 +37,10 @@ message ModelSpec {
   // and 1.25x to write, bedrock 0.25x and 1.25x, any other vendor 1x.
   double price_cache_read_per_mtok = 19;
   double price_cache_write_per_mtok = 20;
+  // Translate models: the language pairs served (required, "*" for any) and a
+  // price per million source characters, added to any token price.
+  ModelLanguages languages = 21;
+  double price_per_million_chars = 22;
 }
 
 message RuleSpec {
@@ -113,7 +117,7 @@ message GetConfigResponse {
 
 message MintAPIKeyRequest {
   string name = 1;
-  repeated string scopes = 2; // "generate" | "mcp" | "admin" | "admin:read"
+  repeated string scopes = 2; // "generate" | "mcp" | "admin" | "admin:read" | "agents:read"
   string org_id = 3;
   string team_id = 4;
   APIKeyPolicy policy = 5;
@@ -624,8 +628,13 @@ service AdminService {
   // SetAgentRecording sets how much of an agent's conversations the journal keeps.
   rpc SetAgentRecording(SetAgentRecordingRequest) returns (SetAgentRecordingResponse);
   rpc ListAgentTasks(ListAgentTasksRequest) returns (ListAgentTasksResponse);
-  // GetAgentTask returns the messages too, so it needs the admin scope.
+  // GetAgentTask returns the messages too, so it needs "agents:read" (or
+  // "admin"); ListAgents and ListAgentTasks accept it besides "admin:read".
   rpc GetAgentTask(GetAgentTaskRequest) returns (AgentTask);
+  // ReplyAgentTask answers a task, or corrects the answer of an ended one, as
+  // the owner of one of its agents: the console's self-service page calls it
+  // for the signed-in person. owner must be the owner of the agent's key.
+  rpc ReplyAgentTask(ReplyAgentTaskRequest) returns (AgentTask);
 }
 
 message ExplainRouteRequest {
@@ -637,6 +646,11 @@ message ExplainRouteRequest {
   string model_override = 6; // as in GenerateTextRequest
   repeated string capabilities = 7; // capabilities the request needs, e.g. "google_search"
   string data_classification = 8; // as in GenerateTextRequest
+  // A modality other than text, e.g. "translate": routes as that RPC does, by
+  // its modality rule and capability; effort and auto_route are ignored.
+  string modality = 9;
+  string source_language = 10; // translate: the pair to filter the chain by
+  string target_language = 11;
 }
 
 message RouteCandidate {
@@ -644,7 +658,7 @@ message RouteCandidate {
   string vendor = 2;
   // Why the model was dropped, empty if it stays: not_found, effort, capability, no_vendor_key,
   // key_policy, team_policy, placement, circuit_open, vendor_paused (paused_for),
-  // node_unavailable, node_pool_disabled. New reasons may appear.
+  // node_unavailable, node_pool_disabled, language_pair. New reasons may appear.
   string dropped = 3;
   google.protobuf.Duration paused_for = 4; // vendor_paused: until the vendor's Retry-After ends
 }
@@ -700,6 +714,15 @@ message ListAgentTasksRequest {
   string agent = 1; // tasks agents of this name sent or received, revoked keys' included; required
   bool open_only = 2; // submitted, working and input-required only
   int32 limit = 3; // default 100, at most 500
+  // Only tasks in these statuses (submitted, working, input-required, completed,
+  // failed, canceled); empty for all, an unknown one is INVALID_ARGUMENT. With
+  // open_only, the statuses that are both listed and open.
+  repeated string statuses = 4;
+  // Only tasks waiting for these reasons (question, guardrail_hold,
+  // needs_owner); empty for any, an unknown one is INVALID_ARGUMENT.
+  repeated string reason_codes = 5;
+  string external_ref = 6; // only tasks tied to this issue, exact match
+  bool pinned_only = 7; // only tasks pinned by either side
 }
 
 message AgentMessage {
@@ -707,6 +730,20 @@ message AgentMessage {
   string role = 2; // user: the task's sender; agent: its recipient
   string text = 3;
   google.protobuf.Timestamp created_at = 4;
+  string author = 5; // agent, or owner when the agent's person wrote it
+  bool correction = 6; // amends the answer after the task ended
+}
+
+message ReplyAgentTaskRequest {
+  string agent = 1; // the agent the owner speaks for: the task's sender or recipient
+  string owner = 2; // the signed-in person; must own the agent's key
+  string task_id = 3;
+  string text = 4;
+  // As the reply tool: the recipient's side sets working, input-required,
+  // completed (default) or failed, the sender's side working or canceled.
+  string status = 5;
+  // Amend the answer of an ended task the agent received; status stays.
+  bool correction = 6;
 }
 
 // AgentTask follows A2A: status is submitted, working, input-required,
@@ -722,9 +759,16 @@ message AgentTask {
   google.protobuf.Timestamp created_at = 8;
   google.protobuf.Timestamp updated_at = 9;
   repeated AgentMessage messages = 10; // GetAgentTask only
+  // Why an input-required task waits: question (for its sender), guardrail_hold
+  // (a guardrail holds it for the recipient's person) or needs_owner (the
+  // recipient's agent asks its own person).
+  string reason_code = 11;
+  string answered_by = 12; // ended tasks: agent or owner, who gave the latest answer
+  string external_ref = 13; // the issue elsewhere it is about, such as PROJ-123 or a URL
+  repeated string pinned_by = 14; // agents that pinned it past the retention sweep
   // GetAgentTask keeps the first message and the newest within about 2 MiB, so the
   // response fits a default gRPC client; this counts the messages left out between them.
-  int32 omitted_messages = 11;
+  int32 omitted_messages = 15;
 }
 
 message ListAgentTasksResponse {

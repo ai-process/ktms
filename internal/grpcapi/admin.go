@@ -40,6 +40,7 @@ type AdminServer struct {
 	nodeMgr  *nodes.Manager
 	explain  RouteExplainer
 	mcpTools MCPToolLister
+	agents   OwnerReplier
 	// onChange is called after a successful config mutation so this replica
 	// picks the change up immediately instead of waiting for the poll.
 	onChange func()
@@ -376,8 +377,10 @@ func (s *AdminServer) MintAPIKey(ctx context.Context, req *pb.MintAPIKeyRequest)
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	// The admin reads are not filtered by tenant, so a tenant on a read key would mislead.
-	if slices.Contains(scopes, apikeys.ScopeAdminRead) && (req.GetOrgId() != "" || req.GetTeamId() != "") {
-		return nil, status.Error(codes.InvalidArgument, "an admin:read key reads every tenant and cannot belong to an organization or team")
+	for _, r := range []string{apikeys.ScopeAdminRead, apikeys.ScopeAgentsRead} {
+		if slices.Contains(scopes, r) && (req.GetOrgId() != "" || req.GetTeamId() != "") {
+			return nil, status.Errorf(codes.InvalidArgument, "an %s key reads every tenant and cannot belong to an organization or team", r)
+		}
 	}
 	allowed, rpm, tpm, err := keyPolicy(req.GetPolicy())
 	if err != nil {

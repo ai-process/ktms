@@ -790,5 +790,7 @@ func modelInfo(m *proxydb.Model) *pb.ModelInfo {
 		PriceOutBatchPerMtok:   m.BatchPriceOutPerMtok(),
 		PriceCacheReadPerMtok:  m.CacheReadPerMtok(),
 		PriceCacheWritePerMtok: m.CacheWritePerMtok(),
+		Languages:              modelLanguages(m),
+		PricePerMillionChars:   m.PricePerMillionChars,
 	}
 }

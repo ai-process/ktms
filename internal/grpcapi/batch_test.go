@@ -214,7 +214,7 @@ func TestSubmitBatch_SuccessAndIdempotency(t *testing.T) {
 			{CustomId: "c1", Request: &pb.GenerateTextRequest{Messages: []*pb.ChatMessage{{Text: "first"}}}},
 			{CustomId: "c2", Request: &pb.GenerateTextRequest{Messages: []*pb.ChatMessage{{Text: "second"}}}},
 		},
-		Attributes: map[string]string{"env": "test"},
+		Attributes: map[string]string{"env": "test", proxydb.BatchRuleAttribute: "forged"},
 	}
 
 	res1, err := server.SubmitBatch(ctx, req)
@@ -236,6 +236,9 @@ func TestSubmitBatch_SuccessAndIdempotency(t *testing.T) {
 	}
 
 	batchID := res1.GetBatch().GetId()
+	if got := store.batches[batchID].Attributes[proxydb.BatchRuleAttribute]; got != "default-batch" {
+		t.Fatalf("stored rule = %q, want default-batch", got)
+	}
 
 	// Verify adapter received submission
 	if len(adapter.submitted) != 2 {

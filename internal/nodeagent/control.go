@@ -55,6 +55,7 @@ func DefaultControlSocket() string {
 type ctlCmd struct {
 	run   func() (any, error)
 	reply chan ctlReply
+	beat  bool // tell the proxy at once, even if the level did not change
 }
 
 type ctlReply struct {
@@ -66,7 +67,10 @@ var errAgentBusy = errors.New("the agent is not serving yet (still registering w
 
 // do hands fn to Run's goroutine and waits for its answer.
 func (a *Agent) do(ctx context.Context, fn func() (any, error)) (any, error) {
-	c := ctlCmd{run: fn, reply: make(chan ctlReply, 1)}
+	return a.doCmd(ctx, ctlCmd{run: fn, reply: make(chan ctlReply, 1)})
+}
+
+func (a *Agent) doCmd(ctx context.Context, c ctlCmd) (any, error) {
 	t := time.NewTimer(ctlTimeout)
 	defer t.Stop()
 	select {
@@ -96,7 +100,7 @@ func (a *Agent) runCommand(c ctlCmd, beat func()) {
 	}
 	a.publish()
 	c.reply <- ctlReply{v, err}
-	if changed {
+	if changed || (c.beat && err == nil) {
 		beat()
 		a.publish()
 	}
@@ -178,6 +182,8 @@ func (a *Agent) controlHandler() http.Handler {
 	mux.HandleFunc("GET /v1/stats", a.handleStats)
 	mux.HandleFunc("GET /v1/settings", a.handleGetSettings)
 	mux.HandleFunc("PUT /v1/settings", a.handlePutSettings)
+	mux.HandleFunc("POST /v1/engines/{name}/pause", a.handleEnginePause(true))
+	mux.HandleFunc("DELETE /v1/engines/{name}/pause", a.handleEnginePause(false))
 	return ownerOnly(mux)
 }
 
@@ -496,4 +502,18 @@ func (a *Agent) handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, rep)
+}
+
+// handleEnginePause pauses or resumes one engine of a node with several, and
+// sends a heartbeat at once so the proxy stops or starts routing its models.
+func (a *Agent) handleEnginePause(paused bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("name")
+		c := ctlCmd{run: func() (any, error) { return nil, a.setEnginePaused(name, paused) }, reply: make(chan ctlReply, 1), beat: true}
+		if _, err := a.doCmd(r.Context(), c); err != nil {
+			writeCtlError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, a.status.get())
+	}
 }

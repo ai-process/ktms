@@ -110,6 +110,7 @@ func TestParseRejects(t *testing.T) {
 		"team needs org":  {head + "api_keys:\n  - {name: k, team: t}\n", "needs its organization"},
 		"bad scope":       {head + "api_keys:\n  - {name: k, scopes: [root]}\n", `scope "root"`},
 		"tenant reader":   {head + "organizations: [{name: o}]\napi_keys:\n  - {name: k, scopes: [\"admin:read\"], organization: o}\n", "cannot belong"},
+		"tenant auditor":  {head + "organizations: [{name: o}]\napi_keys:\n  - {name: k, scopes: [\"agents:read\"], organization: o}\n", "cannot belong"},
 		"vk no env":       {head + "vendor_keys:\n  - {api_key_name: k, vendor: openai}\n", "plain_key_env"},
 		"vk unknown key":  {head + "api_keys: []\nvendor_keys:\n  - {api_key_name: k, vendor: openai, plain_key_env: X}\n", `api key "k" is not in api_keys`},
 		"empty":           {"", "empty configuration"},

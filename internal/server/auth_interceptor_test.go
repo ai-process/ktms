@@ -202,7 +202,11 @@ func TestAdminReadKeyOnlyReads(t *testing.T) {
 	for _, m := range desc.Methods {
 		full := "/" + desc.ServiceName + "/" + m.MethodName
 		read := slices.Contains(adminReads, m.MethodName)
-		if want := map[bool]string{true: apikeys.ScopeAdminRead, false: apikeys.ScopeAdmin}[read]; methodScopes[full] != want {
+		want := map[bool]string{true: apikeys.ScopeAdminRead, false: apikeys.ScopeAdmin}[read]
+		if m.MethodName == "GetAgentTask" {
+			want = apikeys.ScopeAgentsRead
+		}
+		if methodScopes[full] != want {
 			t.Errorf("%s scope = %q, want %q", full, methodScopes[full], want)
 		}
 		_, err := callWithKey(t, v, full, "Bearer "+reader)
@@ -218,5 +222,25 @@ func TestAdminReadKeyOnlyReads(t *testing.T) {
 	}
 	if _, err := callWithKey(t, v, method(pb.GatewayService_GenerateText_FullMethodName), "Bearer "+reader); status.Code(err) != codes.PermissionDenied {
 		t.Errorf("GenerateText with a read key: code = %v, want PermissionDenied", status.Code(err))
+	}
+}
+
+// An agents:read key reads the agents and their conversations and nothing else.
+func TestAgentsReadKey(t *testing.T) {
+	store := &fakeStore{rows: map[string]*proxydb.APIKey{}}
+	reader := mintKey(t, store, "auditor", apikeys.ScopeAgentsRead)
+	v := apikeys.NewVerifier(store, "")
+	reads := []string{"ListAgents", "ListAgentTasks", "GetAgentTask"}
+
+	desc := pb.AdminService_ServiceDesc
+	for _, m := range desc.Methods {
+		full := "/" + desc.ServiceName + "/" + m.MethodName
+		_, err := callWithKey(t, v, full, "Bearer "+reader)
+		if slices.Contains(reads, m.MethodName) && err != nil {
+			t.Errorf("%s refused for an agents:read key: %v", full, err)
+		}
+		if !slices.Contains(reads, m.MethodName) && status.Code(err) != codes.PermissionDenied {
+			t.Errorf("%s with an agents:read key: code = %v, want PermissionDenied", full, status.Code(err))
+		}
 	}
 }

@@ -279,7 +279,7 @@ func (p *Poller) completeBatch(
 				},
 				ResolvedModel:  m.ID,
 				ResolvedVendor: m.Vendor,
-				MatchedRule:    b.Attributes["matched_rule"],
+				MatchedRule:    b.Attributes[proxydb.BatchRuleAttribute],
 			}
 			resBytes, _ := protojson.Marshal(respProto)
 			itemUpdate.Result = resBytes
@@ -368,6 +368,13 @@ func (p *Poller) emitUsage(
 	if b.TeamID != "" {
 		meta["team_id"] = b.TeamID
 	}
+	// rule is the proxy's, never a caller's attribute; a batch stored before
+	// the rule was kept has none.
+	delete(meta, "rule")
+	if rule := meta[proxydb.BatchRuleAttribute]; rule != "" {
+		meta["rule"] = rule
+	}
+	delete(meta, proxydb.BatchRuleAttribute)
 	meta["batch_id"] = b.ID
 	meta["custom_id"] = customID
 	if errReason != "" {

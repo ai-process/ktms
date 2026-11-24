@@ -70,6 +70,25 @@ eq "unit env read back" "/home/a/.llm-proxy-node/models" "$(unit service_env "${
 eq "absent flag reads empty" "" "$(unit service_arg "${TMPDIR:-/tmp}/it.$$.service" --model)"
 rm -f "${TMPDIR:-/tmp}/it.$$.plist" "${TMPDIR:-/tmp}/it.$$.service"
 has "--purge-backups needs --uninstall" "only goes with --uninstall" "$(parse --proxy p --node-id n --model m --purge-backups)"
+has "bad engine" "--engine must be ollama, mt or ollama,mt" "$(parse --proxy p --node-id n --model m --engine vllm)"
+eq "mt engine flags" "--engine mt --engine-url http://127.0.0.1:11436 --only-model opus-mt-de" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; ENGINE=mt MODEL=opus-mt-de; engine_args)"
+eq "ollama engine flags" "--engine ollama --engine-url http://127.0.0.1:11435 --only-model gemma" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; ENGINE=ollama MODEL=gemma; engine_args)"
+eq "both engines flags" "--engine ollama --engine-url http://127.0.0.1:11435 --extra-engine mt=http://127.0.0.1:11436 --only-model gemma --only-model opus-mt-de" \
+	"$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; ENGINE=ollama,mt MODEL=gemma MT_MODEL=opus-mt-de; engine_args)"
+eq "both engines run ollama" "yes" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; ENGINE=ollama,mt; has_engine ollama && echo yes)"
+eq "both engines run mt" "yes" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; ENGINE=ollama,mt; has_engine mt && echo yes)"
+eq "ollama alone runs no mt" "no" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; ENGINE=ollama; has_engine mt || echo no)"
+# shellcheck disable=SC2030 # each $(...) sets its own ENGINE on purpose
+eq "ollama beside mt keeps a slot for translation" "OLLAMA_NUM_PARALLEL=1" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; ENGINE=ollama,mt MAXC=2 CTX=8192; ollama_env | grep PARALLEL)"
+# shellcheck disable=SC2031 # parse_args sets ENGINE in this same subshell
+eq "--engine mt,ollama is ollama,mt" "ollama,mt" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; parse_args --proxy p --node-id n --model gemma --engine mt,ollama; echo "$ENGINE")"
+eq "--mt-model needs both engines" "1" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; if (parse_args --proxy p --node-id n --model gemma --engine ollama --mt-model opus-mt-de) >/dev/null 2>&1; then echo 0; else echo 1; fi)"
+eq "mt launch agent label" "com.ktms.mt" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; OS=darwin; svc_label mt)"
+eq "mt systemd unit" "ktms-mt" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; OS=linux; svc_label mt)"
+eq "ollama launch agent label" "com.ktms.ollama" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; OS=darwin; svc_label ollama)"
+has "uninstall removes the mt service" 'for id in node ollama mt' "$(sed -n '/^do_uninstall()/,/^}/p' "$SCRIPT")"
+has "mt service env" "KTMS_MT_CONFIG=/b/mt/config.toml" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; BASE=/b; mt_env)"
+has "mt pip source from the release" "ktms-mt[convert] @ https://github.com/ai-process/ktms/archive/refs/tags/v1.6.0.tar.gz#subdirectory=mt" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; AGENT_TAG=v1.6.0; mt_source)"
 
 # print_status shows the newest address: re-registration follows a tunnel restart
 psdir="${TMPDIR:-/tmp}/it.$$.status"

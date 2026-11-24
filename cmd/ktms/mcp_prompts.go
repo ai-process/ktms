@@ -9,14 +9,14 @@ import (
 )
 
 // Prompts are the docs' integration prompts recast for these tools. They link
-// the README of this version rather than repeat it, so they do not go stale.
+// the docs of this version rather than repeat them, so they do not go stale.
 type mcpPrompt struct {
 	name, title, desc string
 	args              []*mcp.PromptArgument
 	text              func(args map[string]string, write bool) string
 }
 
-const readme = "https://github.com/ai-process/ktms/blob/main/README.md"
+const docs = "https://github.com/ai-process/ktms/blob/main/docs/"
 
 var mcpPrompts = []mcpPrompt{
 	{
@@ -39,7 +39,7 @@ var mcpPrompts = []mcpPrompt{
 			} else {
 				s += "4. This server is read-only: give the user the file and the plan, to apply with `ktms config apply -f FILE`.\n"
 			}
-			return s + "\nRules and fallbacks: " + readme + "#setting-it-up-keys-models-rules\n\nRequirements:\n" + args["requirements"]
+			return s + "\nRules and fallbacks: " + docs + "configuration.md#setting-it-up-keys-models-rules\n\nRequirements:\n" + args["requirements"]
 		},
 	},
 	{
@@ -64,8 +64,8 @@ Language: %s
    Send attributes the rules match on, and user ids for per-user limits.
 4. Show how to read X-KTMS-Rule, X-KTMS-Model and X-KTMS-Vendor to see where a call went.
 
-Calling Keystone: %s#calling-keystone
-OpenAI-compatible API: %s#openai-compatible-http-api`, args["service"], or(args["language"], "the service's own"), key, readme, readme)
+Calling Keystone: %sgrpc-api.md#calling-keystone
+OpenAI-compatible API: %shttp-api.md#openai-compatible-http-api`, args["service"], or(args["language"], "the service's own"), key, docs, docs)
 		},
 	},
 	{
@@ -85,7 +85,7 @@ OpenAI-compatible API: %s#openai-compatible-http-api`, args["service"], or(args[
    of vendor local plus a rule that uses it first, as a config_plan if write tools are offered.
 4. After it starts, list_nodes should show it HEALTHY.
 
-Run a node: %s#run-a-node`, args["machine"], step, readme)
+Run a node: %snodes.md#run-a-node`, args["machine"], step, docs)
 		},
 	},
 	{
@@ -101,7 +101,7 @@ Run a node: %s#run-a-node`, args["machine"], step, readme)
    rule per effort, vendor keys present for the chains' vendors, nodes healthy, readiness.
 3. Report findings by severity, each with the ktms command or config change that fixes it.
 
-Production checklist: ` + readme + `#production-checklist`
+Production checklist: ` + docs + `install.md#production-checklist`
 		},
 	},
 }

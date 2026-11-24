@@ -269,7 +269,7 @@ func (a *app) mcpServer(allowWrite bool) *mcp.Server {
 			return messages(res.GetKeys()), nil
 		}))
 	mcp.AddTool(srv, tool("explain_route", "Explain a route",
-		"Where a request with this client key would go, on Keystone's own routing code: the matched rule and every model of its chain, kept or dropped with the reason (no_vendor_key, key_policy, team_policy, capability, placement, circuit_open, vendor_paused, node_unavailable, ...). Calls no vendor and spends nothing; auto_route without effort does not ask the judge."+untrusted, read),
+		"Where a request with this client key would go, on Keystone's own routing code: the matched rule and every model of its chain, kept or dropped with the reason (no_vendor_key, key_policy, team_policy, capability, placement, circuit_open, vendor_paused, node_unavailable, language_pair, ...); modality explains translate, judge, tts or image calls. Calls no vendor and spends nothing; auto_route without effort does not ask the judge."+untrusted, read),
 		adminTool(a, func(ctx context.Context, c pb.AdminServiceClient, in struct {
 			Key          string            `json:"api_key_name" jsonschema:"the client key's name"`
 			Effort       string            `json:"effort,omitempty" jsonschema:"low, medium or high"`
@@ -279,11 +279,15 @@ func (a *app) mcpServer(allowWrite bool) *mcp.Server {
 			Model        string            `json:"model_override,omitempty" jsonschema:"a model instead of the rules"`
 			Capabilities []string          `json:"capabilities,omitempty" jsonschema:"capabilities the request needs, e.g. google_search"`
 			DataClass    string            `json:"data_classification,omitempty" jsonschema:"restricted: the request stays on self-hosted nodes"`
+			Modality     string            `json:"modality,omitempty" jsonschema:"translate, judge, tts or image instead of text generation"`
+			Source       string            `json:"source_language,omitempty" jsonschema:"translate: source language, empty for detected"`
+			Target       string            `json:"target_language,omitempty" jsonschema:"translate: target language"`
 		}) (any, error) {
 			req, err := explainRequest(in.Key, in.Effort, in.AutoRoute, in.Attributes, in.Placement, in.Model, in.Capabilities, in.DataClass)
 			if err != nil {
 				return nil, err
 			}
+			req.Modality, req.SourceLanguage, req.TargetLanguage = in.Modality, in.Source, in.Target
 			return c.ExplainRoute(ctx, req)
 		}))
 	mcp.AddTool(srv, tool("health", "Health and version", "Keystone's /healthz and /readyz answers and its version.", read),
@@ -552,7 +556,7 @@ func (a *app) addWriteTools(srv *mcp.Server, tool func(name, title, desc string,
 
 	type mintIn struct {
 		Name          string   `json:"name" jsonschema:"key name, unique"`
-		Scopes        []string `json:"scopes,omitempty" jsonschema:"generate (default), mcp, admin or admin:read"`
+		Scopes        []string `json:"scopes,omitempty" jsonschema:"generate (default), mcp, admin, admin:read or agents:read"`
 		Organization  string   `json:"organization,omitempty" jsonschema:"organization name"`
 		Team          string   `json:"team,omitempty" jsonschema:"team as org/team"`
 		AllowedModels []string `json:"allowed_models,omitempty" jsonschema:"model ids the key may call; empty means any"`

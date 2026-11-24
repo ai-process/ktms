@@ -131,6 +131,7 @@ func TestAdminService_OrganizationAndTeamValidation(t *testing.T) {
 	for _, req := range []*pb.MintAPIKeyRequest{
 		{Name: "k", Scopes: []string{"admin:read"}, OrgId: validOrgID},
 		{Name: "k", Scopes: []string{"generate", "admin:read"}, TeamId: validTeamID},
+		{Name: "k", Scopes: []string{"agents:read"}, OrgId: validOrgID},
 	} {
 		if _, err := server.MintAPIKey(ctx, req); status.Code(err) != codes.InvalidArgument {
 			t.Fatalf("expected InvalidArgument for a tenant-bound admin:read key, got %v", err)

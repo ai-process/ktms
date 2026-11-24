@@ -120,6 +120,9 @@ func New(snaps Snapshots, verifier Verifier, limiter ToolLimiter, recorder Recor
 func (g *Gateway) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/mcp", g.serveHTTP)
 	mux.HandleFunc("/mcp/{server}", g.serveHTTP)
+	if g.agents != nil {
+		g.registerA2A(mux)
+	}
 }
 
 // Close ends every upstream session.

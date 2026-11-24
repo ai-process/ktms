@@ -86,7 +86,7 @@ jobs:
   # asset digest GitHub records on upload.
   tray-macos:
     needs: release
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: write
     steps:

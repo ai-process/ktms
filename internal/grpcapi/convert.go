@@ -71,6 +71,9 @@ func modelFromProto(m *pb.ModelSpec) *proxydb.Model {
 		Enabled:                m.GetEnabled(),
 		PriceCacheReadPerMtok:  m.GetPriceCacheReadPerMtok(),
 		PriceCacheWritePerMtok: m.GetPriceCacheWritePerMtok(),
+		LanguagesSource:        m.GetLanguages().GetSource(),
+		LanguagesTarget:        m.GetLanguages().GetTarget(),
+		PricePerMillionChars:   m.GetPricePerMillionChars(),
 	}
 }
 
@@ -96,6 +99,8 @@ func modelToProto(m *proxydb.Model) *pb.ModelSpec {
 		Enabled:                m.Enabled,
 		PriceCacheReadPerMtok:  m.PriceCacheReadPerMtok,
 		PriceCacheWritePerMtok: m.PriceCacheWritePerMtok,
+		Languages:              modelLanguages(m),
+		PricePerMillionChars:   m.PricePerMillionChars,
 	}
 }
 
@@ -199,4 +204,13 @@ func ruleToProto(r *proxydb.Rule) *pb.RuleSpec {
 		ShadowPercentage: r.ShadowPercentage,
 		ShadowEval:       r.ShadowEval,
 	}
+}
+
+// modelLanguages is nil for a model that declares no pairs, so specs and
+// exported configs stay as they were for every non-translate model.
+func modelLanguages(m *proxydb.Model) *pb.ModelLanguages {
+	if len(m.LanguagesSource) == 0 && len(m.LanguagesTarget) == 0 {
+		return nil
+	}
+	return &pb.ModelLanguages{Source: m.LanguagesSource, Target: m.LanguagesTarget}
 }

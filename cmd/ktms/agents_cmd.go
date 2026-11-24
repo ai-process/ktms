@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/proxydb"
 )
 
 func (a *app) agentsCmd() *cobra.Command {
@@ -42,17 +45,32 @@ func (a *app) agentsCmd() *cobra.Command {
 	ls.Flags().StringVar(&owner, "owner", "", "only this person's agents")
 
 	var tFormat string
-	var open bool
+	var open, pinnedOnly bool
 	var lim int32
+	var ref string
+	var statuses, reasons []string
 	tasks := &cobra.Command{
 		Use: "tasks AGENT", Short: "Tasks an agent sent or received, most recent first", Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
+			for i, st := range statuses {
+				statuses[i] = strings.ToLower(strings.TrimSpace(st))
+				if !proxydb.ValidTaskStatus(statuses[i]) {
+					return usageError{fmt.Errorf("--status %q: want one of %s", st, strings.Join(proxydb.TaskStatuses, ", "))}
+				}
+			}
+			for i, r := range reasons {
+				reasons[i] = strings.ToLower(strings.TrimSpace(r))
+				if !slices.Contains(proxydb.ReasonCodes, reasons[i]) {
+					return usageError{fmt.Errorf("--reason %q: want one of %s", r, strings.Join(proxydb.ReasonCodes, ", "))}
+				}
+			}
 			p, err := newPrinter(a.stdout, tFormat)
 			if err != nil {
 				return err
 			}
 			return a.call(func(ctx context.Context, c pb.AdminServiceClient) error {
-				res, err := c.ListAgentTasks(ctx, &pb.ListAgentTasksRequest{Agent: args[0], OpenOnly: open, Limit: lim})
+				res, err := c.ListAgentTasks(ctx, &pb.ListAgentTasksRequest{Agent: args[0], OpenOnly: open, Limit: lim, Statuses: statuses, ReasonCodes: reasons,
+					ExternalRef: ref, PinnedOnly: pinnedOnly})
 				if err != nil {
 					return err
 				}
@@ -61,16 +79,23 @@ func (a *app) agentsCmd() *cobra.Command {
 				}
 				var rows [][]string
 				for _, t := range res.GetTasks() {
-					rows = append(rows, []string{t.GetTaskId(), t.GetFrom(), t.GetTo(), t.GetStatus(), strconv.Itoa(int(t.GetDepth())),
-						orDash(t.GetStatusReason()), when(t.GetUpdatedAt())})
+					rows = append(rows, []string{t.GetTaskId(), t.GetFrom(), t.GetTo(), t.GetStatus(), orDash(t.GetReasonCode()), strconv.Itoa(int(t.GetDepth())),
+						orDash(t.GetExternalRef()), orDash(t.GetStatusReason()), when(t.GetUpdatedAt())})
 				}
-				return p.rows([]string{"TASK", "FROM", "TO", "STATUS", "DEPTH", "REASON", "UPDATED"}, rows)
+				return p.rows([]string{"TASK", "FROM", "TO", "STATUS", "WAITS ON", "DEPTH", "REF", "REASON", "UPDATED"}, rows)
 			})
 		},
 	}
 	outputFlag(tasks, &tFormat)
 	tasks.Flags().BoolVar(&open, "open", false, "only tasks that have not ended")
 	tasks.Flags().Int32Var(&lim, "limit", 100, "most tasks to show (at most 500)")
+	tasks.Flags().StringSliceVar(&statuses, "status", nil,
+		"only tasks in these statuses, repeatable or comma-separated: "+strings.Join(proxydb.TaskStatuses, ", ")+"; with --open, the open ones among them")
+
+	tasks.Flags().StringVar(&ref, "ref", "", "only tasks tied to this external_ref, such as PROJ-123")
+	tasks.Flags().BoolVar(&pinnedOnly, "pinned", false, "only tasks pinned by either side")
+	tasks.Flags().StringSliceVar(&reasons, "reason", nil,
+		"only input-required tasks waiting for these reasons: "+strings.Join(proxydb.ReasonCodes, ", ")+" (needs_owner: the agent asks its own person)")
 
 	var sFormat string
 	show := &cobra.Command{
@@ -92,9 +117,26 @@ func (a *app) agentsCmd() *cobra.Command {
 				if t.GetStatusReason() != "" {
 					fmt.Fprintf(a.stdout, " (%s)", t.GetStatusReason())
 				}
-				fmt.Fprintf(a.stdout, "\ncontext %s, depth %d\n", t.GetContextId(), t.GetDepth())
+				if t.GetAnsweredBy() == "owner" {
+					fmt.Fprint(a.stdout, ", answered by the owner")
+				}
+				fmt.Fprintf(a.stdout, "\ncontext %s, depth %d", t.GetContextId(), t.GetDepth())
+				if t.GetExternalRef() != "" {
+					fmt.Fprintf(a.stdout, ", ref %s", t.GetExternalRef())
+				}
+				if len(t.GetPinnedBy()) > 0 {
+					fmt.Fprintf(a.stdout, ", pinned by %s", strings.Join(t.GetPinnedBy(), ", "))
+				}
+				fmt.Fprintln(a.stdout)
 				for i, m := range t.GetMessages() {
-					fmt.Fprintf(a.stdout, "\n%s  %s:\n%s\n", when(m.GetCreatedAt()), m.GetFrom(), m.GetText())
+					who := m.GetFrom()
+					if m.GetAuthor() == "owner" {
+						who += "'s owner"
+					}
+					if m.GetCorrection() {
+						who += ", correction"
+					}
+					fmt.Fprintf(a.stdout, "\n%s  %s:\n%s\n", when(m.GetCreatedAt()), who, m.GetText())
 					if i == 0 && t.GetOmittedMessages() > 0 {
 						fmt.Fprintf(a.stdout, "\n… %d messages left out …\n", t.GetOmittedMessages())
 					}
@@ -122,6 +164,6 @@ func (a *app) agentsCmd() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(ls, tasks, show, rec)
+	cmd.AddCommand(ls, tasks, show, rec, a.agentsRunCmd())
 	return cmd
 }

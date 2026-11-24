@@ -45,6 +45,7 @@ type fakeProxy struct {
 	embedResp      *pb.GetEmbeddingsResponse
 	embedErr       error
 	rolloutReq     *pb.EvaluateRolloutsRequest
+	translateReq   *pb.TranslateRequest
 	restricted     bool // the last call's context was restricted
 }
 
@@ -123,6 +124,19 @@ func (f *fakeProxy) SynthesizeSpeech(_ context.Context, r *pb.SynthesizeSpeechRe
 func (f *fakeProxy) GenerateImage(_ context.Context, r *pb.GenerateImageRequest) (*pb.GenerateImageResponse, error) {
 	f.media = map[string]string{"prompt": r.Prompt}
 	return &pb.GenerateImageResponse{Image: []byte("png"), MimeType: "image/png"}, nil
+}
+
+func (f *fakeProxy) Translate(_ context.Context, r *pb.TranslateRequest) (*pb.TranslateResponse, error) {
+	f.translateReq = r
+	if r.GetTargetLanguage() == "ja" {
+		return nil, status.Error(codes.FailedPrecondition, "unsupported_language_pair: no model in the chain translates en to ja")
+	}
+	out := &pb.TranslateResponse{ResolvedModel: "opus-mt-de", ResolvedVendor: "local", MatchedRule: "translate",
+		Usage: &pb.TokensUsage{Input: 4, Output: 5, Characters: 9}}
+	for _, t := range r.GetTexts() {
+		out.Translations = append(out.Translations, &pb.Translation{Text: "de:" + t, DetectedSourceLanguage: "en"})
+	}
+	return out, nil
 }
 
 func (f *fakeProxy) Judge(_ context.Context, r *pb.JudgeRequest) (*pb.JudgeResponse, error) {
@@ -711,6 +725,22 @@ func TestJudge(t *testing.T) {
 	}
 	if rec := do(h, "POST", "/v1/judge", key, `{"bogus":1}`); rec.Code != 400 {
 		t.Errorf("unknown field = %d", rec.Code)
+	}
+}
+
+func TestTranslate(t *testing.T) {
+	proxy, h, key := newTestAPI(t)
+	rec := do(h, "POST", "/v1/translate", key, `{"texts":["good hotel"],"source_language":"en","target_language":"de","attributes":{"pipeline":"reviews"}}`)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"text":"de:good hotel"`) ||
+		!strings.Contains(rec.Body.String(), `"characters":"9"`) || rec.Header().Get("X-KTMS-Rule") != "translate" {
+		t.Errorf("translate: %d %s", rec.Code, rec.Body)
+	}
+	if proxy.translateReq.GetAttributes()["pipeline"] != "reviews" {
+		t.Errorf("attributes not passed: %v", proxy.translateReq)
+	}
+	rec = do(h, "POST", "/v1/translate", key, `{"texts":["x"],"target_language":"ja"}`)
+	if e := errBody(t, rec); rec.Code != 400 || e["code"] != "unsupported_language_pair" {
+		t.Errorf("unsupported pair: %d %v", rec.Code, e)
 	}
 }
 

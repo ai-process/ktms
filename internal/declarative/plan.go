@@ -365,8 +365,10 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 				if lk.GetDisabled() || slices.ContainsFunc(cfg.APIKeys, func(k APIKey) bool { return k.Name == lk.GetName() }) {
 					continue
 				}
-				if slices.Contains(lk.GetScopes(), apikeys.ScopeAdmin) || slices.Contains(lk.GetScopes(), apikeys.ScopeAdminRead) {
-					p.Warnings = append(p.Warnings, fmt.Sprintf("admin key %s is not in the file; prune never revokes admin or admin:read keys, revoke it by hand if it should go", lk.GetName()))
+				if slices.ContainsFunc(lk.GetScopes(), func(s string) bool {
+					return s == apikeys.ScopeAdmin || s == apikeys.ScopeAdminRead || s == apikeys.ScopeAgentsRead
+				}) {
+					p.Warnings = append(p.Warnings, fmt.Sprintf("admin key %s is not in the file; prune never revokes admin, admin:read or agents:read keys, revoke it by hand if it should go", lk.GetName()))
 					continue
 				}
 				deletes = append(deletes, func() {
