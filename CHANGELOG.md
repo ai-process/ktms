@@ -7,6 +7,8 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-24
+
 ### Added
 - Several engines behind one node: `ktms-node --extra-engine mt=http://127.0.0.1:11436` (repeatable,
   with `--expose cloudflared`) serves another engine beside the primary one, and the node's gateway
@@ -520,7 +522,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/ai-process/ktms/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/ai-process/ktms/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/ai-process/ktms/compare/v1.3.6...v1.4.0
 [1.3.6]: https://github.com/ai-process/ktms/compare/v1.3.5...v1.3.6
