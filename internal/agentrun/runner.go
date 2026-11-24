@@ -134,13 +134,21 @@ var Presets = map[string]Command{
 	"agy": {Name: "agy", Args: []string{"--mode", "plan", "--output-format", "json"}, PromptArg: "-p=", Agy: true},
 }
 
-// Preset is a preset by name, run in dir, with model when it is set.
-func Preset(name, dir, model string) (Command, error) {
+// Preset is a preset by name, run in dir, with model when it is set; addDirs
+// are more directories claude or agy may read (without a terminal agy reads
+// nothing outside dir otherwise).
+func Preset(name, dir, model string, addDirs []string) (Command, error) {
 	c, ok := Presets[name]
 	if !ok {
 		return Command{}, fmt.Errorf("unknown runner %q: want claude, codex, agy or --cmd", name)
 	}
+	if name == "codex" && len(addDirs) > 0 {
+		return Command{}, fmt.Errorf("--add-dir is for claude and agy: codex's read-only sandbox already reads any file")
+	}
 	c.Args = append([]string(nil), c.Args...)
+	for _, d := range addDirs {
+		c.Args = append(c.Args, "--add-dir", d)
+	}
 	if model != "" {
 		// codex takes its flags after the exec subcommand.
 		at := 0

@@ -82,7 +82,8 @@ behind NAT and a task is taken as soon as it is sent; a KTMS before 1.6, which c
 polled every `--interval` (15s). Each task that waits for the agent (new, or the sender answered its question) is taken
 by moving it to `working` without a message, handed to the CLI agent with its conversation, and answered with
 what the CLI printed. The CLI ends with `STATUS: completed`, `STATUS: input-required` (a question
-for the sender), `STATUS: needs_owner` (a question for its own person) or `STATUS: failed`; a run that fails, prints nothing or outlasts `--task-timeout`
+for the sender), `STATUS: needs_owner` (a question for its own person) or `STATUS: failed`. A run that fails is retried once a minute later, as the CLI's
+backend may have been briefly down; a second failure, a run that prints nothing or one that outlasts `--task-timeout`
 (30m; agy takes 15–20 minutes over a 50 KB diff) fails the task without passing the CLI's errors on. A task a guardrail holds waits for its
 person and is not taken.
 
@@ -90,7 +91,8 @@ person and is not taken.
   `codex` in its read-only sandbox, `agy` in plan mode. Without a terminal agy refuses shell commands (they could read
   files outside the repository) and reads outside `--dir`, and ends the run at the first one; the sidecar resumes
   that conversation once to answer from what it read, and otherwise fails the task saying so.
-  Put what agy would need a command for, such as the diff, in the message. `--cmd` runs your own program with
+  `--add-dir` (repeatable) lets `claude` and `agy` read another directory too, and the prompt names the
+  directories they may read. Put what agy would need a command for, such as the diff, in the message. `--cmd` runs your own program with
   the prompt on stdin. `--model` picks the preset's model, such as
   `--runner agy --model gemini-3.8-flash-high`. Paths under `--dir` are made relative in the answer.
 - The messages come from other people's agents: the prompt tells the CLI to treat them as a
@@ -98,7 +100,8 @@ person and is not taken.
   with the owner's approval, is not there yet.
 - `--description`, `--skill` and `--repo` set those fields of the agent's card at start, so
   `ktms inbox find` finds it; the sidecar warns when the card says nothing.
-- Tasks are answered one at a time; run one `ktms agents run` per agent key. While `--pause-file`
+- `--concurrency N` (1) answers up to N tasks at once, oldest first, each by its own CLI, so tasks from
+  several senders do not queue behind one long review; run one `ktms agents run` per agent key. While `--pause-file`
   exists no task is taken. `--once` answers what is due and exits, for cron.
 
 - **Claude Code** works interactively after `claude mcp add`. A headless turn needs the server's

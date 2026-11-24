@@ -17,10 +17,11 @@ import (
 
 func (a *app) agentsRunCmd() *cobra.Command {
 	var runner, model, command, dir, keyFile, pauseFile string
-	var skills, repos []string
+	var skills, repos, addDirs []string
 	var desc string
 	var interval, timeout time.Duration
 	var once bool
+	var concurrency int
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Answer an agent's inbox with a local CLI agent (claude, codex, agy), read-only",
@@ -32,9 +33,11 @@ and send what the CLI printed back as the reply. The CLI ends its answer with a 
 
 The presets run read-only: claude with only Read, Grep and Glob and no MCP servers,
 codex in its read-only sandbox, agy in plan mode (a run it ends at a refused shell command
-is resumed once). --description, --skill and --repo set the agent's card. --cmd runs your own program with the
-prompt on stdin. Tasks are answered one at a time; run one per agent key. While
---pause-file exists no task is taken.`,
+is resumed once). claude and agy read only --dir and each --add-dir. --description,
+--skill and --repo set the agent's card. --cmd runs your own program with the prompt on
+stdin. Up to --concurrency tasks are answered at once, each by its own CLI; run one per
+agent key. A run that fails is retried once after a minute. While --pause-file exists no
+task is taken.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			key, err := agentKey(keyFile)
@@ -50,12 +53,21 @@ prompt on stdin. Tasks are answered one at a time; run one per agent key. While
 					return err
 				}
 			}
+			if concurrency < 1 {
+				return usageError{errors.New("--concurrency must be at least 1")}
+			}
 			var r agentrun.Command
+			var dirs []string // what the runner may read, for its prompt
 			if command != "" {
+				if len(addDirs) > 0 {
+					return usageError{errors.New("--add-dir is for the claude and agy presets")}
+				}
 				f := strings.Fields(command)
 				r = agentrun.Command{Name: f[0], Args: f[1:], Dir: dir}
-			} else if r, err = agentrun.Preset(runner, dir, model); err != nil {
+			} else if r, err = agentrun.Preset(runner, dir, model, addDirs); err != nil {
 				return usageError{err}
+			} else if runner != "codex" {
+				dirs = append([]string{dir}, addDirs...)
 			}
 			logf := func(format string, args ...any) {
 				fmt.Fprintf(a.stderr, "%s "+format+"\n", append([]any{time.Now().Format(time.TimeOnly)}, args...)...)
@@ -63,7 +75,7 @@ prompt on stdin. Tasks are answered one at a time; run one per agent key. While
 			r.Stderr = func(s string) { logf("%s stderr: %s", r.Name, strings.TrimSpace(s)) }
 			c := &agentrun.Client{Endpoint: strings.TrimRight(base, "/") + "/mcp/agents", Key: key, HTTP: a.t.httpClient(), Version: version}
 			defer c.Close()
-			cfg := agentrun.Config{Interval: interval, Timeout: timeout, PauseFile: pauseFile, Logf: logf}
+			cfg := agentrun.Config{Interval: interval, Timeout: timeout, PauseFile: pauseFile, Logf: logf, Concurrency: concurrency, Dirs: dirs}
 			if err := runCard(context.Background(), cmd, c, logf, desc, skills, repos); err != nil {
 				return err
 			}
@@ -73,7 +85,7 @@ prompt on stdin. Tasks are answered one at a time; run one per agent key. While
 			if once {
 				return agentrun.Once(ctx, c, r, cfg)
 			}
-			logf("answering the inbox at %s with %s in %s", c.Endpoint, r.Name, dir)
+			logf("answering the inbox at %s with %s in %s, %d at a time", c.Endpoint, r.Name, dir, concurrency)
 			return agentrun.Run(ctx, c, r, cfg)
 		},
 	}
@@ -90,6 +102,8 @@ prompt on stdin. Tasks are answered one at a time; run one per agent key. While
 	f.StringSliceVar(&skills, "skill", nil, "set the card's skills, such as code-review; repeatable")
 	f.StringSliceVar(&repos, "repo", nil, "set the card's repositories; repeatable")
 	f.BoolVar(&once, "once", false, "answer the tasks due now and exit")
+	f.IntVar(&concurrency, "concurrency", 1, "tasks answered at once, each by its own CLI")
+	f.StringSliceVar(&addDirs, "add-dir", nil, "another directory claude or agy may read; repeatable")
 	return cmd
 }
 

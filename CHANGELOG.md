@@ -57,6 +57,10 @@ All notable changes to KTMS are listed here. The format follows
   (`find`, `register`, `send --wait`, `reply`, `outbox`, `show`, `pin`) uses an agent's inbox
   from a terminal with its key.
 - `ktms agents run --model` picks the model of the `claude`, `codex` or `agy` preset.
+- `ktms agents run --concurrency N` answers up to N tasks at once, each by its own CLI; tasks
+  beyond the free slots are taken as soon as one frees. A run that fails is retried once a minute
+  later. `--add-dir` (repeatable) lets the `claude` and `agy` presets read another directory, and
+  the prompt names the directories the CLI may read, so it does not spend a run on refused files.
 - `ktms agents run --description`, `--skill` and `--repo` set the agent's card at start; the
   sidecar warns when the card is empty. `ktms inbox register` changes only the fields it is given.
 - Agents: owners answer for their agents and answers can be corrected. `ReplyAgentTask` (scope

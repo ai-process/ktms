@@ -73,6 +73,7 @@ func (f *fakeInbox) Reply(_ context.Context, id, text, status string, _ bool) er
 }
 
 type fakeRunner struct {
+	mu      sync.Mutex
 	out     string
 	err     error
 	wait    time.Duration
@@ -80,7 +81,9 @@ type fakeRunner struct {
 }
 
 func (r *fakeRunner) Run(ctx context.Context, prompt string) (string, error) {
+	r.mu.Lock()
 	r.prompts = append(r.prompts, prompt)
+	r.mu.Unlock()
 	select {
 	case <-time.After(r.wait):
 	case <-ctx.Done():
@@ -183,7 +186,7 @@ func TestOnceFailures(t *testing.T) {
 		cfg  Config
 		want string
 	}{
-		"error":   {&fakeRunner{out: "/home/me/secret path", err: errors.New("exit status 2")}, Config{}, "failed to run"},
+		"error":   {&fakeRunner{out: "/home/me/secret path", err: errors.New("exit status 2")}, Config{RetryDelay: -1}, "failed to run"},
 		"timeout": {&fakeRunner{wait: time.Second}, Config{Timeout: 20 * time.Millisecond}, "did not finish"},
 		"silent":  {&fakeRunner{out: "\n"}, Config{}, "no answer"},
 		"refused": {&fakeRunner{err: fmt.Errorf("agy: %w", &Refused{Actions: []string{"command"}})}, Config{}, "was refused what it tried (command)"},
@@ -256,18 +259,18 @@ func TestCommandStdinAndArg(t *testing.T) {
 	if got := (Command{Dir: "/home/me/repo"}).local("see [a.go](file:///home/me/repo/a.go#L3) and /home/me/repo/b.go"); got != "see [a.go](a.go#L3) and b.go" {
 		t.Fatalf("local paths: %q", got)
 	}
-	if _, err := Preset("gpt", ".", ""); err == nil {
+	if _, err := Preset("gpt", ".", "", nil); err == nil {
 		t.Fatal("unknown preset accepted")
 	}
 	for name, want := range map[string]string{
 		"agy":   "--model m --mode plan --output-format json",
 		"codex": "exec --model m --sandbox read-only -",
 	} {
-		if c, err := Preset(name, ".", "m"); err != nil || strings.Join(c.Args, " ") != want {
+		if c, err := Preset(name, ".", "m", nil); err != nil || strings.Join(c.Args, " ") != want {
 			t.Errorf("%s with a model: %q, %v", name, c.Args, err)
 		}
 	}
-	if c, _ := Preset("agy", ".", ""); strings.Join(c.Args, " ") != "--mode plan --output-format json" {
+	if c, _ := Preset("agy", ".", "", nil); strings.Join(c.Args, " ") != "--mode plan --output-format json" {
 		t.Errorf("agy without a model: %q", c.Args)
 	}
 }
@@ -363,5 +366,114 @@ func TestRunPollsAServerThatCannotWait(t *testing.T) {
 	// Without the fallback this loop would call the inbox thousands of times.
 	if in.calls > 5 {
 		t.Fatalf("%d inbox calls in 300ms", in.calls)
+	}
+}
+
+// countRunner tracks how many runs overlap; fail fails the first n runs.
+type countRunner struct {
+	mu        sync.Mutex
+	now, peak int
+	runs      int
+	fail      int
+	wait      time.Duration
+}
+
+func (r *countRunner) Run(ctx context.Context, _ string) (string, error) {
+	r.mu.Lock()
+	r.runs++
+	n := r.runs
+	r.now++
+	r.peak = max(r.peak, r.now)
+	r.mu.Unlock()
+	defer func() { r.mu.Lock(); r.now--; r.mu.Unlock() }()
+	select {
+	case <-time.After(r.wait):
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	if n <= r.fail {
+		return "", errors.New("backend returned an empty conversation id")
+	}
+	return "done", nil
+}
+
+func dueTasks(in *fakeInbox, n int) {
+	for i := range n {
+		t := task(fmt.Sprint(i), "submitted", Message{Role: "user", Text: "x"})
+		t.Updated = in.tick()
+		in.tasks = append(in.tasks, t)
+	}
+}
+
+func TestOnceRunsConcurrently(t *testing.T) {
+	in := &fakeInbox{}
+	dueTasks(in, 5)
+	r := &countRunner{wait: 50 * time.Millisecond}
+	if err := Once(context.Background(), in, r, Config{Concurrency: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if r.runs != 5 || r.peak != 2 || len(in.replies) != 10 {
+		t.Fatalf("runs %d, peak %d, replies %d", r.runs, r.peak, len(in.replies))
+	}
+}
+
+// Tasks beyond the free slots are older than since once the loop moved on;
+// they must still be answered when a slot frees.
+func TestRunAnswersTheBacklog(t *testing.T) {
+	in := &fakeInbox{waits: true}
+	dueTasks(in, 5)
+	r := &countRunner{wait: 30 * time.Millisecond}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(ctx, in, r, Config{Interval: time.Hour, Wait: 300 * time.Millisecond, Concurrency: 2})
+	}()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		in.mu.Lock()
+		n := len(in.replies)
+		in.mu.Unlock()
+		if n == 10 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	if err := <-done; err != nil || len(in.replies) != 10 || r.runs != 5 || r.peak > 2 {
+		t.Fatalf("replies %d, runs %d, peak %d, %v", len(in.replies), r.runs, r.peak, err)
+	}
+}
+
+func TestRetriesAFailedRunOnce(t *testing.T) {
+	for fail, want := range map[int]string{1: "completed", 2: "failed"} {
+		in := &fakeInbox{}
+		dueTasks(in, 1)
+		r := &countRunner{fail: fail}
+		if err := Once(context.Background(), in, r, Config{RetryDelay: time.Millisecond}); err != nil {
+			t.Fatal(err)
+		}
+		if got := in.replies[len(in.replies)-1].status; got != want || r.runs != 2 {
+			t.Errorf("fail %d: status %s after %d runs, want %s after 2", fail, got, r.runs, want)
+		}
+	}
+}
+
+func TestPromptNamesReadableDirs(t *testing.T) {
+	cfg := Config{Dirs: []string{"/work", "/tmp/x"}}.withDefaults()
+	if !strings.Contains(cfg.Instruction, "only in /work, /tmp/x") {
+		t.Fatalf("instruction: %s", cfg.Instruction)
+	}
+	if c := (Config{}).withDefaults(); strings.Contains(c.Instruction, "only in") {
+		t.Fatal("no dirs, yet the instruction names some")
+	}
+}
+
+func TestPresetAddDirs(t *testing.T) {
+	c, err := Preset("agy", "/w", "", []string{"/a", "/b"})
+	if err != nil || strings.Join(c.Args, " ") != "--mode plan --output-format json --add-dir /a --add-dir /b" {
+		t.Fatalf("%q %v", c.Args, err)
+	}
+	if _, err := Preset("codex", "/w", "", []string{"/a"}); err == nil {
+		t.Fatal("codex took --add-dir")
 	}
 }
