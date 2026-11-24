@@ -661,6 +661,7 @@ func TestGenerateText_Cache(t *testing.T) {
 		Effort:      pb.Effort_EFFORT_LOW,
 		Messages:    []*pb.ChatMessage{{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: "hello world"}},
 		EnableCache: true,
+		ActionId:    "test.cached",
 	}
 
 	// First call: Cache miss, hits vendor
@@ -698,6 +699,9 @@ func TestGenerateText_Cache(t *testing.T) {
 	events := tracker.list()
 	if len(events) != 2 {
 		t.Fatalf("tracker events = %d, want 2", len(events))
+	}
+	if events[1].actionID != "test.cached" {
+		t.Errorf("cache hit action = %q, want the call's test.cached", events[1].actionID)
 	}
 	if events[1].meta["cache"] != "hit" {
 		t.Errorf("second event meta[cache] = %q, want hit", events[1].meta["cache"])

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"strconv"
 	"strings"
 	"time"
@@ -237,7 +238,7 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 		TotalCount:    int32(len(items)),
 		DoneCount:     0,
 		FailedCount:   0,
-		Attributes:    cleanAttrs,
+		Attributes:    batchAttributes(cleanAttrs, rule.Name),
 		ActionID:      actionID,
 		CreatedAt:     time.Now().UTC(),
 	}
@@ -459,4 +460,15 @@ func mapBatchStateToProto(state string) pb.BatchState {
 	default:
 		return pb.BatchState_BATCH_STATE_UNSPECIFIED
 	}
+}
+
+// batchAttributes are the attributes stored with a batch, with the rule set by
+// the proxy over any caller's value of the same name.
+func batchAttributes(attrs map[string]string, rule string) map[string]string {
+	out := maps.Clone(attrs)
+	if out == nil {
+		out = map[string]string{}
+	}
+	out[proxydb.BatchRuleAttribute] = rule
+	return out
 }
