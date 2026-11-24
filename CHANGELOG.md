@@ -95,6 +95,11 @@ All notable changes to KTMS are listed here. The format follows
   configuration file): the person a key belongs to. An MCP server can no longer be named `agents`;
   one registered earlier is shadowed by the inbox, with a warning in the log.
 
+### Changed
+- Experimental agents API: `AgentTask.omitted_messages` is field 15. Between 1.5.0 and 1.6.0 the
+  `main` branch, and so the SDKs on buf.build, had it as field 11, which the 1.6 betas and this
+  release use for `reason_code`; regenerate a client built from `main` in that window.
+
 ### Fixed
 - Batch results and their usage events carry the rule that chose the batch's model
   (`matched_rule`, usage meta `rule`); it was always empty. Batches submitted before this keep none.
