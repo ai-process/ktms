@@ -173,7 +173,7 @@ func TestIconSquares(t *testing.T) {
 			}
 		}
 		// Alone, the circle is centered and big; beside squares it moves left.
-		if got := alphaAt(t, f, iconCenter+shapeR-3, iconCenter) > 0; got != (c.n == 0) {
+		if got := alphaAt(t, f, iconCenter+aloneR-2, iconCenter) > 0; got != (c.n == 0) {
 			t.Errorf("%d requests: circle reaches the right half %v", c.n, got)
 		}
 	}
@@ -196,17 +196,17 @@ func TestIconSquaresFly(t *testing.T) {
 		t.Error("a leaving square stays")
 	}
 	mid := Frame{Kind: IconLevel, Level: 100, From: 0, To: 1, T: 0.5}
-	if _, y0 := slot(0); alphaAt(t, mid, sqLeft+1.5, y0) != 0 || alphaAt(t, mid, sqLeft+sqSize+1.5, y0) == 0 {
+	if _, y0 := slot(0); alphaAt(t, mid, sqLeft+1.5, y0) > 0x40 || alphaAt(t, mid, sqLeft+sqSize+1.5, y0) != 0xff {
 		t.Error("halfway the square is not on its way in from the right")
 	}
 }
 
 func TestIconCircleFill(t *testing.T) {
-	c, inner := iconCenter, shapeR-6 // inside the ring
+	c, inner := iconCenter, aloneR-4 // inside the ring
 	at := func(level uint32, dx, dy float64) bool {
 		return alphaAt(t, Still(IconLevel, level, 0), c+dx*inner, c+dy*inner) == 0xff
 	}
-	if alphaAt(t, Still(IconLevel, 0, 0), c, c-shapeR) == 0 {
+	if alphaAt(t, Still(IconLevel, 0, 0), c, c-aloneR) == 0 {
 		t.Error("no ring")
 	}
 	q := math.Sqrt(0.5)

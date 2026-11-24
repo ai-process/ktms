@@ -12,15 +12,17 @@ import (
 // Icons are drawn here rather than shipped: one shape per state, black on
 // transparent for the macOS menu bar (a template image follows the theme)
 // and colored for Linux panels. Running requests are squares beside it.
-const iconSize = 44 // the menu bar shows it at 16 pt, 32 px on Retina
+const iconSize = 32 // the menu bar shows it at 16 pt: one pixel per Retina pixel keeps edges sharp
 
-// Layout in pixels. With requests the shape moves left and shrinks; two rows
-// of squares fill column by column, and a third column shows only a sliver.
+// Layout in pixels, squares on whole ones. With requests the shape moves left
+// and shrinks; two rows of squares fill column by column, and a third column
+// shows only a sliver.
 const (
-	shapeR        = 17.0 // the shape's own radius, alone in the icon
-	dockX, dockR  = 11.0, 10.5
-	sqSize, sqGap = 7.0, 2.0
-	sqLeft, sqTop = 24.0, 14.0
+	shapeR        = 17.0 // the radius shapes are drawn at, in their own units
+	aloneR        = 12.5 // the shape's radius alone in the icon
+	dockX, dockR  = 6.25, 5.75
+	sqSize, sqGap = 6.0, 3.0
+	sqLeft, sqTop = 13.0, 9.0
 	maxSquares    = 6 // the rest are past the edge
 	AnimSteps     = 6
 	AnimEvery     = 35 * time.Millisecond
@@ -59,7 +61,7 @@ func Icon(f Frame, template bool) []byte {
 	t := math.Max(0, math.Min(1, f.T))
 	ease := 1 - (1-t)*(1-t)*(1-t)
 	dock := lerp(docked(f.From), docked(f.To), ease)
-	cx, r := lerp(iconCenter, dockX, dock), lerp(shapeR, dockR, dock)
+	cx, r := lerp(iconCenter, dockX, dock), lerp(aloneR, dockR, dock)
 	scale := shapeR / r // shape units per pixel
 	for y := range iconSize {
 		for x := range iconSize {
