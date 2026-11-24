@@ -214,7 +214,7 @@ func TestSubmitBatch_SuccessAndIdempotency(t *testing.T) {
 			{CustomId: "c1", Request: &pb.GenerateTextRequest{Messages: []*pb.ChatMessage{{Text: "first"}}}},
 			{CustomId: "c2", Request: &pb.GenerateTextRequest{Messages: []*pb.ChatMessage{{Text: "second"}}}},
 		},
-		Attributes: map[string]string{"env": "test"},
+		Attributes: map[string]string{"env": "test", proxydb.BatchRuleAttribute: "forged"},
 	}
 
 	res1, err := server.SubmitBatch(ctx, req)

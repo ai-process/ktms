@@ -368,8 +368,11 @@ func (p *Poller) emitUsage(
 	if b.TeamID != "" {
 		meta["team_id"] = b.TeamID
 	}
+	// rule is the proxy's, never a caller's attribute; a batch stored before
+	// the rule was kept has none.
+	delete(meta, "rule")
 	if rule := meta[proxydb.BatchRuleAttribute]; rule != "" {
-		meta["rule"] = rule // the key a live call's usage uses
+		meta["rule"] = rule
 	}
 	delete(meta, proxydb.BatchRuleAttribute)
 	meta["batch_id"] = b.ID

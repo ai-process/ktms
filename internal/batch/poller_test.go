@@ -459,3 +459,18 @@ func TestPoller_Cleanup(t *testing.T) {
 		t.Fatal("expected cutoff time passed to DeleteBatchesOlderThan")
 	}
 }
+
+// A batch stored before the rule was kept names none, and a caller's own
+// "rule" attribute never reaches usage as the rule.
+func TestPoller_BatchWithoutStoredRule(t *testing.T) {
+	m := &proxydb.Model{ID: "gemini-flash", Vendor: registry.VendorGoogle}
+	tracker := &fakeUsageTracker{}
+	p := &Poller{tracker: tracker}
+	p.emitUsage(&proxydb.Batch{ID: "b-old", Attributes: map[string]string{"rule": "forged", "env": "prod"}}, m, "c1", llm.TokensUsage{}, usagev1.Status_STATUS_SUCCESS, "")
+	if len(tracker.recordedEvents) != 1 {
+		t.Fatalf("events = %d", len(tracker.recordedEvents))
+	}
+	if meta := tracker.recordedEvents[0].meta; meta["rule"] != "" || meta["env"] != "prod" {
+		t.Fatalf("meta = %+v", meta)
+	}
+}
