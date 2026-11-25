@@ -22,7 +22,8 @@ Both are maps of a **topic** to a **level**. The operator picks the topics: lowe
 
 **Rules come first.** A rule matches on needs (each of its topics at least at its level) and on
 attributes. A matching rule replaces the selection with its own chain; canary weights and shadow
-traffic exist only in rules.
+traffic exist only in rules. A rule with needs takes higher needs too (`medical: basic` takes
+`medical: expert`); when no model of its chain meets such a request, the selection serves it.
 
 **Selection without a rule.** When no rule matches and some model declares competencies, Keystone
 picks the chain itself:
@@ -34,8 +35,10 @@ picks the chain itself:
    - placement class first (`nodes_first` or `cloud_first`); price ranks only within a class, so free
      nodes do not take traffic from `cloud_first`;
    - then **excess**: levels above the need, summed over the needed topics, so an expert is not
-     spent on a basic task;
+     spent on a basic task (a model described by efforts counts at its highest effort);
    - then the **blended price** per million tokens at the standard rate, `(3 × price_in + price_out) / 4`;
+     a translation call ranks by `price_per_million_chars` instead, as translation is billed by
+     characters; speech, images and judgments rank by their token prices;
    - then the model id.
 3. The first three make the chain; the others are its fallbacks no more. With nothing left the call
    gets `no_capable_model`.

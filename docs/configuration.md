@@ -396,7 +396,8 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"name":"search-ser
 ### Speech, image and judgment rules
 
 These modalities may state `needs`; without them only the modality filters (and, for translation,
-the language pair). The proxy routes them with a reserved `attributes["modality"]` set to `tts`,
+the language pair), except that a model described by efforts serves them only if it lists
+`EFFORT_LOW`, as in 1.6. The proxy routes them with a reserved `attributes["modality"]` set to `tts`,
 `image`, `judge` or `translate`, and only rules that name that modality can match, over models that
 declare the matching capability. Without such a rule, and with competencies declared, selection
 picks among the models with that capability:
