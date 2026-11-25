@@ -15,8 +15,7 @@ import (
 type IconKind int
 
 const (
-	IconFull    IconKind = iota // 100%
-	IconPartial                 // 1-99%
+	IconLevel IconKind = iota // 1-100%: a circle filled that much
 	IconPaused
 	IconWaiting // paused, proxy requests still running
 	IconWarn    // agent silent or proxy unreachable
@@ -24,13 +23,16 @@ const (
 
 // View is everything the menu shows for one status.
 type View struct {
-	Icon    IconKind
-	Title   string // next to the icon, which already shows the state: "80%", "9:41", "until 07:00", "2"
-	Tooltip string
-	Header  string // "Keystone node · mac-studio"
-	Level   string // "Running at 80% (schedule) · 18:00 → 0%"
-	Detail  string // "2 requests · qwen3:32b loaded · GPU 87%"
-	Notice  string // a problem worth a line of its own; "" for none
+	Icon     IconKind
+	Fill     uint32   // how much of the IconLevel circle is filled, 0-100
+	Requests int      // running on the node now
+	Squares  []uint64 // ids of the requests the icon draws, oldest first
+	Title    string   // next to the icon, which already shows the state: "9:41", "until 07:00", "2"
+	Tooltip  string
+	Header   string // "Keystone node · mac-studio"
+	Level    string // "Running at 80% (schedule) · 18:00 → 0%"
+	Detail   string // "2 requests · qwen3:32b loaded · GPU 87%"
+	Notice   string // a problem worth a line of its own; "" for none
 
 	Connected    bool   // the agent answers: the controls apply
 	UntilNext    string // "Pause until the next switch (18:00)"; "" hides it
@@ -99,6 +101,13 @@ func Build(s *nodeagent.Status, err error, now time.Time) View {
 	}
 	v.Connected = true
 	v.Header += " · " + s.NodeID
+	v.Requests = int(max(s.Requests.Inflight, 0))
+	v.Squares = s.Requests.Running
+	if len(v.Squares) == 0 { // no gateway: a count without ids
+		for i := range min(v.Requests, nodeagent.StatusRunning) {
+			v.Squares = append(v.Squares, uint64(i+1))
+		}
+	}
 	v.Engines = engineLines(s)
 	v.ScheduleKTMS = s.ScheduleSource == nodeagent.ScheduleSourceKTMS
 	lvl := s.Level.Effective
@@ -112,10 +121,8 @@ func Build(s *nodeagent.Status, err error, now time.Time) View {
 		v.Icon, v.Title = IconPaused, "until "+clock(s.Level.Next.At, now)
 	case lvl == 0:
 		v.Icon, v.Title = IconPaused, ""
-	case lvl < 100:
-		v.Icon, v.Title = IconPartial, fmt.Sprintf("%d%%", lvl)
-	default:
-		v.Icon, v.Title = IconFull, "100%"
+	default: // the menu and tooltip carry the exact level
+		v.Icon, v.Fill = IconLevel, min(lvl, 100)
 	}
 	if !s.Connection.Registered || s.Connection.LastError != "" {
 		v.Icon = IconWarn
@@ -184,7 +191,7 @@ func levelLine(s *nodeagent.Status, now time.Time) string {
 
 func detailLine(s *nodeagent.Status) string {
 	var parts []string
-	if n := s.Requests.ProxyActive; n > 0 {
+	if n := s.Requests.Inflight; n > 0 { // the squares' count; proxy_active lags a heartbeat
 		parts = append(parts, fmt.Sprintf("%d request%s", n, plural(int(n))))
 	} else {
 		parts = append(parts, "idle")

@@ -7,6 +7,17 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- The node tray draws each running request as a square beside its icon: a new one flies in, one
+  that ends leaves from its own place while the rest close up; they stack in two rows and run off
+  the edge past four. The agent's status reports `requests.inflight`, the requests running on the
+  node across all its engines, and `requests.running`, the ids of the oldest eight, live from the
+  gateway.
+
+### Changed
+- The node tray shows the level as a circle filled that much instead of a percentage next to the
+  icon; the exact level stays in the menu and tooltip.
+
 ## [1.6.0] - 2026-11-24
 
 ### Added

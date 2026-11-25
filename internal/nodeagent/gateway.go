@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -41,7 +42,30 @@ type Gateway struct {
 	client         *http.Client
 	paused         atomic.Bool
 	inflight       sync.Map // id -> context.CancelFunc of each engine request
+	active         atomic.Int32
+	onActive       func() // told each time active changes; set before serving
 	seq            atomic.Uint64
+}
+
+// Active is how many engine requests run through the gateway now, all engines.
+func (g *Gateway) Active() int32 { return g.active.Load() }
+
+// Running lists the ids of the oldest n engine requests running now, oldest first.
+func (g *Gateway) Running(n int) []uint64 {
+	var ids []uint64
+	g.inflight.Range(func(k, _ any) bool {
+		ids = append(ids, k.(uint64))
+		return true
+	})
+	slices.Sort(ids)
+	return ids[:min(n, len(ids))]
+}
+
+func (g *Gateway) addActive(d int32) {
+	g.active.Add(d)
+	if g.onActive != nil {
+		g.onActive()
+	}
 }
 
 type gatewayEngine struct{ name, base string }
@@ -186,8 +210,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithCancelCause(r.Context())
 		id := g.seq.Add(1)
 		g.inflight.Store(id, cancel)
+		g.addActive(1)
 		defer func() {
 			g.inflight.Delete(id)
+			g.addActive(-1)
 			cancel(nil)
 		}()
 		r = r.WithContext(ctx)

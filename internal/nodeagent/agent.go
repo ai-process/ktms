@@ -73,6 +73,7 @@ type Agent struct {
 	stats      statsState
 	statsEvery time.Duration
 	engineDone chan engineResult
+	requests   chan struct{} // the gateway's count of running requests changed
 	now        func() time.Time
 	levelEvery time.Duration
 	pauseGrace time.Duration
@@ -117,6 +118,7 @@ func NewAgent(cfg AgentConfig) *Agent {
 
 		pause:      pauseState{active: -1},
 		engineDone: make(chan engineResult, 1),
+		requests:   make(chan struct{}, 1),
 		now:        time.Now,
 		levelEvery: defaultLevelEvery,
 		pauseGrace: defaultPauseGrace,
@@ -444,6 +446,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			a.publish()
 		case <-statsTicker.C:
 			a.statsTick(authCtx)
+		case <-a.requests:
+			a.publish() // the tray draws each request as it starts and ends
 		}
 	}
 }

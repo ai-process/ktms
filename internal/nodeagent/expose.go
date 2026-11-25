@@ -63,6 +63,7 @@ func (a *Agent) startExposure(ctx context.Context) (urls <-chan string, stopped 
 	}
 	gw := NewMultiGateway(a.cfg.Engine, a.cfg.EngineURL, a.cfg.ExtraEngines, key, a.cfg.EngineToken)
 	gw.SetAccepting(a.pause.level != 0)
+	gw.onActive = a.noteRequests
 	a.gateway = gw
 	srv := &http.Server{Handler: gw, ReadHeaderTimeout: 10 * time.Second}
 	go func() {

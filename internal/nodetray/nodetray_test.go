@@ -6,12 +6,14 @@ import (
 	"errors"
 	"image/png"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -36,20 +38,22 @@ func status(mut func(*nodeagent.Status)) *nodeagent.Status {
 
 func TestBuildView(t *testing.T) {
 	for name, c := range map[string]struct {
-		s       *nodeagent.Status
-		err     error
-		icon    IconKind
-		title   string
-		level   string
-		resume  bool
-		stop    string
-		ticking bool
+		s        *nodeagent.Status
+		err      error
+		icon     IconKind
+		fill     uint32
+		requests int
+		title    string
+		level    string
+		resume   bool
+		stop     string
+		ticking  bool
 	}{
-		"full": {s: status(nil), icon: IconFull, title: "100%", level: "Running at 100% (schedule)"},
+		"full": {s: status(nil), icon: IconLevel, fill: 100, level: "Running at 100% (schedule)"},
 		"partial by schedule": {s: status(func(s *nodeagent.Status) {
 			s.Level.Effective = 80
 			s.Level.Next = &nodeagent.StatusNext{At: now.Add(9 * time.Hour), Level: 0}
-		}), icon: IconPartial, title: "80%", level: "Running at 80% (schedule) · 18:00 → 0%"},
+		}), icon: IconLevel, fill: 80, level: "Running at 80% (schedule) · 18:00 → 0%"},
 		"manual pause counts down": {s: status(func(s *nodeagent.Status) {
 			s.Level.Effective, s.Level.Source = 0, nodeagent.SourceOverride
 			s.Level.Override = &nodeagent.Override{Until: now.Add(9*time.Minute + 41*time.Second)}
@@ -62,12 +66,14 @@ func TestBuildView(t *testing.T) {
 		"waiting for requests": {s: status(func(s *nodeagent.Status) {
 			s.Level.Effective, s.Requests.ProxyActive, s.CanAbort = 0, 2, true
 		}), icon: IconWaiting, title: "2", level: "Pausing: waiting for 2 requests (schedule)", stop: "Stop now (cuts 2 requests)"},
-		"agent down":    {err: errors.New("dial unix: no such file"), icon: IconWarn, level: "The node agent does not answer"},
-		"proxy down":    {s: status(func(s *nodeagent.Status) { s.Connection.LastError = "unavailable" }), icon: IconWarn, title: "100%"},
-		"ktms override": {s: status(func(s *nodeagent.Status) { s.Level.Effective, s.Level.Source = 30, nodeagent.SourceKTMSOverride }), icon: IconPartial, title: "30%", level: "Running at 30% (set in KTMS)"},
+		"agent down": {err: errors.New("dial unix: no such file"), icon: IconWarn, level: "The node agent does not answer"},
+		"proxy down": {s: status(func(s *nodeagent.Status) { s.Connection.LastError = "unavailable" }), icon: IconWarn, fill: 100},
+		"ktms override": {s: status(func(s *nodeagent.Status) {
+			s.Level.Effective, s.Level.Source, s.Requests.Inflight = 30, nodeagent.SourceKTMSOverride, 3
+		}), icon: IconLevel, fill: 30, requests: 3, level: "Running at 30% (set in KTMS)"},
 	} {
 		v := Build(c.s, c.err, now)
-		if v.Icon != c.icon || v.Title != c.title || (c.level != "" && v.Level != c.level) || v.CanResume != c.resume || v.StopNow != c.stop || v.Ticking != c.ticking {
+		if v.Icon != c.icon || v.Fill != c.fill || v.Requests != c.requests || v.Title != c.title || (c.level != "" && v.Level != c.level) || v.CanResume != c.resume || v.StopNow != c.stop || v.Ticking != c.ticking {
 			t.Errorf("%s: %+v", name, v)
 		}
 	}
@@ -114,12 +120,155 @@ func TestNotifier(t *testing.T) {
 }
 
 func TestIconsArePNGs(t *testing.T) {
-	for k := IconFull; k <= IconWarn; k++ {
+	for k := IconLevel; k <= IconWarn; k++ {
 		for _, tmpl := range []bool{true, false} {
-			img, err := png.Decode(bytes.NewReader(Icon(k, tmpl)))
+			img, err := png.Decode(bytes.NewReader(Icon(Still(k, 50, 3), tmpl)))
 			if err != nil || img.Bounds().Dx() != iconSize {
 				t.Fatalf("icon %d: %v", k, err)
 			}
+		}
+	}
+}
+
+func alphaAt(t *testing.T, f Frame, x, y float64) uint8 {
+	t.Helper()
+	img, err := png.Decode(bytes.NewReader(Icon(f, true)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, a := img.At(int(x), int(y)).RGBA()
+	return uint8(a >> 8)
+}
+
+// slot is the middle of square i's place.
+func slot(i int) (x, y float64) {
+	return sqLeft + float64(i/2)*squarePitch + sqSize/2, sqTop + float64(i%2)*squarePitch + sqSize/2
+}
+
+func TestIconSquares(t *testing.T) {
+	edgeX := float64(iconSize - 1) // the sliver of the third column
+	for _, c := range []struct {
+		n      int
+		filled []int // slots drawn
+		sliver [2]bool
+	}{
+		{n: 0},
+		{n: 1, filled: []int{0}},
+		{n: 4, filled: []int{0, 1, 2, 3}},
+		{n: 5, filled: []int{0, 1, 2, 3}, sliver: [2]bool{true, false}},
+		{n: 40, filled: []int{0, 1, 2, 3}, sliver: [2]bool{true, true}},
+	} {
+		f := Still(IconLevel, 100, c.n)
+		for i := range 4 * min(c.n, 1) { // alone, the big circle covers the slots
+			x, y := slot(i)
+			want := slices.Contains(c.filled, i)
+			if got := alphaAt(t, f, x, y) == 0xff; got != want {
+				t.Errorf("%d requests: square %d drawn %v", c.n, i, got)
+			}
+		}
+		for row, want := range c.sliver {
+			_, y := slot(row)
+			if got := alphaAt(t, f, edgeX, y) > 0; got != want {
+				t.Errorf("%d requests: row %d cut by the edge %v", c.n, row, got)
+			}
+		}
+		// Alone, the circle is centered and big; beside squares it moves left.
+		if got := alphaAt(t, f, iconCenter+aloneR-2, iconCenter) > 0; got != (c.n == 0) {
+			t.Errorf("%d requests: circle reaches the right half %v", c.n, got)
+		}
+	}
+}
+
+func TestIconSquaresFly(t *testing.T) {
+	x, y := slot(1)
+	arrive := Moving(IconLevel, 100, []uint64{7}, []uint64{7, 8}, 0)
+	if alphaAt(t, arrive, x, y) != 0 {
+		t.Error("an arriving square starts in its place")
+	}
+	if arrive.T = 1; alphaAt(t, arrive, x, y) != 0xff {
+		t.Error("an arriving square does not land")
+	}
+	mid := Moving(IconLevel, 100, nil, []uint64{1}, 0.5)
+	if _, y0 := slot(0); alphaAt(t, mid, sqLeft+1.5, y0) > 0x40 || alphaAt(t, mid, sqLeft+sqSize+1.5, y0) < 0x80 {
+		t.Error("halfway the square is not on its way in from the right")
+	}
+}
+
+// With no squares left the shape stays aside while held there.
+func TestIconHoldsAside(t *testing.T) {
+	right := iconCenter + aloneR - 2
+	held := Frame{Kind: IconLevel, Level: 100, Squares: Move([]uint64{1}, nil), Aside: [2]bool{true, true}, T: 1}
+	if alphaAt(t, held, right, iconCenter) != 0 {
+		t.Error("a held shape grew back")
+	}
+	grow := Frame{Kind: IconLevel, Level: 100, Aside: [2]bool{true, false}, T: 1}
+	if alphaAt(t, grow, right, iconCenter) == 0 {
+		t.Error("the shape did not grow back")
+	}
+}
+
+func TestNextIconHoldsAside(t *testing.T) {
+	busy := View{Icon: IconLevel, Fill: 100, Squares: []uint64{4}}
+	idle := View{Icon: IconLevel, Fill: 100}
+	s, re := NextIcon(busy, IconState{}, now, now)
+	if !s.Aside || re != 0 {
+		t.Fatalf("busy: %+v %v", s, re)
+	}
+	if s, re = NextIcon(idle, s, now, now.Add(time.Second)); !s.Aside || re != HoldAside-time.Second {
+		t.Fatalf("a moment idle: %+v %v", s, re)
+	}
+	if s, re = NextIcon(idle, s, now, now.Add(HoldAside)); s.Aside || re != 0 {
+		t.Fatalf("idle past the hold: %+v %v", s, re)
+	}
+	if s, _ = NextIcon(idle, IconState{}, time.Time{}, now); s.Aside {
+		t.Fatal("never busy, yet aside")
+	}
+}
+
+// The request that ends leaves from its own place; the others close up.
+func TestIconSquaresFollowRequests(t *testing.T) {
+	m := Move([]uint64{1, 2, 3}, []uint64{2, 3, 4})
+	want := []Square{{0, Off}, {1, 0}, {2, 1}, {Off, 2}}
+	if !slices.Equal(m, want) {
+		t.Fatalf("move = %v, want %v", m, want)
+	}
+	x0, y0 := slot(0)
+	f := Moving(IconLevel, 100, []uint64{1, 2}, []uint64{2}, 0.15)
+	if alphaAt(t, f, x0, y0) == 0xff {
+		t.Error("the first square still sits in its place on its way out")
+	}
+	if alphaAt(t, f, x0, y0-sqSize) == 0 {
+		t.Error("the first square does not leave upward")
+	}
+	if f.T = 1; alphaAt(t, f, x0, y0) != 0xff {
+		t.Error("the second square did not take the first place")
+	}
+	if x1, y1 := slot(1); alphaAt(t, f, x1, y1) != 0 {
+		t.Error("the second place stays filled")
+	}
+}
+
+func TestIconCircleFill(t *testing.T) {
+	c, inner := iconCenter, aloneR-4 // inside the ring
+	at := func(level uint32, dx, dy float64) bool {
+		return alphaAt(t, Still(IconLevel, level, 0), c+dx*inner, c+dy*inner) == 0xff
+	}
+	if alphaAt(t, Still(IconLevel, 0, 0), c, c-aloneR) == 0 {
+		t.Error("no ring")
+	}
+	q := math.Sqrt(0.5)
+	for _, x := range []struct {
+		level                                  uint32
+		topRight, bottomRight, bottomLeft, top bool
+	}{
+		{0, false, false, false, false},
+		{25, true, false, false, true},
+		{50, true, true, false, true},
+		{100, true, true, true, true},
+	} {
+		got := [4]bool{at(x.level, q, -q), at(x.level, q, q), at(x.level, -q, q), at(x.level, 0.05, -1)}
+		if want := [4]bool{x.topRight, x.bottomRight, x.bottomLeft, x.top}; got != want {
+			t.Errorf("%d%%: top-right, bottom-right, bottom-left, top = %v, want %v", x.level, got, want)
 		}
 	}
 }

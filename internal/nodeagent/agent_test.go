@@ -125,3 +125,26 @@ func TestDecisionsInspector(t *testing.T) {
 		t.Fatalf("expected error on unauthorized, got nil")
 	}
 }
+
+func TestStatusInflight(t *testing.T) {
+	a := NewAgent(AgentConfig{})
+	a.stats.beat.EngineRunning = 3
+	a.publish()
+	if n := a.status.get().Requests.Inflight; n != 3 {
+		t.Fatalf("without a gateway inflight = %d, want the engine's 3", n)
+	}
+	a.gateway = NewGateway("http://127.0.0.1:1", "k", "")
+	a.gateway.onActive = a.noteRequests
+	a.gateway.addActive(2)
+	select {
+	case <-a.requests:
+	default:
+		t.Fatal("a changed count did not wake Run")
+	}
+	a.gateway.addActive(1)
+	a.gateway.addActive(-1) // two changes, one wake
+	a.publish()
+	if n := a.status.get().Requests.Inflight; n != 2 {
+		t.Fatalf("with a gateway inflight = %d, want its live 2", n)
+	}
+}
