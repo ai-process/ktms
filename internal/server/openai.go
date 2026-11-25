@@ -515,6 +515,9 @@ func route(model, reasoningEffort, explicitPlacement string) (routeDecision, err
 
 	default:
 		dec.ModelOverride = model
+		// No medium default: an override is served at the model's own level,
+		// and a needs header must not gain a general need.
+		dec.Effort = pb.Effort_EFFORT_UNSPECIFIED
 		if reasoningEffort != "" {
 			eff, err := parseEffort(reasoningEffort)
 			if err != nil {
@@ -2068,7 +2071,7 @@ func modelJSON(m *pb.ModelInfo) map[string]any {
 	}
 	return map[string]any{
 		"id": m.Id, "object": "model", "created": 0, "owned_by": m.Vendor,
-		"efforts": efforts, "capabilities": m.Capabilities,
+		"efforts": efforts, "capabilities": m.Capabilities, "competencies": m.Competencies,
 	}
 }
 
