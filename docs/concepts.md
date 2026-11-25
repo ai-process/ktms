@@ -9,7 +9,7 @@ Both are maps of a **topic** to a **level**. The operator picks the topics: lowe
 `general`, `medical` or `legal`. The levels are ordered: `basic` < `proficient` < `expert`.
 
 - A model's **competencies** say what it is good at, e.g. `{general: expert, medical: proficient}`.
-  A model meets a need at its own level or above: `medical: proficient` serves `medical: basic`.
+  A model meets any need at its own level or below: `medical: proficient` serves `medical: basic`.
 - A request's **needs** say what the code needs, e.g. `{medical: basic}`. The code knows topics, not
   models. An unknown level is `INVALID_ARGUMENT`. An unknown topic is no error: no model has it, and
   `ExplainRoute` shows that.
