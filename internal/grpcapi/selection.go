@@ -15,7 +15,7 @@ import (
 // and capabilities, narrowed by the key's and team's allowed_models before
 // ranking, so a policy never empties a chain a wider pool would have filled.
 // Placement then orders by class, and the chain keeps the first few.
-func (s *ProxyServer) selectChain(ctx context.Context, snap *registry.Snapshot, id *apikeys.Identity, needs map[string]string, search, text bool, caps []string, placement string, pair *languagePair, tr *routeTrace) ([]*proxydb.Model, error) {
+func (s *ProxyServer) selectChain(ctx context.Context, snap *registry.Snapshot, id *apikeys.Identity, needs map[string]string, search, text bool, caps []string, placement string, narrow func([]*proxydb.Model) ([]*proxydb.Model, error), tr *routeTrace) ([]*proxydb.Model, error) {
 	cands := router.Select(snap, id.KeyID, needs, search, text, caps...)
 	if tr != nil {
 		tr.selected = true
@@ -25,8 +25,8 @@ func (s *ProxyServer) selectChain(ctx context.Context, snap *registry.Snapshot, 
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
-	if pair != nil {
-		if models, err = tr.languagePair(models, pair); err != nil {
+	if narrow != nil {
+		if models, err = narrow(models); err != nil {
 			return nil, err
 		}
 	}

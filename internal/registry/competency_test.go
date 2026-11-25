@@ -115,3 +115,12 @@ func TestValidateCompetencies(t *testing.T) {
 		t.Fatalf("legacy config without catch-all: err = %v", err)
 	}
 }
+
+// A model described by efforts low..high is an expert in general: it must not
+// tie with an exact basic fit and win on price alone.
+func TestExcessCountsEffortsAsGeneral(t *testing.T) {
+	legacy := competent("old", nil, EffortLow, EffortMedium, EffortHigh)
+	if got := Excess(legacy, map[string]string{"general": "basic"}); got != 2 {
+		t.Fatalf("Excess(efforts low..high, general=basic) = %d, want 2", got)
+	}
+}

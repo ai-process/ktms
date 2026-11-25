@@ -56,6 +56,19 @@ func writeParams(h io.Writer, req *pb.GenerateTextRequest, withRequestInstructio
 		fmt.Fprintf(h, "seed:%d\n", req.GetSeed())
 	}
 
+	// Needs pick the models, so they part answers; written only when set,
+	// so keys of requests without them stay valid.
+	if needs := req.GetNeeds(); len(needs) > 0 {
+		keys := make([]string, 0, len(needs))
+		for k := range needs {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Fprintf(h, "need:%s=%s\n", k, needs[k])
+		}
+	}
+
 	// Sorted attributes
 	if attrs := req.GetAttributes(); len(attrs) > 0 {
 		keys := make([]string, 0, len(attrs))

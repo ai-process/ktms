@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -235,7 +236,11 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: unknown model %q", req.GetModelOverride())
 		}
 		if len(needs) == 0 && len(m.Efforts) > 0 {
-			needs[registry.TopicGeneral] = registry.EffortLevel(m.Efforts[0])
+			e := m.Efforts[0]
+			if registry.Serves(m, registry.EffortMedium) {
+				e = registry.EffortMedium // what HTTP sent for an exact model in 1.6
+			}
+			needs[registry.TopicGeneral] = registry.EffortLevel(e)
 		} else if g := m.Competencies[registry.TopicGeneral]; len(needs) == 0 && g != "" {
 			needs[registry.TopicGeneral] = g // usage meta keeps an effort
 		}
@@ -292,6 +297,13 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 	reqCaps := tr.capabilities(req)
 	rule := router.Match(snap, needs, routingAttributes(req.GetAttributes(), id))
 	var models []*proxydb.Model
+	if rule != nil && snap.Selects() && len(rule.Needs) > 0 {
+		// A rule takes every request at or above its needs; when its chain
+		// meets none of a higher one, the selection serves it instead.
+		if _, ferr := router.FilterChain(snap, router.ResolveChain(rule, router.CanaryKey(req.GetAttributes())), id.KeyID, needs, req.GetEnableGoogleSearch(), reqCaps...); errors.Is(ferr, router.ErrNoCapableModel) {
+			rule = nil
+		}
+	}
 	if rule == nil {
 		if !snap.Selects() {
 			tr.start(routeMode, nil, nil)

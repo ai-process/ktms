@@ -106,3 +106,14 @@ func TestMatchModalityWithTopicNeeds(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+// Translation is billed by characters: selection ranks it by that price.
+func TestSelectRanksTranslateByChars(t *testing.T) {
+	a := comp("mt-a", registry.VendorOpenAI, 0, 0, map[string]string{"general": "basic"}, registry.CapabilityTranslate)
+	b := comp("llm-b", registry.VendorOpenAI, 10, 4, map[string]string{"general": "basic"}, registry.CapabilityTranslate)
+	a.PricePerMillionChars, b.PricePerMillionChars = 20, 5
+	snap := registry.NewSnapshotForTest([]*proxydb.Model{a, b}, nil, map[string]map[string]string{"k": {registry.VendorOpenAI: "sk"}}, nil)
+	if got := kept(Select(snap, "k", nil, false, false, registry.CapabilityTranslate)); !slices.Equal(got, []string{"llm-b", "mt-a"}) {
+		t.Fatalf("order = %v, want the cheaper per character first", got)
+	}
+}

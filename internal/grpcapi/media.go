@@ -197,6 +197,33 @@ func (s *ProxyServer) planMediaNeeds(ctx context.Context, attrs, needs map[strin
 	return s.planMediaFor(ctx, id, mediaQuery{attrs: attrs, needs: needs, override: override, modality: modality, caps: capabilities}, nil)
 }
 
+// mediaNarrow keeps what a modality call may use beyond its needs: without a
+// general need, a model described by efforts only at low, as in 1.6 (speech
+// and images routed at low); then the language pair, if any.
+func (t *routeTrace) mediaNarrow(needs map[string]string, pair *languagePair) func([]*proxydb.Model) ([]*proxydb.Model, error) {
+	return func(models []*proxydb.Model) ([]*proxydb.Model, error) {
+		if _, ok := needs[registry.TopicGeneral]; !ok {
+			var low []*proxydb.Model
+			for _, m := range models {
+				_, explicit := m.Competencies[registry.TopicGeneral]
+				if explicit || len(m.Efforts) == 0 || registry.Serves(m, registry.EffortLow) {
+					low = append(low, m)
+				} else if t != nil {
+					t.drop(m.ID, router.DropEffort)
+				}
+			}
+			if len(low) == 0 {
+				return nil, router.ToStatus(router.ErrNoCapableModel)
+			}
+			models = low
+		}
+		if pair != nil {
+			return t.languagePair(models, pair)
+		}
+		return models, nil
+	}
+}
+
 // mediaQuery is what a non-text call routes by. pair narrows a translate
 // chain to the models declaring the language pair.
 type mediaQuery struct {
@@ -268,17 +295,15 @@ func (s *ProxyServer) planMediaFor(ctx context.Context, id *apikeys.Identity, q 
 		if restricted {
 			placement = router.PlacementNodesOnly
 		}
-		if models, err = s.selectChain(ctx, snap, id, needs, false, false, q.caps, placement, q.pair, tr); err != nil {
+		if models, err = s.selectChain(ctx, snap, id, needs, false, false, q.caps, placement, tr.mediaNarrow(needs, q.pair), tr); err != nil {
 			return nil, err
 		}
 	} else {
 		if models, err = tr.filter(snap, chain, id.KeyID, needs, false, q.caps); err != nil {
 			return nil, router.ToStatus(err)
 		}
-		if q.pair != nil {
-			if models, err = tr.languagePair(models, q.pair); err != nil {
-				return nil, err
-			}
+		if models, err = tr.mediaNarrow(needs, q.pair)(models); err != nil {
+			return nil, err
 		}
 		tr.policy(ctx, id, models)
 		if models, err = teamModels(ctx, id, models); err != nil {
