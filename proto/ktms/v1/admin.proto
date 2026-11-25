@@ -668,9 +668,10 @@ message RouteCandidate {
   // node_unavailable, node_pool_disabled, language_pair. New reasons may appear.
   string dropped = 3;
   google.protobuf.Duration paused_for = 4; // vendor_paused: until the vendor's Retry-After ends
-  // Selection without a rule ranks by these: levels above the needs summed
-  // over the needed topics, then the blended price (3 x input + output) / 4
-  // per million tokens at the standard rate.
+  // Experimental: selection without a rule ranks by these: levels above the
+  // needs summed over the needed topics, then the blended price
+  // (3 x input + output) / 4 per million tokens at the standard rate (per
+  // million characters for translation). The order may change in a 1.x minor.
   int32 excess = 5;
   double blended_price_per_mtok = 6;
 }
