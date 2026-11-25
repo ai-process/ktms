@@ -29,6 +29,8 @@ All notable changes to KTMS are listed here. The format follows
 - `ktms route explain --needs` and `ktms chat --needs`, `needs` in the MCP tool `explain_route`, competencies and needs
   columns in `ktms models list` and `ktms rules list`; docs (concepts, configuration, gRPC and HTTP APIs) and the
   plugin skills speak of needs and competencies.
+- Upgrade ktms-admin with this release (to the version that knows competencies and needs): an older console
+  drops them when it saves a model or the rules.
 
 ## [1.6.1] - 2026-11-25
 
