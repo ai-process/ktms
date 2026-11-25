@@ -126,7 +126,8 @@ never returns the node key or any token.
 countdown during a manual pause, and a warning when the agent or KTMS does not answer. Each request
 the node is serving, on any engine, is a small square beside it: a new one flies in from the right,
 one that ends leaves upward from its own place and the rest close up; they stack in two rows, and
-past four run off the icon's edge. The count is the status's `requests.inflight`, and
+past four run off the icon's edge. The shape stays small for 3 seconds after the last request, so
+short gaps between requests do not make it jump. The count is the status's `requests.inflight`, and
 `requests.running` lists the ids of the oldest eight, both live from the node's gateway; without
 the gateway the count is the engine's at the last heartbeat. Its menu pauses for 5, 10 or 30 minutes or until the next switch, limits the node to 50, 30
 or 10% for an hour, cuts running requests, resumes the schedule and turns "Schedule set by KTMS" on

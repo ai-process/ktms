@@ -52,8 +52,10 @@ type tray struct {
 	status    *nodeagent.Status
 	err       error
 	notes     nodetray.Notifier
-	want      iconState // the icon for the latest status
-	drawn     iconState // last drawn at rest or in flight; its ids are where squares head
+	want      nodetray.IconState // the icon for the latest status
+	drawn     nodetray.IconState // last drawn at rest or in flight; its ids are where squares head
+	busyAt    time.Time          // when the node last had requests running
+	recheck   bool               // a timer will render once the shape's hold aside is over
 	iconOK    bool
 	animating bool
 
@@ -166,22 +168,40 @@ func (t *tray) update(s *nodeagent.Status, err error) {
 
 func (t *tray) render() {
 	t.mu.Lock()
-	v := nodetray.Build(t.status, t.err, time.Now())
-	t.want = iconState{kind: v.Icon, fill: v.Fill, ids: v.Squares}
+	now := time.Now()
+	v := nodetray.Build(t.status, t.err, now)
+	if len(v.Squares) > 0 {
+		t.busyAt = now
+	}
+	held := t.drawn
+	if t.animating {
+		held = t.want // the flight heads there
+	}
+	var recheck time.Duration
+	t.want, recheck = nodetray.NextIcon(v, held, t.busyAt, now)
+	if recheck > 0 && !t.recheck {
+		t.recheck = true
+		time.AfterFunc(recheck, func() {
+			t.mu.Lock()
+			t.recheck = false
+			t.mu.Unlock()
+			t.render()
+		})
+	}
 	draw := false
 	switch {
 	case t.animating: // it picks up the new target
-	case t.iconOK && !slices.Equal(t.want.ids, t.drawn.ids):
+	case t.iconOK && (!slices.Equal(t.want.IDs, t.drawn.IDs) || t.want.Aside != t.drawn.Aside):
 		t.animating = true
 		go t.animate()
-	case !t.iconOK || !t.want.same(t.drawn):
+	case !t.iconOK || !t.want.Same(t.drawn):
 		t.drawn, t.iconOK, draw = t.want, true, true
 	}
 	want := t.want
 	t.mu.Unlock()
 
 	if draw {
-		setIcon(nodetray.Still(want.kind, want.fill, len(want.ids)))
+		setIcon(want.Still())
 	}
 	if runtime.GOOS == "darwin" {
 		systray.SetTitle(v.Title)
@@ -228,41 +248,30 @@ func (t *tray) render() {
 	t.mu.Unlock()
 }
 
-// iconState is what the icon shows at rest.
-type iconState struct {
-	kind nodetray.IconKind
-	fill uint32
-	ids  []uint64
-}
-
-func (s iconState) same(o iconState) bool {
-	return s.kind == o.kind && s.fill == o.fill && slices.Equal(s.ids, o.ids)
-}
-
 // animate moves squares over a few frames: the request that ended leaves
 // from its own place and the rest close up. A change mid-flight starts a new
 // flight from where the last one was headed. At rest nothing redraws.
 func (t *tray) animate() {
-	var moves []nodetray.Square
+	var from nodetray.IconState
 	step := nodetray.AnimSteps
 	for {
 		t.mu.Lock()
 		w := t.want
-		if !slices.Equal(w.ids, t.drawn.ids) {
-			moves, step = nodetray.Move(t.drawn.ids, w.ids), 0
+		if !slices.Equal(w.IDs, t.drawn.IDs) || w.Aside != t.drawn.Aside {
+			from, step = t.drawn, 0
 		} else if step == nodetray.AnimSteps {
-			changed := !w.same(t.drawn)
+			changed := !w.Same(t.drawn)
 			t.drawn, t.animating = w, false
 			t.mu.Unlock()
 			if changed {
-				setIcon(nodetray.Still(w.kind, w.fill, len(w.ids)))
+				setIcon(w.Still())
 			}
 			return
 		}
 		step++
 		t.drawn = w
 		t.mu.Unlock()
-		setIcon(nodetray.Frame{Kind: w.kind, Level: w.fill, Squares: moves, T: float64(step) / nodetray.AnimSteps})
+		setIcon(from.MoveTo(w, float64(step)/nodetray.AnimSteps))
 		time.Sleep(nodetray.AnimEvery)
 	}
 }

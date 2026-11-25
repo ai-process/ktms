@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/png"
 	"math"
+	"slices"
 	"time"
 )
 
@@ -50,16 +51,22 @@ type Frame struct {
 	Kind    IconKind
 	Level   uint32 // 0-100; the circle of IconLevel fills this much
 	Squares []Square
+	Aside   [2]bool // the shape sits small at the left: before and after the move
 	T       float64 // 0 at the start of a move, 1 at rest
 }
 
 // Still is a frame at rest with n squares.
 func Still(k IconKind, level uint32, n int) Frame {
-	f := Frame{Kind: k, Level: level, T: 1}
+	f := Frame{Kind: k, Level: level, Aside: [2]bool{n > 0, n > 0}, T: 1}
 	for i := range n {
 		f.Squares = append(f.Squares, Square{i, i})
 	}
 	return f
+}
+
+// Moving is a frame t of the way from one list of running requests to the next.
+func Moving(k IconKind, level uint32, prev, next []uint64, t float64) Frame {
+	return Frame{Kind: k, Level: level, Squares: Move(prev, next), Aside: [2]bool{len(prev) > 0, len(next) > 0}, T: t}
 }
 
 // Move plans the squares from one list of running requests to the next: a
@@ -95,11 +102,7 @@ func Icon(f Frame, template bool) []byte {
 	img := image.NewNRGBA(image.Rect(0, 0, iconSize, iconSize))
 	t := math.Max(0, math.Min(1, f.T))
 	ease := 1 - (1-t)*(1-t)*(1-t)
-	var before, after float64
-	for _, q := range f.Squares {
-		before, after = max(before, docked(q.From)), max(after, docked(q.To))
-	}
-	dock := lerp(before, after, ease)
+	dock := lerp(b2f(f.Aside[0]), b2f(f.Aside[1]), ease)
 	cx, r := lerp(iconCenter, dockX, dock), lerp(aloneR, dockR, dock)
 	scale := shapeR / r // shape units per pixel
 	boxes := squareBoxes(f.Squares, ease)
@@ -123,6 +126,13 @@ func Icon(f Frame, template bool) []byte {
 
 func docked(slot int) float64 {
 	if slot >= 0 && slot < maxSquares {
+		return 1
+	}
+	return 0
+}
+
+func b2f(b bool) float64 {
+	if b {
 		return 1
 	}
 	return 0
@@ -209,4 +219,44 @@ func sector(dx, dy, scale, frac float64) float64 {
 		}
 	}
 	return float64(in) / 16
+}
+
+// HoldAside is how long the shape stays small after the last request ends,
+// so a gap of a moment between requests does not make it jump.
+const HoldAside = 3 * time.Second
+
+// IconState is what the icon shows at rest.
+type IconState struct {
+	Kind  IconKind
+	Fill  uint32
+	IDs   []uint64 // the requests drawn as squares, oldest first
+	Aside bool     // the shape sits small at the left
+}
+
+func (s IconState) Same(o IconState) bool {
+	return s.Kind == o.Kind && s.Fill == o.Fill && s.Aside == o.Aside && slices.Equal(s.IDs, o.IDs)
+}
+
+// Still is the frame of the state at rest.
+func (s IconState) Still() Frame {
+	f := Still(s.Kind, s.Fill, len(s.IDs))
+	f.Aside = [2]bool{s.Aside, s.Aside}
+	return f
+}
+
+// MoveTo is the frame t of the way from s to next.
+func (s IconState) MoveTo(next IconState, t float64) Frame {
+	return Frame{Kind: next.Kind, Level: next.Fill, Squares: Move(s.IDs, next.IDs), Aside: [2]bool{s.Aside, next.Aside}, T: t}
+}
+
+// NextIcon is the icon for v after prev; lastBusy is when requests last ran.
+// A positive recheck means the shape is held aside: look again after it.
+func NextIcon(v View, prev IconState, lastBusy, now time.Time) (s IconState, recheck time.Duration) {
+	s = IconState{Kind: v.Icon, Fill: v.Fill, IDs: v.Squares, Aside: len(v.Squares) > 0}
+	if !s.Aside && prev.Aside {
+		if left := HoldAside - now.Sub(lastBusy); left > 0 {
+			s.Aside, recheck = true, left
+		}
+	}
+	return s, recheck
 }

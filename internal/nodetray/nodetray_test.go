@@ -181,16 +181,47 @@ func TestIconSquares(t *testing.T) {
 
 func TestIconSquaresFly(t *testing.T) {
 	x, y := slot(1)
-	arrive := Frame{Kind: IconLevel, Level: 100, Squares: Move([]uint64{7}, []uint64{7, 8})}
+	arrive := Moving(IconLevel, 100, []uint64{7}, []uint64{7, 8}, 0)
 	if alphaAt(t, arrive, x, y) != 0 {
 		t.Error("an arriving square starts in its place")
 	}
 	if arrive.T = 1; alphaAt(t, arrive, x, y) != 0xff {
 		t.Error("an arriving square does not land")
 	}
-	mid := Frame{Kind: IconLevel, Level: 100, Squares: Move(nil, []uint64{1}), T: 0.5}
+	mid := Moving(IconLevel, 100, nil, []uint64{1}, 0.5)
 	if _, y0 := slot(0); alphaAt(t, mid, sqLeft+1.5, y0) > 0x40 || alphaAt(t, mid, sqLeft+sqSize+1.5, y0) < 0x80 {
 		t.Error("halfway the square is not on its way in from the right")
+	}
+}
+
+// With no squares left the shape stays aside while held there.
+func TestIconHoldsAside(t *testing.T) {
+	right := iconCenter + aloneR - 2
+	held := Frame{Kind: IconLevel, Level: 100, Squares: Move([]uint64{1}, nil), Aside: [2]bool{true, true}, T: 1}
+	if alphaAt(t, held, right, iconCenter) != 0 {
+		t.Error("a held shape grew back")
+	}
+	grow := Frame{Kind: IconLevel, Level: 100, Aside: [2]bool{true, false}, T: 1}
+	if alphaAt(t, grow, right, iconCenter) == 0 {
+		t.Error("the shape did not grow back")
+	}
+}
+
+func TestNextIconHoldsAside(t *testing.T) {
+	busy := View{Icon: IconLevel, Fill: 100, Squares: []uint64{4}}
+	idle := View{Icon: IconLevel, Fill: 100}
+	s, re := NextIcon(busy, IconState{}, now, now)
+	if !s.Aside || re != 0 {
+		t.Fatalf("busy: %+v %v", s, re)
+	}
+	if s, re = NextIcon(idle, s, now, now.Add(time.Second)); !s.Aside || re != HoldAside-time.Second {
+		t.Fatalf("a moment idle: %+v %v", s, re)
+	}
+	if s, re = NextIcon(idle, s, now, now.Add(HoldAside)); s.Aside || re != 0 {
+		t.Fatalf("idle past the hold: %+v %v", s, re)
+	}
+	if s, _ = NextIcon(idle, IconState{}, time.Time{}, now); s.Aside {
+		t.Fatal("never busy, yet aside")
 	}
 }
 
@@ -202,7 +233,7 @@ func TestIconSquaresFollowRequests(t *testing.T) {
 		t.Fatalf("move = %v, want %v", m, want)
 	}
 	x0, y0 := slot(0)
-	f := Frame{Kind: IconLevel, Level: 100, Squares: Move([]uint64{1, 2}, []uint64{2}), T: 0.15}
+	f := Moving(IconLevel, 100, []uint64{1, 2}, []uint64{2}, 0.15)
 	if alphaAt(t, f, x0, y0) == 0xff {
 		t.Error("the first square still sits in its place on its way out")
 	}
