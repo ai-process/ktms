@@ -236,6 +236,8 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 		}
 		if len(needs) == 0 && len(m.Efforts) > 0 {
 			needs[registry.TopicGeneral] = registry.EffortLevel(m.Efforts[0])
+		} else if g := m.Competencies[registry.TopicGeneral]; len(needs) == 0 && g != "" {
+			needs[registry.TopicGeneral] = g // usage meta keeps an effort
 		}
 		tr.matched(needs)
 		models, err := tr.filter(snap, []string{req.GetModelOverride()}, id.KeyID, needs, req.GetEnableGoogleSearch(), tr.capabilities(req))
