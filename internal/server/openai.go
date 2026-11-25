@@ -1577,7 +1577,12 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 	}
 	override := dec.ModelOverride
 	attrs, actionID := attributes(decReq.Metadata, decReq.User)
+	needs, err := mediaNeeds(r, dec)
+	if err != nil {
+		return err
+	}
 	req := &pb.JudgeRequest{
+		Needs:         needs,
 		StateJson:     stateJSON,
 		StateMedia:    stateMedia,
 		Questions:     pbQuestions,
@@ -1975,6 +1980,11 @@ func (a *OpenAIAPI) decisionsRollouts(ctx context.Context, w http.ResponseWriter
 	}
 	if dec.HasPlacement {
 		return invalid("placement is only supported for chat completions")
+	}
+	if needs, err := mediaNeeds(r, dec); err != nil {
+		return err
+	} else if len(needs) > 0 {
+		return invalid("needs are not supported on /v1/decisions/rollouts yet")
 	}
 	override := dec.ModelOverride
 	attrs, actionID := attributes(decReq.Metadata, decReq.User)

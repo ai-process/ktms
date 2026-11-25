@@ -129,13 +129,13 @@ func MeetsAll(m *proxydb.Model, needs map[string]string) bool {
 
 // Excess sums, over the needed topics, how many levels m has above the need,
 // so an expert is not spent where a basic model does; 0 for an exact fit.
+// Efforts count at the highest one listed, as in Competencies, so a model
+// described by efforts does not win a selection on price alone.
 func Excess(m *proxydb.Model, needs map[string]string) int {
+	have := Competencies(m)
 	n := 0
 	for t, l := range needs {
-		if t == TopicGeneral && legacyGeneral(m) {
-			continue // served exactly at that effort
-		}
-		if d := LevelRank(m.Competencies[t]) - LevelRank(l); d > 0 {
+		if d := LevelRank(have[t]) - LevelRank(l); d > 0 {
 			n += d
 		}
 	}
