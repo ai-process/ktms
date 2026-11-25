@@ -14,13 +14,13 @@ description: Add a local inference node (Ollama, vLLM, llama.cpp on a Mac or a G
 4. The model as vendor `local`, id exactly the engine's model tag, with the efforts it may serve,
    and a rule that puts it first with cloud models after it. Add both to `ktms.yaml` and
    plan and apply (see the configure skill); keep a catch-all rule per effort.
-5. On the machine, the installer sets up the engine, the model and the agent and waits for
+5. On the machine, the installer sets up the engine, the model and the daemon and waits for
    registration (it asks for the node key with hidden input):
    `curl -fsSL https://raw.githubusercontent.com/ai-process/ktms/main/scripts/install-node.sh | sh -s -- --proxy GATEWAY --node-id ID --model TAG`
    `--doctor` explains failures, `--dry-run` changes nothing, `--uninstall` removes it.
 6. A large MoE model (DeepSeek-V4-Flash, Qwen3.6-35B) on one NVIDIA RTX 30-50 under Linux or
    Windows: suggest FreeToken instead of Ollama; it does not run on a Mac, AMD or Intel. Start
-   `ft serve --model HF_ID --served-model-name TAG` and the agent with `--engine freetoken`
+   `ft serve --model HF_ID --served-model-name TAG` and the daemon with `--engine freetoken`
    (`FREETOKEN_API_KEY` for both); the installer does not set FreeToken up. Give the model
    `no_structured_output`: FreeToken rejects `response_format`, and the router then checks replies.
 

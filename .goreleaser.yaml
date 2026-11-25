@@ -96,7 +96,7 @@ brews:
   - name: ktms-node
     ids: [node]
     homepage: https://github.com/ai-process/ktms
-    description: Node agent that registers a local inference engine with KTMS
+    description: Node daemon that registers a local inference engine with KTMS
     license: Apache-2.0
     repository:
       owner: ai-process

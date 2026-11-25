@@ -38,7 +38,7 @@ func (f *fakeRegistry) UnregisterNode(context.Context, *pb.UnregisterNodeRequest
 	return &pb.UnregisterNodeResponse{Ok: true}, nil
 }
 
-// fakeVersion answers the version check the agent runs before the tunnel.
+// fakeVersion answers the version check the daemon runs before the tunnel.
 const fakeVersion = `[ "$1" = --version ] && { echo "cloudflared version 2026.10.4 (built 2026-10-26)"; exit 0; }`
 
 // fakeCloudflared prints a different address on each launch; the first run
