@@ -75,10 +75,12 @@ type NodeKey struct {
 func (k *NodeKey) Active() bool { return k.DisabledAt == nil }
 
 type Model struct {
-	ID              string
-	Vendor          string
-	Endpoint        string
-	Efforts         []string
+	ID       string
+	Vendor   string
+	Endpoint string
+	Efforts  []string // deprecated: read as general (registry.Competencies), until 2.0
+	// Competencies is topic -> level (basic | proficient | expert), 1.7.
+	Competencies    map[string]string
 	Capabilities    []string
 	RPM             int32
 	PriceInPerMtok  float64
@@ -229,7 +231,8 @@ type Rule struct {
 	ID               string
 	Name             string
 	Priority         int32
-	Effort           string // "" = any
+	Effort           string            // "" = any; deprecated: use Needs, until 2.0
+	Needs            map[string]string // topic -> least level the request needs, 1.7
 	Attributes       map[string]string
 	Enabled          bool
 	Use              []string // ordered model ids

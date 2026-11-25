@@ -74,6 +74,7 @@ func modelFromProto(m *pb.ModelSpec) *proxydb.Model {
 		LanguagesSource:        m.GetLanguages().GetSource(),
 		LanguagesTarget:        m.GetLanguages().GetTarget(),
 		PricePerMillionChars:   m.GetPricePerMillionChars(),
+		Competencies:           nonEmpty(m.GetCompetencies()),
 	}
 }
 
@@ -101,7 +102,16 @@ func modelToProto(m *proxydb.Model) *pb.ModelSpec {
 		PriceCacheWritePerMtok: m.PriceCacheWritePerMtok,
 		Languages:              modelLanguages(m),
 		PricePerMillionChars:   m.PricePerMillionChars,
+		Competencies:           m.Competencies,
 	}
+}
+
+// nonEmpty keeps an empty map nil, as a model or rule without one loads.
+func nonEmpty(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 func userRateLimitFromProto(u *pb.UserRateLimitSpec) *proxydb.UserRateLimit {
@@ -203,6 +213,7 @@ func ruleToProto(r *proxydb.Rule) *pb.RuleSpec {
 		ShadowModel:      r.ShadowModel,
 		ShadowPercentage: r.ShadowPercentage,
 		ShadowEval:       r.ShadowEval,
+		Needs:            r.Needs,
 	}
 }
 

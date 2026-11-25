@@ -7,6 +7,15 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Model competencies and request needs (topic: `basic` < `proficient` < `expert`), part 1: `ModelSpec.competencies`,
+  `RuleSpec.needs`, `needs` on `GenerateTextRequest`, `SubmitBatchRequest`, speech, image, judge and translate requests,
+  `ModelInfo.competencies` and the `ExplainRoute` fields, stored in Postgres and in the config file. Efforts are
+  deprecated and read as the topic `general` (low, medium, high = basic, proficient, expert); a model described by
+  efforts keeps serving exactly those. Once a model declares competencies, the catch-all rule per effort is no longer
+  required. `ktms config plan` hints at the competencies and needs to write instead of efforts.
+
 ## [1.6.1] - 2026-11-25
 
 ### Added

@@ -166,7 +166,7 @@ func loadModels(ctx context.Context, q querier) ([]*Model, error) {
 		        daily_tokens_per_key, daily_tokens_per_user, enabled,
 		        burst, queue_timeout_ms, budget_grace_margin,
 		        price_cache_read_per_mtok, price_cache_write_per_mtok,
-		        languages_source, languages_target, price_per_million_chars
+		        languages_source, languages_target, price_per_million_chars, competencies
 		 FROM model ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -175,14 +175,18 @@ func loadModels(ctx context.Context, q querier) ([]*Model, error) {
 	var out []*Model
 	for rows.Next() {
 		var m Model
+		var comp []byte
 		if err := rows.Scan(&m.ID, &m.Vendor, &m.Endpoint, &m.Efforts, &m.Capabilities, &m.RPM,
 			&m.PriceInPerMtok, &m.PriceOutPerMtok, &m.PriceInPeakPerMtok, &m.PriceOutPeakPerMtok,
 			&m.PriceInBatchPerMtok, &m.PriceOutBatchPerMtok,
 			&m.DailyTokensPerKey, &m.DailyTokensPerUser, &m.Enabled,
 			&m.Burst, &m.QueueTimeoutMs, &m.BudgetGraceMargin,
 			&m.PriceCacheReadPerMtok, &m.PriceCacheWritePerMtok,
-			&m.LanguagesSource, &m.LanguagesTarget, &m.PricePerMillionChars); err != nil {
+			&m.LanguagesSource, &m.LanguagesTarget, &m.PricePerMillionChars, &comp); err != nil {
 			return nil, err
+		}
+		if m.Competencies, err = levelMap(comp); err != nil {
+			return nil, fmt.Errorf("model %s competencies: %w", m.ID, err)
 		}
 		out = append(out, &m)
 	}
@@ -194,7 +198,7 @@ func (d *DB) LoadRules(ctx context.Context) ([]*Rule, error) { return loadRules(
 func loadRules(ctx context.Context, q querier) ([]*Rule, error) {
 	rows, err := q.Query(ctx,
 		`SELECT r.id, r.name, r.priority, r.effort, r.attributes, r.enabled,
-		        r.shadow_model, r.shadow_percentage, r.shadow_eval,
+		        r.shadow_model, r.shadow_percentage, r.shadow_eval, r.needs,
 		        COALESCE(array_agg(rm.model_id ORDER BY rm.position)
 		                 FILTER (WHERE rm.model_id IS NOT NULL), '{}'),
 		        COALESCE(array_agg(rm.weight ORDER BY rm.position)
@@ -209,14 +213,18 @@ func loadRules(ctx context.Context, q querier) ([]*Rule, error) {
 	var out []*Rule
 	for rows.Next() {
 		var r Rule
-		var attrs []byte
+		var attrs, needs []byte
 		var weights []int32
 		if err := rows.Scan(&r.ID, &r.Name, &r.Priority, &r.Effort, &attrs, &r.Enabled,
-			&r.ShadowModel, &r.ShadowPercentage, &r.ShadowEval, &r.Use, &weights); err != nil {
+			&r.ShadowModel, &r.ShadowPercentage, &r.ShadowEval, &needs, &r.Use, &weights); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(attrs, &r.Attributes); err != nil {
 			return nil, fmt.Errorf("rule %s attributes: %w", r.Name, err)
+		}
+		var err error
+		if r.Needs, err = levelMap(needs); err != nil {
+			return nil, fmt.Errorf("rule %s needs: %w", r.Name, err)
 		}
 		var hasNonZero bool
 		for _, w := range weights {
@@ -319,23 +327,47 @@ func UpsertModel(ctx context.Context, tx pgx.Tx, m *Model) error {
 		                    daily_tokens_per_key, daily_tokens_per_user, enabled,
 		                    burst, queue_timeout_ms, budget_grace_margin,
 		                    price_cache_read_per_mtok, price_cache_write_per_mtok,
-		                    languages_source, languages_target, price_per_million_chars)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+		                    languages_source, languages_target, price_per_million_chars, competencies)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
 		 ON CONFLICT (id) DO UPDATE SET vendor = $2, endpoint = $3, efforts = $4, capabilities = $5,
 		   rpm = $6, price_in_per_mtok = $7, price_out_per_mtok = $8, price_in_peak_per_mtok = $9,
 		   price_out_peak_per_mtok = $10, price_in_batch_per_mtok = $11, price_out_batch_per_mtok = $12,
 		   daily_tokens_per_key = $13, daily_tokens_per_user = $14, enabled = $15,
 		   burst = $16, queue_timeout_ms = $17, budget_grace_margin = $18,
 		   price_cache_read_per_mtok = $19, price_cache_write_per_mtok = $20,
-		   languages_source = $21, languages_target = $22, price_per_million_chars = $23, updated_at = NOW()`,
+		   languages_source = $21, languages_target = $22, price_per_million_chars = $23, competencies = $24, updated_at = NOW()`,
 		m.ID, m.Vendor, m.Endpoint, m.Efforts, m.Capabilities, m.RPM,
 		m.PriceInPerMtok, m.PriceOutPerMtok, m.PriceInPeakPerMtok, m.PriceOutPeakPerMtok,
 		m.PriceInBatchPerMtok, m.PriceOutBatchPerMtok,
 		m.DailyTokensPerKey, m.DailyTokensPerUser, m.Enabled,
 		m.Burst, m.QueueTimeoutMs, m.BudgetGraceMargin,
 		m.PriceCacheReadPerMtok, m.PriceCacheWritePerMtok,
-		src, dst, m.PricePerMillionChars)
+		src, dst, m.PricePerMillionChars, jsonMap(m.Competencies))
 	return err
+}
+
+// jsonMap stores a nil map as {} so the column never holds null.
+func jsonMap(m map[string]string) []byte {
+	if len(m) == 0 {
+		return []byte("{}")
+	}
+	b, _ := json.Marshal(m) // a map of strings always marshals
+	return b
+}
+
+// levelMap reads a jsonb topic -> level column; empty means none.
+func levelMap(b []byte) (map[string]string, error) {
+	var m map[string]string
+	if len(b) == 0 {
+		return nil, nil
+	}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	if len(m) == 0 {
+		return nil, nil
+	}
+	return m, nil
 }
 
 func (d *DB) LoadUserRateLimits(ctx context.Context) ([]*UserRateLimit, error) {
@@ -406,9 +438,9 @@ func ReplaceRules(ctx context.Context, tx pgx.Tx, rules []*Rule) error {
 			return err
 		}
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO rule (id, name, priority, effort, attributes, enabled, shadow_model, shadow_percentage, shadow_eval)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-			r.ID, r.Name, r.Priority, r.Effort, attrs, r.Enabled, r.ShadowModel, r.ShadowPercentage, r.ShadowEval); err != nil {
+			`INSERT INTO rule (id, name, priority, effort, attributes, enabled, shadow_model, shadow_percentage, shadow_eval, needs)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			r.ID, r.Name, r.Priority, r.Effort, attrs, r.Enabled, r.ShadowModel, r.ShadowPercentage, r.ShadowEval, jsonMap(r.Needs)); err != nil {
 			return err
 		}
 		for pos, modelID := range r.Use {

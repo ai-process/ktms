@@ -18,13 +18,15 @@ var KeyScopes = []string{apikeys.ScopeGenerate, apikeys.ScopeMCP, apikeys.ScopeA
 var efforts = []pb.Effort{pb.Effort_EFFORT_LOW, pb.Effort_EFFORT_MEDIUM, pb.Effort_EFFORT_HIGH}
 
 // Validate checks what the file can show on its own: names and ids unique,
-// references inside the file resolved, a catch-all rule for every effort.
+// references inside the file resolved, a catch-all rule for every effort
+// unless a model declares competencies.
 // Keystone validates the full configuration again when it is applied.
 func (c *Config) Validate() error {
 	var errs []error
 	bad := func(format string, a ...any) { errs = append(errs, fmt.Errorf(format, a...)) }
 
 	models := map[string]bool{}
+	selects := false // a model declares competencies: no catch-all needed
 	for i, m := range c.Models {
 		switch {
 		case m.GetId() == "":
@@ -35,6 +37,12 @@ func (c *Config) Validate() error {
 		models[m.GetId()] = true
 		if m.GetVendor() == "" {
 			bad("models[%d] %s: vendor is required", i, m.GetId())
+		}
+		if err := registry.ValidateLevels(m.GetCompetencies()); err != nil {
+			bad("models[%d] %s: competencies: %v", i, m.GetId(), err)
+		}
+		if m.GetEnabled() && len(m.GetCompetencies()) > 0 {
+			selects = true
 		}
 		if slices.Contains(m.GetCapabilities(), registry.CapabilityTranslate) &&
 			(len(m.GetLanguages().GetSource()) == 0 || len(m.GetLanguages().GetTarget()) == 0) {
@@ -81,7 +89,10 @@ func (c *Config) Validate() error {
 			if len(r.GetWeights()) > 0 && len(r.GetWeights()) != len(r.GetUse()) {
 				bad("rules[%d] %s: weights needs one entry per model in use", i, r.GetName())
 			}
-			if r.GetEnabled() && len(r.GetAttributes()) == 0 {
+			if err := registry.ValidateLevels(r.GetNeeds()); err != nil {
+				bad("rules[%d] %s: needs: %v", i, r.GetName(), err)
+			}
+			if r.GetEnabled() && len(r.GetAttributes()) == 0 && len(r.GetNeeds()) == 0 {
 				if r.GetEffort() == pb.Effort_EFFORT_UNSPECIFIED {
 					for _, e := range efforts {
 						covered[e] = true
@@ -91,9 +102,10 @@ func (c *Config) Validate() error {
 				}
 			}
 		}
-		// As in Keystone: once any rule exists, every effort needs a catch-all.
+		// As in Keystone: once any rule exists, every effort needs a catch-all,
+		// unless models declare competencies and selection takes the rest.
 		for _, e := range efforts {
-			if len(c.Rules) > 0 && !covered[e] {
+			if len(c.Rules) > 0 && !selects && !covered[e] {
 				bad("rules: no enabled catch-all rule (no attributes) for %s", e)
 			}
 		}

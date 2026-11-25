@@ -26,15 +26,16 @@ const (
 // ModelSpec is a registry entry. Vendor credentials are NOT part of the spec:
 // they are per-client rows managed via SetVendorKey.
 type ModelSpec struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                                     // unique registry id, referenced by rules and model_override
-	Vendor          string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`                                             // openai | anthropic | google | deepseek | ollama | local | typesafe | groq | mistral | azure | bedrock
-	Endpoint        string                 `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"`                                         // optional base-URL override
-	Efforts         []Effort               `protobuf:"varint,4,rep,packed,name=efforts,proto3,enum=ktms.v1.Effort" json:"efforts,omitempty"`               // tiers this model may serve
-	Capabilities    []string               `protobuf:"bytes,5,rep,name=capabilities,proto3" json:"capabilities,omitempty"`                                 // e.g. "google_search"
-	Rpm             int32                  `protobuf:"varint,6,opt,name=rpm,proto3" json:"rpm,omitempty"`                                                  // per client key per minute, 0 = unlimited
-	PriceInPerMtok  float64                `protobuf:"fixed64,7,opt,name=price_in_per_mtok,json=priceInPerMtok,proto3" json:"price_in_per_mtok,omitempty"` // standard (off-peak) rate
-	PriceOutPerMtok float64                `protobuf:"fixed64,8,opt,name=price_out_per_mtok,json=priceOutPerMtok,proto3" json:"price_out_per_mtok,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Id       string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`             // unique registry id, referenced by rules and model_override
+	Vendor   string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`     // openai | anthropic | google | deepseek | ollama | local | typesafe | groq | mistral | azure | bedrock
+	Endpoint string                 `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"` // optional base-URL override
+	// Deprecated: Marked as deprecated in ktms/v1/admin.proto.
+	Efforts         []Effort `protobuf:"varint,4,rep,packed,name=efforts,proto3,enum=ktms.v1.Effort" json:"efforts,omitempty"`               // use competencies; read as general at the highest effort listed
+	Capabilities    []string `protobuf:"bytes,5,rep,name=capabilities,proto3" json:"capabilities,omitempty"`                                 // e.g. "google_search"
+	Rpm             int32    `protobuf:"varint,6,opt,name=rpm,proto3" json:"rpm,omitempty"`                                                  // per client key per minute, 0 = unlimited
+	PriceInPerMtok  float64  `protobuf:"fixed64,7,opt,name=price_in_per_mtok,json=priceInPerMtok,proto3" json:"price_in_per_mtok,omitempty"` // standard (off-peak) rate
+	PriceOutPerMtok float64  `protobuf:"fixed64,8,opt,name=price_out_per_mtok,json=priceOutPerMtok,proto3" json:"price_out_per_mtok,omitempty"`
 	// Peak rates, 0 when the vendor bills one price all day. DeepSeek V4 doubles
 	// for two windows daily, so a single price understates its cost.
 	PriceInPeakPerMtok   float64 `protobuf:"fixed64,12,opt,name=price_in_peak_per_mtok,json=priceInPeakPerMtok,proto3" json:"price_in_peak_per_mtok,omitempty"`
@@ -56,8 +57,11 @@ type ModelSpec struct {
 	// price per million source characters, added to any token price.
 	Languages            *ModelLanguages `protobuf:"bytes,21,opt,name=languages,proto3" json:"languages,omitempty"`
 	PricePerMillionChars float64         `protobuf:"fixed64,22,opt,name=price_per_million_chars,json=pricePerMillionChars,proto3" json:"price_per_million_chars,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// topic -> level (basic | proficient | expert), e.g. {"general": "expert",
+	// "medical": "proficient"}. A model with competencies needs no efforts.
+	Competencies  map[string]string `protobuf:"bytes,23,rep,name=competencies,proto3" json:"competencies,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ModelSpec) Reset() {
@@ -111,6 +115,7 @@ func (x *ModelSpec) GetEndpoint() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in ktms/v1/admin.proto.
 func (x *ModelSpec) GetEfforts() []Effort {
 	if x != nil {
 		return x.Efforts
@@ -244,21 +249,32 @@ func (x *ModelSpec) GetPricePerMillionChars() float64 {
 	return 0
 }
 
+func (x *ModelSpec) GetCompetencies() map[string]string {
+	if x != nil {
+		return x.Competencies
+	}
+	return nil
+}
+
 type RuleSpec struct {
-	state      protoimpl.MessageState `protogen:"open.v1"`
-	Name       string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                                                                                       // unique, logged and put in usage meta
-	Priority   int32                  `protobuf:"varint,2,opt,name=priority,proto3" json:"priority,omitempty"`                                                                              // unique; higher wins, first match takes the request
-	Effort     Effort                 `protobuf:"varint,3,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"`                                                              // EFFORT_UNSPECIFIED = matches any effort
-	Attributes map[string]string      `protobuf:"bytes,4,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // equality predicates over request attributes
-	Use        []string               `protobuf:"bytes,5,rep,name=use,proto3" json:"use,omitempty"`                                                                                         // ordered fallback chain of model ids, cheaper-first
-	Enabled    bool                   `protobuf:"varint,6,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	Weights    []int32                `protobuf:"varint,7,rep,packed,name=weights,proto3" json:"weights,omitempty"` // traffic weights per model in use; empty means deterministic (100% on use[0]). Canary distribution is deterministic and sticky when request attribute canary_key or user_id is provided, or weighted random if omitted or canary_mode="random".
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Name     string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`          // unique, logged and put in usage meta
+	Priority int32                  `protobuf:"varint,2,opt,name=priority,proto3" json:"priority,omitempty"` // unique; higher wins, first match takes the request
+	// Deprecated: Marked as deprecated in ktms/v1/admin.proto.
+	Effort     Effort            `protobuf:"varint,3,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"`                                                              // use needs; EFFORT_UNSPECIFIED = matches any effort
+	Attributes map[string]string `protobuf:"bytes,4,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // equality predicates over request attributes
+	Use        []string          `protobuf:"bytes,5,rep,name=use,proto3" json:"use,omitempty"`                                                                                         // ordered fallback chain of model ids, cheaper-first
+	Enabled    bool              `protobuf:"varint,6,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Weights    []int32           `protobuf:"varint,7,rep,packed,name=weights,proto3" json:"weights,omitempty"` // traffic weights per model in use; empty means deterministic (100% on use[0]). Canary distribution is deterministic and sticky when request attribute canary_key or user_id is provided, or weighted random if omitted or canary_mode="random".
 	// Shadow traffic and its evaluation may change in a 1.x minor release.
 	ShadowModel      string  `protobuf:"bytes,8,opt,name=shadow_model,json=shadowModel,proto3" json:"shadow_model,omitempty"`                  // Experimental: optional model id for async traffic mirroring
 	ShadowPercentage float64 `protobuf:"fixed64,9,opt,name=shadow_percentage,json=shadowPercentage,proto3" json:"shadow_percentage,omitempty"` // Experimental: percentage of requests to mirror (0.0 - 100.0)
 	ShadowEval       bool    `protobuf:"varint,10,opt,name=shadow_eval,json=shadowEval,proto3" json:"shadow_eval,omitempty"`                   // Experimental: optional automated quality evaluation using Judge
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// topic -> least level: the rule matches a request whose need of each topic
+	// is at least that level. A matching rule replaces the selection with its chain.
+	Needs         map[string]string `protobuf:"bytes,11,rep,name=needs,proto3" json:"needs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RuleSpec) Reset() {
@@ -305,6 +321,7 @@ func (x *RuleSpec) GetPriority() int32 {
 	return 0
 }
 
+// Deprecated: Marked as deprecated in ktms/v1/admin.proto.
 func (x *RuleSpec) GetEffort() Effort {
 	if x != nil {
 		return x.Effort
@@ -359,6 +376,13 @@ func (x *RuleSpec) GetShadowEval() bool {
 		return x.ShadowEval
 	}
 	return false
+}
+
+func (x *RuleSpec) GetNeeds() map[string]string {
+	if x != nil {
+		return x.Needs
+	}
+	return nil
 }
 
 type UpsertModelRequest struct {
@@ -5418,20 +5442,22 @@ func (x *ListMCPToolsResponse) GetTools() []*MCPToolInfo {
 }
 
 type ExplainRouteRequest struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	ApiKeyName         string                 `protobuf:"bytes,1,opt,name=api_key_name,json=apiKeyName,proto3" json:"api_key_name,omitempty"`                                                       // the client key the request would carry
-	Effort             Effort                 `protobuf:"varint,2,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"`                                                              // as in GenerateTextRequest; with auto_route, the effort the judge would otherwise pick
-	AutoRoute          bool                   `protobuf:"varint,3,opt,name=auto_route,json=autoRoute,proto3" json:"auto_route,omitempty"`                                                           // as in GenerateTextRequest; without an effort the judge is not called (judge_skipped)
-	Attributes         map[string]string      `protobuf:"bytes,4,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // request attributes the rules match on, user_id and canary_key included
-	Placement          string                 `protobuf:"bytes,5,opt,name=placement,proto3" json:"placement,omitempty"`                                                                             // nodes_first | nodes_only | cloud_first | cloud_only, empty for the rule's default
-	ModelOverride      string                 `protobuf:"bytes,6,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`                                                // as in GenerateTextRequest
-	Capabilities       []string               `protobuf:"bytes,7,rep,name=capabilities,proto3" json:"capabilities,omitempty"`                                                                       // capabilities the request needs, e.g. "google_search"
-	DataClassification string                 `protobuf:"bytes,8,opt,name=data_classification,json=dataClassification,proto3" json:"data_classification,omitempty"`                                 // as in GenerateTextRequest
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	ApiKeyName string                 `protobuf:"bytes,1,opt,name=api_key_name,json=apiKeyName,proto3" json:"api_key_name,omitempty"` // the client key the request would carry
+	// Deprecated: Marked as deprecated in ktms/v1/admin.proto.
+	Effort             Effort            `protobuf:"varint,2,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"`                                                              // as in GenerateTextRequest; with auto_route, the effort the judge would otherwise pick
+	AutoRoute          bool              `protobuf:"varint,3,opt,name=auto_route,json=autoRoute,proto3" json:"auto_route,omitempty"`                                                           // as in GenerateTextRequest; without an effort the judge is not called (judge_skipped)
+	Attributes         map[string]string `protobuf:"bytes,4,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // request attributes the rules match on, user_id and canary_key included
+	Placement          string            `protobuf:"bytes,5,opt,name=placement,proto3" json:"placement,omitempty"`                                                                             // nodes_first | nodes_only | cloud_first | cloud_only, empty for the rule's default
+	ModelOverride      string            `protobuf:"bytes,6,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`                                                // as in GenerateTextRequest
+	Capabilities       []string          `protobuf:"bytes,7,rep,name=capabilities,proto3" json:"capabilities,omitempty"`                                                                       // capabilities the request needs, e.g. "google_search"
+	DataClassification string            `protobuf:"bytes,8,opt,name=data_classification,json=dataClassification,proto3" json:"data_classification,omitempty"`                                 // as in GenerateTextRequest
 	// A modality other than text, e.g. "translate": routes as that RPC does, by
 	// its modality rule and capability; effort and auto_route are ignored.
-	Modality       string `protobuf:"bytes,9,opt,name=modality,proto3" json:"modality,omitempty"`
-	SourceLanguage string `protobuf:"bytes,10,opt,name=source_language,json=sourceLanguage,proto3" json:"source_language,omitempty"` // translate: the pair to filter the chain by
-	TargetLanguage string `protobuf:"bytes,11,opt,name=target_language,json=targetLanguage,proto3" json:"target_language,omitempty"`
+	Modality       string            `protobuf:"bytes,9,opt,name=modality,proto3" json:"modality,omitempty"`
+	SourceLanguage string            `protobuf:"bytes,10,opt,name=source_language,json=sourceLanguage,proto3" json:"source_language,omitempty"` // translate: the pair to filter the chain by
+	TargetLanguage string            `protobuf:"bytes,11,opt,name=target_language,json=targetLanguage,proto3" json:"target_language,omitempty"`
+	Needs          map[string]string `protobuf:"bytes,12,rep,name=needs,proto3" json:"needs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // as in GenerateTextRequest
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -5473,6 +5499,7 @@ func (x *ExplainRouteRequest) GetApiKeyName() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in ktms/v1/admin.proto.
 func (x *ExplainRouteRequest) GetEffort() Effort {
 	if x != nil {
 		return x.Effort
@@ -5543,6 +5570,13 @@ func (x *ExplainRouteRequest) GetTargetLanguage() string {
 	return ""
 }
 
+func (x *ExplainRouteRequest) GetNeeds() map[string]string {
+	if x != nil {
+		return x.Needs
+	}
+	return nil
+}
+
 type RouteCandidate struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	ModelId string                 `protobuf:"bytes,1,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
@@ -5550,10 +5584,15 @@ type RouteCandidate struct {
 	// Why the model was dropped, empty if it stays: not_found, effort, capability, no_vendor_key,
 	// key_policy, team_policy, placement, circuit_open, vendor_paused (paused_for),
 	// node_unavailable, node_pool_disabled, language_pair. New reasons may appear.
-	Dropped       string               `protobuf:"bytes,3,opt,name=dropped,proto3" json:"dropped,omitempty"`
-	PausedFor     *durationpb.Duration `protobuf:"bytes,4,opt,name=paused_for,json=pausedFor,proto3" json:"paused_for,omitempty"` // vendor_paused: until the vendor's Retry-After ends
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Dropped   string               `protobuf:"bytes,3,opt,name=dropped,proto3" json:"dropped,omitempty"`
+	PausedFor *durationpb.Duration `protobuf:"bytes,4,opt,name=paused_for,json=pausedFor,proto3" json:"paused_for,omitempty"` // vendor_paused: until the vendor's Retry-After ends
+	// Selection without a rule ranks by these: levels above the needs summed
+	// over the needed topics, then the blended price (3 x input + output) / 4
+	// per million tokens at the standard rate.
+	Excess              int32   `protobuf:"varint,5,opt,name=excess,proto3" json:"excess,omitempty"`
+	BlendedPricePerMtok float64 `protobuf:"fixed64,6,opt,name=blended_price_per_mtok,json=blendedPricePerMtok,proto3" json:"blended_price_per_mtok,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *RouteCandidate) Reset() {
@@ -5614,18 +5653,37 @@ func (x *RouteCandidate) GetPausedFor() *durationpb.Duration {
 	return nil
 }
 
+func (x *RouteCandidate) GetExcess() int32 {
+	if x != nil {
+		return x.Excess
+	}
+	return 0
+}
+
+func (x *RouteCandidate) GetBlendedPricePerMtok() float64 {
+	if x != nil {
+		return x.BlendedPricePerMtok
+	}
+	return 0
+}
+
 type ExplainRouteResponse struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Rule             string                 `protobuf:"bytes,1,opt,name=rule,proto3" json:"rule,omitempty"`                                  // the matched rule; empty with model_override
-	Effort           string                 `protobuf:"bytes,2,opt,name=effort,proto3" json:"effort,omitempty"`                              // the effort matched on
-	RouteMode        string                 `protobuf:"bytes,3,opt,name=route_mode,json=routeMode,proto3" json:"route_mode,omitempty"`       // direct | override | auto-effort | auto-default, as X-KTMS-Route-Mode
-	Chain            []string               `protobuf:"bytes,4,rep,name=chain,proto3" json:"chain,omitempty"`                                // the rule's chain after the canary draw
-	Candidates       []*RouteCandidate      `protobuf:"bytes,5,rep,name=candidates,proto3" json:"candidates,omitempty"`                      // every model of chain, in order
-	Models           []string               `protobuf:"bytes,6,rep,name=models,proto3" json:"models,omitempty"`                              // what a call would try, in order: the kept candidates
-	Weights          []int32                `protobuf:"varint,7,rep,packed,name=weights,proto3" json:"weights,omitempty"`                    // the rule's canary weights over its use list; empty = none
-	ShadowModel      string                 `protobuf:"bytes,8,opt,name=shadow_model,json=shadowModel,proto3" json:"shadow_model,omitempty"` // mirrored model, if the rule mirrors and it is callable
-	ShadowPercentage float64                `protobuf:"fixed64,9,opt,name=shadow_percentage,json=shadowPercentage,proto3" json:"shadow_percentage,omitempty"`
-	JudgeSkipped     bool                   `protobuf:"varint,10,opt,name=judge_skipped,json=judgeSkipped,proto3" json:"judge_skipped,omitempty"` // auto_route without effort: a real call would ask the judge first
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Rule  string                 `protobuf:"bytes,1,opt,name=rule,proto3" json:"rule,omitempty"` // the matched rule; empty with model_override
+	// Deprecated: Marked as deprecated in ktms/v1/admin.proto.
+	Effort           string            `protobuf:"bytes,2,opt,name=effort,proto3" json:"effort,omitempty"`                              // the effort matched on; see needs
+	RouteMode        string            `protobuf:"bytes,3,opt,name=route_mode,json=routeMode,proto3" json:"route_mode,omitempty"`       // direct | override | auto-effort | auto-default, as X-KTMS-Route-Mode
+	Chain            []string          `protobuf:"bytes,4,rep,name=chain,proto3" json:"chain,omitempty"`                                // the rule's chain after the canary draw
+	Candidates       []*RouteCandidate `protobuf:"bytes,5,rep,name=candidates,proto3" json:"candidates,omitempty"`                      // every model of chain, in order
+	Models           []string          `protobuf:"bytes,6,rep,name=models,proto3" json:"models,omitempty"`                              // what a call would try, in order: the kept candidates
+	Weights          []int32           `protobuf:"varint,7,rep,packed,name=weights,proto3" json:"weights,omitempty"`                    // the rule's canary weights over its use list; empty = none
+	ShadowModel      string            `protobuf:"bytes,8,opt,name=shadow_model,json=shadowModel,proto3" json:"shadow_model,omitempty"` // mirrored model, if the rule mirrors and it is callable
+	ShadowPercentage float64           `protobuf:"fixed64,9,opt,name=shadow_percentage,json=shadowPercentage,proto3" json:"shadow_percentage,omitempty"`
+	JudgeSkipped     bool              `protobuf:"varint,10,opt,name=judge_skipped,json=judgeSkipped,proto3" json:"judge_skipped,omitempty"`                                        // auto_route without effort: a real call would ask the judge first
+	Needs            map[string]string `protobuf:"bytes,12,rep,name=needs,proto3" json:"needs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // the needs routed on, effort included as general
+	// No rule matched: the chain is Keystone's selection, and candidates are
+	// every enabled model, kept ones first in the order a call tries them.
+	Selected bool `protobuf:"varint,13,opt,name=selected,proto3" json:"selected,omitempty"`
 	// The code and message a real call would fail with before any vendor, as in the
 	// error contract, e.g. "FAILED_PRECONDITION: no_vendor_key"; empty if it would go out.
 	Error         string `protobuf:"bytes,11,opt,name=error,proto3" json:"error,omitempty"`
@@ -5670,6 +5728,7 @@ func (x *ExplainRouteResponse) GetRule() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in ktms/v1/admin.proto.
 func (x *ExplainRouteResponse) GetEffort() string {
 	if x != nil {
 		return x.Effort
@@ -5729,6 +5788,20 @@ func (x *ExplainRouteResponse) GetShadowPercentage() float64 {
 func (x *ExplainRouteResponse) GetJudgeSkipped() bool {
 	if x != nil {
 		return x.JudgeSkipped
+	}
+	return false
+}
+
+func (x *ExplainRouteResponse) GetNeeds() map[string]string {
+	if x != nil {
+		return x.Needs
+	}
+	return nil
+}
+
+func (x *ExplainRouteResponse) GetSelected() bool {
+	if x != nil {
+		return x.Selected
 	}
 	return false
 }
@@ -6579,12 +6652,12 @@ var File_ktms_v1_admin_proto protoreflect.FileDescriptor
 
 const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\n" +
-	"\x13ktms/v1/admin.proto\x12\aktms.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15ktms/v1/gateway.proto\x1a\x12ktms/v1/node.proto\"\xb9\a\n" +
+	"\x13ktms/v1/admin.proto\x12\aktms.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15ktms/v1/gateway.proto\x1a\x12ktms/v1/node.proto\"\xc8\b\n" +
 	"\tModelSpec\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06vendor\x18\x02 \x01(\tR\x06vendor\x12\x1a\n" +
-	"\bendpoint\x18\x03 \x01(\tR\bendpoint\x12)\n" +
-	"\aefforts\x18\x04 \x03(\x0e2\x0f.ktms.v1.EffortR\aefforts\x12\"\n" +
+	"\bendpoint\x18\x03 \x01(\tR\bendpoint\x12-\n" +
+	"\aefforts\x18\x04 \x03(\x0e2\x0f.ktms.v1.EffortB\x02\x18\x01R\aefforts\x12\"\n" +
 	"\fcapabilities\x18\x05 \x03(\tR\fcapabilities\x12\x10\n" +
 	"\x03rpm\x18\x06 \x01(\x05R\x03rpm\x12)\n" +
 	"\x11price_in_per_mtok\x18\a \x01(\x01R\x0epriceInPerMtok\x12+\n" +
@@ -6603,11 +6676,15 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x19price_cache_read_per_mtok\x18\x13 \x01(\x01R\x15priceCacheReadPerMtok\x12:\n" +
 	"\x1aprice_cache_write_per_mtok\x18\x14 \x01(\x01R\x16priceCacheWritePerMtok\x125\n" +
 	"\tlanguages\x18\x15 \x01(\v2\x17.ktms.v1.ModelLanguagesR\tlanguages\x125\n" +
-	"\x17price_per_million_chars\x18\x16 \x01(\x01R\x14pricePerMillionChars\"\x9c\x03\n" +
+	"\x17price_per_million_chars\x18\x16 \x01(\x01R\x14pricePerMillionChars\x12H\n" +
+	"\fcompetencies\x18\x17 \x03(\v2$.ktms.v1.ModelSpec.CompetenciesEntryR\fcompetencies\x1a?\n" +
+	"\x11CompetenciesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8e\x04\n" +
 	"\bRuleSpec\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
-	"\bpriority\x18\x02 \x01(\x05R\bpriority\x12'\n" +
-	"\x06effort\x18\x03 \x01(\x0e2\x0f.ktms.v1.EffortR\x06effort\x12A\n" +
+	"\bpriority\x18\x02 \x01(\x05R\bpriority\x12+\n" +
+	"\x06effort\x18\x03 \x01(\x0e2\x0f.ktms.v1.EffortB\x02\x18\x01R\x06effort\x12A\n" +
 	"\n" +
 	"attributes\x18\x04 \x03(\v2!.ktms.v1.RuleSpec.AttributesEntryR\n" +
 	"attributes\x12\x10\n" +
@@ -6618,8 +6695,13 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x11shadow_percentage\x18\t \x01(\x01R\x10shadowPercentage\x12\x1f\n" +
 	"\vshadow_eval\x18\n" +
 	" \x01(\bR\n" +
-	"shadowEval\x1a=\n" +
+	"shadowEval\x122\n" +
+	"\x05needs\x18\v \x03(\v2\x1c.ktms.v1.RuleSpec.NeedsEntryR\x05needs\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a8\n" +
+	"\n" +
+	"NeedsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\">\n" +
 	"\x12UpsertModelRequest\x12(\n" +
@@ -6947,11 +7029,11 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\"B\n" +
 	"\x14ListMCPToolsResponse\x12*\n" +
-	"\x05tools\x18\x01 \x03(\v2\x14.ktms.v1.MCPToolInfoR\x05tools\"\x94\x04\n" +
+	"\x05tools\x18\x01 \x03(\v2\x14.ktms.v1.MCPToolInfoR\x05tools\"\x91\x05\n" +
 	"\x13ExplainRouteRequest\x12 \n" +
 	"\fapi_key_name\x18\x01 \x01(\tR\n" +
-	"apiKeyName\x12'\n" +
-	"\x06effort\x18\x02 \x01(\x0e2\x0f.ktms.v1.EffortR\x06effort\x12\x1d\n" +
+	"apiKeyName\x12+\n" +
+	"\x06effort\x18\x02 \x01(\x0e2\x0f.ktms.v1.EffortB\x02\x18\x01R\x06effort\x12\x1d\n" +
 	"\n" +
 	"auto_route\x18\x03 \x01(\bR\tautoRoute\x12L\n" +
 	"\n" +
@@ -6964,19 +7046,26 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\bmodality\x18\t \x01(\tR\bmodality\x12'\n" +
 	"\x0fsource_language\x18\n" +
 	" \x01(\tR\x0esourceLanguage\x12'\n" +
-	"\x0ftarget_language\x18\v \x01(\tR\x0etargetLanguage\x1a=\n" +
+	"\x0ftarget_language\x18\v \x01(\tR\x0etargetLanguage\x12=\n" +
+	"\x05needs\x18\f \x03(\v2'.ktms.v1.ExplainRouteRequest.NeedsEntryR\x05needs\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x97\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a8\n" +
+	"\n" +
+	"NeedsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe4\x01\n" +
 	"\x0eRouteCandidate\x12\x19\n" +
 	"\bmodel_id\x18\x01 \x01(\tR\amodelId\x12\x16\n" +
 	"\x06vendor\x18\x02 \x01(\tR\x06vendor\x12\x18\n" +
 	"\adropped\x18\x03 \x01(\tR\adropped\x128\n" +
 	"\n" +
-	"paused_for\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\tpausedFor\"\xed\x02\n" +
+	"paused_for\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\tpausedFor\x12\x16\n" +
+	"\x06excess\x18\x05 \x01(\x05R\x06excess\x123\n" +
+	"\x16blended_price_per_mtok\x18\x06 \x01(\x01R\x13blendedPricePerMtok\"\x87\x04\n" +
 	"\x14ExplainRouteResponse\x12\x12\n" +
-	"\x04rule\x18\x01 \x01(\tR\x04rule\x12\x16\n" +
-	"\x06effort\x18\x02 \x01(\tR\x06effort\x12\x1d\n" +
+	"\x04rule\x18\x01 \x01(\tR\x04rule\x12\x1a\n" +
+	"\x06effort\x18\x02 \x01(\tB\x02\x18\x01R\x06effort\x12\x1d\n" +
 	"\n" +
 	"route_mode\x18\x03 \x01(\tR\trouteMode\x12\x14\n" +
 	"\x05chain\x18\x04 \x03(\tR\x05chain\x127\n" +
@@ -6988,8 +7077,14 @@ const file_ktms_v1_admin_proto_rawDesc = "" +
 	"\fshadow_model\x18\b \x01(\tR\vshadowModel\x12+\n" +
 	"\x11shadow_percentage\x18\t \x01(\x01R\x10shadowPercentage\x12#\n" +
 	"\rjudge_skipped\x18\n" +
-	" \x01(\bR\fjudgeSkipped\x12\x14\n" +
-	"\x05error\x18\v \x01(\tR\x05error\"R\n" +
+	" \x01(\bR\fjudgeSkipped\x12>\n" +
+	"\x05needs\x18\f \x03(\v2(.ktms.v1.ExplainRouteResponse.NeedsEntryR\x05needs\x12\x1a\n" +
+	"\bselected\x18\r \x01(\bR\bselected\x12\x14\n" +
+	"\x05error\x18\v \x01(\tR\x05error\x1a8\n" +
+	"\n" +
+	"NeedsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"R\n" +
 	"\x11ListAgentsRequest\x12\x14\n" +
 	"\x05owner\x18\x01 \x01(\tR\x05owner\x12'\n" +
 	"\x0finclude_revoked\x18\x02 \x01(\bR\x0eincludeRevoked\"\xeb\x02\n" +
@@ -7139,7 +7234,7 @@ func file_ktms_v1_admin_proto_rawDescGZIP() []byte {
 	return file_ktms_v1_admin_proto_rawDescData
 }
 
-var file_ktms_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 113)
+var file_ktms_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 117)
 var file_ktms_v1_admin_proto_goTypes = []any{
 	(*ModelSpec)(nil),                      // 0: ktms.v1.ModelSpec
 	(*RuleSpec)(nil),                       // 1: ktms.v1.RuleSpec
@@ -7252,173 +7347,181 @@ var file_ktms_v1_admin_proto_goTypes = []any{
 	(*AgentTask)(nil),                      // 108: ktms.v1.AgentTask
 	(*ListAgentTasksResponse)(nil),         // 109: ktms.v1.ListAgentTasksResponse
 	(*GetAgentTaskRequest)(nil),            // 110: ktms.v1.GetAgentTaskRequest
-	nil,                                    // 111: ktms.v1.RuleSpec.AttributesEntry
-	nil,                                    // 112: ktms.v1.ExplainRouteRequest.AttributesEntry
-	(Effort)(0),                            // 113: ktms.v1.Effort
-	(*ModelLanguages)(nil),                 // 114: ktms.v1.ModelLanguages
-	(*timestamppb.Timestamp)(nil),          // 115: google.protobuf.Timestamp
-	(*NodeCapacityOverride)(nil),           // 116: ktms.v1.NodeCapacityOverride
-	(*durationpb.Duration)(nil),            // 117: google.protobuf.Duration
+	nil,                                    // 111: ktms.v1.ModelSpec.CompetenciesEntry
+	nil,                                    // 112: ktms.v1.RuleSpec.AttributesEntry
+	nil,                                    // 113: ktms.v1.RuleSpec.NeedsEntry
+	nil,                                    // 114: ktms.v1.ExplainRouteRequest.AttributesEntry
+	nil,                                    // 115: ktms.v1.ExplainRouteRequest.NeedsEntry
+	nil,                                    // 116: ktms.v1.ExplainRouteResponse.NeedsEntry
+	(Effort)(0),                            // 117: ktms.v1.Effort
+	(*ModelLanguages)(nil),                 // 118: ktms.v1.ModelLanguages
+	(*timestamppb.Timestamp)(nil),          // 119: google.protobuf.Timestamp
+	(*NodeCapacityOverride)(nil),           // 120: ktms.v1.NodeCapacityOverride
+	(*durationpb.Duration)(nil),            // 121: google.protobuf.Duration
 }
 var file_ktms_v1_admin_proto_depIdxs = []int32{
-	113, // 0: ktms.v1.ModelSpec.efforts:type_name -> ktms.v1.Effort
-	114, // 1: ktms.v1.ModelSpec.languages:type_name -> ktms.v1.ModelLanguages
-	113, // 2: ktms.v1.RuleSpec.effort:type_name -> ktms.v1.Effort
-	111, // 3: ktms.v1.RuleSpec.attributes:type_name -> ktms.v1.RuleSpec.AttributesEntry
-	0,   // 4: ktms.v1.UpsertModelRequest.model:type_name -> ktms.v1.ModelSpec
-	1,   // 5: ktms.v1.ReplaceRulesRequest.rules:type_name -> ktms.v1.RuleSpec
-	115, // 6: ktms.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
-	0,   // 7: ktms.v1.GetConfigResponse.models:type_name -> ktms.v1.ModelSpec
-	1,   // 8: ktms.v1.GetConfigResponse.rules:type_name -> ktms.v1.RuleSpec
-	12,  // 9: ktms.v1.GetConfigResponse.vendor_keys:type_name -> ktms.v1.VendorKeyInfo
-	47,  // 10: ktms.v1.GetConfigResponse.user_rate_limits:type_name -> ktms.v1.UserRateLimitSpec
-	54,  // 11: ktms.v1.GetConfigResponse.spend_limits:type_name -> ktms.v1.SpendLimitSpec
-	84,  // 12: ktms.v1.GetConfigResponse.mcp_servers:type_name -> ktms.v1.MCPServerSpec
-	93,  // 13: ktms.v1.GetConfigResponse.mcp_credentials:type_name -> ktms.v1.MCPCredentialInfo
-	16,  // 14: ktms.v1.MintAPIKeyRequest.policy:type_name -> ktms.v1.APIKeyPolicy
-	16,  // 15: ktms.v1.SetAPIKeyPolicyRequest.policy:type_name -> ktms.v1.APIKeyPolicy
-	115, // 16: ktms.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
-	16,  // 17: ktms.v1.APIKeyInfo.policy:type_name -> ktms.v1.APIKeyPolicy
-	23,  // 18: ktms.v1.ListAPIKeysResponse.keys:type_name -> ktms.v1.APIKeyInfo
-	115, // 19: ktms.v1.NodeKeyInfo.created_at:type_name -> google.protobuf.Timestamp
-	32,  // 20: ktms.v1.ListNodeKeysResponse.keys:type_name -> ktms.v1.NodeKeyInfo
-	115, // 21: ktms.v1.NodeInfo.last_heartbeat:type_name -> google.protobuf.Timestamp
-	115, // 22: ktms.v1.NodeInfo.capacity_until:type_name -> google.protobuf.Timestamp
-	35,  // 23: ktms.v1.ListNodesResponse.nodes:type_name -> ktms.v1.NodeInfo
-	116, // 24: ktms.v1.NodeScheduleInfo.override:type_name -> ktms.v1.NodeCapacityOverride
-	115, // 25: ktms.v1.NodeScheduleInfo.updated_at:type_name -> google.protobuf.Timestamp
-	115, // 26: ktms.v1.SetNodeCapacityOverrideRequest.until:type_name -> google.protobuf.Timestamp
-	40,  // 27: ktms.v1.ListNodeSchedulesResponse.schedules:type_name -> ktms.v1.NodeScheduleInfo
-	47,  // 28: ktms.v1.SetUserRateLimitRequest.rate_limit:type_name -> ktms.v1.UserRateLimitSpec
-	47,  // 29: ktms.v1.ListUserRateLimitsResponse.rate_limits:type_name -> ktms.v1.UserRateLimitSpec
-	54,  // 30: ktms.v1.SetSpendLimitRequest.spend_limit:type_name -> ktms.v1.SpendLimitSpec
-	54,  // 31: ktms.v1.ListSpendLimitsResponse.spend_limits:type_name -> ktms.v1.SpendLimitSpec
-	115, // 32: ktms.v1.Organization.created_at:type_name -> google.protobuf.Timestamp
-	115, // 33: ktms.v1.Team.created_at:type_name -> google.protobuf.Timestamp
-	61,  // 34: ktms.v1.CreateOrganizationResponse.organization:type_name -> ktms.v1.Organization
-	61,  // 35: ktms.v1.ListOrganizationsResponse.organizations:type_name -> ktms.v1.Organization
-	62,  // 36: ktms.v1.CreateTeamResponse.team:type_name -> ktms.v1.Team
-	62,  // 37: ktms.v1.GetTeamResponse.team:type_name -> ktms.v1.Team
-	62,  // 38: ktms.v1.ListTeamsResponse.teams:type_name -> ktms.v1.Team
-	62,  // 39: ktms.v1.UpdateTeamResponse.team:type_name -> ktms.v1.Team
-	115, // 40: ktms.v1.GetTeamSpendResponse.resets_at:type_name -> google.protobuf.Timestamp
-	115, // 41: ktms.v1.SpendWindow.resets_at:type_name -> google.protobuf.Timestamp
-	82,  // 42: ktms.v1.GetSpendResponse.windows:type_name -> ktms.v1.SpendWindow
-	84,  // 43: ktms.v1.UpsertMCPServerRequest.server:type_name -> ktms.v1.MCPServerSpec
-	115, // 44: ktms.v1.MCPCredentialInfo.created_at:type_name -> google.protobuf.Timestamp
-	95,  // 45: ktms.v1.ListMCPToolsResponse.tools:type_name -> ktms.v1.MCPToolInfo
-	113, // 46: ktms.v1.ExplainRouteRequest.effort:type_name -> ktms.v1.Effort
-	112, // 47: ktms.v1.ExplainRouteRequest.attributes:type_name -> ktms.v1.ExplainRouteRequest.AttributesEntry
-	117, // 48: ktms.v1.RouteCandidate.paused_for:type_name -> google.protobuf.Duration
-	98,  // 49: ktms.v1.ExplainRouteResponse.candidates:type_name -> ktms.v1.RouteCandidate
-	115, // 50: ktms.v1.AgentInfo.updated_at:type_name -> google.protobuf.Timestamp
-	101, // 51: ktms.v1.ListAgentsResponse.agents:type_name -> ktms.v1.AgentInfo
-	115, // 52: ktms.v1.AgentMessage.created_at:type_name -> google.protobuf.Timestamp
-	115, // 53: ktms.v1.AgentTask.created_at:type_name -> google.protobuf.Timestamp
-	115, // 54: ktms.v1.AgentTask.updated_at:type_name -> google.protobuf.Timestamp
-	106, // 55: ktms.v1.AgentTask.messages:type_name -> ktms.v1.AgentMessage
-	108, // 56: ktms.v1.ListAgentTasksResponse.tasks:type_name -> ktms.v1.AgentTask
-	2,   // 57: ktms.v1.AdminService.UpsertModel:input_type -> ktms.v1.UpsertModelRequest
-	4,   // 58: ktms.v1.AdminService.DeleteModel:input_type -> ktms.v1.DeleteModelRequest
-	6,   // 59: ktms.v1.AdminService.ReplaceRules:input_type -> ktms.v1.ReplaceRulesRequest
-	8,   // 60: ktms.v1.AdminService.SetVendorKey:input_type -> ktms.v1.SetVendorKeyRequest
-	10,  // 61: ktms.v1.AdminService.DeleteVendorKey:input_type -> ktms.v1.DeleteVendorKeyRequest
-	13,  // 62: ktms.v1.AdminService.GetConfig:input_type -> ktms.v1.GetConfigRequest
-	15,  // 63: ktms.v1.AdminService.MintAPIKey:input_type -> ktms.v1.MintAPIKeyRequest
-	20,  // 64: ktms.v1.AdminService.RevokeAPIKey:input_type -> ktms.v1.RevokeAPIKeyRequest
-	22,  // 65: ktms.v1.AdminService.ListAPIKeys:input_type -> ktms.v1.ListAPIKeysRequest
-	17,  // 66: ktms.v1.AdminService.SetAPIKeyPolicy:input_type -> ktms.v1.SetAPIKeyPolicyRequest
-	25,  // 67: ktms.v1.AdminService.RotateEncryption:input_type -> ktms.v1.RotateEncryptionRequest
-	27,  // 68: ktms.v1.AdminService.MintNodeKey:input_type -> ktms.v1.MintNodeKeyRequest
-	29,  // 69: ktms.v1.AdminService.RevokeNodeKey:input_type -> ktms.v1.RevokeNodeKeyRequest
-	31,  // 70: ktms.v1.AdminService.ListNodeKeys:input_type -> ktms.v1.ListNodeKeysRequest
-	34,  // 71: ktms.v1.AdminService.ListNodes:input_type -> ktms.v1.ListNodesRequest
-	37,  // 72: ktms.v1.AdminService.DrainNode:input_type -> ktms.v1.DrainNodeRequest
-	39,  // 73: ktms.v1.AdminService.GetNodeSchedule:input_type -> ktms.v1.GetNodeScheduleRequest
-	43,  // 74: ktms.v1.AdminService.ListNodeSchedules:input_type -> ktms.v1.ListNodeSchedulesRequest
-	41,  // 75: ktms.v1.AdminService.SetNodeSchedule:input_type -> ktms.v1.SetNodeScheduleRequest
-	42,  // 76: ktms.v1.AdminService.SetNodeCapacityOverride:input_type -> ktms.v1.SetNodeCapacityOverrideRequest
-	45,  // 77: ktms.v1.AdminService.DeleteNodeSchedule:input_type -> ktms.v1.DeleteNodeScheduleRequest
-	48,  // 78: ktms.v1.AdminService.SetUserRateLimit:input_type -> ktms.v1.SetUserRateLimitRequest
-	50,  // 79: ktms.v1.AdminService.DeleteUserRateLimit:input_type -> ktms.v1.DeleteUserRateLimitRequest
-	52,  // 80: ktms.v1.AdminService.ListUserRateLimits:input_type -> ktms.v1.ListUserRateLimitsRequest
-	55,  // 81: ktms.v1.AdminService.SetSpendLimit:input_type -> ktms.v1.SetSpendLimitRequest
-	57,  // 82: ktms.v1.AdminService.DeleteSpendLimit:input_type -> ktms.v1.DeleteSpendLimitRequest
-	59,  // 83: ktms.v1.AdminService.ListSpendLimits:input_type -> ktms.v1.ListSpendLimitsRequest
-	63,  // 84: ktms.v1.AdminService.CreateOrganization:input_type -> ktms.v1.CreateOrganizationRequest
-	65,  // 85: ktms.v1.AdminService.ListOrganizations:input_type -> ktms.v1.ListOrganizationsRequest
-	67,  // 86: ktms.v1.AdminService.DeleteOrganization:input_type -> ktms.v1.DeleteOrganizationRequest
-	69,  // 87: ktms.v1.AdminService.CreateTeam:input_type -> ktms.v1.CreateTeamRequest
-	71,  // 88: ktms.v1.AdminService.GetTeam:input_type -> ktms.v1.GetTeamRequest
-	73,  // 89: ktms.v1.AdminService.ListTeams:input_type -> ktms.v1.ListTeamsRequest
-	75,  // 90: ktms.v1.AdminService.UpdateTeam:input_type -> ktms.v1.UpdateTeamRequest
-	77,  // 91: ktms.v1.AdminService.DeleteTeam:input_type -> ktms.v1.DeleteTeamRequest
-	79,  // 92: ktms.v1.AdminService.GetTeamSpend:input_type -> ktms.v1.GetTeamSpendRequest
-	81,  // 93: ktms.v1.AdminService.GetSpend:input_type -> ktms.v1.GetSpendRequest
-	97,  // 94: ktms.v1.AdminService.ExplainRoute:input_type -> ktms.v1.ExplainRouteRequest
-	85,  // 95: ktms.v1.AdminService.UpsertMCPServer:input_type -> ktms.v1.UpsertMCPServerRequest
-	87,  // 96: ktms.v1.AdminService.DeleteMCPServer:input_type -> ktms.v1.DeleteMCPServerRequest
-	89,  // 97: ktms.v1.AdminService.SetMCPCredential:input_type -> ktms.v1.SetMCPCredentialRequest
-	91,  // 98: ktms.v1.AdminService.DeleteMCPCredential:input_type -> ktms.v1.DeleteMCPCredentialRequest
-	94,  // 99: ktms.v1.AdminService.ListMCPTools:input_type -> ktms.v1.ListMCPToolsRequest
-	100, // 100: ktms.v1.AdminService.ListAgents:input_type -> ktms.v1.ListAgentsRequest
-	103, // 101: ktms.v1.AdminService.SetAgentRecording:input_type -> ktms.v1.SetAgentRecordingRequest
-	105, // 102: ktms.v1.AdminService.ListAgentTasks:input_type -> ktms.v1.ListAgentTasksRequest
-	110, // 103: ktms.v1.AdminService.GetAgentTask:input_type -> ktms.v1.GetAgentTaskRequest
-	107, // 104: ktms.v1.AdminService.ReplyAgentTask:input_type -> ktms.v1.ReplyAgentTaskRequest
-	3,   // 105: ktms.v1.AdminService.UpsertModel:output_type -> ktms.v1.UpsertModelResponse
-	5,   // 106: ktms.v1.AdminService.DeleteModel:output_type -> ktms.v1.DeleteModelResponse
-	7,   // 107: ktms.v1.AdminService.ReplaceRules:output_type -> ktms.v1.ReplaceRulesResponse
-	9,   // 108: ktms.v1.AdminService.SetVendorKey:output_type -> ktms.v1.SetVendorKeyResponse
-	11,  // 109: ktms.v1.AdminService.DeleteVendorKey:output_type -> ktms.v1.DeleteVendorKeyResponse
-	14,  // 110: ktms.v1.AdminService.GetConfig:output_type -> ktms.v1.GetConfigResponse
-	19,  // 111: ktms.v1.AdminService.MintAPIKey:output_type -> ktms.v1.MintAPIKeyResponse
-	21,  // 112: ktms.v1.AdminService.RevokeAPIKey:output_type -> ktms.v1.RevokeAPIKeyResponse
-	24,  // 113: ktms.v1.AdminService.ListAPIKeys:output_type -> ktms.v1.ListAPIKeysResponse
-	18,  // 114: ktms.v1.AdminService.SetAPIKeyPolicy:output_type -> ktms.v1.SetAPIKeyPolicyResponse
-	26,  // 115: ktms.v1.AdminService.RotateEncryption:output_type -> ktms.v1.RotateEncryptionResponse
-	28,  // 116: ktms.v1.AdminService.MintNodeKey:output_type -> ktms.v1.MintNodeKeyResponse
-	30,  // 117: ktms.v1.AdminService.RevokeNodeKey:output_type -> ktms.v1.RevokeNodeKeyResponse
-	33,  // 118: ktms.v1.AdminService.ListNodeKeys:output_type -> ktms.v1.ListNodeKeysResponse
-	36,  // 119: ktms.v1.AdminService.ListNodes:output_type -> ktms.v1.ListNodesResponse
-	38,  // 120: ktms.v1.AdminService.DrainNode:output_type -> ktms.v1.DrainNodeResponse
-	40,  // 121: ktms.v1.AdminService.GetNodeSchedule:output_type -> ktms.v1.NodeScheduleInfo
-	44,  // 122: ktms.v1.AdminService.ListNodeSchedules:output_type -> ktms.v1.ListNodeSchedulesResponse
-	40,  // 123: ktms.v1.AdminService.SetNodeSchedule:output_type -> ktms.v1.NodeScheduleInfo
-	40,  // 124: ktms.v1.AdminService.SetNodeCapacityOverride:output_type -> ktms.v1.NodeScheduleInfo
-	46,  // 125: ktms.v1.AdminService.DeleteNodeSchedule:output_type -> ktms.v1.DeleteNodeScheduleResponse
-	49,  // 126: ktms.v1.AdminService.SetUserRateLimit:output_type -> ktms.v1.SetUserRateLimitResponse
-	51,  // 127: ktms.v1.AdminService.DeleteUserRateLimit:output_type -> ktms.v1.DeleteUserRateLimitResponse
-	53,  // 128: ktms.v1.AdminService.ListUserRateLimits:output_type -> ktms.v1.ListUserRateLimitsResponse
-	56,  // 129: ktms.v1.AdminService.SetSpendLimit:output_type -> ktms.v1.SetSpendLimitResponse
-	58,  // 130: ktms.v1.AdminService.DeleteSpendLimit:output_type -> ktms.v1.DeleteSpendLimitResponse
-	60,  // 131: ktms.v1.AdminService.ListSpendLimits:output_type -> ktms.v1.ListSpendLimitsResponse
-	64,  // 132: ktms.v1.AdminService.CreateOrganization:output_type -> ktms.v1.CreateOrganizationResponse
-	66,  // 133: ktms.v1.AdminService.ListOrganizations:output_type -> ktms.v1.ListOrganizationsResponse
-	68,  // 134: ktms.v1.AdminService.DeleteOrganization:output_type -> ktms.v1.DeleteOrganizationResponse
-	70,  // 135: ktms.v1.AdminService.CreateTeam:output_type -> ktms.v1.CreateTeamResponse
-	72,  // 136: ktms.v1.AdminService.GetTeam:output_type -> ktms.v1.GetTeamResponse
-	74,  // 137: ktms.v1.AdminService.ListTeams:output_type -> ktms.v1.ListTeamsResponse
-	76,  // 138: ktms.v1.AdminService.UpdateTeam:output_type -> ktms.v1.UpdateTeamResponse
-	78,  // 139: ktms.v1.AdminService.DeleteTeam:output_type -> ktms.v1.DeleteTeamResponse
-	80,  // 140: ktms.v1.AdminService.GetTeamSpend:output_type -> ktms.v1.GetTeamSpendResponse
-	83,  // 141: ktms.v1.AdminService.GetSpend:output_type -> ktms.v1.GetSpendResponse
-	99,  // 142: ktms.v1.AdminService.ExplainRoute:output_type -> ktms.v1.ExplainRouteResponse
-	86,  // 143: ktms.v1.AdminService.UpsertMCPServer:output_type -> ktms.v1.UpsertMCPServerResponse
-	88,  // 144: ktms.v1.AdminService.DeleteMCPServer:output_type -> ktms.v1.DeleteMCPServerResponse
-	90,  // 145: ktms.v1.AdminService.SetMCPCredential:output_type -> ktms.v1.SetMCPCredentialResponse
-	92,  // 146: ktms.v1.AdminService.DeleteMCPCredential:output_type -> ktms.v1.DeleteMCPCredentialResponse
-	96,  // 147: ktms.v1.AdminService.ListMCPTools:output_type -> ktms.v1.ListMCPToolsResponse
-	102, // 148: ktms.v1.AdminService.ListAgents:output_type -> ktms.v1.ListAgentsResponse
-	104, // 149: ktms.v1.AdminService.SetAgentRecording:output_type -> ktms.v1.SetAgentRecordingResponse
-	109, // 150: ktms.v1.AdminService.ListAgentTasks:output_type -> ktms.v1.ListAgentTasksResponse
-	108, // 151: ktms.v1.AdminService.GetAgentTask:output_type -> ktms.v1.AgentTask
-	108, // 152: ktms.v1.AdminService.ReplyAgentTask:output_type -> ktms.v1.AgentTask
-	105, // [105:153] is the sub-list for method output_type
-	57,  // [57:105] is the sub-list for method input_type
-	57,  // [57:57] is the sub-list for extension type_name
-	57,  // [57:57] is the sub-list for extension extendee
-	0,   // [0:57] is the sub-list for field type_name
+	117, // 0: ktms.v1.ModelSpec.efforts:type_name -> ktms.v1.Effort
+	118, // 1: ktms.v1.ModelSpec.languages:type_name -> ktms.v1.ModelLanguages
+	111, // 2: ktms.v1.ModelSpec.competencies:type_name -> ktms.v1.ModelSpec.CompetenciesEntry
+	117, // 3: ktms.v1.RuleSpec.effort:type_name -> ktms.v1.Effort
+	112, // 4: ktms.v1.RuleSpec.attributes:type_name -> ktms.v1.RuleSpec.AttributesEntry
+	113, // 5: ktms.v1.RuleSpec.needs:type_name -> ktms.v1.RuleSpec.NeedsEntry
+	0,   // 6: ktms.v1.UpsertModelRequest.model:type_name -> ktms.v1.ModelSpec
+	1,   // 7: ktms.v1.ReplaceRulesRequest.rules:type_name -> ktms.v1.RuleSpec
+	119, // 8: ktms.v1.VendorKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	0,   // 9: ktms.v1.GetConfigResponse.models:type_name -> ktms.v1.ModelSpec
+	1,   // 10: ktms.v1.GetConfigResponse.rules:type_name -> ktms.v1.RuleSpec
+	12,  // 11: ktms.v1.GetConfigResponse.vendor_keys:type_name -> ktms.v1.VendorKeyInfo
+	47,  // 12: ktms.v1.GetConfigResponse.user_rate_limits:type_name -> ktms.v1.UserRateLimitSpec
+	54,  // 13: ktms.v1.GetConfigResponse.spend_limits:type_name -> ktms.v1.SpendLimitSpec
+	84,  // 14: ktms.v1.GetConfigResponse.mcp_servers:type_name -> ktms.v1.MCPServerSpec
+	93,  // 15: ktms.v1.GetConfigResponse.mcp_credentials:type_name -> ktms.v1.MCPCredentialInfo
+	16,  // 16: ktms.v1.MintAPIKeyRequest.policy:type_name -> ktms.v1.APIKeyPolicy
+	16,  // 17: ktms.v1.SetAPIKeyPolicyRequest.policy:type_name -> ktms.v1.APIKeyPolicy
+	119, // 18: ktms.v1.APIKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	16,  // 19: ktms.v1.APIKeyInfo.policy:type_name -> ktms.v1.APIKeyPolicy
+	23,  // 20: ktms.v1.ListAPIKeysResponse.keys:type_name -> ktms.v1.APIKeyInfo
+	119, // 21: ktms.v1.NodeKeyInfo.created_at:type_name -> google.protobuf.Timestamp
+	32,  // 22: ktms.v1.ListNodeKeysResponse.keys:type_name -> ktms.v1.NodeKeyInfo
+	119, // 23: ktms.v1.NodeInfo.last_heartbeat:type_name -> google.protobuf.Timestamp
+	119, // 24: ktms.v1.NodeInfo.capacity_until:type_name -> google.protobuf.Timestamp
+	35,  // 25: ktms.v1.ListNodesResponse.nodes:type_name -> ktms.v1.NodeInfo
+	120, // 26: ktms.v1.NodeScheduleInfo.override:type_name -> ktms.v1.NodeCapacityOverride
+	119, // 27: ktms.v1.NodeScheduleInfo.updated_at:type_name -> google.protobuf.Timestamp
+	119, // 28: ktms.v1.SetNodeCapacityOverrideRequest.until:type_name -> google.protobuf.Timestamp
+	40,  // 29: ktms.v1.ListNodeSchedulesResponse.schedules:type_name -> ktms.v1.NodeScheduleInfo
+	47,  // 30: ktms.v1.SetUserRateLimitRequest.rate_limit:type_name -> ktms.v1.UserRateLimitSpec
+	47,  // 31: ktms.v1.ListUserRateLimitsResponse.rate_limits:type_name -> ktms.v1.UserRateLimitSpec
+	54,  // 32: ktms.v1.SetSpendLimitRequest.spend_limit:type_name -> ktms.v1.SpendLimitSpec
+	54,  // 33: ktms.v1.ListSpendLimitsResponse.spend_limits:type_name -> ktms.v1.SpendLimitSpec
+	119, // 34: ktms.v1.Organization.created_at:type_name -> google.protobuf.Timestamp
+	119, // 35: ktms.v1.Team.created_at:type_name -> google.protobuf.Timestamp
+	61,  // 36: ktms.v1.CreateOrganizationResponse.organization:type_name -> ktms.v1.Organization
+	61,  // 37: ktms.v1.ListOrganizationsResponse.organizations:type_name -> ktms.v1.Organization
+	62,  // 38: ktms.v1.CreateTeamResponse.team:type_name -> ktms.v1.Team
+	62,  // 39: ktms.v1.GetTeamResponse.team:type_name -> ktms.v1.Team
+	62,  // 40: ktms.v1.ListTeamsResponse.teams:type_name -> ktms.v1.Team
+	62,  // 41: ktms.v1.UpdateTeamResponse.team:type_name -> ktms.v1.Team
+	119, // 42: ktms.v1.GetTeamSpendResponse.resets_at:type_name -> google.protobuf.Timestamp
+	119, // 43: ktms.v1.SpendWindow.resets_at:type_name -> google.protobuf.Timestamp
+	82,  // 44: ktms.v1.GetSpendResponse.windows:type_name -> ktms.v1.SpendWindow
+	84,  // 45: ktms.v1.UpsertMCPServerRequest.server:type_name -> ktms.v1.MCPServerSpec
+	119, // 46: ktms.v1.MCPCredentialInfo.created_at:type_name -> google.protobuf.Timestamp
+	95,  // 47: ktms.v1.ListMCPToolsResponse.tools:type_name -> ktms.v1.MCPToolInfo
+	117, // 48: ktms.v1.ExplainRouteRequest.effort:type_name -> ktms.v1.Effort
+	114, // 49: ktms.v1.ExplainRouteRequest.attributes:type_name -> ktms.v1.ExplainRouteRequest.AttributesEntry
+	115, // 50: ktms.v1.ExplainRouteRequest.needs:type_name -> ktms.v1.ExplainRouteRequest.NeedsEntry
+	121, // 51: ktms.v1.RouteCandidate.paused_for:type_name -> google.protobuf.Duration
+	98,  // 52: ktms.v1.ExplainRouteResponse.candidates:type_name -> ktms.v1.RouteCandidate
+	116, // 53: ktms.v1.ExplainRouteResponse.needs:type_name -> ktms.v1.ExplainRouteResponse.NeedsEntry
+	119, // 54: ktms.v1.AgentInfo.updated_at:type_name -> google.protobuf.Timestamp
+	101, // 55: ktms.v1.ListAgentsResponse.agents:type_name -> ktms.v1.AgentInfo
+	119, // 56: ktms.v1.AgentMessage.created_at:type_name -> google.protobuf.Timestamp
+	119, // 57: ktms.v1.AgentTask.created_at:type_name -> google.protobuf.Timestamp
+	119, // 58: ktms.v1.AgentTask.updated_at:type_name -> google.protobuf.Timestamp
+	106, // 59: ktms.v1.AgentTask.messages:type_name -> ktms.v1.AgentMessage
+	108, // 60: ktms.v1.ListAgentTasksResponse.tasks:type_name -> ktms.v1.AgentTask
+	2,   // 61: ktms.v1.AdminService.UpsertModel:input_type -> ktms.v1.UpsertModelRequest
+	4,   // 62: ktms.v1.AdminService.DeleteModel:input_type -> ktms.v1.DeleteModelRequest
+	6,   // 63: ktms.v1.AdminService.ReplaceRules:input_type -> ktms.v1.ReplaceRulesRequest
+	8,   // 64: ktms.v1.AdminService.SetVendorKey:input_type -> ktms.v1.SetVendorKeyRequest
+	10,  // 65: ktms.v1.AdminService.DeleteVendorKey:input_type -> ktms.v1.DeleteVendorKeyRequest
+	13,  // 66: ktms.v1.AdminService.GetConfig:input_type -> ktms.v1.GetConfigRequest
+	15,  // 67: ktms.v1.AdminService.MintAPIKey:input_type -> ktms.v1.MintAPIKeyRequest
+	20,  // 68: ktms.v1.AdminService.RevokeAPIKey:input_type -> ktms.v1.RevokeAPIKeyRequest
+	22,  // 69: ktms.v1.AdminService.ListAPIKeys:input_type -> ktms.v1.ListAPIKeysRequest
+	17,  // 70: ktms.v1.AdminService.SetAPIKeyPolicy:input_type -> ktms.v1.SetAPIKeyPolicyRequest
+	25,  // 71: ktms.v1.AdminService.RotateEncryption:input_type -> ktms.v1.RotateEncryptionRequest
+	27,  // 72: ktms.v1.AdminService.MintNodeKey:input_type -> ktms.v1.MintNodeKeyRequest
+	29,  // 73: ktms.v1.AdminService.RevokeNodeKey:input_type -> ktms.v1.RevokeNodeKeyRequest
+	31,  // 74: ktms.v1.AdminService.ListNodeKeys:input_type -> ktms.v1.ListNodeKeysRequest
+	34,  // 75: ktms.v1.AdminService.ListNodes:input_type -> ktms.v1.ListNodesRequest
+	37,  // 76: ktms.v1.AdminService.DrainNode:input_type -> ktms.v1.DrainNodeRequest
+	39,  // 77: ktms.v1.AdminService.GetNodeSchedule:input_type -> ktms.v1.GetNodeScheduleRequest
+	43,  // 78: ktms.v1.AdminService.ListNodeSchedules:input_type -> ktms.v1.ListNodeSchedulesRequest
+	41,  // 79: ktms.v1.AdminService.SetNodeSchedule:input_type -> ktms.v1.SetNodeScheduleRequest
+	42,  // 80: ktms.v1.AdminService.SetNodeCapacityOverride:input_type -> ktms.v1.SetNodeCapacityOverrideRequest
+	45,  // 81: ktms.v1.AdminService.DeleteNodeSchedule:input_type -> ktms.v1.DeleteNodeScheduleRequest
+	48,  // 82: ktms.v1.AdminService.SetUserRateLimit:input_type -> ktms.v1.SetUserRateLimitRequest
+	50,  // 83: ktms.v1.AdminService.DeleteUserRateLimit:input_type -> ktms.v1.DeleteUserRateLimitRequest
+	52,  // 84: ktms.v1.AdminService.ListUserRateLimits:input_type -> ktms.v1.ListUserRateLimitsRequest
+	55,  // 85: ktms.v1.AdminService.SetSpendLimit:input_type -> ktms.v1.SetSpendLimitRequest
+	57,  // 86: ktms.v1.AdminService.DeleteSpendLimit:input_type -> ktms.v1.DeleteSpendLimitRequest
+	59,  // 87: ktms.v1.AdminService.ListSpendLimits:input_type -> ktms.v1.ListSpendLimitsRequest
+	63,  // 88: ktms.v1.AdminService.CreateOrganization:input_type -> ktms.v1.CreateOrganizationRequest
+	65,  // 89: ktms.v1.AdminService.ListOrganizations:input_type -> ktms.v1.ListOrganizationsRequest
+	67,  // 90: ktms.v1.AdminService.DeleteOrganization:input_type -> ktms.v1.DeleteOrganizationRequest
+	69,  // 91: ktms.v1.AdminService.CreateTeam:input_type -> ktms.v1.CreateTeamRequest
+	71,  // 92: ktms.v1.AdminService.GetTeam:input_type -> ktms.v1.GetTeamRequest
+	73,  // 93: ktms.v1.AdminService.ListTeams:input_type -> ktms.v1.ListTeamsRequest
+	75,  // 94: ktms.v1.AdminService.UpdateTeam:input_type -> ktms.v1.UpdateTeamRequest
+	77,  // 95: ktms.v1.AdminService.DeleteTeam:input_type -> ktms.v1.DeleteTeamRequest
+	79,  // 96: ktms.v1.AdminService.GetTeamSpend:input_type -> ktms.v1.GetTeamSpendRequest
+	81,  // 97: ktms.v1.AdminService.GetSpend:input_type -> ktms.v1.GetSpendRequest
+	97,  // 98: ktms.v1.AdminService.ExplainRoute:input_type -> ktms.v1.ExplainRouteRequest
+	85,  // 99: ktms.v1.AdminService.UpsertMCPServer:input_type -> ktms.v1.UpsertMCPServerRequest
+	87,  // 100: ktms.v1.AdminService.DeleteMCPServer:input_type -> ktms.v1.DeleteMCPServerRequest
+	89,  // 101: ktms.v1.AdminService.SetMCPCredential:input_type -> ktms.v1.SetMCPCredentialRequest
+	91,  // 102: ktms.v1.AdminService.DeleteMCPCredential:input_type -> ktms.v1.DeleteMCPCredentialRequest
+	94,  // 103: ktms.v1.AdminService.ListMCPTools:input_type -> ktms.v1.ListMCPToolsRequest
+	100, // 104: ktms.v1.AdminService.ListAgents:input_type -> ktms.v1.ListAgentsRequest
+	103, // 105: ktms.v1.AdminService.SetAgentRecording:input_type -> ktms.v1.SetAgentRecordingRequest
+	105, // 106: ktms.v1.AdminService.ListAgentTasks:input_type -> ktms.v1.ListAgentTasksRequest
+	110, // 107: ktms.v1.AdminService.GetAgentTask:input_type -> ktms.v1.GetAgentTaskRequest
+	107, // 108: ktms.v1.AdminService.ReplyAgentTask:input_type -> ktms.v1.ReplyAgentTaskRequest
+	3,   // 109: ktms.v1.AdminService.UpsertModel:output_type -> ktms.v1.UpsertModelResponse
+	5,   // 110: ktms.v1.AdminService.DeleteModel:output_type -> ktms.v1.DeleteModelResponse
+	7,   // 111: ktms.v1.AdminService.ReplaceRules:output_type -> ktms.v1.ReplaceRulesResponse
+	9,   // 112: ktms.v1.AdminService.SetVendorKey:output_type -> ktms.v1.SetVendorKeyResponse
+	11,  // 113: ktms.v1.AdminService.DeleteVendorKey:output_type -> ktms.v1.DeleteVendorKeyResponse
+	14,  // 114: ktms.v1.AdminService.GetConfig:output_type -> ktms.v1.GetConfigResponse
+	19,  // 115: ktms.v1.AdminService.MintAPIKey:output_type -> ktms.v1.MintAPIKeyResponse
+	21,  // 116: ktms.v1.AdminService.RevokeAPIKey:output_type -> ktms.v1.RevokeAPIKeyResponse
+	24,  // 117: ktms.v1.AdminService.ListAPIKeys:output_type -> ktms.v1.ListAPIKeysResponse
+	18,  // 118: ktms.v1.AdminService.SetAPIKeyPolicy:output_type -> ktms.v1.SetAPIKeyPolicyResponse
+	26,  // 119: ktms.v1.AdminService.RotateEncryption:output_type -> ktms.v1.RotateEncryptionResponse
+	28,  // 120: ktms.v1.AdminService.MintNodeKey:output_type -> ktms.v1.MintNodeKeyResponse
+	30,  // 121: ktms.v1.AdminService.RevokeNodeKey:output_type -> ktms.v1.RevokeNodeKeyResponse
+	33,  // 122: ktms.v1.AdminService.ListNodeKeys:output_type -> ktms.v1.ListNodeKeysResponse
+	36,  // 123: ktms.v1.AdminService.ListNodes:output_type -> ktms.v1.ListNodesResponse
+	38,  // 124: ktms.v1.AdminService.DrainNode:output_type -> ktms.v1.DrainNodeResponse
+	40,  // 125: ktms.v1.AdminService.GetNodeSchedule:output_type -> ktms.v1.NodeScheduleInfo
+	44,  // 126: ktms.v1.AdminService.ListNodeSchedules:output_type -> ktms.v1.ListNodeSchedulesResponse
+	40,  // 127: ktms.v1.AdminService.SetNodeSchedule:output_type -> ktms.v1.NodeScheduleInfo
+	40,  // 128: ktms.v1.AdminService.SetNodeCapacityOverride:output_type -> ktms.v1.NodeScheduleInfo
+	46,  // 129: ktms.v1.AdminService.DeleteNodeSchedule:output_type -> ktms.v1.DeleteNodeScheduleResponse
+	49,  // 130: ktms.v1.AdminService.SetUserRateLimit:output_type -> ktms.v1.SetUserRateLimitResponse
+	51,  // 131: ktms.v1.AdminService.DeleteUserRateLimit:output_type -> ktms.v1.DeleteUserRateLimitResponse
+	53,  // 132: ktms.v1.AdminService.ListUserRateLimits:output_type -> ktms.v1.ListUserRateLimitsResponse
+	56,  // 133: ktms.v1.AdminService.SetSpendLimit:output_type -> ktms.v1.SetSpendLimitResponse
+	58,  // 134: ktms.v1.AdminService.DeleteSpendLimit:output_type -> ktms.v1.DeleteSpendLimitResponse
+	60,  // 135: ktms.v1.AdminService.ListSpendLimits:output_type -> ktms.v1.ListSpendLimitsResponse
+	64,  // 136: ktms.v1.AdminService.CreateOrganization:output_type -> ktms.v1.CreateOrganizationResponse
+	66,  // 137: ktms.v1.AdminService.ListOrganizations:output_type -> ktms.v1.ListOrganizationsResponse
+	68,  // 138: ktms.v1.AdminService.DeleteOrganization:output_type -> ktms.v1.DeleteOrganizationResponse
+	70,  // 139: ktms.v1.AdminService.CreateTeam:output_type -> ktms.v1.CreateTeamResponse
+	72,  // 140: ktms.v1.AdminService.GetTeam:output_type -> ktms.v1.GetTeamResponse
+	74,  // 141: ktms.v1.AdminService.ListTeams:output_type -> ktms.v1.ListTeamsResponse
+	76,  // 142: ktms.v1.AdminService.UpdateTeam:output_type -> ktms.v1.UpdateTeamResponse
+	78,  // 143: ktms.v1.AdminService.DeleteTeam:output_type -> ktms.v1.DeleteTeamResponse
+	80,  // 144: ktms.v1.AdminService.GetTeamSpend:output_type -> ktms.v1.GetTeamSpendResponse
+	83,  // 145: ktms.v1.AdminService.GetSpend:output_type -> ktms.v1.GetSpendResponse
+	99,  // 146: ktms.v1.AdminService.ExplainRoute:output_type -> ktms.v1.ExplainRouteResponse
+	86,  // 147: ktms.v1.AdminService.UpsertMCPServer:output_type -> ktms.v1.UpsertMCPServerResponse
+	88,  // 148: ktms.v1.AdminService.DeleteMCPServer:output_type -> ktms.v1.DeleteMCPServerResponse
+	90,  // 149: ktms.v1.AdminService.SetMCPCredential:output_type -> ktms.v1.SetMCPCredentialResponse
+	92,  // 150: ktms.v1.AdminService.DeleteMCPCredential:output_type -> ktms.v1.DeleteMCPCredentialResponse
+	96,  // 151: ktms.v1.AdminService.ListMCPTools:output_type -> ktms.v1.ListMCPToolsResponse
+	102, // 152: ktms.v1.AdminService.ListAgents:output_type -> ktms.v1.ListAgentsResponse
+	104, // 153: ktms.v1.AdminService.SetAgentRecording:output_type -> ktms.v1.SetAgentRecordingResponse
+	109, // 154: ktms.v1.AdminService.ListAgentTasks:output_type -> ktms.v1.ListAgentTasksResponse
+	108, // 155: ktms.v1.AdminService.GetAgentTask:output_type -> ktms.v1.AgentTask
+	108, // 156: ktms.v1.AdminService.ReplyAgentTask:output_type -> ktms.v1.AgentTask
+	109, // [109:157] is the sub-list for method output_type
+	61,  // [61:109] is the sub-list for method input_type
+	61,  // [61:61] is the sub-list for extension type_name
+	61,  // [61:61] is the sub-list for extension extendee
+	0,   // [0:61] is the sub-list for field type_name
 }
 
 func init() { file_ktms_v1_admin_proto_init() }
@@ -7434,7 +7537,7 @@ func file_ktms_v1_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ktms_v1_admin_proto_rawDesc), len(file_ktms_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   113,
+			NumMessages:   117,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -154,6 +154,12 @@
             },
             "type": "array"
           },
+          "competencies": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "daily_tokens_per_key": {
             "type": [
               "integer",
@@ -349,6 +355,12 @@
           },
           "name": {
             "type": "string"
+          },
+          "needs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
           },
           "priority": {
             "type": "integer"

@@ -2,6 +2,8 @@ package registry
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"sync"
 
@@ -139,9 +141,31 @@ func (s *Snapshot) ClientModels(apiKeyID string) []*proxydb.Model {
 	return out
 }
 
-// Configured reports whether any routing config exists at all.
+// Configured reports whether any routing config exists at all: models and
+// either rules or competencies to select by.
 func (s *Snapshot) Configured() bool {
-	return len(s.Models) > 0 && len(s.Rules) > 0
+	return len(s.Models) > 0 && (len(s.Rules) > 0 || s.Selects())
+}
+
+// Selects reports whether requests no rule matches are routed by selection:
+// some enabled model declares competencies. Configs from before 1.7 never do,
+// and keep needing a catch-all rule.
+func (s *Snapshot) Selects() bool {
+	for _, m := range s.Models {
+		if m.Enabled && len(m.Competencies) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func selects(models []*proxydb.Model) bool {
+	for _, m := range models {
+		if m.Enabled && len(m.Competencies) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // ValidateModel checks a single spec before it reaches the database.
@@ -155,8 +179,11 @@ func ValidateModel(m *proxydb.Model) error {
 	if m.Vendor == VendorOllama && m.Endpoint == "" {
 		return fmt.Errorf("model %s: an ollama model needs its endpoint", m.ID)
 	}
-	if len(m.Efforts) == 0 {
-		return fmt.Errorf("model %s: at least one effort is required", m.ID)
+	if len(m.Efforts) == 0 && len(m.Competencies) == 0 {
+		return fmt.Errorf("model %s: at least one effort or competency is required", m.ID)
+	}
+	if err := ValidateLevels(m.Competencies); err != nil {
+		return fmt.Errorf("model %s: competencies: %w", m.ID, err)
 	}
 	for _, e := range m.Efforts {
 		if !ValidEffort(e) {
@@ -221,6 +248,9 @@ func Validate(models []*proxydb.Model, rules []*proxydb.Rule) error {
 		if r.Effort != "" && !ValidEffort(r.Effort) {
 			return fmt.Errorf("rule %s: unknown effort %q", r.Name, r.Effort)
 		}
+		if err := ValidateLevels(r.Needs); err != nil {
+			return fmt.Errorf("rule %s: needs: %w", r.Name, err)
+		}
 		if len(r.Use) == 0 {
 			return fmt.Errorf("rule %s: empty model chain", r.Name)
 		}
@@ -277,6 +307,18 @@ func Validate(models []*proxydb.Model, rules []*proxydb.Rule) error {
 		if len(enabledChain) == 0 {
 			return fmt.Errorf("rule %s: every model in the chain is disabled", r.Name)
 		}
+		if len(r.Needs) > 0 {
+			// The least request the rule matches must find a model; requests
+			// that need more are the operator's call, as topics are free.
+			least := maps.Clone(r.Needs)
+			if _, ok := least[TopicGeneral]; !ok && r.Effort != "" {
+				least[TopicGeneral] = EffortLevel(r.Effort)
+			}
+			if !slices.ContainsFunc(enabledChain, func(m *proxydb.Model) bool { return MeetsAll(m, least) }) {
+				return fmt.Errorf("rule %s: no enabled model in the chain meets its needs %s", r.Name, FormatNeeds(least))
+			}
+			continue
+		}
 		// Every effort the rule can match needs at least one serving model,
 		// or a matching request would find an empty chain at runtime.
 		for _, e := range matchableEfforts(r) {
@@ -291,8 +333,9 @@ func Validate(models []*proxydb.Model, rules []*proxydb.Rule) error {
 
 	// No rules at all is the models-first bootstrap state: GenerateText fails
 	// with not_configured until rules arrive. Once any rule exists, every
-	// effort must have a catch-all.
-	if len(rules) > 0 {
+	// effort must have a catch-all, unless models declare competencies and
+	// a request no rule takes is routed by selection.
+	if len(rules) > 0 && !selects(models) {
 		for _, e := range []string{EffortLow, EffortMedium, EffortHigh} {
 			if !catchAll[e] {
 				return fmt.Errorf("no catch-all rule (empty attributes) covers effort %s", e)
@@ -310,14 +353,7 @@ func matchableEfforts(r *proxydb.Rule) []string {
 }
 
 func anyServes(models []*proxydb.Model, effort string) bool {
-	for _, m := range models {
-		for _, e := range m.Efforts {
-			if e == effort {
-				return true
-			}
-		}
-	}
-	return false
+	return slices.ContainsFunc(models, func(m *proxydb.Model) bool { return Meets(m, TopicGeneral, EffortLevel(effort)) })
 }
 
 // Serves reports whether a model lists the effort.

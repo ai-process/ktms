@@ -15,7 +15,7 @@ message ModelSpec {
   string id = 1; // unique registry id, referenced by rules and model_override
   string vendor = 2; // openai | anthropic | google | deepseek | ollama | local | typesafe | groq | mistral | azure | bedrock
   string endpoint = 3; // optional base-URL override
-  repeated Effort efforts = 4; // tiers this model may serve
+  repeated Effort efforts = 4 [deprecated = true]; // use competencies; read as general at the highest effort listed
   repeated string capabilities = 5; // e.g. "google_search"
   int32 rpm = 6; // per client key per minute, 0 = unlimited
   double price_in_per_mtok = 7; // standard (off-peak) rate
@@ -41,12 +41,15 @@ message ModelSpec {
   // price per million source characters, added to any token price.
   ModelLanguages languages = 21;
   double price_per_million_chars = 22;
+  // topic -> level (basic | proficient | expert), e.g. {"general": "expert",
+  // "medical": "proficient"}. A model with competencies needs no efforts.
+  map<string, string> competencies = 23;
 }
 
 message RuleSpec {
   string name = 1; // unique, logged and put in usage meta
   int32 priority = 2; // unique; higher wins, first match takes the request
-  Effort effort = 3; // EFFORT_UNSPECIFIED = matches any effort
+  Effort effort = 3 [deprecated = true]; // use needs; EFFORT_UNSPECIFIED = matches any effort
   map<string, string> attributes = 4; // equality predicates over request attributes
   repeated string use = 5; // ordered fallback chain of model ids, cheaper-first
   bool enabled = 6;
@@ -55,6 +58,9 @@ message RuleSpec {
   string shadow_model = 8; // Experimental: optional model id for async traffic mirroring
   double shadow_percentage = 9; // Experimental: percentage of requests to mirror (0.0 - 100.0)
   bool shadow_eval = 10; // Experimental: optional automated quality evaluation using Judge
+  // topic -> least level: the rule matches a request whose need of each topic
+  // is at least that level. A matching rule replaces the selection with its chain.
+  map<string, string> needs = 11;
 }
 
 message UpsertModelRequest {
@@ -639,7 +645,7 @@ service AdminService {
 
 message ExplainRouteRequest {
   string api_key_name = 1; // the client key the request would carry
-  Effort effort = 2; // as in GenerateTextRequest; with auto_route, the effort the judge would otherwise pick
+  Effort effort = 2 [deprecated = true]; // as in GenerateTextRequest; with auto_route, the effort the judge would otherwise pick
   bool auto_route = 3; // as in GenerateTextRequest; without an effort the judge is not called (judge_skipped)
   map<string, string> attributes = 4; // request attributes the rules match on, user_id and canary_key included
   string placement = 5; // nodes_first | nodes_only | cloud_first | cloud_only, empty for the rule's default
@@ -651,6 +657,7 @@ message ExplainRouteRequest {
   string modality = 9;
   string source_language = 10; // translate: the pair to filter the chain by
   string target_language = 11;
+  map<string, string> needs = 12; // as in GenerateTextRequest
 }
 
 message RouteCandidate {
@@ -661,11 +668,16 @@ message RouteCandidate {
   // node_unavailable, node_pool_disabled, language_pair. New reasons may appear.
   string dropped = 3;
   google.protobuf.Duration paused_for = 4; // vendor_paused: until the vendor's Retry-After ends
+  // Selection without a rule ranks by these: levels above the needs summed
+  // over the needed topics, then the blended price (3 x input + output) / 4
+  // per million tokens at the standard rate.
+  int32 excess = 5;
+  double blended_price_per_mtok = 6;
 }
 
 message ExplainRouteResponse {
   string rule = 1; // the matched rule; empty with model_override
-  string effort = 2; // the effort matched on
+  string effort = 2 [deprecated = true]; // the effort matched on; see needs
   string route_mode = 3; // direct | override | auto-effort | auto-default, as X-KTMS-Route-Mode
   repeated string chain = 4; // the rule's chain after the canary draw
   repeated RouteCandidate candidates = 5; // every model of chain, in order
@@ -674,6 +686,10 @@ message ExplainRouteResponse {
   string shadow_model = 8; // mirrored model, if the rule mirrors and it is callable
   double shadow_percentage = 9;
   bool judge_skipped = 10; // auto_route without effort: a real call would ask the judge first
+  map<string, string> needs = 12; // the needs routed on, effort included as general
+  // No rule matched: the chain is Keystone's selection, and candidates are
+  // every enabled model, kept ones first in the order a call tries them.
+  bool selected = 13;
   // The code and message a real call would fail with before any vendor, as in the
   // error contract, e.g. "FAILED_PRECONDITION: no_vendor_key"; empty if it would go out.
   string error = 11;
