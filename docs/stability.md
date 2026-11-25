@@ -18,7 +18,7 @@ fix bugs.
 | Prometheus metrics | Names and labels of `ktms_*` metrics, except the experimental ones listed below. The `effort` label stays: for a request with needs it is the `general` need as `low`, `medium` or `high`, and `default` without one (as speech and images always had). Needs get no label: topics are unbounded. |
 | Usage events (`usage.v1`) | Field numbers and meaning, checked by `buf breaking` like `ktms.v1`. The meta keys KTMS writes keep their format, `effort` and `needs` (1.7) included. |
 | Needs and competencies (1.7) | `ModelSpec.competencies`, `needs` on requests and rules, `ModelInfo.competencies`, the HTTP model `auto:<topic>=<level>,…` and the `X-KTMS-Needs` header, the levels `basic` < `proficient` < `expert` and their meaning: a model meets a need at its level or below. |
-| Node agent | A 1.x agent works with any 1.x gateway, in both directions. |
+| Node daemon | A 1.x daemon works with any 1.x gateway, in both directions. |
 | Helm chart (`oci://ghcr.io/ai-process/charts/ktms`) | Value names and meaning; new values may appear. The chart version is the release version. |
 
 Not public, and free to change in any release: Redis key layout, log message text, the
