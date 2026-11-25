@@ -69,7 +69,9 @@ Configurations without competencies keep needing a catch-all rule for every effo
 - Local node models are never paused: the node pool has its own admission control.
 
 **Usage reporting.** When `USAGE_COLLECTOR_HOST` is set, every call emits an event (vendor,
-model, tokens, duration, status, `action_id`, rule name and your attributes as metadata) to a
+model, tokens, duration, status, `action_id`, rule name and your attributes as metadata; KTMS adds
+`effort`, the general need as `low|medium|high`, and from 1.7 `needs`, as `topic=level,…` with
+topics sorted, e.g. `general=basic,medical=proficient`) to a
 gRPC service implementing [`usage-proto/usage/v1/usage.proto`](../usage-proto/usage/v1/usage.proto).
 Events are attributed to the project named by the `usage_project` attribute, falling back to the
 API key's name. Any service implementing `RecordUsageEvent(s)` works as a sink. When
