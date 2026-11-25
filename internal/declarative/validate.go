@@ -105,7 +105,9 @@ func (c *Config) Validate() error {
 		// As in Keystone: once any rule exists, every effort needs a catch-all,
 		// unless models declare competencies and selection takes the rest.
 		for _, e := range efforts {
-			if len(c.Rules) > 0 && !selects && !covered[e] {
+			// A file without models cannot tell whether Keystone's declare
+			// competencies; Keystone checks that when the plan is applied.
+			if len(c.Rules) > 0 && c.Manages("models") && !selects && !covered[e] {
 				bad("rules: no enabled catch-all rule (no attributes) for %s", e)
 			}
 		}

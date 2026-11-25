@@ -92,3 +92,45 @@ func TestCachePriceDefaults(t *testing.T) {
 }
 
 func near(a, b float64) bool { return a-b < 1e-9 && b-a < 1e-9 }
+
+// A model with competencies and no efforts stores (efforts is NOT NULL), and
+// a rule's needs come back as written.
+func TestCompetenciesAndNeedsRoundTrip(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	want := &Model{ID: "comp-" + uuid.NewString()[:8], Vendor: "openai", Enabled: true,
+		Competencies: map[string]string{"general": "expert", "medical": "basic"}}
+	rule := &Rule{ID: uuid.NewString(), Name: "r-" + want.ID, Priority: 7, Attributes: map[string]string{},
+		Needs: map[string]string{"medical": "basic"}, Enabled: true, Use: []string{want.ID}}
+	if _, err := d.Mutate(ctx, func(tx pgx.Tx) error {
+		if err := UpsertModel(ctx, tx, want); err != nil {
+			return err
+		}
+		return ReplaceRules(ctx, tx, []*Rule{rule})
+	}, nil); err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	models, err := d.LoadModels(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, m := range models {
+		if m.ID == want.ID {
+			found = m.Competencies["general"] == "expert" && m.Competencies["medical"] == "basic"
+		}
+	}
+	if !found {
+		t.Fatalf("model %s: competencies not loaded", want.ID)
+	}
+	rules, err := d.LoadRules(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rules {
+		if r.Name == rule.Name && r.Needs["medical"] == "basic" {
+			return
+		}
+	}
+	t.Fatalf("rule %s: needs not loaded", rule.Name)
+}

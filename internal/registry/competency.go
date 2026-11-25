@@ -170,7 +170,11 @@ func RequestNeeds(needs map[string]string, effort string) (map[string]string, er
 		out[t] = l
 	}
 	if _, ok := out[TopicGeneral]; !ok && effort != "" {
-		out[TopicGeneral] = EffortLevel(effort)
+		l := EffortLevel(effort)
+		if l == "" {
+			return nil, fmt.Errorf("unknown effort %q", effort)
+		}
+		out[TopicGeneral] = l
 	}
 	return out, nil
 }
