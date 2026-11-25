@@ -58,19 +58,19 @@ func snapshot() *registry.Snapshot {
 func TestMatchPrecedenceAndPredicates(t *testing.T) {
 	snap := snapshot()
 
-	if r := Match(snap, registry.EffortHigh, map[string]string{"subject": "chinese"}); r.Name != "chinese-high" {
+	if r := Match(snap, en(registry.EffortHigh), map[string]string{"subject": "chinese"}); r.Name != "chinese-high" {
 		t.Fatalf("matched %s, want chinese-high", r.Name)
 	}
 	// Attribute mismatch falls through to the effort default.
-	if r := Match(snap, registry.EffortHigh, map[string]string{"subject": "english"}); r.Name != "high-default" {
+	if r := Match(snap, en(registry.EffortHigh), map[string]string{"subject": "english"}); r.Name != "high-default" {
 		t.Fatalf("matched %s, want high-default", r.Name)
 	}
 	// No high rule matched attributes-wise? any-default still catches low.
-	if r := Match(snap, registry.EffortLow, nil); r.Name != "any-default" {
+	if r := Match(snap, en(registry.EffortLow), nil); r.Name != "any-default" {
 		t.Fatalf("matched %s, want any-default", r.Name)
 	}
 	// Extra request attributes don't block a rule with fewer predicates.
-	if r := Match(snap, registry.EffortHigh, map[string]string{"task": "x"}); r.Name != "high-default" {
+	if r := Match(snap, en(registry.EffortHigh), map[string]string{"task": "x"}); r.Name != "high-default" {
 		t.Fatalf("matched %s, want high-default", r.Name)
 	}
 }
@@ -79,25 +79,25 @@ func TestFilterChain(t *testing.T) {
 	snap := snapshot()
 
 	// key1 holds all vendor keys: full chain survives.
-	models, err := FilterChain(snap, []string{"deep", "big"}, "key1", registry.EffortHigh, false, "")
+	models, err := FilterChain(snap, []string{"deep", "big"}, "key1", en(registry.EffortHigh), false, "")
 	if err != nil || len(models) != 2 {
 		t.Fatalf("models=%v err=%v", models, err)
 	}
 	// key2 has only openai: deepseek drops out.
-	models, err = FilterChain(snap, []string{"deep", "big"}, "key2", registry.EffortHigh, false, "")
+	models, err = FilterChain(snap, []string{"deep", "big"}, "key2", en(registry.EffortHigh), false, "")
 	if err != nil || len(models) != 1 || models[0].ID != "big" {
 		t.Fatalf("models=%v err=%v", models, err)
 	}
 	// Effort filter: cheap serves low only.
-	if _, err = FilterChain(snap, []string{"cheap"}, "key1", registry.EffortHigh, false, ""); !errors.Is(err, ErrNoCapableModel) {
+	if _, err = FilterChain(snap, []string{"cheap"}, "key1", en(registry.EffortHigh), false, ""); !errors.Is(err, ErrNoCapableModel) {
 		t.Fatalf("err=%v, want ErrNoCapableModel", err)
 	}
 	// Capability filter: only cheap has google_search.
-	if _, err = FilterChain(snap, []string{"big"}, "key1", registry.EffortHigh, true, ""); !errors.Is(err, ErrNoCapableModel) {
+	if _, err = FilterChain(snap, []string{"big"}, "key1", en(registry.EffortHigh), true, ""); !errors.Is(err, ErrNoCapableModel) {
 		t.Fatalf("err=%v, want ErrNoCapableModel", err)
 	}
 	// Capable model exists but the client lacks the vendor key.
-	if _, err = FilterChain(snap, []string{"deep"}, "key2", registry.EffortHigh, false, ""); !errors.Is(err, ErrNoVendorKey) {
+	if _, err = FilterChain(snap, []string{"deep"}, "key2", en(registry.EffortHigh), false, ""); !errors.Is(err, ErrNoVendorKey) {
 		t.Fatalf("err=%v, want ErrNoVendorKey", err)
 	}
 }
@@ -114,24 +114,24 @@ func TestFilterChainLocalModelsNeedNoVendorKey(t *testing.T) {
 	// The client holds no vendor keys at all.
 	snap := registry.NewSnapshotForTest(models, nil, map[string]map[string]string{"bare": {}}, nil)
 
-	got, err := FilterChain(snap, []string{"local-a", "local-b"}, "bare", registry.EffortHigh, false, "")
+	got, err := FilterChain(snap, []string{"local-a", "local-b"}, "bare", en(registry.EffortHigh), false, "")
 	if err != nil || len(got) != 2 || got[0].ID != "local-a" || got[1].ID != "local-b" {
 		t.Fatalf("local-only chain: got %v, err %v; want both local models", got, err)
 	}
 
 	// In a mixed chain the keyless vendor model drops out and the local one stays, in order.
-	got, err = FilterChain(snap, []string{"big", "local-a"}, "bare", registry.EffortHigh, false, "")
+	got, err = FilterChain(snap, []string{"big", "local-a"}, "bare", en(registry.EffortHigh), false, "")
 	if err != nil || len(got) != 1 || got[0].ID != "local-a" {
 		t.Fatalf("mixed chain: got %v, err %v; want only local-a", got, err)
 	}
 
 	// Vendors that do need a key still fail without one.
-	if _, err = FilterChain(snap, []string{"big"}, "bare", registry.EffortHigh, false, ""); !errors.Is(err, ErrNoVendorKey) {
+	if _, err = FilterChain(snap, []string{"big"}, "bare", en(registry.EffortHigh), false, ""); !errors.Is(err, ErrNoVendorKey) {
 		t.Fatalf("err=%v, want ErrNoVendorKey for a vendor model without a key", err)
 	}
 
 	// An unknown client id (no entry at all) behaves the same.
-	got, err = FilterChain(snap, []string{"local-a"}, "no-such-key", registry.EffortHigh, false, "")
+	got, err = FilterChain(snap, []string{"local-a"}, "no-such-key", en(registry.EffortHigh), false, "")
 	if err != nil || len(got) != 1 {
 		t.Fatalf("client without any key row: got %v, err %v", got, err)
 	}
@@ -147,11 +147,11 @@ func TestLocalOnlyRuleServesKeylessClient(t *testing.T) {
 	rules := []*proxydb.Rule{rule("local-only", 1, registry.EffortLow, nil, "local-a", "local-b")}
 	snap := registry.NewSnapshotForTest(models, rules, map[string]map[string]string{"bare": {}}, nil)
 
-	r := Match(snap, registry.EffortLow, nil)
+	r := Match(snap, en(registry.EffortLow), nil)
 	if r == nil {
 		t.Fatal("no rule matched")
 	}
-	chain, err := FilterChain(snap, r.Use, "bare", registry.EffortLow, false, "")
+	chain, err := FilterChain(snap, r.Use, "bare", en(registry.EffortLow), false, "")
 	if err != nil {
 		t.Fatalf("FilterChain: %v", err)
 	}
@@ -170,19 +170,19 @@ func TestFilterChainMultimodalCapabilities(t *testing.T) {
 	snap.Models["big"].Capabilities = []string{registry.CapabilityVision, registry.CapabilityAudioInput}
 
 	// Requesting vision capability: only "big" has vision, "deep" does not.
-	models, err := FilterChain(snap, []string{"deep", "big"}, "key1", registry.EffortHigh, false, registry.CapabilityVision)
+	models, err := FilterChain(snap, []string{"deep", "big"}, "key1", en(registry.EffortHigh), false, registry.CapabilityVision)
 	if err != nil || len(models) != 1 || models[0].ID != "big" {
 		t.Fatalf("expected only big to survive vision filter, got models=%v err=%v", models, err)
 	}
 
 	// Requesting vision and audio_input: "big" has both.
-	models, err = FilterChain(snap, []string{"deep", "big"}, "key1", registry.EffortHigh, false, registry.CapabilityVision, registry.CapabilityAudioInput)
+	models, err = FilterChain(snap, []string{"deep", "big"}, "key1", en(registry.EffortHigh), false, registry.CapabilityVision, registry.CapabilityAudioInput)
 	if err != nil || len(models) != 1 || models[0].ID != "big" {
 		t.Fatalf("expected big to survive vision+audio filter, got models=%v err=%v", models, err)
 	}
 
 	// Requesting pdf_input: neither has it, so ErrNoCapableModel is returned.
-	if _, err = FilterChain(snap, []string{"deep", "big"}, "key1", registry.EffortHigh, false, registry.CapabilityPDFInput); !errors.Is(err, ErrNoCapableModel) {
+	if _, err = FilterChain(snap, []string{"deep", "big"}, "key1", en(registry.EffortHigh), false, registry.CapabilityPDFInput); !errors.Is(err, ErrNoCapableModel) {
 		t.Fatalf("expected ErrNoCapableModel for missing pdf capability, got %v", err)
 	}
 }
@@ -2278,4 +2278,9 @@ func TestExecuteStreamShadowEvaluation(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for stream shadow evaluator callback")
 	}
+}
+
+// en is the needs an effort stands for, as planRoute builds them.
+func en(effort string) map[string]string {
+	return map[string]string{registry.TopicGeneral: registry.EffortLevel(effort)}
 }

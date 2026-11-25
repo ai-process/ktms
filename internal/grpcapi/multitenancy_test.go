@@ -244,11 +244,11 @@ func TestRoutingAttributesComeFromTheKey(t *testing.T) {
 // A key outside any team must not book usage against a team it names.
 func TestUsageMetaIgnoresCallerTenant(t *testing.T) {
 	req := &pb.GenerateTextRequest{Attributes: map[string]string{"team_id": "victim", "org_id": "victim-org", "is_shadow": "true", "service": "s"}}
-	meta := buildChat(req, &apikeys.Identity{Name: "k"}, "", "low").GetMeta()
+	meta := buildChat(req, &apikeys.Identity{Name: "k"}, "", map[string]string{"general": "basic"}).GetMeta()
 	if meta["team_id"] != "" || meta["org_id"] != "" || meta["is_shadow"] != "" || meta["service"] != "s" || meta[APIKeyAttribute] != "k" {
 		t.Fatalf("meta = %v", meta)
 	}
-	meta = buildChat(req, &apikeys.Identity{Name: "k", OrgID: "o", TeamID: "t"}, "", "low").GetMeta()
+	meta = buildChat(req, &apikeys.Identity{Name: "k", OrgID: "o", TeamID: "t"}, "", map[string]string{"general": "basic"}).GetMeta()
 	if meta["team_id"] != "t" || meta["org_id"] != "o" {
 		t.Fatalf("team key meta = %v", meta)
 	}

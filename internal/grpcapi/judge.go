@@ -79,7 +79,7 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 			}
 		}
 	}
-	plan, err := s.planMedia(ctx, req.GetAttributes(), req.GetModelOverride(), modalityJudge, judgeCapabilities(judgeReq)...)
+	plan, err := s.planMediaNeeds(ctx, req.GetAttributes(), req.GetNeeds(), req.GetModelOverride(), modalityJudge, judgeCapabilities(judgeReq)...)
 	if err != nil {
 		return nil, err
 	}

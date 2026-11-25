@@ -15,6 +15,13 @@ All notable changes to KTMS are listed here. The format follows
   deprecated and read as the topic `general` (low, medium, high = basic, proficient, expert); a model described by
   efforts keeps serving exactly those. Once a model declares competencies, the catch-all rule per effort is no longer
   required. `ktms config plan` hints at the competencies and needs to write instead of efforts.
+- Routing by needs, part 2: a rule matches when the request needs each of its topics at least at the rule's level, and its
+  chain is filtered by the needs. A request no rule takes is routed by selection: the enabled models that meet every
+  need and the capabilities, narrowed by the key's and team's `allowed_models`, ordered by placement class, then by
+  the sum of levels above the needs, then by the blended price `(3 × input + output) / 4` per million tokens; the
+  first three make the chain. Speech, images, judge and translate take `needs` too; without them only the modality
+  (and the language pair) filters. `ExplainRoute` shows the needs, `selected`, every candidate with its excess and
+  price, and `chain_length` for the ones cut. Usage meta keeps `effort` and adds `needs`.
 
 ## [1.6.1] - 2026-11-25
 
