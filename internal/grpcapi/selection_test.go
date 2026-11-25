@@ -118,3 +118,16 @@ func TestMediaSelectionByModality(t *testing.T) {
 		t.Fatalf("text chain holds a tts model: %v", ex)
 	}
 }
+
+// Under nodes_first ExplainRoute lists the kept candidates as a call tries
+// them: the node first, though a cloud model ranks above it on excess.
+func TestExplainSelectionOrderFollowsPlacement(t *testing.T) {
+	node := testModel("node", registry.VendorLocal, "http://unused")
+	node.Competencies = map[string]string{"general": "expert"}
+	s := newTestServer(t, append(selectionModels(), node), nil, nil)
+	key := &apikeys.Identity{KeyID: "key1", Scopes: []string{apikeys.ScopeGenerate}}
+	ex := s.ExplainRoute(context.Background(), key, &pb.ExplainRouteRequest{Needs: map[string]string{"general": "basic"}, Placement: "nodes_first"})
+	if len(ex.GetModels()) == 0 || ex.GetModels()[0] != "node" || ex.GetCandidates()[0].GetModelId() != "node" {
+		t.Fatalf("nodes_first: models %v, candidates %v", ex.GetModels(), ex.GetCandidates())
+	}
+}
