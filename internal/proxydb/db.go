@@ -320,6 +320,10 @@ func UpsertModel(ctx context.Context, tx pgx.Tx, m *Model) error {
 	if dst == nil {
 		dst = []string{}
 	}
+	efforts := m.Efforts
+	if efforts == nil { // a model with competencies only; the column is NOT NULL
+		efforts = []string{}
+	}
 	_, err := tx.Exec(ctx,
 		`INSERT INTO model (id, vendor, endpoint, efforts, capabilities, rpm, price_in_per_mtok,
 		                    price_out_per_mtok, price_in_peak_per_mtok, price_out_peak_per_mtok,
@@ -336,7 +340,7 @@ func UpsertModel(ctx context.Context, tx pgx.Tx, m *Model) error {
 		   burst = $16, queue_timeout_ms = $17, budget_grace_margin = $18,
 		   price_cache_read_per_mtok = $19, price_cache_write_per_mtok = $20,
 		   languages_source = $21, languages_target = $22, price_per_million_chars = $23, competencies = $24, updated_at = NOW()`,
-		m.ID, m.Vendor, m.Endpoint, m.Efforts, m.Capabilities, m.RPM,
+		m.ID, m.Vendor, m.Endpoint, efforts, m.Capabilities, m.RPM,
 		m.PriceInPerMtok, m.PriceOutPerMtok, m.PriceInPeakPerMtok, m.PriceOutPeakPerMtok,
 		m.PriceInBatchPerMtok, m.PriceOutBatchPerMtok,
 		m.DailyTokensPerKey, m.DailyTokensPerUser, m.Enabled,

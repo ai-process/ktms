@@ -156,7 +156,15 @@
           },
           "competencies": {
             "additionalProperties": {
-              "type": "string"
+              "enum": [
+                "basic",
+                "proficient",
+                "expert"
+              ]
+            },
+            "description": "topic -\u003e level, e.g. {\"general\": \"expert\", \"medical\": \"proficient\"}",
+            "propertyNames": {
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
             },
             "type": "object"
           },
@@ -358,7 +366,15 @@
           },
           "needs": {
             "additionalProperties": {
-              "type": "string"
+              "enum": [
+                "basic",
+                "proficient",
+                "expert"
+              ]
+            },
+            "description": "topic -\u003e level, e.g. {\"general\": \"expert\", \"medical\": \"proficient\"}",
+            "propertyNames": {
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
             },
             "type": "object"
           },
