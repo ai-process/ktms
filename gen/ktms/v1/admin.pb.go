@@ -5586,9 +5586,10 @@ type RouteCandidate struct {
 	// node_unavailable, node_pool_disabled, language_pair. New reasons may appear.
 	Dropped   string               `protobuf:"bytes,3,opt,name=dropped,proto3" json:"dropped,omitempty"`
 	PausedFor *durationpb.Duration `protobuf:"bytes,4,opt,name=paused_for,json=pausedFor,proto3" json:"paused_for,omitempty"` // vendor_paused: until the vendor's Retry-After ends
-	// Selection without a rule ranks by these: levels above the needs summed
-	// over the needed topics, then the blended price (3 x input + output) / 4
-	// per million tokens at the standard rate.
+	// Experimental: selection without a rule ranks by these: levels above the
+	// needs summed over the needed topics, then the blended price
+	// (3 x input + output) / 4 per million tokens at the standard rate (per
+	// million characters for translation). The order may change in a 1.x minor.
 	Excess              int32   `protobuf:"varint,5,opt,name=excess,proto3" json:"excess,omitempty"`
 	BlendedPricePerMtok float64 `protobuf:"fixed64,6,opt,name=blended_price_per_mtok,json=blendedPricePerMtok,proto3" json:"blended_price_per_mtok,omitempty"`
 	unknownFields       protoimpl.UnknownFields
