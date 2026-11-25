@@ -1,0 +1,53 @@
+package server
+
+import (
+	"maps"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	pb "github.com/ai-process/ktms/gen/ktms/v1"
+)
+
+func TestChatCompletionsNeeds(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+
+	rec := do(h, "POST", "/v1/chat/completions", key, `{"model":"auto:medical=basic,legal=expert:cloud-only","messages":[{"role":"user","content":"hi"}]}`)
+	if rec.Code != 200 {
+		t.Fatalf("code = %d: %s", rec.Code, rec.Body)
+	}
+	if !maps.Equal(fp.text.Needs, map[string]string{"medical": "basic", "legal": "expert"}) || fp.text.Effort != pb.Effort_EFFORT_UNSPECIFIED || !fp.text.EffortSpecified {
+		t.Errorf("auto:needs: needs %v, effort %v, specified %v", fp.text.Needs, fp.text.Effort, fp.text.EffortSpecified)
+	}
+
+	// reasoning_effort keeps meaning the general need, beside the model's needs.
+	rec = do(h, "POST", "/v1/chat/completions", key, `{"model":"auto:medical=basic","reasoning_effort":"high","messages":[{"role":"user","content":"hi"}]}`)
+	if rec.Code != 200 || fp.text.Effort != pb.Effort_EFFORT_HIGH || fp.text.Needs["medical"] != "basic" {
+		t.Errorf("reasoning_effort beside needs: %d %v %v", rec.Code, fp.text.Effort, fp.text.Needs)
+	}
+
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"auto:medical=proficient","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("X-KTMS-Needs", "medical=basic, legal=basic")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 || !maps.Equal(fp.text.Needs, map[string]string{"medical": "proficient", "legal": "basic"}) {
+		t.Errorf("header beside the model: %d %v", rec.Code, fp.text.Needs)
+	}
+
+	req = httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"auto","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("X-KTMS-Needs", "medical=basic")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 || fp.text.Effort != pb.Effort_EFFORT_UNSPECIFIED || !fp.text.EffortSpecified {
+		t.Errorf("header on auto must pin the route without a medium default: %d %v %v", rec.Code, fp.text.Effort, fp.text.EffortSpecified)
+	}
+
+	for _, model := range []string{"auto:medical=guru", "auto:medical=basic:legal=basic", "auto:medical"} {
+		rec = do(h, "POST", "/v1/chat/completions", key, `{"model":"`+model+`","messages":[{"role":"user","content":"hi"}]}`)
+		if rec.Code != 400 {
+			t.Errorf("%s: code = %d, want 400", model, rec.Code)
+		}
+	}
+}

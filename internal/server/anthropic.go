@@ -123,6 +123,7 @@ func (req *messagesRequest) toProto(ctx context.Context, headerPlacement string,
 		Placement:       dec.Placement,
 		AutoRoute:       dec.IsAuto,
 		EffortSpecified: dec.EffortSpecified,
+		Needs:           dec.Needs,
 		Temperature:     req.Temperature,
 		TopP:            req.TopP,
 		Stop:            nonEmpty(req.StopSequences),
@@ -409,6 +410,9 @@ func (a *OpenAIAPI) messages(ctx context.Context, w http.ResponseWriter, r *http
 	}
 	preq, err := req.toProto(ctx, getPlacementHeader(r), true)
 	if err != nil {
+		return err
+	}
+	if err := applyNeedsHeader(r, preq); err != nil {
 		return err
 	}
 	preq.EnableCache = cacheEnabled(r, req.EnableCache)

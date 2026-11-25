@@ -31,6 +31,7 @@ import (
 	"github.com/ai-process/ktms/internal/apikeys"
 	"github.com/ai-process/ktms/internal/observability"
 	"github.com/ai-process/ktms/internal/panicsafe"
+	"github.com/ai-process/ktms/internal/registry"
 	"github.com/ai-process/ktms/internal/router"
 	"github.com/ai-process/ktms/internal/safefetch"
 )
@@ -406,10 +407,12 @@ type routeDecision struct {
 	EffortSpecified bool
 	Placement       string
 	HasPlacement    bool
+	Needs           map[string]string // from "auto:medical=basic,legal=expert"
 }
 
 // route resolves the OpenAI "model" field.
-// Supports "auto", "auto:nodes-first", "auto:nodes-only", "auto:cloud-only", "auto:low", etc.
+// Supports "auto", "auto:nodes-first", "auto:nodes-only", "auto:cloud-only", "auto:low",
+// "auto:medical=basic,general=expert" and combinations joined by ":".
 func route(model, reasoningEffort, explicitPlacement string) (routeDecision, error) {
 	dec := routeDecision{
 		Effort: pb.Effort_EFFORT_MEDIUM,
@@ -455,6 +458,17 @@ func route(model, reasoningEffort, explicitPlacement string) (routeDecision, err
 			if part == "" {
 				return dec, invalid("empty specifier in auto route %q", model)
 			}
+			if strings.Contains(part, "=") {
+				if dec.Needs != nil {
+					return dec, invalid("duplicate needs specifier %q in model", part)
+				}
+				needs, err := registry.ParseNeeds(part)
+				if err != nil {
+					return dec, invalid("needs in model: %v", err)
+				}
+				dec.Needs = needs
+				continue
+			}
 			if eff, effErr := parseEffort(part); effErr == nil {
 				if seenEffort {
 					return dec, invalid("duplicate effort specifier %q in model", part)
@@ -485,6 +499,7 @@ func route(model, reasoningEffort, explicitPlacement string) (routeDecision, err
 			dec.Placement = router.PlacementNodesFirst
 		}
 		// Model string effort takes precedence; reasoning_effort serves as fallback effort.
+		// In 1.x it stays the general need, deprecated; needs.general wins over both.
 		if !dec.EffortSpecified && reasoningEffort != "" {
 			eff, err := parseEffort(reasoningEffort)
 			if err != nil {
@@ -492,6 +507,10 @@ func route(model, reasoningEffort, explicitPlacement string) (routeDecision, err
 			}
 			dec.Effort = eff
 			dec.EffortSpecified = true
+		}
+		if dec.Needs != nil && !dec.EffortSpecified {
+			// Needs pin the route; the medium default must not add a general need.
+			dec.Effort, dec.EffortSpecified = pb.Effort_EFFORT_UNSPECIFIED, true
 		}
 
 	default:
@@ -624,6 +643,7 @@ func (req *chatRequest) toProto(ctx context.Context, headerPlacement string) (*p
 		AutoRoute:          dec.IsAuto,
 		EffortSpecified:    dec.EffortSpecified,
 		DataClassification: req.DataClassification,
+		Needs:              dec.Needs,
 	}
 	if out.MaxOutputTokens == 0 {
 		out.MaxOutputTokens = req.MaxTokens
@@ -710,6 +730,9 @@ func (a *OpenAIAPI) chatCompletions(ctx context.Context, w http.ResponseWriter, 
 	}
 	preq, err := req.toProto(ctx, getPlacementHeader(r))
 	if err != nil {
+		return err
+	}
+	if err := applyNeedsHeader(r, preq); err != nil {
 		return err
 	}
 	preq.EnableCache = cacheEnabled(r, req.EnableCache)
@@ -1049,6 +1072,56 @@ func setResolvedHeaders(w http.ResponseWriter, vendor, rule string) {
 	}
 }
 
+// applyNeedsHeader merges X-KTMS-Needs ("medical=basic,legal=proficient"),
+// for SDKs that cannot add a body field; the model string's needs win per topic.
+func applyNeedsHeader(r *http.Request, req *pb.GenerateTextRequest) error {
+	needs, err := needsHeader(r)
+	if err != nil || len(needs) == 0 {
+		return err
+	}
+	if req.Needs == nil {
+		req.Needs = map[string]string{}
+	}
+	for t, l := range needs {
+		if _, ok := req.Needs[t]; !ok {
+			req.Needs[t] = l
+		}
+	}
+	if req.AutoRoute && !req.EffortSpecified {
+		req.Effort, req.EffortSpecified = pb.Effort_EFFORT_UNSPECIFIED, true
+	}
+	return nil
+}
+
+// needsHeader parses X-KTMS-Needs; absent is nil.
+func needsHeader(r *http.Request) (map[string]string, error) {
+	v := r.Header.Get("X-KTMS-Needs")
+	if v == "" {
+		return nil, nil
+	}
+	needs, err := registry.ParseNeeds(v)
+	if err != nil {
+		return nil, invalid("X-KTMS-Needs: %v", err)
+	}
+	return needs, nil
+}
+
+// mediaNeeds is the needs of a speech or image call: the model string's,
+// then the header's for the topics it leaves out.
+func mediaNeeds(r *http.Request, dec routeDecision) (map[string]string, error) {
+	needs, err := needsHeader(r)
+	if err != nil {
+		return nil, err
+	}
+	for t, l := range dec.Needs {
+		if needs == nil {
+			needs = map[string]string{}
+		}
+		needs[t] = l
+	}
+	return needs, nil
+}
+
 func getPlacementHeader(r *http.Request) string {
 	if v := r.Header.Get("X-KTMS-Placement"); v != "" {
 		return v
@@ -1108,8 +1181,12 @@ func (a *OpenAIAPI) audioSpeech(ctx context.Context, w http.ResponseWriter, r *h
 	}
 	override := dec.ModelOverride
 	attrs, actionID := attributes(req.Metadata, req.User)
+	needs, err := mediaNeeds(r, dec)
+	if err != nil {
+		return err
+	}
 	resp, err := a.proxy.SynthesizeSpeech(ctx, &pb.SynthesizeSpeechRequest{
-		Text: req.Input, Language: req.Language, Attributes: attrs, ActionId: actionID, ModelOverride: override,
+		Text: req.Input, Language: req.Language, Attributes: attrs, ActionId: actionID, ModelOverride: override, Needs: needs,
 	})
 	if err != nil {
 		return err
@@ -1160,8 +1237,12 @@ func (a *OpenAIAPI) imageGenerations(ctx context.Context, w http.ResponseWriter,
 	}
 	override := dec.ModelOverride
 	attrs, actionID := attributes(req.Metadata, req.User)
+	needs, err := mediaNeeds(r, dec)
+	if err != nil {
+		return err
+	}
 	resp, err := a.proxy.GenerateImage(ctx, &pb.GenerateImageRequest{
-		Prompt: req.Prompt, Attributes: attrs, ActionId: actionID, ModelOverride: override,
+		Prompt: req.Prompt, Attributes: attrs, ActionId: actionID, ModelOverride: override, Needs: needs,
 	})
 	if err != nil {
 		return err
