@@ -60,3 +60,21 @@ func TestOverrideHasNoDefaultEffort(t *testing.T) {
 		t.Fatalf("override: %d effort %v", rec.Code, fp.text.Effort)
 	}
 }
+
+// /v1/decisions passes needs on to Judge; rollouts refuse them until the RPC takes them.
+func TestDecisionsNeeds(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	body := `{"model":"auto:legal=proficient","input":"x","questions":[{"name":"q","type":"predicate","instructions":"ok?"}]}`
+	req := httptest.NewRequest("POST", "/v1/decisions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("X-KTMS-Needs", "medical=basic")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 || !maps.Equal(fp.judgeReq.GetNeeds(), map[string]string{"legal": "proficient", "medical": "basic"}) {
+		t.Fatalf("decisions: %d needs %v", rec.Code, fp.judgeReq.GetNeeds())
+	}
+	roll := `{"model":"auto:legal=basic","state":{"a":1},"candidates":[{"id":"c1","action":{"m":1}},{"id":"c2","action":{"m":2}}],"criteria":[{"name":"q","type":"predicate","instructions":"ok?"}]}`
+	if rec := do(h, "POST", "/v1/decisions/rollouts", key, roll); rec.Code != 400 {
+		t.Fatalf("rollouts with needs: %d %s", rec.Code, rec.Body)
+	}
+}
