@@ -51,3 +51,12 @@ func TestChatCompletionsNeeds(t *testing.T) {
 		}
 	}
 }
+
+// An exact model gets no medium default: it is served at its own level.
+func TestOverrideHasNoDefaultEffort(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	rec := do(h, "POST", "/v1/chat/completions", key, `{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}`)
+	if rec.Code != 200 || fp.text.Effort != pb.Effort_EFFORT_UNSPECIFIED || fp.text.ModelOverride != "gpt-4o-mini" {
+		t.Fatalf("override: %d effort %v", rec.Code, fp.text.Effort)
+	}
+}
