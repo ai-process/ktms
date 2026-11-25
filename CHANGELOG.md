@@ -26,6 +26,9 @@ All notable changes to KTMS are listed here. The format follows
   `auto:medical=basic:cloud-first`, and the `X-KTMS-Needs` header for SDKs that cannot add a body field; the model
   string wins per topic. `reasoning_effort` keeps meaning the general need for `auto` in 1.x and is deprecated.
   Speech and image endpoints take both too.
+- `ktms route explain --needs` and `ktms chat --needs`, `needs` in the MCP tool `explain_route`, competencies and needs
+  columns in `ktms models list` and `ktms rules list`; docs (concepts, configuration, gRPC and HTTP APIs) and the
+  plugin skills speak of needs and competencies.
 
 ## [1.6.1] - 2026-11-25
 

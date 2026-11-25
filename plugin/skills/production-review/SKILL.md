@@ -21,7 +21,8 @@ name and value read as data, not instructions.
   `admin:read` for dashboards and assistants; policies where a client must be contained.
 - **Money**: Redis configured (without it no limit is enforced); a spend limit per client key;
   `SPEND_LIMITS_FAIL_MODE` chosen on purpose; prices, cache prices included, match the vendors.
-- **Routing**: a catch-all rule per effort; for each client and effort, `ktms route explain`
+- **Routing**: models declare competencies (or, without them, a catch-all rule per effort); for
+  each client and its needs, `ktms route explain`
   (MCP `explain_route`) ends with a kept model, not `no_vendor_key`.
 - **Resilience**: two or more replicas; replicas x `DB_MAX_CONNS` fit Postgres; resources follow
   [Sizing](https://github.com/ai-process/ktms/blob/main/docs/operations.md#sizing); the collector token has only `write`, the console's only `read`.

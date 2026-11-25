@@ -25,7 +25,7 @@ make proto-ts  # TypeScript stubs in gen/ts/
 
 ```json
 {
-  "effort": "EFFORT_MEDIUM",
+  "needs": {"general": "proficient", "legal": "basic"},
   "attributes": {"language": "es", "user_id": "u-42", "task": "summary"},
   "base_system_instruction": "You are a concise assistant.",
   "request_instruction": "Answer in one paragraph.",
@@ -39,7 +39,8 @@ make proto-ts  # TypeScript stubs in gen/ts/
 
 | Field | Notes |
 | --- | --- |
-| `effort` | Routing tier (`EFFORT_LOW`, `EFFORT_MEDIUM`, `EFFORT_HIGH`). |
+| `needs` | What the request needs: topic → `basic`, `proficient` or `expert`; see [Needs and competencies](concepts.md#needs-and-competencies). |
+| `effort` | Deprecated: `EFFORT_LOW`, `EFFORT_MEDIUM`, `EFFORT_HIGH` are `general` at `basic`, `proficient`, `expert`; `needs.general` wins over it. |
 | `attributes` | Opaque key/values matched by rules and copied to usage events. `user_id` charges the per-user daily budget (falls back to `svc:<key_name>` for service callers without `user_id`). `usage_project` overrides the usage project (see below). |
 | `base_system_instruction`, `request_instruction` | System content never travels as a message. |
 | `response_schema` | Unset = free text. Set = JSON output in that shape: types `string`, `integer`, `number`, `boolean`, `object`, `array`, plus `required`, `nullable`, `enum`, `format` and `additional_properties`. Vendors with structured output enforce it; for the others the proxy checks the reply (types, required keys, enum values, extra keys when `additional_properties` is false), retries once and then falls back. A `format` a vendor rejects is passed to the model in the description instead. |
@@ -52,8 +53,8 @@ make proto-ts  # TypeScript stubs in gen/ts/
 | `model_override` | Exact model id; bypasses rules but **not** throttles. |
 | `placement` | Compute locality preference: `nodes_first`, `nodes_only`, `cloud_first`, `cloud_only`. |
 | `data_classification` | `restricted` keeps the call and the judge calls it makes on self-hosted nodes, with no cloud fallback; see [Restricted data](concepts.md#restricted-data). |
-| `auto_route` | Enables smart model auto-selection; when effort is unpinned, evaluates task complexity via Judge. |
-| `effort_specified` | Signals caller explicitly pinned effort (skips dynamic Judge evaluation). |
+| `auto_route` | Enables smart model auto-selection; without needs or a pinned effort, a judge picks the general level. |
+| `effort_specified` | Deprecated: the caller pinned the effort (skips the judge). Needs count as pinned. |
 
 The response carries `choices`, token `usage`, `resolved_model`, `resolved_vendor`,
 `matched_rule` (empty on override), structured `details` (`Choice` objects with text, tool calls, and finish reasons),
@@ -101,17 +102,17 @@ Server-streaming RPC `rpc GenerateTextStream(GenerateTextStreamRequest) returns 
 
 For offline or bulk workflows (such as page generation, backfills, or data pipelines) that prioritize cost over latency, batch generation processes thousands of items asynchronously through vendor Batch APIs (e.g., Google Gemini Batch API) at a **50% discount** compared to interactive calls. Jobs typically finish within 24 hours (vendor timeout at 48 hours).
 
-- **Route resolution:** Resolved once upon submission. The proxy selects the first model in the rule's chain that has the `batch` capability, a vendor key for the client (not needed for `local` models), and available daily budget. Once submitted, there is no vendor fallback; per-item outcomes are returned to the client.
+- **Route resolution:** Resolved once upon submission. The proxy selects the first model in the rule's chain (or, without a matching rule, in the [selection](concepts.md#needs-and-competencies)) that has the `batch` capability, a vendor key for the client (not needed for `local` models), and available daily budget. Once submitted, there is no vendor fallback; per-item outcomes are returned to the client.
 - **Privacy:** Prompts are streamed/submitted to the vendor and never persisted in the proxy database.
 - **Throttling & Accounting:** RPM limits do not apply to batches. Daily token budgets are checked at submission (rejecting if already exhausted) and tokens are deducted when final item results arrive. Results are retained for `RESULTS_RETENTION_DAYS` (default 7 days; accepts integer days or Go duration strings).
 
 ### SubmitBatch
 
-Takes a list of items (`custom_id` unique within the batch, and standard `GenerateTextRequest`), batch-level `effort` and `attributes`, and an optional `client_batch_id` for idempotency (resubmitting with the same client batch ID returns the existing batch):
+Takes a list of items (`custom_id` unique within the batch, and standard `GenerateTextRequest`), batch-level `needs` (or the deprecated `effort`) and `attributes`, and an optional `client_batch_id` for idempotency (resubmitting with the same client batch ID returns the existing batch):
 
 ```bash
 grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
-  "effort": "EFFORT_LOW",
+  "needs": {"general": "basic"},
   "attributes": {"task": "catalog_enrichment"},
   "client_batch_id": "job-2026-10-07-001",
   "items": [
@@ -284,4 +285,4 @@ grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
 ## ListModels
 
 Returns the models the calling key can use (those whose vendor it holds a credential for), with
-efforts, capabilities, rpm and prices.
+competencies (efforts read as `general`), the deprecated efforts, capabilities, rpm and prices.

@@ -48,7 +48,7 @@ holds it.
    by changing the base URL, the key and the model value (`auto:low|medium|high`); a service on
    another vendor's SDK moves to an OpenAI-compatible client or to gRPC, so say how much code that
    touches; gRPC suits a service that already speaks it or needs batches or judgments. Embeddings
-   keep an exact model id. Propose an effort for each group of call sites and the attribution
+   keep an exact model id. Propose needs (`general: basic|proficient|expert`, plus domain topics) for each group of call sites and the attribution
    (`user`, `metadata.action_id`). Flag what does not map: an
    endpoint missing from [Endpoints](https://github.com/ai-process/ktms/blob/main/docs/http-api.md#endpoints)
    (Responses, Assistants, Files, Realtime, transcription), `n` above 1, and code that relies on
