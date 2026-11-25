@@ -96,3 +96,13 @@ func TestMatchByNeeds(t *testing.T) {
 		t.Errorf("an effort rule matches its level only, got %v", r)
 	}
 }
+
+// A 1.6 modality rule at effort low still takes a call that names only
+// another topic.
+func TestMatchModalityWithTopicNeeds(t *testing.T) {
+	r := &proxydb.Rule{Name: "speech", Effort: registry.EffortLow, Attributes: map[string]string{"modality": "tts"}, Enabled: true, Use: []string{"x"}}
+	snap := registry.NewSnapshotForTest(nil, []*proxydb.Rule{r}, nil, nil)
+	if got := MatchModality(snap, map[string]string{"voice": "basic"}, "modality", "tts", map[string]string{"modality": "tts"}); got != r {
+		t.Fatalf("got %v", got)
+	}
+}

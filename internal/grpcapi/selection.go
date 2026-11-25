@@ -1,7 +1,9 @@
 package grpcapi
 
 import (
+	"cmp"
 	"context"
+	"slices"
 
 	"github.com/ai-process/ktms/internal/apikeys"
 	"github.com/ai-process/ktms/internal/proxydb"
@@ -48,6 +50,14 @@ func (s *ProxyServer) selectChain(ctx context.Context, snap *registry.Snapshot, 
 		for i, m := range chain {
 			tr.chain[i] = m.ID
 		}
+		// Candidates in the order a call tries them, then the others as ranked.
+		pos := func(c router.Candidate) int {
+			if i := slices.Index(tr.chain, c.ID); i >= 0 && c.Dropped == "" {
+				return i
+			}
+			return len(chain)
+		}
+		slices.SortStableFunc(tr.candidates, func(a, b router.Candidate) int { return cmp.Compare(pos(a), pos(b)) })
 	}
 	return chain, nil
 }

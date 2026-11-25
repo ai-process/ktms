@@ -139,7 +139,7 @@ func MatchModality(snap *registry.Snapshot, needs map[string]string, modalityKey
 		if r.Attributes[modalityKey] != modality {
 			continue
 		}
-		if len(needs) > 0 && !ruleTakes(r, needs) {
+		if len(needs) > 0 && !ruleTakes(r, modalityNeeds(needs)) {
 			continue
 		}
 		if len(needs) == 0 && (len(r.Needs) > 0 || r.Effort != "" && r.Effort != registry.EffortLow) {
@@ -157,6 +157,21 @@ func MatchModality(snap *registry.Snapshot, needs map[string]string, modalityKey
 		}
 	}
 	return nil
+}
+
+// modalityNeeds reads a modality call without a general need as general:
+// basic, the level speech and images routed at in 1.6, so a rule with
+// effort low keeps taking a call that names only other topics.
+func modalityNeeds(needs map[string]string) map[string]string {
+	if _, ok := needs[registry.TopicGeneral]; ok {
+		return needs
+	}
+	out := make(map[string]string, len(needs)+1)
+	for t, l := range needs {
+		out[t] = l
+	}
+	out[registry.TopicGeneral] = registry.LevelBasic
+	return out
 }
 
 // Why ExplainChain drops a model of a rule's chain.
