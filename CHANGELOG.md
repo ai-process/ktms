@@ -7,6 +7,8 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-11-25
+
 ### Added
 - The node tray draws each running request as a square beside its icon: a new one flies in, one
   that ends leaves from its own place while the rest close up; they stack in two rows and run off
@@ -538,7 +540,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/ai-process/ktms/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/ai-process/ktms/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/ai-process/ktms/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/ai-process/ktms/compare/v1.3.6...v1.4.0
