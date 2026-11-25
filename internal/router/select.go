@@ -34,10 +34,15 @@ func Select(snap *registry.Snapshot, apiKeyID string, needs map[string]string, n
 	}
 	slices.Sort(ids)
 	cands := ExplainChain(snap, ids, apiKeyID, needs, needsGoogleSearch, requireCapabilities...)
+	price := registry.BlendedPrice
+	if slices.Contains(requireCapabilities, registry.CapabilityTranslate) {
+		// Translation is billed per source character; tokens come on top.
+		price = func(m *proxydb.Model) float64 { return m.PricePerMillionChars }
+	}
 	for i := range cands {
 		if cands[i].Dropped == "" {
 			cands[i].Excess = registry.Excess(cands[i].Model, needs)
-			cands[i].Price = registry.BlendedPrice(cands[i].Model)
+			cands[i].Price = price(cands[i].Model)
 		}
 	}
 	slices.SortStableFunc(cands, func(a, b Candidate) int {

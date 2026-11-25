@@ -104,7 +104,7 @@ func TestUsageMetaCarriesNeeds(t *testing.T) {
 
 // Without needs a modality call is filtered by its capability alone.
 func TestMediaSelectionByModality(t *testing.T) {
-	tts := testModel("voice", registry.VendorOpenAI, "http://unused", registry.EffortMedium)
+	tts := testModel("voice", registry.VendorOpenAI, "http://unused", registry.EffortLow)
 	tts.Capabilities = []string{registry.CapabilityTTS}
 	s := newTestServer(t, append(selectionModels(), tts), nil, nil)
 	key := &apikeys.Identity{KeyID: "key1", Scopes: []string{apikeys.ScopeGenerate}}
@@ -129,5 +129,49 @@ func TestExplainSelectionOrderFollowsPlacement(t *testing.T) {
 	ex := s.ExplainRoute(context.Background(), key, &pb.ExplainRouteRequest{Needs: map[string]string{"general": "basic"}, Placement: "nodes_first"})
 	if len(ex.GetModels()) == 0 || ex.GetModels()[0] != "node" || ex.GetCandidates()[0].GetModelId() != "node" {
 		t.Fatalf("nodes_first: models %v, candidates %v", ex.GetModels(), ex.GetCandidates())
+	}
+}
+
+// A rule for medical >= basic matches medical: expert too; when its chain has
+// no model that meets the higher need, the selection takes the request.
+func TestRuleWithoutCapableModelFallsToSelection(t *testing.T) {
+	rules := []*proxydb.Rule{{Name: "medical", Priority: 1, Needs: map[string]string{"medical": "basic"},
+		Attributes: map[string]string{}, Enabled: true, Use: []string{"mid"}}}
+	s := newTestServer(t, selectionModels(), rules, nil)
+	key := &apikeys.Identity{KeyID: "key1", Scopes: []string{apikeys.ScopeGenerate}}
+	ex := s.ExplainRoute(context.Background(), key, &pb.ExplainRouteRequest{Needs: map[string]string{"medical": "expert"}})
+	if ex.GetError() != "" || !ex.GetSelected() || !slices.Equal(ex.GetModels(), []string{"doc"}) {
+		t.Fatalf("medical: expert under a basic rule: %v", ex)
+	}
+}
+
+// As in 1.6, a speech call without needs is served at low: a model described
+// by efforts that lacks low stays out of the chain.
+func TestMediaKeepsLowForEffortModels(t *testing.T) {
+	hd := testModel("tts-hd", registry.VendorOpenAI, "http://unused", registry.EffortHigh)
+	hd.Capabilities = []string{registry.CapabilityTTS}
+	std := testModel("tts-1", registry.VendorOpenAI, "http://unused", registry.EffortLow)
+	std.Capabilities = []string{registry.CapabilityTTS}
+	rules := []*proxydb.Rule{{Name: "speech", Priority: 1, Attributes: map[string]string{"modality": "tts"}, Enabled: true, Use: []string{"tts-hd", "tts-1"}}}
+	s := newTestServer(t, []*proxydb.Model{hd, std}, append(rules, catchAllRules("tts-1")...), nil)
+	key := &apikeys.Identity{KeyID: "key1", Scopes: []string{apikeys.ScopeGenerate}}
+	ex := s.ExplainRoute(context.Background(), key, &pb.ExplainRouteRequest{Modality: modalityTTS})
+	if !slices.Equal(ex.GetModels(), []string{"tts-1"}) {
+		t.Fatalf("tts without needs: %v", ex)
+	}
+}
+
+// An exact model without needs is accounted at medium when it serves it, as
+// the HTTP API sent medium in 1.6; else at its first effort.
+func TestOverrideEffortForUsage(t *testing.T) {
+	m := testModel("m", registry.VendorOpenAI, "http://unused", registry.EffortLow, registry.EffortMedium)
+	lo := testModel("lo", registry.VendorOpenAI, "http://unused", registry.EffortLow)
+	s := newTestServer(t, []*proxydb.Model{m, lo}, catchAllRules("m"), nil)
+	key := &apikeys.Identity{KeyID: "key1", Scopes: []string{apikeys.ScopeGenerate}}
+	if ex := s.ExplainRoute(context.Background(), key, &pb.ExplainRouteRequest{ModelOverride: "m"}); ex.GetEffort() != registry.EffortMedium {
+		t.Errorf("m: effort %q, want medium", ex.GetEffort())
+	}
+	if ex := s.ExplainRoute(context.Background(), key, &pb.ExplainRouteRequest{ModelOverride: "lo"}); ex.GetEffort() != registry.EffortLow {
+		t.Errorf("lo: effort %q, want low", ex.GetEffort())
 	}
 }
