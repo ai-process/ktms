@@ -20,9 +20,9 @@ const iconSize = 32 // the menu bar shows it at 16 pt: one pixel per Retina pixe
 const (
 	shapeR        = 17.0 // the radius shapes are drawn at, in their own units
 	aloneR        = 12.5 // the shape's radius alone in the icon
-	dockX, dockR  = 6.25, 5.75
-	sqSize, sqGap = 6.0, 3.0
-	sqLeft, sqTop = 13.0, 9.0
+	dockX, dockR  = 8.0, 7.5
+	sqSize, sqGap = 5.0, 2.0
+	sqLeft, sqTop = 17.0, 10.0
 	maxSquares    = 6 // the rest are past the edge
 	AnimSteps     = 6
 	AnimEvery     = 35 * time.Millisecond
@@ -37,18 +37,53 @@ var iconColors = map[IconKind]color.NRGBA{
 	IconWarn:    {0xd9, 0x8e, 0x04, 0xff},
 }
 
+// Off is a square's place outside the icon: arriving from the right edge,
+// or leaving over the top.
+const Off = -1
+
+// Square is one request's square, moving between two slots.
+type Square struct{ From, To int }
+
 // Frame is one picture of the icon: a state, the level its circle fills to
-// and the squares, caught T of the way through a move from From to To.
+// and the squares, caught T of the way through their moves.
 type Frame struct {
-	Kind     IconKind
-	Level    uint32 // 0-100; the circle of IconLevel fills this much
-	From, To int
-	T        float64 // 0 at the start of a move, 1 at rest
+	Kind    IconKind
+	Level   uint32 // 0-100; the circle of IconLevel fills this much
+	Squares []Square
+	T       float64 // 0 at the start of a move, 1 at rest
 }
 
-// Still is a frame at rest.
-func Still(k IconKind, level uint32, requests int) Frame {
-	return Frame{Kind: k, Level: level, From: requests, To: requests, T: 1}
+// Still is a frame at rest with n squares.
+func Still(k IconKind, level uint32, n int) Frame {
+	f := Frame{Kind: k, Level: level, T: 1}
+	for i := range n {
+		f.Squares = append(f.Squares, Square{i, i})
+	}
+	return f
+}
+
+// Move plans the squares from one list of running requests to the next: a
+// finished one leaves from its own slot, the rest close up, new ones arrive.
+func Move(prev, next []uint64) []Square {
+	at := make(map[uint64]int, len(next))
+	for j, id := range next {
+		at[id] = j
+	}
+	var out []Square
+	for i, id := range prev {
+		j, ok := at[id]
+		if !ok {
+			j = Off
+		}
+		out = append(out, Square{i, j})
+		delete(at, id)
+	}
+	for j, id := range next {
+		if _, ok := at[id]; ok {
+			out = append(out, Square{Off, j})
+		}
+	}
+	return out
 }
 
 // Icon returns the PNG of a frame; template is the monochrome macOS variant.
@@ -60,14 +95,22 @@ func Icon(f Frame, template bool) []byte {
 	img := image.NewNRGBA(image.Rect(0, 0, iconSize, iconSize))
 	t := math.Max(0, math.Min(1, f.T))
 	ease := 1 - (1-t)*(1-t)*(1-t)
-	dock := lerp(docked(f.From), docked(f.To), ease)
+	var before, after float64
+	for _, q := range f.Squares {
+		before, after = max(before, docked(q.From)), max(after, docked(q.To))
+	}
+	dock := lerp(before, after, ease)
 	cx, r := lerp(iconCenter, dockX, dock), lerp(aloneR, dockR, dock)
 	scale := shapeR / r // shape units per pixel
+	boxes := squareBoxes(f.Squares, ease)
 	for y := range iconSize {
 		for x := range iconSize {
 			px, py := float64(x)+0.5, float64(y)+0.5
 			a := shapeCoverage(f.Kind, f.Level, (px-cx)*scale, (py-iconCenter)*scale, scale)
-			a = math.Max(a, squaresCoverage(f.From, f.To, ease, px, py))
+			for _, b := range boxes {
+				half := sqSize / 2
+				a = math.Max(a, math.Min(edge(math.Abs(px-b[0]-half)-half), edge(math.Abs(py-b[1]-half)-half)))
+			}
 			if a > 0 {
 				img.SetNRGBA(x, y, color.NRGBA{c.R, c.G, c.B, uint8(float64(c.A) * a)})
 			}
@@ -78,8 +121,8 @@ func Icon(f Frame, template bool) []byte {
 	return b.Bytes()
 }
 
-func docked(n int) float64 {
-	if n > 0 {
+func docked(slot int) float64 {
+	if slot >= 0 && slot < maxSquares {
 		return 1
 	}
 	return 0
@@ -90,25 +133,31 @@ func lerp(a, b, t float64) float64 { return a + (b-a)*t }
 // edge turns a signed distance in pixels from a shape's border into coverage.
 func edge(dist float64) float64 { return math.Max(0, math.Min(1, 0.5-dist)) }
 
-// squaresCoverage draws the squares that stay and those flying in from or
-// out to the right edge; ease is how far the flight has gone.
-func squaresCoverage(from, to int, ease, px, py float64) float64 {
-	lo, hi := min(from, to), min(max(from, to), maxSquares)
-	out := 0.0
-	for i := range hi {
-		x := sqLeft + float64(i/2)*squarePitch
-		y := sqTop + float64(i%2)*squarePitch
-		if i >= lo {
-			away := float64(iconSize) - x // to just past the edge
-			if to > from {
-				x += away * (1 - ease)
-			} else {
-				x += away * ease
-			}
+func slotXY(i int) (x, y float64) {
+	return sqLeft + float64(i/2)*squarePitch, sqTop + float64(i%2)*squarePitch
+}
+
+// squareBoxes places each square ease of the way through its move: arrivals
+// come in from the right edge, departures leave over the top.
+func squareBoxes(sq []Square, ease float64) [][2]float64 {
+	var out [][2]float64
+	for _, q := range sq {
+		if docked(q.From) == 0 && docked(q.To) == 0 {
+			continue // never inside the icon
 		}
-		half := sqSize / 2
-		a := math.Min(edge(math.Abs(px-x-half)-half), edge(math.Abs(py-y-half)-half))
-		out = math.Max(out, a)
+		var x0, y0, x1, y1 float64
+		switch {
+		case q.From == Off:
+			x1, y1 = slotXY(q.To)
+			x0, y0 = iconSize, y1
+		case q.To == Off:
+			x0, y0 = slotXY(q.From)
+			x1, y1 = x0, -sqSize
+		default:
+			x0, y0 = slotXY(q.From)
+			x1, y1 = slotXY(q.To)
+		}
+		out = append(out, [2]float64{lerp(x0, x1, ease), lerp(y0, y1, ease)})
 	}
 	return out
 }

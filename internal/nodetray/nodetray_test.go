@@ -181,23 +181,39 @@ func TestIconSquares(t *testing.T) {
 
 func TestIconSquaresFly(t *testing.T) {
 	x, y := slot(1)
-	arrive := Frame{Kind: IconLevel, Level: 100, From: 1, To: 2}
+	arrive := Frame{Kind: IconLevel, Level: 100, Squares: Move([]uint64{7}, []uint64{7, 8})}
 	if alphaAt(t, arrive, x, y) != 0 {
 		t.Error("an arriving square starts in its place")
 	}
 	if arrive.T = 1; alphaAt(t, arrive, x, y) != 0xff {
 		t.Error("an arriving square does not land")
 	}
-	leave := Frame{Kind: IconLevel, Level: 100, From: 2, To: 1}
-	if alphaAt(t, leave, x, y) != 0xff {
-		t.Error("a leaving square is gone at once")
-	}
-	if leave.T = 1; alphaAt(t, leave, x, y) != 0 {
-		t.Error("a leaving square stays")
-	}
-	mid := Frame{Kind: IconLevel, Level: 100, From: 0, To: 1, T: 0.5}
-	if _, y0 := slot(0); alphaAt(t, mid, sqLeft+1.5, y0) > 0x40 || alphaAt(t, mid, sqLeft+sqSize+1.5, y0) != 0xff {
+	mid := Frame{Kind: IconLevel, Level: 100, Squares: Move(nil, []uint64{1}), T: 0.5}
+	if _, y0 := slot(0); alphaAt(t, mid, sqLeft+1.5, y0) > 0x40 || alphaAt(t, mid, sqLeft+sqSize+1.5, y0) < 0x80 {
 		t.Error("halfway the square is not on its way in from the right")
+	}
+}
+
+// The request that ends leaves from its own place; the others close up.
+func TestIconSquaresFollowRequests(t *testing.T) {
+	m := Move([]uint64{1, 2, 3}, []uint64{2, 3, 4})
+	want := []Square{{0, Off}, {1, 0}, {2, 1}, {Off, 2}}
+	if !slices.Equal(m, want) {
+		t.Fatalf("move = %v, want %v", m, want)
+	}
+	x0, y0 := slot(0)
+	f := Frame{Kind: IconLevel, Level: 100, Squares: Move([]uint64{1, 2}, []uint64{2}), T: 0.15}
+	if alphaAt(t, f, x0, y0) == 0xff {
+		t.Error("the first square still sits in its place on its way out")
+	}
+	if alphaAt(t, f, x0, y0-sqSize) == 0 {
+		t.Error("the first square does not leave upward")
+	}
+	if f.T = 1; alphaAt(t, f, x0, y0) != 0xff {
+		t.Error("the second square did not take the first place")
+	}
+	if x1, y1 := slot(1); alphaAt(t, f, x1, y1) != 0 {
+		t.Error("the second place stays filled")
 	}
 }
 

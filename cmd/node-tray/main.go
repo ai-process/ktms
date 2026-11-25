@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync"
 	"time"
 
@@ -51,8 +52,8 @@ type tray struct {
 	status    *nodeagent.Status
 	err       error
 	notes     nodetray.Notifier
-	target    nodetray.Frame // the icon at rest for the latest status
-	shown     nodetray.Frame // last drawn
+	want      iconState // the icon for the latest status
+	drawn     iconState // last drawn at rest or in flight; its ids are where squares head
 	iconOK    bool
 	animating bool
 
@@ -166,20 +167,21 @@ func (t *tray) update(s *nodeagent.Status, err error) {
 func (t *tray) render() {
 	t.mu.Lock()
 	v := nodetray.Build(t.status, t.err, time.Now())
-	t.target = nodetray.Still(v.Icon, v.Fill, v.Requests)
+	t.want = iconState{kind: v.Icon, fill: v.Fill, ids: v.Squares}
 	draw := false
 	switch {
 	case t.animating: // it picks up the new target
-	case t.iconOK && t.target.To != t.shown.To:
+	case t.iconOK && !slices.Equal(t.want.ids, t.drawn.ids):
 		t.animating = true
-		go t.animate(t.shown.To)
-	case !t.iconOK || t.target != t.shown:
-		t.shown, t.iconOK, draw = t.target, true, true
+		go t.animate()
+	case !t.iconOK || !t.want.same(t.drawn):
+		t.drawn, t.iconOK, draw = t.want, true, true
 	}
+	want := t.want
 	t.mu.Unlock()
 
 	if draw {
-		setIcon(t.target)
+		setIcon(nodetray.Still(want.kind, want.fill, len(want.ids)))
 	}
 	if runtime.GOOS == "darwin" {
 		systray.SetTitle(v.Title)
@@ -226,31 +228,41 @@ func (t *tray) render() {
 	t.mu.Unlock()
 }
 
-// animate flies squares in or out over a few frames; a count that changes
-// mid-flight starts a new flight from where the last one was headed. At rest
-// nothing redraws.
-func (t *tray) animate(from int) {
-	to, step := from, nodetray.AnimSteps
+// iconState is what the icon shows at rest.
+type iconState struct {
+	kind nodetray.IconKind
+	fill uint32
+	ids  []uint64
+}
+
+func (s iconState) same(o iconState) bool {
+	return s.kind == o.kind && s.fill == o.fill && slices.Equal(s.ids, o.ids)
+}
+
+// animate moves squares over a few frames: the request that ended leaves
+// from its own place and the rest close up. A change mid-flight starts a new
+// flight from where the last one was headed. At rest nothing redraws.
+func (t *tray) animate() {
+	var moves []nodetray.Square
+	step := nodetray.AnimSteps
 	for {
 		t.mu.Lock()
-		tgt := t.target
-		if tgt.To != to {
-			from, to, step = to, tgt.To, 0
-		}
-		if step == nodetray.AnimSteps {
-			changed := t.shown != tgt
-			t.shown, t.animating = tgt, false
+		w := t.want
+		if !slices.Equal(w.ids, t.drawn.ids) {
+			moves, step = nodetray.Move(t.drawn.ids, w.ids), 0
+		} else if step == nodetray.AnimSteps {
+			changed := !w.same(t.drawn)
+			t.drawn, t.animating = w, false
 			t.mu.Unlock()
 			if changed {
-				setIcon(tgt)
+				setIcon(nodetray.Still(w.kind, w.fill, len(w.ids)))
 			}
 			return
 		}
 		step++
-		f := nodetray.Frame{Kind: tgt.Kind, Level: tgt.Level, From: from, To: to, T: float64(step) / nodetray.AnimSteps}
-		t.shown = f
+		t.drawn = w
 		t.mu.Unlock()
-		setIcon(f)
+		setIcon(nodetray.Frame{Kind: w.kind, Level: w.fill, Squares: moves, T: float64(step) / nodetray.AnimSteps})
 		time.Sleep(nodetray.AnimEvery)
 	}
 }

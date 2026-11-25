@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -48,6 +49,17 @@ type Gateway struct {
 
 // Active is how many engine requests run through the gateway now, all engines.
 func (g *Gateway) Active() int32 { return g.active.Load() }
+
+// Running lists the ids of the oldest n engine requests running now, oldest first.
+func (g *Gateway) Running(n int) []uint64 {
+	var ids []uint64
+	g.inflight.Range(func(k, _ any) bool {
+		ids = append(ids, k.(uint64))
+		return true
+	})
+	slices.Sort(ids)
+	return ids[:min(n, len(ids))]
+}
 
 func (g *Gateway) addActive(d int32) {
 	g.active.Add(d)

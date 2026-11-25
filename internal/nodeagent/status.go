@@ -66,11 +66,15 @@ type StatusNext struct {
 	Source string    `json:"source"` // schedule | override_end
 }
 
+// StatusRunning caps the request ids a status lists: the tray draws fewer.
+const StatusRunning = 8
+
 type StatusRequests struct {
-	ProxyActive   int32  `json:"proxy_active"` // -1 when not yet known
-	Inflight      int32  `json:"inflight"`     // running on this node now, all engines
-	EngineRunning uint32 `json:"engine_running"`
-	EngineWaiting uint32 `json:"engine_waiting"`
+	ProxyActive   int32    `json:"proxy_active"`      // -1 when not yet known
+	Inflight      int32    `json:"inflight"`          // running on this node now, all engines
+	Running       []uint64 `json:"running,omitempty"` // ids of the oldest of them, at most StatusRunning; gateway only
+	EngineRunning uint32   `json:"engine_running"`
+	EngineWaiting uint32   `json:"engine_waiting"`
 }
 
 // StatusEngine is one engine of a node that runs several.
@@ -187,6 +191,7 @@ func (a *Agent) publish() {
 	}
 	if a.gateway != nil { // live; the engine's count is only as fresh as the last heartbeat
 		s.Requests.Inflight = a.gateway.Active()
+		s.Requests.Running = a.gateway.Running(StatusRunning)
 	}
 	if p.override.activeAt(now) {
 		o := *p.override

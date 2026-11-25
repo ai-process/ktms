@@ -24,9 +24,10 @@ const (
 // View is everything the menu shows for one status.
 type View struct {
 	Icon     IconKind
-	Fill     uint32 // how much of the IconLevel circle is filled, 0-100
-	Requests int    // running on the node now: the icon's squares
-	Title    string // next to the icon, which already shows the state: "9:41", "until 07:00", "2"
+	Fill     uint32   // how much of the IconLevel circle is filled, 0-100
+	Requests int      // running on the node now
+	Squares  []uint64 // ids of the requests the icon draws, oldest first
+	Title    string   // next to the icon, which already shows the state: "9:41", "until 07:00", "2"
 	Tooltip  string
 	Header   string // "Keystone node · mac-studio"
 	Level    string // "Running at 80% (schedule) · 18:00 → 0%"
@@ -101,6 +102,12 @@ func Build(s *nodeagent.Status, err error, now time.Time) View {
 	v.Connected = true
 	v.Header += " · " + s.NodeID
 	v.Requests = int(max(s.Requests.Inflight, 0))
+	v.Squares = s.Requests.Running
+	if len(v.Squares) == 0 { // no gateway: a count without ids
+		for i := range min(v.Requests, nodeagent.StatusRunning) {
+			v.Squares = append(v.Squares, uint64(i+1))
+		}
+	}
 	v.Engines = engineLines(s)
 	v.ScheduleKTMS = s.ScheduleSource == nodeagent.ScheduleSourceKTMS
 	lvl := s.Level.Effective
