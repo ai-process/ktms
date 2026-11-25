@@ -1211,7 +1211,7 @@ main() {
 				svc_stop node
 				mv "$BASE/bin/ktms-node.prev" "$BASE/bin/ktms-node"
 				restore_schedule
-				write_node_service "$BASE/bin/ktms-node" # its flags, not the new agent's
+				write_node_service "$BASE/bin/ktms-node" # its flags, not the new daemon's
 				install_service node "$SVC_TMP" || true
 				svc_start node || true
 			fi

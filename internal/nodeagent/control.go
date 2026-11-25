@@ -435,7 +435,7 @@ func (a *Agent) handlePutSchedule(w http.ResponseWriter, r *http.Request) {
 		writeCtlError(w, err)
 		return
 	}
-	// The file is saved either way; a busy agent reads it on its next level tick.
+	// The file is saved either way; a busy daemon reads it on its next level tick.
 	if _, err := a.do(r.Context(), func() (any, error) { return nil, nil }); err != nil && !errors.Is(err, errAgentBusy) {
 		writeCtlError(w, err)
 		return
