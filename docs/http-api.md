@@ -123,7 +123,7 @@ is OGG/Opus whatever format was requested; check the `Content-Type`.
 `POST /v1/images/generations` takes `model` and `prompt`; `n` must be 1 and `response_format: "url"`
 is rejected (the image is returned as `data[0].b64_json`).
 
-Both need rules for the `tts` / `image` [modality](configuration.md#speech-image-and-judgment-rules).
+Both route by a rule for the `tts` / `image` [modality](configuration.md#speech-image-and-judgment-rules), or, once models declare competencies, by selection among the models with that capability. `X-KTMS-Needs` narrows them; an effort in the model value (`auto:high`) is ignored here, as before.
 
 ### Errors
 

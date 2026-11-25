@@ -30,7 +30,7 @@ description: Add a local inference node (Ollama, vLLM, llama.cpp on a Mac or a G
 - `ktms nodes list` shows the node `HEALTHY` with the model.
 - `ktms route explain KEY --needs general=basic --placement nodes_only` keeps the local model; if it says
   `node_unavailable`, the node is not serving it yet.
-- `ktms chat --model auto:nodes-only:low "hello"` reports vendor `local`; with the node
+- `ktms chat --model auto:nodes-only --needs general=basic "hello"` reports vendor `local`; with the node
   stopped, a normal call falls back to the cloud (`ktms nodes drain ID` to stop sending it work).
 
 Sources: [Run a node](https://github.com/ai-process/ktms/blob/main/docs/nodes.md#run-a-node), [FreeToken](https://github.com/ai-process/ktms/blob/main/docs/nodes.md#freetoken), [If the node does not show up](https://github.com/ai-process/ktms/blob/main/docs/nodes.md#if-the-node-does-not-show-up),

@@ -69,6 +69,9 @@ that served it.`,
 				if model != "auto" && !strings.HasPrefix(model, "auto:") {
 					return usageError{errors.New("--needs routes by needs: use it with --model auto")}
 				}
+				if strings.Contains(model, "=") {
+					return usageError{errors.New("--needs: the model value already names needs; put them in one place")}
+				}
 				model += ":" + registry.FormatNeeds(n)
 			}
 			body := map[string]any{"model": model, "messages": msgs}

@@ -45,7 +45,7 @@ holds it.
    other serves. Recommend one replica only for a trial.
 3. **Per service**: the smallest path. A service on the OpenAI SDK moves to the
    [OpenAI-compatible HTTP API](https://github.com/ai-process/ktms/blob/main/docs/http-api.md#openai-compatible-http-api)
-   by changing the base URL, the key and the model value (`auto:low|medium|high`); a service on
+   by changing the base URL, the key and the model value (`auto:general=basic|proficient|expert`, plus domain topics such as `auto:medical=basic`); a service on
    another vendor's SDK moves to an OpenAI-compatible client or to gRPC, so say how much code that
    touches; gRPC suits a service that already speaks it or needs batches or judgments. Embeddings
    keep an exact model id. Propose needs (`general: basic|proficient|expert`, plus domain topics) for each group of call sites and the attribution
