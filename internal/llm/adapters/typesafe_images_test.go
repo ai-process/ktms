@@ -175,3 +175,40 @@ func TestTypeSafeJudgeYieldsOnAudio(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// Structured instructions and criteria reach System One as they are; Decisions
+// reads them as text.
+func TestStructuredQuestions(t *testing.T) {
+	q := map[string]*llm.JudgeQuestion{"defect": {
+		Type:             llm.JudgeChoice,
+		InstructionsJSON: json.RawMessage(`["What defect is in", "road", "?"]`),
+		CriteriaJSON:     json.RawMessage(`{"pothole":{"description":"a hole","examples":["ex-hole"]},"crack":"ex-crack"}`),
+	}}
+	ts := toTypeSafeQuestions(q)["defect"]
+	b, _ := json.Marshal(ts)
+	if !strings.Contains(string(b), `"instructions":["What defect is in","road","?"]`) || !strings.Contains(string(b), `"examples":["ex-hole"]`) {
+		t.Errorf("typesafe question = %s", b)
+	}
+	flat := flatQuestion(q["defect"])
+	if flat.Instructions != `["What defect is in","road","?"]` || flat.Options["crack"] != "ex-crack" ||
+		flat.Options["pothole"] != `{"description":"a hole","examples":["ex-hole"]}` {
+		t.Errorf("decisions question = %+v", flat)
+	}
+}
+
+func TestTypeSafeLongContextHeader(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get(typeSafeLongContextHeader)
+		_, _ = io.WriteString(w, `{"answers":{"q":{"type":"noul","noul":0.5}}}`)
+	}))
+	defer srv.Close()
+	a := NewTypeSafeAdapter(srv.URL, "k", "jev-1.14.0").WithLongContext(true)
+	if _, err := a.Judge(context.Background(), &llm.JudgeRequest{StateJSON: `{}`,
+		Questions: map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "?"}}}, "u", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got != "true" {
+		t.Errorf("long context header = %q", got)
+	}
+}

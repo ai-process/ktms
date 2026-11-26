@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -412,6 +413,60 @@ func toOpenAIDecisionParts(media []*llm.JudgeMediaPart) ([]openAIDecisionInputPa
 	return parts, nil
 }
 
+// flatQuestion reads a question's JSON forms as text, which is all Decisions
+// takes: compact JSON for objects, the string itself for a JSON string.
+func flatQuestion(q *llm.JudgeQuestion) *llm.JudgeQuestion {
+	if len(q.InstructionsJSON) == 0 && len(q.CriteriaJSON) == 0 {
+		return q
+	}
+	out := *q
+	if len(q.InstructionsJSON) > 0 {
+		out.Instructions = jsonText(q.InstructionsJSON)
+	}
+	if len(q.CriteriaJSON) == 0 {
+		return &out
+	}
+	switch q.Type {
+	case llm.JudgeChoice:
+		var m map[string]json.RawMessage
+		if json.Unmarshal(q.CriteriaJSON, &m) == nil {
+			out.Options = make(map[string]string, len(m))
+			for k, v := range m {
+				out.Options[k] = jsonText(v)
+			}
+		}
+	case llm.JudgeScore:
+		var a []json.RawMessage
+		if json.Unmarshal(q.CriteriaJSON, &a) == nil {
+			out.Levels = make([]string, len(a))
+			for i, v := range a {
+				out.Levels[i] = jsonText(v)
+			}
+		}
+	case llm.JudgeNoul:
+		var m map[string]json.RawMessage
+		if json.Unmarshal(q.CriteriaJSON, &m) == nil {
+			out.TrueCriteria, out.FalseCriteria = jsonText(m["true"]), jsonText(m["false"])
+		}
+	}
+	return &out
+}
+
+func jsonText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	var b bytes.Buffer
+	if json.Compact(&b, raw) == nil {
+		return b.String()
+	}
+	return string(raw)
+}
+
 // toOpenAIDecisionQuestions transforms vendor-neutral questions to OpenAI's Decisions API schema.
 // Keys are sorted for deterministic JSON serialization in test fixtures and logs.
 func toOpenAIDecisionQuestions(in map[string]*llm.JudgeQuestion) ([]openAIDecisionQuestion, error) {
@@ -423,7 +478,7 @@ func toOpenAIDecisionQuestions(in map[string]*llm.JudgeQuestion) ([]openAIDecisi
 
 	out := make([]openAIDecisionQuestion, 0, len(ids))
 	for _, id := range ids {
-		q := in[id]
+		q := flatQuestion(in[id])
 		oq := openAIDecisionQuestion{
 			Name:         id,
 			Instructions: q.Instructions,

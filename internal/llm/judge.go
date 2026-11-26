@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 )
 
@@ -26,6 +27,11 @@ type JudgeQuestion struct {
 	Levels        []string
 	TrueCriteria  string
 	FalseCriteria string
+	// InstructionsJSON and CriteriaJSON are the structured forms (an object or
+	// array, possibly naming images); when set they replace Instructions and
+	// the per-type criteria fields.
+	InstructionsJSON json.RawMessage
+	CriteriaJSON     json.RawMessage
 }
 
 // Judge state media kinds.

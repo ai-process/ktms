@@ -2615,6 +2615,15 @@ type JudgeQuestion struct {
 	Levels        []string               `protobuf:"bytes,4,rep,name=levels,proto3" json:"levels,omitempty"`                                                                             // SCORE: ordered level descriptions, lowest first
 	TrueCriteria  string                 `protobuf:"bytes,5,opt,name=true_criteria,json=trueCriteria,proto3" json:"true_criteria,omitempty"`                                             // NOUL, optional: what a yes means
 	FalseCriteria string                 `protobuf:"bytes,6,opt,name=false_criteria,json=falseCriteria,proto3" json:"false_criteria,omitempty"`                                          // NOUL, optional: what a no means
+	// Experimental: instructions as JSON (an object or an array, e.g. text and
+	// image names), sent to TypeSafe as they are and to other judges as text.
+	// Replaces instructions when set.
+	InstructionsJson string `protobuf:"bytes,7,opt,name=instructions_json,json=instructionsJson,proto3" json:"instructions_json,omitempty"`
+	// Experimental: the criteria as JSON in TypeSafe's shape, sent as they are:
+	// CHOICE an object option -> description (a string, an image name or
+	// {"description", "examples"}), SCORE an array of levels, NOUL an object
+	// with "true" and "false". Replaces options, levels and the criteria pair.
+	CriteriaJson  string `protobuf:"bytes,8,opt,name=criteria_json,json=criteriaJson,proto3" json:"criteria_json,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2687,6 +2696,20 @@ func (x *JudgeQuestion) GetTrueCriteria() string {
 func (x *JudgeQuestion) GetFalseCriteria() string {
 	if x != nil {
 		return x.FalseCriteria
+	}
+	return ""
+}
+
+func (x *JudgeQuestion) GetInstructionsJson() string {
+	if x != nil {
+		return x.InstructionsJson
+	}
+	return ""
+}
+
+func (x *JudgeQuestion) GetCriteriaJson() string {
+	if x != nil {
+		return x.CriteriaJson
 	}
 	return ""
 }
@@ -4954,14 +4977,16 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\x0eresolved_model\x18\x03 \x01(\tR\rresolvedModel\x12'\n" +
 	"\x0fresolved_vendor\x18\x04 \x01(\tR\x0eresolvedVendor\x12*\n" +
 	"\x05usage\x18\x05 \x01(\v2\x14.ktms.v1.TokensUsageR\x05usage\x12!\n" +
-	"\fmatched_rule\x18\x06 \x01(\tR\vmatchedRule\"\xba\x02\n" +
+	"\fmatched_rule\x18\x06 \x01(\tR\vmatchedRule\"\x8c\x03\n" +
 	"\rJudgeQuestion\x12&\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x12.ktms.v1.JudgeTypeR\x04type\x12\"\n" +
 	"\finstructions\x18\x02 \x01(\tR\finstructions\x12=\n" +
 	"\aoptions\x18\x03 \x03(\v2#.ktms.v1.JudgeQuestion.OptionsEntryR\aoptions\x12\x16\n" +
 	"\x06levels\x18\x04 \x03(\tR\x06levels\x12#\n" +
 	"\rtrue_criteria\x18\x05 \x01(\tR\ftrueCriteria\x12%\n" +
-	"\x0efalse_criteria\x18\x06 \x01(\tR\rfalseCriteria\x1a:\n" +
+	"\x0efalse_criteria\x18\x06 \x01(\tR\rfalseCriteria\x12+\n" +
+	"\x11instructions_json\x18\a \x01(\tR\x10instructionsJson\x12#\n" +
+	"\rcriteria_json\x18\b \x01(\tR\fcriteriaJson\x1a:\n" +
 	"\fOptionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xed\x03\n" +

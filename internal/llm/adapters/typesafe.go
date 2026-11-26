@@ -26,6 +26,13 @@ type TypeSafeAdapter struct {
 	endpoint string
 	apiKey   string
 	model    string
+	long     bool // TypeSafe-Danger-Zone-Long-Context on every call
+}
+
+// WithLongContext turns on System One's long context for this model.
+func (a *TypeSafeAdapter) WithLongContext(on bool) *TypeSafeAdapter {
+	a.long = on
+	return a
 }
 
 func NewTypeSafeAdapter(endpoint, apiKey, model string) *TypeSafeAdapter {
@@ -68,7 +75,7 @@ func (e *TypeSafeError) HTTPStatus() int { return e.Status }
 
 type typeSafeQuestion struct {
 	Type         string `json:"type"`
-	Instructions string `json:"instructions"`
+	Instructions any    `json:"instructions"` // a string, or the caller's JSON
 	Criteria     any    `json:"criteria,omitempty"`
 }
 
@@ -106,6 +113,9 @@ type typeSafeAnswer struct {
 // without it System One answers 400.
 const typeSafeImagesHeader = "TypeSafe-Danger-Zone-Images"
 
+// typeSafeLongContextHeader raises the context to 262k tokens (Jev 1.13+).
+const typeSafeLongContextHeader = "TypeSafe-Danger-Zone-Long-Context"
+
 type typeSafeResponse struct {
 	Model   string                    `json:"model"`
 	Answers map[string]typeSafeAnswer `json:"answers"`
@@ -128,6 +138,12 @@ func (a *TypeSafeAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ st
 	call, err := a.systemOneCall(req)
 	if err != nil {
 		return failed(err)
+	}
+	if a.long {
+		if call.headers == nil {
+			call.headers = map[string]string{}
+		}
+		call.headers[typeSafeLongContextHeader] = "true"
 	}
 
 	raw, statusCode, err := executeJudgeCall(ctx, a.http, a.endpoint+"/v1/systemone", a.apiKey, call)
@@ -188,6 +204,14 @@ func toTypeSafeQuestions(in map[string]*llm.JudgeQuestion) map[string]typeSafeQu
 	out := make(map[string]typeSafeQuestion, len(in))
 	for id, q := range in {
 		converted := typeSafeQuestion{Type: q.Type, Instructions: q.Instructions}
+		if len(q.InstructionsJSON) > 0 {
+			converted.Instructions = q.InstructionsJSON
+		}
+		if len(q.CriteriaJSON) > 0 {
+			converted.Criteria = q.CriteriaJSON
+			out[id] = converted
+			continue
+		}
 		switch q.Type {
 		case llm.JudgeChoice:
 			converted.Criteria = q.Options

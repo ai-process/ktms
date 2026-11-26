@@ -182,7 +182,7 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		if endpoint == "" {
 			endpoint = TypeSafeDefaultEndpoint
 		}
-		return adapters.NewTypeSafeAdapter(endpoint, key, m.ID), nil
+		return adapters.NewTypeSafeAdapter(endpoint, key, m.ID).WithLongContext(HasCapability(m, CapabilityLongContext)), nil
 	case VendorAnthropic:
 		opts := []anthropicoption.RequestOption{anthropicoption.WithAPIKey(key), anthropicoption.WithHTTPClient(llm.VendorHTTPClient()), anthropicoption.WithMaxRetries(0)}
 		endpoint := m.Endpoint

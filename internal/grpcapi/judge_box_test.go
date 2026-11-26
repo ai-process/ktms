@@ -52,3 +52,24 @@ func TestInvalidMediaIsBadRequest(t *testing.T) {
 		t.Fatalf("status = %v", err)
 	}
 }
+
+func TestCriteriaJSONChecks(t *testing.T) {
+	ask := func(q *pb.JudgeQuestion) error {
+		_, err := judgeRequestFromProto(&pb.JudgeRequest{StateJson: `{}`, Questions: map[string]*pb.JudgeQuestion{"q": q}})
+		return err
+	}
+	ok := &pb.JudgeQuestion{Type: pb.JudgeType_JUDGE_TYPE_SCORE, InstructionsJson: `{"text":"how worn?"}`, CriteriaJson: `["new","worn","broken"]`}
+	if err := ask(ok); err != nil {
+		t.Fatalf("valid structured score: %v", err)
+	}
+	for name, q := range map[string]*pb.JudgeQuestion{
+		"mixed":      {Type: pb.JudgeType_JUDGE_TYPE_CHOICE, Instructions: "?", Options: map[string]string{"a": "1", "b": "2"}, CriteriaJson: `{"a":"1","b":"2"}`},
+		"one option": {Type: pb.JudgeType_JUDGE_TYPE_CHOICE, Instructions: "?", CriteriaJson: `{"a":"1"}`},
+		"noul keys":  {Type: pb.JudgeType_JUDGE_TYPE_NOUL, Instructions: "?", CriteriaJson: `{"yes":"1"}`},
+		"bad json":   {Type: pb.JudgeType_JUDGE_TYPE_NOUL, InstructionsJson: `{`},
+	} {
+		if status.Code(ask(q)) != codes.InvalidArgument {
+			t.Errorf("%s: want bad_request", name)
+		}
+	}
+}

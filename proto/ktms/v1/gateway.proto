@@ -394,6 +394,15 @@ message JudgeQuestion {
   repeated string levels = 4; // SCORE: ordered level descriptions, lowest first
   string true_criteria = 5; // NOUL, optional: what a yes means
   string false_criteria = 6; // NOUL, optional: what a no means
+  // Experimental: instructions as JSON (an object or an array, e.g. text and
+  // image names), sent to TypeSafe as they are and to other judges as text.
+  // Replaces instructions when set.
+  string instructions_json = 7;
+  // Experimental: the criteria as JSON in TypeSafe's shape, sent as they are:
+  // CHOICE an object option -> description (a string, an image name or
+  // {"description", "examples"}), SCORE an array of levels, NOUL an object
+  // with "true" and "false". Replaces options, levels and the criteria pair.
+  string criteria_json = 8;
 }
 
 message JudgeAnswer {
