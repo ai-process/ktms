@@ -253,7 +253,7 @@ message NodeInfo {
   repeated string warm_models = 18;
   uint32 capacity_percent = 19; // current level of the node's schedule
   int32 effective_slots = 20; // concurrent requests allowed at that level
-  string schedule_source = 21; // local | ktms; empty from agents that predate it
+  string schedule_source = 21; // local | ktms; empty from daemons that predate it
   string capacity_source = 22; // schedule | override | ktms_schedule | ktms_override | default
   google.protobuf.Timestamp capacity_until = 23; // end of the override behind capacity_percent
 }
