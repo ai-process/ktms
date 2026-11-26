@@ -73,7 +73,9 @@ func (a *OpenAIAPI) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/messages", a.serve(chat, a.messages, writeAnthropicError, true))
 	mux.HandleFunc("POST /v1/messages/count_tokens", a.serve(chat, a.countTokens, writeAnthropicError, true))
 	mux.HandleFunc("POST /v1/responses", a.wrap(chat, a.responses))
-	mux.HandleFunc("/v1/responses/{id...}", a.wrap(chat, responseNotStored))
+	mux.HandleFunc("GET /v1/responses/{id}", a.wrap(chat, responseNotStored))
+	mux.HandleFunc("DELETE /v1/responses/{id}", a.wrap(chat, responseNotStored))
+	mux.HandleFunc("GET /v1/responses/{id}/input_items", a.wrap(chat, responseNotStored))
 }
 
 type apiHandler func(ctx context.Context, w http.ResponseWriter, r *http.Request) error

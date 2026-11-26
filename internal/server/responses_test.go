@@ -34,12 +34,12 @@ func TestResponsesMapsRequest(t *testing.T) {
 	rec := do(h, "POST", "/v1/responses", key, `{
 	  "model":"auto","instructions":"You are Codex.","reasoning":{"effort":"xhigh","summary":"auto"},
 	  "max_output_tokens":2000,"temperature":0.3,"user":"u1","metadata":{"action_id":"edit"},
-	  "store":false,"stream":false,"parallel_tool_calls":true,"include":["reasoning.encrypted_content"],
+	  "store":false,"stream":false,"parallel_tool_calls":true,"include":["reasoning.encrypted_content"],"client_metadata":{},"service_tier":"",
 	  "prompt_cache_key":"abc","text":{"verbosity":"low","format":{"type":"json_schema","name":"r","schema":{"type":"object","properties":{"ok":{"type":"boolean"}}}}},
 	  "tools":[
 	    {"type":"function","name":"shell","description":"Run a command","parameters":{"type":"object","properties":{"cmd":{"type":"string"}}},"strict":false},
 	    {"type":"custom","name":"apply_patch","description":"Edit files","format":{"type":"grammar","syntax":"lark","definition":"start: patch"}},
-	    {"type":"web_search","external_web_access":false}],
+	    {"type":"web_search","external_web_access":false},{"type":"web_search"}],
 	  "tool_choice":"auto",
 	  "input":[
 	    {"type":"message","role":"developer","content":[{"type":"input_text","text":"Sandbox: read-only."}]},
@@ -50,6 +50,7 @@ func TestResponsesMapsRequest(t *testing.T) {
 	    {"type":"custom_tool_call","call_id":"call_2","name":"apply_patch","input":"*** Begin Patch"},
 	    {"type":"function_call_output","call_id":"call_1","output":[{"type":"input_text","text":"a.go"},{"type":"input_image","image_url":"`+png+`"}]},
 	    {"type":"custom_tool_call_output","call_id":"call_2","output":"Done!"},
+	    {"type":"message","role":"assistant","content":[]},
 	    {"type":"message","role":"user","content":"thanks"}]}`)
 	if rec.Code != 200 {
 		t.Fatalf("code %d: %s", rec.Code, rec.Body)
@@ -94,6 +95,30 @@ func TestResponsesMapsRequest(t *testing.T) {
 	}
 }
 
+func TestResponsesInputOrder(t *testing.T) {
+	fp, h, key := newTestAPI(t)
+	png := "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n\x1a\n"))
+	rec := do(h, "POST", "/v1/responses", key, `{"input":[
+	  {"role":"user","content":"run both"},
+	  {"type":"function_call","call_id":"c1","name":"snap","arguments":"{}"},
+	  {"type":"message","role":"assistant","content":[{"type":"output_text","text":"Running."}]},
+	  {"type":"function_call","call_id":"c2","name":"stat","arguments":"{}"},
+	  {"type":"function_call_output","call_id":"c1","output":[{"type":"input_image","image_url":"`+png+`"}]},
+	  {"type":"reasoning","id":"rs_1","summary":[]},
+	  {"type":"function_call_output","call_id":"c2","output":"ok"},
+	  {"role":"user","content":"and?"}]}`)
+	if rec.Code != 200 {
+		t.Fatalf("code %d: %s", rec.Code, rec.Body)
+	}
+	m := fp.text.Messages
+	// [user, assistant(c1, c2, text), tool c1, tool c2, user(image + "and?")]
+	if len(m) != 5 || len(m[1].ToolCalls) != 2 || m[1].Text != "Running." ||
+		m[2].ToolCallId != "c1" || m[3].ToolCallId != "c2" ||
+		m[4].Text != "and?" || len(m[4].Parts) != 2 || m[4].Parts[0].GetImage() == nil {
+		t.Errorf("messages: %v", m)
+	}
+}
+
 func TestResponsesStringInput(t *testing.T) {
 	fp, h, key := newTestAPI(t)
 	rec := do(h, "POST", "/v1/responses", key, `{"model":"gpt-x","input":"hi","reasoning":{"effort":"minimal"}}`)
@@ -116,6 +141,7 @@ func TestResponsesResponse(t *testing.T) {
 			{Id: "call_9", Function: &pb.FunctionCall{Name: "shell", Arguments: `{"cmd":"ls"}`}},
 			{Function: &pb.FunctionCall{Name: "apply_patch", Arguments: `{"input":"*** Begin Patch\n"}`}},
 			{Function: &pb.FunctionCall{Name: "noargs"}},
+			{Function: &pb.FunctionCall{Name: "apply_patch"}},
 		},
 		FinishReason: "tool_calls",
 	}}
@@ -139,7 +165,7 @@ func TestResponsesResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(out.ID, "resp_") || out.Object != "response" || out.Status != "completed" || out.Model != "m1" ||
-		out.Store || out.Metadata["k"] != "v" || out.Incomplete != nil || len(out.Tools) != 1 || len(out.Output) != 4 {
+		out.Store || out.Metadata["k"] != "v" || out.Incomplete != nil || len(out.Tools) != 1 || len(out.Output) != 5 {
 		t.Fatalf("response: %s", rec.Body)
 	}
 	msg, fc, ctc, empty := out.Output[0], out.Output[1], out.Output[2], out.Output[3]
@@ -153,8 +179,8 @@ func TestResponsesResponse(t *testing.T) {
 	if ctc["type"] != "custom_tool_call" || ctc["input"] != "*** Begin Patch\n" || !strings.HasPrefix(ctc["call_id"].(string), "call_") {
 		t.Errorf("custom call: %v", ctc)
 	}
-	if empty["arguments"] != "{}" {
-		t.Errorf("no arguments: %v", empty)
+	if empty["arguments"] != "{}" || out.Output[4]["input"] != "" {
+		t.Errorf("no arguments: %v %v", empty, out.Output[4])
 	}
 	if out.Usage["input_tokens"] != 3.0 || out.Usage["output_tokens"] != 2.0 || out.Usage["total_tokens"] != 5.0 {
 		t.Errorf("usage: %v", out.Usage)
@@ -172,7 +198,8 @@ func TestResponsesIncomplete(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
 	}
-	if out["status"] != "incomplete" || out["incomplete_details"].(map[string]any)["reason"] != "max_output_tokens" || out["max_output_tokens"] != 5.0 {
+	if out["status"] != "incomplete" || out["incomplete_details"].(map[string]any)["reason"] != "max_output_tokens" || out["max_output_tokens"] != 5.0 ||
+		out["output"].([]any)[0].(map[string]any)["status"] != "incomplete" {
 		t.Errorf("response: %s", rec.Body)
 	}
 }
@@ -202,7 +229,14 @@ func TestResponsesErrors(t *testing.T) {
 		}
 	}
 
-	rec := do(h, "GET", "/v1/responses/resp_1", key, "")
+	rec := do(h, "POST", "/v1/responses", key, `{"input":"x","text":{"format":{"type":"json_schema","name":"r","strict":true,"schema":{"type":"object"}}}}`)
+	if !strings.Contains(rec.Body.String(), `"text":{"format":{"type":"json_schema","name":"r","strict":true,"schema":{"type":"object"}}}`) {
+		t.Errorf("format echo: %s", rec.Body)
+	}
+	if rec := do(h, "POST", "/v1/responses/compact", key, `{}`); rec.Code != 405 {
+		t.Errorf("compact: %d", rec.Code)
+	}
+	rec = do(h, "GET", "/v1/responses/resp_1", key, "")
 	if e := errBody(t, rec); rec.Code != 404 || !strings.Contains(e["message"].(string), "not stored") {
 		t.Errorf("get: %d %v", rec.Code, e)
 	}
@@ -219,7 +253,8 @@ func TestResponsesErrors(t *testing.T) {
 func TestResponsesStream(t *testing.T) {
 	fp, h, key := newTestAPI(t)
 	fp.streamChunks = []*pb.GenerateTextChunk{
-		{Delta: "Checking", ResolvedModel: "m1", ResolvedVendor: "openai", MatchedRule: "default", IgnoredParameters: []string{"temperature"}},
+		{Delta: "Checking", ResolvedVendor: "openai", MatchedRule: "default", IgnoredParameters: []string{"temperature"}},
+		{ResolvedModel: "m1"},
 		{Delta: " now."},
 		{ToolCallChunks: []*pb.ToolCallChunk{{Index: 0, Id: "call_a", Name: "shell", ArgumentsDelta: `{"cmd":`}}},
 		{ToolCallChunks: []*pb.ToolCallChunk{{Index: 0, ArgumentsDelta: `"ls"}`}}},
@@ -318,7 +353,8 @@ func TestResponsesStreamErrors(t *testing.T) {
 	events := sseData(t, rec.Body.String())
 	last := events[len(events)-1]
 	resp := last["response"].(map[string]any)
-	if last["type"] != "response.failed" || resp["status"] != "failed" || resp["error"].(map[string]any)["code"] != "vendor_error" {
+	if last["type"] != "response.failed" || resp["status"] != "failed" || resp["error"].(map[string]any)["code"] != "vendor_error" ||
+		len(resp["output"].([]any)) != 1 || resp["output"].([]any)[0].(map[string]any)["status"] != "incomplete" {
 		t.Errorf("mid-stream: %s", rec.Body)
 	}
 

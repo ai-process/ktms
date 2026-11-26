@@ -65,8 +65,8 @@ var responsesHandled = map[string]bool{
 }
 
 type responsesText struct {
-	Format    *responsesFormat `json:"format"`
-	Verbosity string           `json:"verbosity"`
+	Format    json.RawMessage `json:"format"`
+	Verbosity string          `json:"verbosity"`
 }
 
 type responsesFormat struct {
@@ -137,11 +137,20 @@ func decodeResponsesRequest(r *http.Request) (*responsesRequest, error) {
 		return nil, invalid("request body must be a JSON object")
 	}
 	for k, v := range fields {
-		if !responsesHandled[k] && string(v) != "null" {
+		if !responsesHandled[k] && !emptyJSON(v) {
 			req.ignored = append(req.ignored, k)
 		}
 	}
 	return &req, nil
+}
+
+// emptyJSON is a value that asks for nothing, such as Codex's "include": [].
+func emptyJSON(v json.RawMessage) bool {
+	switch strings.TrimSpace(string(v)) {
+	case "null", "[]", "{}", `""`, "false":
+		return true
+	}
+	return false
 }
 
 // responsesEffort maps the Responses effort levels onto KTMS's three.
@@ -217,7 +226,11 @@ func (req *responsesRequest) toProto(ctx context.Context, headerPlacement string
 		if t.Verbosity != "" {
 			req.ignored = append(req.ignored, "text.verbosity")
 		}
-		if f := t.Format; f != nil {
+		if !isNull(t.Format) {
+			var f responsesFormat
+			if err := json.Unmarshal(t.Format, &f); err != nil {
+				return nil, invalid("text.format must be an object")
+			}
 			switch f.Type {
 			case "", "text":
 			case "json_object":
@@ -248,6 +261,7 @@ func (req *responsesRequest) toProto(ctx context.Context, headerPlacement string
 	out.Messages = in.msgs
 	out.BaseSystemInstruction = strings.Join(in.system, "\n\n")
 	slices.Sort(req.ignored)
+	req.ignored = slices.Compact(req.ignored)
 	return out, nil
 }
 
@@ -366,7 +380,11 @@ func (in *responsesInput) item(it responsesItem) error {
 	if typ == "" && it.Role != "" {
 		typ = "message"
 	}
-	if typ != "function_call_output" && typ != "custom_tool_call_output" {
+	// Tool outputs stay one block: only a turn of the conversation flushes their media.
+	switch {
+	case typ == "message" && it.Role != "assistant":
+	case typ == "function_call_output", typ == "custom_tool_call_output", typ == "reasoning":
+	default:
 		in.flushMedia()
 	}
 	switch typ {
@@ -422,10 +440,28 @@ func (in *responsesInput) message(it responsesItem) error {
 		}
 		in.system = append(in.system, text)
 	case "user":
+		// Images from the tool outputs before it join this message.
+		if len(in.media) > 0 {
+			if len(parts) == 0 && text != "" {
+				parts = []*pb.ContentPart{{Part: &pb.ContentPart_Text{Text: &pb.TextPart{Text: text}}}}
+			}
+			parts = append(in.media, parts...)
+			in.media = nil
+		}
 		in.msgs = append(in.msgs, &pb.ChatMessage{Role: pb.MessageRole_MESSAGE_ROLE_USER, Text: text, Parts: parts})
 	case "assistant":
 		if hasMediaParts(parts) {
 			return invalid("assistant messages take text only")
+		}
+		if text == "" {
+			// Vendors refuse empty turns; a function_call after it opens its own message.
+			return nil
+		}
+		// Text after a call in the same turn joins it, so no message parts a call from its output.
+		if n := len(in.msgs); n > 0 && in.msgs[n-1].Role == pb.MessageRole_MESSAGE_ROLE_ASSISTANT {
+			last := in.msgs[n-1]
+			last.Text = strings.TrimPrefix(last.Text+"\n\n"+text, "\n\n")
+			return nil
 		}
 		in.msgs = append(in.msgs, &pb.ChatMessage{Role: pb.MessageRole_MESSAGE_ROLE_ASSISTANT, Text: text})
 	default:
@@ -541,7 +577,7 @@ func (sh *responseShape) object(model, state string, output []map[string]any, us
 		effort = req.Reasoning.Effort
 	}
 	format := any(map[string]any{"type": "text"})
-	if req.Text != nil && req.Text.Format != nil {
+	if req.Text != nil && !isNull(req.Text.Format) {
 		format = req.Text.Format
 	}
 	var toolChoice any = "auto"
@@ -595,6 +631,14 @@ func responseState(finish string) (string, any) {
 	return "completed", nil
 }
 
+// markCut marks the last item incomplete when the response was cut, as the
+// Responses API does; Codex keeps such items as partial output.
+func markCut(output []map[string]any, state string) {
+	if state == "incomplete" && len(output) > 0 {
+		output[len(output)-1]["status"] = "incomplete"
+	}
+}
+
 func responsesUsage(u *pb.TokensUsage, estimate int64) map[string]any {
 	input := u.GetInput()
 	if u == nil {
@@ -626,6 +670,10 @@ func orEmptyObject(args string) string {
 // customInput is the text of a custom tool call, which the model sent as
 // the one argument of a function.
 func customInput(args string) string {
+	switch strings.TrimSpace(args) {
+	case "", "null", "{}":
+		return ""
+	}
 	var v struct {
 		Input *string `json:"input"`
 	}
@@ -637,7 +685,7 @@ func customInput(args string) string {
 
 func messageItem(id, text, state string) map[string]any {
 	content := []any{}
-	if state == "completed" {
+	if state != "in_progress" {
 		content = append(content, outputTextPart(text))
 	}
 	return map[string]any{"type": "message", "id": id, "status": state, "role": "assistant", "content": content}
@@ -650,7 +698,7 @@ func outputTextPart(text string) map[string]any {
 func (sh *responseShape) toolItem(id, call, name, args, state string) map[string]any {
 	if sh.req.custom[name] {
 		input := ""
-		if state == "completed" {
+		if state != "in_progress" {
 			input = customInput(args)
 		}
 		return map[string]any{"type": "custom_tool_call", "id": id, "call_id": call, "name": name, "input": input, "status": state}
@@ -711,6 +759,7 @@ func (a *OpenAIAPI) responses(ctx context.Context, w http.ResponseWriter, r *htt
 			orEmptyObject(tc.GetFunction().GetArguments()), "completed"))
 	}
 	state, incomplete := responseState(finish)
+	markCut(output, state)
 	writeJSON(w, http.StatusOK, sh.object(resp.ResolvedModel, state, output, responsesUsage(resp.GetUsage(), 0), incomplete, nil))
 	return nil
 }
@@ -746,7 +795,7 @@ func (a *OpenAIAPI) streamResponses(ctx context.Context, w http.ResponseWriter, 
 	if c, ok := errCode.(string); ok {
 		typ = c
 	}
-	failed := sh.object(s.model, "failed", s.output, responsesUsage(s.usage, s.estimate), nil, map[string]any{"code": typ, "message": msg})
+	failed := sh.object(s.model, "failed", s.partial(), responsesUsage(s.usage, s.estimate), nil, map[string]any{"code": typ, "message": msg})
 	if werr := s.event("response.failed", map[string]any{"response": failed}); werr != nil {
 		log.Debug().Err(werr).Msg("responses: the client left before the stream error")
 	}
@@ -820,6 +869,21 @@ func (s *responsesStream) start(chunk *pb.GenerateTextChunk) error {
 }
 
 func (s *responsesStream) index() int { return len(s.output) }
+
+// partial is the output so far, with the open item cut where the stream failed.
+func (s *responsesStream) partial() []map[string]any {
+	item := s.cur
+	if item == nil {
+		return s.output
+	}
+	acc := s.buf.String()
+	if s.curText {
+		item = messageItem(item["id"].(string), acc, "incomplete")
+	} else {
+		item = s.sh.toolItem(item["id"].(string), item["call_id"].(string), item["name"].(string), acc, "incomplete")
+	}
+	return append(slices.Clone(s.output), item)
+}
 
 func (s *responsesStream) openText() error {
 	if err := s.closeItem(); err != nil {
@@ -914,6 +978,9 @@ func (s *responsesStream) Send(chunk *pb.GenerateTextChunk) error {
 	if err := s.start(chunk); err != nil {
 		return err
 	}
+	if chunk.ResolvedModel != "" {
+		s.model = chunk.ResolvedModel
+	}
 	if chunk.Delta != "" {
 		if s.cur == nil || !s.curText || s.pending != nil {
 			if err := s.openText(); err != nil {
@@ -982,6 +1049,7 @@ func (s *responsesStream) finish() error {
 		return err
 	}
 	state, incomplete := responseState(s.finishedAs)
+	markCut(s.output, state)
 	resp := s.sh.object(s.model, state, s.output, responsesUsage(s.usage, s.estimate), incomplete, nil)
 	name := "response.completed"
 	if state == "incomplete" {
