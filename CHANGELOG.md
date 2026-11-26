@@ -7,41 +7,53 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
-### Added
+## [1.7.0] - 2026-11-26
 
-- Model competencies and request needs (topic: `basic` < `proficient` < `expert`), part 1: `ModelSpec.competencies`,
-  `RuleSpec.needs`, `needs` on `GenerateTextRequest`, `SubmitBatchRequest`, speech, image, judge and translate requests,
-  `ModelInfo.competencies` and the `ExplainRoute` fields, stored in Postgres and in the config file. Efforts are
-  deprecated and read as the topic `general` (low, medium, high = basic, proficient, expert); a model described by
-  efforts keeps serving exactly those. Once a model declares competencies, the catch-all rule per effort is no longer
-  required. `ktms config plan` hints at the competencies and needs to write instead of efforts.
-- Routing by needs, part 2: a rule matches when the request needs each of its topics at least at the rule's level, and its
-  chain is filtered by the needs. A request no rule takes is routed by selection: the enabled models that meet every
-  need and the capabilities, narrowed by the key's and team's `allowed_models`, ordered by placement class, then by
-  the sum of levels above the needs, then by the blended price `(3 × input + output) / 4` per million tokens; the
-  first three make the chain. Speech, images, judge and translate take `needs` too; without them only the modality
-  (and the language pair) filters. `ExplainRoute` shows the needs, `selected`, every candidate with its excess and
-  price, and `chain_length` for the ones cut. Usage meta keeps `effort` and adds `needs`.
-- HTTP: the model `auto:<topic>=<level>,…` (with placement and effort specifiers, joined by `:`), e.g.
-  `auto:medical=basic:cloud-first`, and the `X-KTMS-Needs` header for SDKs that cannot add a body field; the model
-  string wins per topic. `reasoning_effort` keeps meaning the general need for `auto` in 1.x and is deprecated.
-  Speech and image endpoints take both too.
-- `ktms route explain --needs` and `ktms chat --needs`, `needs` in the MCP tool `explain_route`, competencies and needs
-  columns in `ktms models list` and `ktms rules list`; docs (concepts, configuration, gRPC and HTTP APIs) and the
-  plugin skills speak of needs and competencies.
-- Stability: needs, competencies, `auto:<topic>=<level>`, `X-KTMS-Needs` and the levels are stable; the selection order
-  and price formula are experimental in 1.7; every effort field is deprecated until 2.0. The `effort` metric label
-  is the general need (`default` without one); usage meta gains `needs`.
-- Upgrade ktms-admin with this release (to the version that knows competencies and needs): an older console
-  drops them when it saves a model or the rules.
+### Added
+- **Model competencies and request needs.** A model declares `competencies` and a request states `needs`, both
+  topic → level with `basic` < `proficient` < `expert`; a model meets any need at its level or below. Topics are free
+  lowercase words; an unknown level is `INVALID_ARGUMENT`, an unknown topic finds no model. In `ktms.v1` (additions
+  only): `ModelSpec.competencies`, `ModelInfo.competencies`, `RuleSpec.needs`, `needs` on `GenerateTextRequest`,
+  `SubmitBatchRequest`, `SynthesizeSpeechRequest`, `GenerateImageRequest`, `JudgeRequest`, `TranslateRequest` and
+  `ExplainRouteRequest`, and in `ExplainRouteResponse` `needs`, `selected` and each candidate's `excess` and
+  `blended_price_per_mtok`. Stored in Postgres (`model.competencies`, `rule.needs`) and in the config file.
+- **Rules by needs.** A rule matches when the request needs each of its topics at least at the rule's level, and its
+  chain is filtered by the request's needs. A rule with needs whose chain meets none of a higher request hands it to
+  the selection.
+- **Selection without a rule.** Once a model declares competencies, a request no rule takes goes to the enabled models
+  that meet every need and the capabilities and that the key's and team's `allowed_models` allow, ordered by
+  placement class, then by excess (levels above the needs, summed), then by the blended price
+  `(3 × input + output) / 4` per million tokens (per million characters for translation); the first three make the
+  chain. The catch-all rule per effort is then optional. The order and the price formula are experimental in 1.7.
+- **HTTP.** The model `auto:<topic>=<level>,…`, combined with placement by `:` (`auto:medical=basic:cloud-first`), and
+  the `X-KTMS-Needs` header for SDKs that fix the model value; the model string wins per topic. Chat completions,
+  Anthropic messages, speech, images and `/v1/decisions` take them; `/v1/decisions/rollouts` refuses needs for now.
+  `/v1/models` lists competencies.
+- Speech, images, judgments and translation take `needs`; without them only the modality (and the language pair)
+  filters, and a model described by efforts serves them only if it lists low, as before.
+- CLI and MCP: `ktms route explain --needs`, `ktms chat --needs`, `needs` in the MCP tool `explain_route`, competencies
+  and needs columns in `ktms models list` and `ktms rules list`. `ktms config plan` prints `hint:` lines with the
+  competencies and needs to write instead of efforts.
+- Usage meta gains `needs` (`topic=level,…`, topics sorted); `effort` stays. The response cache keys on needs.
 
 ### Changed
-
 - The process on a node is now called the node daemon (was: node agent) in the docs, the tray, `ktms-node --help`
-  and its messages; "agent" is left to AI agents. Nothing else changes: the `ktms-node` binary, the
-  `ktms-node.service` unit, flags and environment variables keep their names, and `docs/nodes.md#node-agent`
-  still opens the section. On Linux the unit description changes too, so the first re-run of
-  `install-node.sh` restarts the node once.
+  and its messages; "agent" is left to AI agents. The `ktms-node` binary, the `ktms-node.service` unit, flags and
+  environment variables keep their names, and `docs/nodes.md#node-agent` still opens the section.
+- An exact model over HTTP gets no medium default: it is served at its own level (medium, if it serves it, in usage).
+- Docs and the plugin skills speak of needs and competencies.
+
+### Deprecated
+- Effort, until 2.0: the `Effort` enum, `GenerateTextRequest.effort` and `effort_specified`,
+  `SubmitBatchRequest.effort`, `ModelSpec.efforts`, `ModelInfo.efforts`, `RuleSpec.effort`, the `effort` fields of
+  `ExplainRoute`, the HTTP models `auto:low|medium|high` and `reasoning_effort` as the general need for `auto`. They
+  work as the topic `general` (low, medium, high = basic, proficient, expert); a model described by efforts keeps
+  serving exactly those, so 1.6 configurations route as before.
+
+### Upgrade notes
+- No configuration change is needed. Upgrade ktms-admin together with the gateway: a console before 1.4 saves models
+  and rules without competencies and needs and would erase them.
+- The `effort` metric label is the request's general need (`default` without one); no label is added for needs.
 
 ## [1.6.1] - 2026-11-25
 
@@ -576,7 +588,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/ai-process/ktms/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/ai-process/ktms/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/ai-process/ktms/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/ai-process/ktms/compare/v1.4.0...v1.5.0
