@@ -382,6 +382,9 @@ enum JudgeType {
   JUDGE_TYPE_NOUL = 1; // does this hold? -> probability of yes
   JUDGE_TYPE_CHOICE = 2; // which one? -> option id + distribution
   JUDGE_TYPE_SCORE = 3; // how much? -> weighted position on ordered levels
+  // where is it? -> one box on an image of the state. Experimental: TypeSafe
+  // only (models declaring "box"), and its format may change in a 1.x minor.
+  JUDGE_TYPE_BOX = 4;
 }
 
 message JudgeQuestion {
@@ -401,6 +404,20 @@ message JudgeAnswer {
   map<string, double> probabilities = 5; // CHOICE/SCORE: full distribution
   double confidence = 6; // CHOICE/SCORE: how concentrated that distribution is
   map<string, string> legend = 7; // SCORE: level index -> its description
+  JudgeBox box = 8; // BOX: the box found. Experimental
+  // True when the vendor gave no confidence (BOX may not): confidence is then
+  // 0 and means nothing, rather than "not at all sure". Experimental.
+  bool confidence_unset = 9;
+}
+
+// JudgeBox is a box on an image, its edges as fractions 0..1 of the image's
+// height (top, bottom) and width (left, right) from its top-left corner. Each
+// edge is the expected value of its predicted position. Experimental.
+message JudgeBox {
+  double top = 1;
+  double bottom = 2;
+  double left = 3;
+  double right = 4;
 }
 
 // EmbeddingPart is a latent state vector (JEPA, CLIP, ...) judged as-is, so a
@@ -420,6 +437,11 @@ message MediaPart {
     AudioPart audio = 3;
     EmbeddingPart embedding = 4;
   }
+  // Experimental: the name state_json, instructions, options, levels and
+  // criteria use for this part. Where a string equals the name, or contains it,
+  // TypeSafe reads the image there; other judges get the name as a text label
+  // before the part. Unique within the request; empty for an unnamed part.
+  string name = 5;
 }
 
 message JudgeRequest {

@@ -140,6 +140,9 @@ const (
 	JudgeType_JUDGE_TYPE_NOUL        JudgeType = 1 // does this hold? -> probability of yes
 	JudgeType_JUDGE_TYPE_CHOICE      JudgeType = 2 // which one? -> option id + distribution
 	JudgeType_JUDGE_TYPE_SCORE       JudgeType = 3 // how much? -> weighted position on ordered levels
+	// where is it? -> one box on an image of the state. Experimental: TypeSafe
+	// only (models declaring "box"), and its format may change in a 1.x minor.
+	JudgeType_JUDGE_TYPE_BOX JudgeType = 4
 )
 
 // Enum value maps for JudgeType.
@@ -149,12 +152,14 @@ var (
 		1: "JUDGE_TYPE_NOUL",
 		2: "JUDGE_TYPE_CHOICE",
 		3: "JUDGE_TYPE_SCORE",
+		4: "JUDGE_TYPE_BOX",
 	}
 	JudgeType_value = map[string]int32{
 		"JUDGE_TYPE_UNSPECIFIED": 0,
 		"JUDGE_TYPE_NOUL":        1,
 		"JUDGE_TYPE_CHOICE":      2,
 		"JUDGE_TYPE_SCORE":       3,
+		"JUDGE_TYPE_BOX":         4,
 	}
 )
 
@@ -2695,8 +2700,12 @@ type JudgeAnswer struct {
 	Probabilities map[string]float64     `protobuf:"bytes,5,rep,name=probabilities,proto3" json:"probabilities,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"` // CHOICE/SCORE: full distribution
 	Confidence    float64                `protobuf:"fixed64,6,opt,name=confidence,proto3" json:"confidence,omitempty"`                                                                                 // CHOICE/SCORE: how concentrated that distribution is
 	Legend        map[string]string      `protobuf:"bytes,7,rep,name=legend,proto3" json:"legend,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`                 // SCORE: level index -> its description
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Box           *JudgeBox              `protobuf:"bytes,8,opt,name=box,proto3" json:"box,omitempty"`                                                                                                 // BOX: the box found. Experimental
+	// True when the vendor gave no confidence (BOX may not): confidence is then
+	// 0 and means nothing, rather than "not at all sure". Experimental.
+	ConfidenceUnset bool `protobuf:"varint,9,opt,name=confidence_unset,json=confidenceUnset,proto3" json:"confidence_unset,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *JudgeAnswer) Reset() {
@@ -2778,6 +2787,91 @@ func (x *JudgeAnswer) GetLegend() map[string]string {
 	return nil
 }
 
+func (x *JudgeAnswer) GetBox() *JudgeBox {
+	if x != nil {
+		return x.Box
+	}
+	return nil
+}
+
+func (x *JudgeAnswer) GetConfidenceUnset() bool {
+	if x != nil {
+		return x.ConfidenceUnset
+	}
+	return false
+}
+
+// JudgeBox is a box on an image, its edges as fractions 0..1 of the image's
+// height (top, bottom) and width (left, right) from its top-left corner. Each
+// edge is the expected value of its predicted position. Experimental.
+type JudgeBox struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Top           float64                `protobuf:"fixed64,1,opt,name=top,proto3" json:"top,omitempty"`
+	Bottom        float64                `protobuf:"fixed64,2,opt,name=bottom,proto3" json:"bottom,omitempty"`
+	Left          float64                `protobuf:"fixed64,3,opt,name=left,proto3" json:"left,omitempty"`
+	Right         float64                `protobuf:"fixed64,4,opt,name=right,proto3" json:"right,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JudgeBox) Reset() {
+	*x = JudgeBox{}
+	mi := &file_ktms_v1_gateway_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JudgeBox) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JudgeBox) ProtoMessage() {}
+
+func (x *JudgeBox) ProtoReflect() protoreflect.Message {
+	mi := &file_ktms_v1_gateway_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JudgeBox.ProtoReflect.Descriptor instead.
+func (*JudgeBox) Descriptor() ([]byte, []int) {
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *JudgeBox) GetTop() float64 {
+	if x != nil {
+		return x.Top
+	}
+	return 0
+}
+
+func (x *JudgeBox) GetBottom() float64 {
+	if x != nil {
+		return x.Bottom
+	}
+	return 0
+}
+
+func (x *JudgeBox) GetLeft() float64 {
+	if x != nil {
+		return x.Left
+	}
+	return 0
+}
+
+func (x *JudgeBox) GetRight() float64 {
+	if x != nil {
+		return x.Right
+	}
+	return 0
+}
+
 // EmbeddingPart is a latent state vector (JEPA, CLIP, ...) judged as-is, so a
 // caller with an encoder never has to decode it back to text first.
 // Experimental: may change in a 1.x minor release (README, API stability).
@@ -2791,7 +2885,7 @@ type EmbeddingPart struct {
 
 func (x *EmbeddingPart) Reset() {
 	*x = EmbeddingPart{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[30]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2803,7 +2897,7 @@ func (x *EmbeddingPart) String() string {
 func (*EmbeddingPart) ProtoMessage() {}
 
 func (x *EmbeddingPart) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[30]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2816,7 +2910,7 @@ func (x *EmbeddingPart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmbeddingPart.ProtoReflect.Descriptor instead.
 func (*EmbeddingPart) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{30}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *EmbeddingPart) GetValues() []float32 {
@@ -2843,14 +2937,19 @@ type MediaPart struct {
 	//	*MediaPart_Image
 	//	*MediaPart_Audio
 	//	*MediaPart_Embedding
-	Part          isMediaPart_Part `protobuf_oneof:"part"`
+	Part isMediaPart_Part `protobuf_oneof:"part"`
+	// Experimental: the name state_json, instructions, options, levels and
+	// criteria use for this part. Where a string equals the name, or contains it,
+	// TypeSafe reads the image there; other judges get the name as a text label
+	// before the part. Unique within the request; empty for an unnamed part.
+	Name          string `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *MediaPart) Reset() {
 	*x = MediaPart{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[31]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2862,7 +2961,7 @@ func (x *MediaPart) String() string {
 func (*MediaPart) ProtoMessage() {}
 
 func (x *MediaPart) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[31]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2875,7 +2974,7 @@ func (x *MediaPart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MediaPart.ProtoReflect.Descriptor instead.
 func (*MediaPart) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{31}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *MediaPart) GetPart() isMediaPart_Part {
@@ -2919,6 +3018,13 @@ func (x *MediaPart) GetEmbedding() *EmbeddingPart {
 		}
 	}
 	return nil
+}
+
+func (x *MediaPart) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
 }
 
 type isMediaPart_Part interface {
@@ -2970,7 +3076,7 @@ type JudgeRequest struct {
 
 func (x *JudgeRequest) Reset() {
 	*x = JudgeRequest{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[32]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2982,7 +3088,7 @@ func (x *JudgeRequest) String() string {
 func (*JudgeRequest) ProtoMessage() {}
 
 func (x *JudgeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[32]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2995,7 +3101,7 @@ func (x *JudgeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JudgeRequest.ProtoReflect.Descriptor instead.
 func (*JudgeRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{32}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *JudgeRequest) GetStateJson() string {
@@ -3060,7 +3166,7 @@ type JudgeResponse struct {
 
 func (x *JudgeResponse) Reset() {
 	*x = JudgeResponse{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[33]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3072,7 +3178,7 @@ func (x *JudgeResponse) String() string {
 func (*JudgeResponse) ProtoMessage() {}
 
 func (x *JudgeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[33]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3085,7 +3191,7 @@ func (x *JudgeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JudgeResponse.ProtoReflect.Descriptor instead.
 func (*JudgeResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{33}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *JudgeResponse) GetAnswers() map[string]*JudgeAnswer {
@@ -3133,7 +3239,7 @@ type Embedding struct {
 
 func (x *Embedding) Reset() {
 	*x = Embedding{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[34]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3145,7 +3251,7 @@ func (x *Embedding) String() string {
 func (*Embedding) ProtoMessage() {}
 
 func (x *Embedding) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[34]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3158,7 +3264,7 @@ func (x *Embedding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Embedding.ProtoReflect.Descriptor instead.
 func (*Embedding) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{34}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *Embedding) GetIndex() int32 {
@@ -3189,7 +3295,7 @@ type GetEmbeddingsRequest struct {
 
 func (x *GetEmbeddingsRequest) Reset() {
 	*x = GetEmbeddingsRequest{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[35]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3201,7 +3307,7 @@ func (x *GetEmbeddingsRequest) String() string {
 func (*GetEmbeddingsRequest) ProtoMessage() {}
 
 func (x *GetEmbeddingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[35]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3214,7 +3320,7 @@ func (x *GetEmbeddingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEmbeddingsRequest.ProtoReflect.Descriptor instead.
 func (*GetEmbeddingsRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{35}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *GetEmbeddingsRequest) GetInputs() []string {
@@ -3272,7 +3378,7 @@ type GetEmbeddingsResponse struct {
 
 func (x *GetEmbeddingsResponse) Reset() {
 	*x = GetEmbeddingsResponse{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[36]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3284,7 +3390,7 @@ func (x *GetEmbeddingsResponse) String() string {
 func (*GetEmbeddingsResponse) ProtoMessage() {}
 
 func (x *GetEmbeddingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[36]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3297,7 +3403,7 @@ func (x *GetEmbeddingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEmbeddingsResponse.ProtoReflect.Descriptor instead.
 func (*GetEmbeddingsResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{36}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *GetEmbeddingsResponse) GetData() []*Embedding {
@@ -3351,7 +3457,7 @@ type TranslateRequest struct {
 
 func (x *TranslateRequest) Reset() {
 	*x = TranslateRequest{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[37]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3363,7 +3469,7 @@ func (x *TranslateRequest) String() string {
 func (*TranslateRequest) ProtoMessage() {}
 
 func (x *TranslateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[37]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3376,7 +3482,7 @@ func (x *TranslateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TranslateRequest.ProtoReflect.Descriptor instead.
 func (*TranslateRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{37}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *TranslateRequest) GetTexts() []string {
@@ -3445,7 +3551,7 @@ type Translation struct {
 
 func (x *Translation) Reset() {
 	*x = Translation{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[38]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3457,7 +3563,7 @@ func (x *Translation) String() string {
 func (*Translation) ProtoMessage() {}
 
 func (x *Translation) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[38]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3470,7 +3576,7 @@ func (x *Translation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Translation.ProtoReflect.Descriptor instead.
 func (*Translation) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{38}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *Translation) GetText() string {
@@ -3500,7 +3606,7 @@ type TranslateResponse struct {
 
 func (x *TranslateResponse) Reset() {
 	*x = TranslateResponse{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[39]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3512,7 +3618,7 @@ func (x *TranslateResponse) String() string {
 func (*TranslateResponse) ProtoMessage() {}
 
 func (x *TranslateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[39]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3525,7 +3631,7 @@ func (x *TranslateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TranslateResponse.ProtoReflect.Descriptor instead.
 func (*TranslateResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{39}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *TranslateResponse) GetTranslations() []*Translation {
@@ -3576,7 +3682,7 @@ type RolloutCandidate struct {
 
 func (x *RolloutCandidate) Reset() {
 	*x = RolloutCandidate{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[40]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3588,7 +3694,7 @@ func (x *RolloutCandidate) String() string {
 func (*RolloutCandidate) ProtoMessage() {}
 
 func (x *RolloutCandidate) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[40]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3601,7 +3707,7 @@ func (x *RolloutCandidate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RolloutCandidate.ProtoReflect.Descriptor instead.
 func (*RolloutCandidate) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{40}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *RolloutCandidate) GetId() string {
@@ -3645,7 +3751,7 @@ type CandidateEvaluation struct {
 
 func (x *CandidateEvaluation) Reset() {
 	*x = CandidateEvaluation{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[41]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3657,7 +3763,7 @@ func (x *CandidateEvaluation) String() string {
 func (*CandidateEvaluation) ProtoMessage() {}
 
 func (x *CandidateEvaluation) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[41]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3670,7 +3776,7 @@ func (x *CandidateEvaluation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CandidateEvaluation.ProtoReflect.Descriptor instead.
 func (*CandidateEvaluation) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{41}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *CandidateEvaluation) GetId() string {
@@ -3717,7 +3823,7 @@ type EvaluateRolloutsRequest struct {
 
 func (x *EvaluateRolloutsRequest) Reset() {
 	*x = EvaluateRolloutsRequest{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[42]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3729,7 +3835,7 @@ func (x *EvaluateRolloutsRequest) String() string {
 func (*EvaluateRolloutsRequest) ProtoMessage() {}
 
 func (x *EvaluateRolloutsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[42]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3742,7 +3848,7 @@ func (x *EvaluateRolloutsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluateRolloutsRequest.ProtoReflect.Descriptor instead.
 func (*EvaluateRolloutsRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{42}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *EvaluateRolloutsRequest) GetStateJson() string {
@@ -3809,7 +3915,7 @@ type EvaluateRolloutsResponse struct {
 
 func (x *EvaluateRolloutsResponse) Reset() {
 	*x = EvaluateRolloutsResponse{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[43]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3821,7 +3927,7 @@ func (x *EvaluateRolloutsResponse) String() string {
 func (*EvaluateRolloutsResponse) ProtoMessage() {}
 
 func (x *EvaluateRolloutsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[43]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3834,7 +3940,7 @@ func (x *EvaluateRolloutsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluateRolloutsResponse.ProtoReflect.Descriptor instead.
 func (*EvaluateRolloutsResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{43}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *EvaluateRolloutsResponse) GetEvaluations() []*CandidateEvaluation {
@@ -3890,7 +3996,7 @@ type BatchCounts struct {
 
 func (x *BatchCounts) Reset() {
 	*x = BatchCounts{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[44]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3902,7 +4008,7 @@ func (x *BatchCounts) String() string {
 func (*BatchCounts) ProtoMessage() {}
 
 func (x *BatchCounts) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[44]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3915,7 +4021,7 @@ func (x *BatchCounts) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchCounts.ProtoReflect.Descriptor instead.
 func (*BatchCounts) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{44}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *BatchCounts) GetTotal() int32 {
@@ -3954,7 +4060,7 @@ type Batch struct {
 
 func (x *Batch) Reset() {
 	*x = Batch{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[45]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3966,7 +4072,7 @@ func (x *Batch) String() string {
 func (*Batch) ProtoMessage() {}
 
 func (x *Batch) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[45]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3979,7 +4085,7 @@ func (x *Batch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Batch.ProtoReflect.Descriptor instead.
 func (*Batch) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{45}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *Batch) GetId() string {
@@ -4041,7 +4147,7 @@ type BatchItemRequest struct {
 
 func (x *BatchItemRequest) Reset() {
 	*x = BatchItemRequest{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[46]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4053,7 +4159,7 @@ func (x *BatchItemRequest) String() string {
 func (*BatchItemRequest) ProtoMessage() {}
 
 func (x *BatchItemRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[46]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4066,7 +4172,7 @@ func (x *BatchItemRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchItemRequest.ProtoReflect.Descriptor instead.
 func (*BatchItemRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{46}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *BatchItemRequest) GetCustomId() string {
@@ -4097,7 +4203,7 @@ type SubmitBatchRequest struct {
 
 func (x *SubmitBatchRequest) Reset() {
 	*x = SubmitBatchRequest{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[47]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4109,7 +4215,7 @@ func (x *SubmitBatchRequest) String() string {
 func (*SubmitBatchRequest) ProtoMessage() {}
 
 func (x *SubmitBatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[47]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4122,7 +4228,7 @@ func (x *SubmitBatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitBatchRequest.ProtoReflect.Descriptor instead.
 func (*SubmitBatchRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{47}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *SubmitBatchRequest) GetItems() []*BatchItemRequest {
@@ -4170,7 +4276,7 @@ type SubmitBatchResponse struct {
 
 func (x *SubmitBatchResponse) Reset() {
 	*x = SubmitBatchResponse{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[48]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4182,7 +4288,7 @@ func (x *SubmitBatchResponse) String() string {
 func (*SubmitBatchResponse) ProtoMessage() {}
 
 func (x *SubmitBatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[48]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4195,7 +4301,7 @@ func (x *SubmitBatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitBatchResponse.ProtoReflect.Descriptor instead.
 func (*SubmitBatchResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{48}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *SubmitBatchResponse) GetBatch() *Batch {
@@ -4214,7 +4320,7 @@ type GetBatchRequest struct {
 
 func (x *GetBatchRequest) Reset() {
 	*x = GetBatchRequest{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[49]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4226,7 +4332,7 @@ func (x *GetBatchRequest) String() string {
 func (*GetBatchRequest) ProtoMessage() {}
 
 func (x *GetBatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[49]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4239,7 +4345,7 @@ func (x *GetBatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBatchRequest.ProtoReflect.Descriptor instead.
 func (*GetBatchRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{49}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *GetBatchRequest) GetBatchId() string {
@@ -4260,7 +4366,7 @@ type BatchItemError struct {
 
 func (x *BatchItemError) Reset() {
 	*x = BatchItemError{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[50]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4272,7 +4378,7 @@ func (x *BatchItemError) String() string {
 func (*BatchItemError) ProtoMessage() {}
 
 func (x *BatchItemError) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[50]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4285,7 +4391,7 @@ func (x *BatchItemError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchItemError.ProtoReflect.Descriptor instead.
 func (*BatchItemError) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{50}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *BatchItemError) GetCode() int32 {
@@ -4323,7 +4429,7 @@ type BatchItemResult struct {
 
 func (x *BatchItemResult) Reset() {
 	*x = BatchItemResult{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[51]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4335,7 +4441,7 @@ func (x *BatchItemResult) String() string {
 func (*BatchItemResult) ProtoMessage() {}
 
 func (x *BatchItemResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[51]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4348,7 +4454,7 @@ func (x *BatchItemResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchItemResult.ProtoReflect.Descriptor instead.
 func (*BatchItemResult) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{51}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *BatchItemResult) GetCustomId() string {
@@ -4410,7 +4516,7 @@ type ListBatchResultsRequest struct {
 
 func (x *ListBatchResultsRequest) Reset() {
 	*x = ListBatchResultsRequest{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[52]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4422,7 +4528,7 @@ func (x *ListBatchResultsRequest) String() string {
 func (*ListBatchResultsRequest) ProtoMessage() {}
 
 func (x *ListBatchResultsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[52]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4435,7 +4541,7 @@ func (x *ListBatchResultsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBatchResultsRequest.ProtoReflect.Descriptor instead.
 func (*ListBatchResultsRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{52}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ListBatchResultsRequest) GetBatchId() string {
@@ -4469,7 +4575,7 @@ type ListBatchResultsResponse struct {
 
 func (x *ListBatchResultsResponse) Reset() {
 	*x = ListBatchResultsResponse{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[53]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4481,7 +4587,7 @@ func (x *ListBatchResultsResponse) String() string {
 func (*ListBatchResultsResponse) ProtoMessage() {}
 
 func (x *ListBatchResultsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[53]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4494,7 +4600,7 @@ func (x *ListBatchResultsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBatchResultsResponse.ProtoReflect.Descriptor instead.
 func (*ListBatchResultsResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{53}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ListBatchResultsResponse) GetItems() []*BatchItemResult {
@@ -4520,7 +4626,7 @@ type CancelBatchRequest struct {
 
 func (x *CancelBatchRequest) Reset() {
 	*x = CancelBatchRequest{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[54]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4532,7 +4638,7 @@ func (x *CancelBatchRequest) String() string {
 func (*CancelBatchRequest) ProtoMessage() {}
 
 func (x *CancelBatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[54]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4545,7 +4651,7 @@ func (x *CancelBatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelBatchRequest.ProtoReflect.Descriptor instead.
 func (*CancelBatchRequest) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{54}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *CancelBatchRequest) GetBatchId() string {
@@ -4563,7 +4669,7 @@ type CancelBatchResponse struct {
 
 func (x *CancelBatchResponse) Reset() {
 	*x = CancelBatchResponse{}
-	mi := &file_ktms_v1_gateway_proto_msgTypes[55]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4575,7 +4681,7 @@ func (x *CancelBatchResponse) String() string {
 func (*CancelBatchResponse) ProtoMessage() {}
 
 func (x *CancelBatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ktms_v1_gateway_proto_msgTypes[55]
+	mi := &file_ktms_v1_gateway_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4588,7 +4694,7 @@ func (x *CancelBatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelBatchResponse.ProtoReflect.Descriptor instead.
 func (*CancelBatchResponse) Descriptor() ([]byte, []int) {
-	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{55}
+	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{56}
 }
 
 var File_ktms_v1_gateway_proto protoreflect.FileDescriptor
@@ -4858,7 +4964,7 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\x0efalse_criteria\x18\x06 \x01(\tR\rfalseCriteria\x1a:\n" +
 	"\fOptionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9d\x03\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xed\x03\n" +
 	"\vJudgeAnswer\x12&\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x12.ktms.v1.JudgeTypeR\x04type\x12\x16\n" +
 	"\x06choice\x18\x02 \x01(\tR\x06choice\x12\x12\n" +
@@ -4868,21 +4974,29 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\n" +
 	"confidence\x18\x06 \x01(\x01R\n" +
 	"confidence\x128\n" +
-	"\x06legend\x18\a \x03(\v2 .ktms.v1.JudgeAnswer.LegendEntryR\x06legend\x1a@\n" +
+	"\x06legend\x18\a \x03(\v2 .ktms.v1.JudgeAnswer.LegendEntryR\x06legend\x12#\n" +
+	"\x03box\x18\b \x01(\v2\x11.ktms.v1.JudgeBoxR\x03box\x12)\n" +
+	"\x10confidence_unset\x18\t \x01(\bR\x0fconfidenceUnset\x1a@\n" +
 	"\x12ProbabilitiesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\x1a9\n" +
 	"\vLegendEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"=\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"^\n" +
+	"\bJudgeBox\x12\x10\n" +
+	"\x03top\x18\x01 \x01(\x01R\x03top\x12\x16\n" +
+	"\x06bottom\x18\x02 \x01(\x01R\x06bottom\x12\x12\n" +
+	"\x04left\x18\x03 \x01(\x01R\x04left\x12\x14\n" +
+	"\x05right\x18\x04 \x01(\x01R\x05right\"=\n" +
 	"\rEmbeddingPart\x12\x16\n" +
 	"\x06values\x18\x01 \x03(\x02R\x06values\x12\x14\n" +
-	"\x05model\x18\x02 \x01(\tR\x05model\"\xcc\x01\n" +
+	"\x05model\x18\x02 \x01(\tR\x05model\"\xe0\x01\n" +
 	"\tMediaPart\x12'\n" +
 	"\x04text\x18\x01 \x01(\v2\x11.ktms.v1.TextPartH\x00R\x04text\x12*\n" +
 	"\x05image\x18\x02 \x01(\v2\x12.ktms.v1.ImagePartH\x00R\x05image\x12*\n" +
 	"\x05audio\x18\x03 \x01(\v2\x12.ktms.v1.AudioPartH\x00R\x05audio\x126\n" +
-	"\tembedding\x18\x04 \x01(\v2\x16.ktms.v1.EmbeddingPartH\x00R\tembeddingB\x06\n" +
+	"\tembedding\x18\x04 \x01(\v2\x16.ktms.v1.EmbeddingPartH\x00R\tembedding\x12\x12\n" +
+	"\x04name\x18\x05 \x01(\tR\x04nameB\x06\n" +
 	"\x04part\"\xb8\x04\n" +
 	"\fJudgeRequest\x12\x1d\n" +
 	"\n" +
@@ -5073,12 +5187,13 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\x18MESSAGE_ROLE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11MESSAGE_ROLE_USER\x10\x01\x12\x1a\n" +
 	"\x16MESSAGE_ROLE_ASSISTANT\x10\x02\x12\x15\n" +
-	"\x11MESSAGE_ROLE_TOOL\x10\x03*i\n" +
+	"\x11MESSAGE_ROLE_TOOL\x10\x03*}\n" +
 	"\tJudgeType\x12\x1a\n" +
 	"\x16JUDGE_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fJUDGE_TYPE_NOUL\x10\x01\x12\x15\n" +
 	"\x11JUDGE_TYPE_CHOICE\x10\x02\x12\x14\n" +
-	"\x10JUDGE_TYPE_SCORE\x10\x03*\xc2\x01\n" +
+	"\x10JUDGE_TYPE_SCORE\x10\x03\x12\x12\n" +
+	"\x0eJUDGE_TYPE_BOX\x10\x04*\xc2\x01\n" +
 	"\n" +
 	"BatchState\x12\x1b\n" +
 	"\x17BATCH_STATE_UNSPECIFIED\x10\x00\x12\x17\n" +
@@ -5119,7 +5234,7 @@ func file_ktms_v1_gateway_proto_rawDescGZIP() []byte {
 }
 
 var file_ktms_v1_gateway_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_ktms_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 80)
+var file_ktms_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 81)
 var file_ktms_v1_gateway_proto_goTypes = []any{
 	(Effort)(0),                       // 0: ktms.v1.Effort
 	(MessageRole)(0),                  // 1: ktms.v1.MessageRole
@@ -5156,57 +5271,58 @@ var file_ktms_v1_gateway_proto_goTypes = []any{
 	(*GenerateImageResponse)(nil),     // 32: ktms.v1.GenerateImageResponse
 	(*JudgeQuestion)(nil),             // 33: ktms.v1.JudgeQuestion
 	(*JudgeAnswer)(nil),               // 34: ktms.v1.JudgeAnswer
-	(*EmbeddingPart)(nil),             // 35: ktms.v1.EmbeddingPart
-	(*MediaPart)(nil),                 // 36: ktms.v1.MediaPart
-	(*JudgeRequest)(nil),              // 37: ktms.v1.JudgeRequest
-	(*JudgeResponse)(nil),             // 38: ktms.v1.JudgeResponse
-	(*Embedding)(nil),                 // 39: ktms.v1.Embedding
-	(*GetEmbeddingsRequest)(nil),      // 40: ktms.v1.GetEmbeddingsRequest
-	(*GetEmbeddingsResponse)(nil),     // 41: ktms.v1.GetEmbeddingsResponse
-	(*TranslateRequest)(nil),          // 42: ktms.v1.TranslateRequest
-	(*Translation)(nil),               // 43: ktms.v1.Translation
-	(*TranslateResponse)(nil),         // 44: ktms.v1.TranslateResponse
-	(*RolloutCandidate)(nil),          // 45: ktms.v1.RolloutCandidate
-	(*CandidateEvaluation)(nil),       // 46: ktms.v1.CandidateEvaluation
-	(*EvaluateRolloutsRequest)(nil),   // 47: ktms.v1.EvaluateRolloutsRequest
-	(*EvaluateRolloutsResponse)(nil),  // 48: ktms.v1.EvaluateRolloutsResponse
-	(*BatchCounts)(nil),               // 49: ktms.v1.BatchCounts
-	(*Batch)(nil),                     // 50: ktms.v1.Batch
-	(*BatchItemRequest)(nil),          // 51: ktms.v1.BatchItemRequest
-	(*SubmitBatchRequest)(nil),        // 52: ktms.v1.SubmitBatchRequest
-	(*SubmitBatchResponse)(nil),       // 53: ktms.v1.SubmitBatchResponse
-	(*GetBatchRequest)(nil),           // 54: ktms.v1.GetBatchRequest
-	(*BatchItemError)(nil),            // 55: ktms.v1.BatchItemError
-	(*BatchItemResult)(nil),           // 56: ktms.v1.BatchItemResult
-	(*ListBatchResultsRequest)(nil),   // 57: ktms.v1.ListBatchResultsRequest
-	(*ListBatchResultsResponse)(nil),  // 58: ktms.v1.ListBatchResultsResponse
-	(*CancelBatchRequest)(nil),        // 59: ktms.v1.CancelBatchRequest
-	(*CancelBatchResponse)(nil),       // 60: ktms.v1.CancelBatchResponse
-	nil,                               // 61: ktms.v1.SchemaProperty.PropertiesEntry
-	nil,                               // 62: ktms.v1.ResponseSchema.PropertiesEntry
-	nil,                               // 63: ktms.v1.GenerateTextRequest.AttributesEntry
-	nil,                               // 64: ktms.v1.GenerateTextRequest.NeedsEntry
-	nil,                               // 65: ktms.v1.ModelInfo.CompetenciesEntry
-	nil,                               // 66: ktms.v1.SynthesizeSpeechRequest.AttributesEntry
-	nil,                               // 67: ktms.v1.SynthesizeSpeechRequest.NeedsEntry
-	nil,                               // 68: ktms.v1.GenerateImageRequest.AttributesEntry
-	nil,                               // 69: ktms.v1.GenerateImageRequest.NeedsEntry
-	nil,                               // 70: ktms.v1.JudgeQuestion.OptionsEntry
-	nil,                               // 71: ktms.v1.JudgeAnswer.ProbabilitiesEntry
-	nil,                               // 72: ktms.v1.JudgeAnswer.LegendEntry
-	nil,                               // 73: ktms.v1.JudgeRequest.QuestionsEntry
-	nil,                               // 74: ktms.v1.JudgeRequest.AttributesEntry
-	nil,                               // 75: ktms.v1.JudgeRequest.NeedsEntry
-	nil,                               // 76: ktms.v1.JudgeResponse.AnswersEntry
-	nil,                               // 77: ktms.v1.GetEmbeddingsRequest.AttributesEntry
-	nil,                               // 78: ktms.v1.TranslateRequest.AttributesEntry
-	nil,                               // 79: ktms.v1.TranslateRequest.NeedsEntry
-	nil,                               // 80: ktms.v1.CandidateEvaluation.AnswersEntry
-	nil,                               // 81: ktms.v1.EvaluateRolloutsRequest.CriteriaEntry
-	nil,                               // 82: ktms.v1.EvaluateRolloutsRequest.AttributesEntry
-	nil,                               // 83: ktms.v1.SubmitBatchRequest.AttributesEntry
-	nil,                               // 84: ktms.v1.SubmitBatchRequest.NeedsEntry
-	(*timestamppb.Timestamp)(nil),     // 85: google.protobuf.Timestamp
+	(*JudgeBox)(nil),                  // 35: ktms.v1.JudgeBox
+	(*EmbeddingPart)(nil),             // 36: ktms.v1.EmbeddingPart
+	(*MediaPart)(nil),                 // 37: ktms.v1.MediaPart
+	(*JudgeRequest)(nil),              // 38: ktms.v1.JudgeRequest
+	(*JudgeResponse)(nil),             // 39: ktms.v1.JudgeResponse
+	(*Embedding)(nil),                 // 40: ktms.v1.Embedding
+	(*GetEmbeddingsRequest)(nil),      // 41: ktms.v1.GetEmbeddingsRequest
+	(*GetEmbeddingsResponse)(nil),     // 42: ktms.v1.GetEmbeddingsResponse
+	(*TranslateRequest)(nil),          // 43: ktms.v1.TranslateRequest
+	(*Translation)(nil),               // 44: ktms.v1.Translation
+	(*TranslateResponse)(nil),         // 45: ktms.v1.TranslateResponse
+	(*RolloutCandidate)(nil),          // 46: ktms.v1.RolloutCandidate
+	(*CandidateEvaluation)(nil),       // 47: ktms.v1.CandidateEvaluation
+	(*EvaluateRolloutsRequest)(nil),   // 48: ktms.v1.EvaluateRolloutsRequest
+	(*EvaluateRolloutsResponse)(nil),  // 49: ktms.v1.EvaluateRolloutsResponse
+	(*BatchCounts)(nil),               // 50: ktms.v1.BatchCounts
+	(*Batch)(nil),                     // 51: ktms.v1.Batch
+	(*BatchItemRequest)(nil),          // 52: ktms.v1.BatchItemRequest
+	(*SubmitBatchRequest)(nil),        // 53: ktms.v1.SubmitBatchRequest
+	(*SubmitBatchResponse)(nil),       // 54: ktms.v1.SubmitBatchResponse
+	(*GetBatchRequest)(nil),           // 55: ktms.v1.GetBatchRequest
+	(*BatchItemError)(nil),            // 56: ktms.v1.BatchItemError
+	(*BatchItemResult)(nil),           // 57: ktms.v1.BatchItemResult
+	(*ListBatchResultsRequest)(nil),   // 58: ktms.v1.ListBatchResultsRequest
+	(*ListBatchResultsResponse)(nil),  // 59: ktms.v1.ListBatchResultsResponse
+	(*CancelBatchRequest)(nil),        // 60: ktms.v1.CancelBatchRequest
+	(*CancelBatchResponse)(nil),       // 61: ktms.v1.CancelBatchResponse
+	nil,                               // 62: ktms.v1.SchemaProperty.PropertiesEntry
+	nil,                               // 63: ktms.v1.ResponseSchema.PropertiesEntry
+	nil,                               // 64: ktms.v1.GenerateTextRequest.AttributesEntry
+	nil,                               // 65: ktms.v1.GenerateTextRequest.NeedsEntry
+	nil,                               // 66: ktms.v1.ModelInfo.CompetenciesEntry
+	nil,                               // 67: ktms.v1.SynthesizeSpeechRequest.AttributesEntry
+	nil,                               // 68: ktms.v1.SynthesizeSpeechRequest.NeedsEntry
+	nil,                               // 69: ktms.v1.GenerateImageRequest.AttributesEntry
+	nil,                               // 70: ktms.v1.GenerateImageRequest.NeedsEntry
+	nil,                               // 71: ktms.v1.JudgeQuestion.OptionsEntry
+	nil,                               // 72: ktms.v1.JudgeAnswer.ProbabilitiesEntry
+	nil,                               // 73: ktms.v1.JudgeAnswer.LegendEntry
+	nil,                               // 74: ktms.v1.JudgeRequest.QuestionsEntry
+	nil,                               // 75: ktms.v1.JudgeRequest.AttributesEntry
+	nil,                               // 76: ktms.v1.JudgeRequest.NeedsEntry
+	nil,                               // 77: ktms.v1.JudgeResponse.AnswersEntry
+	nil,                               // 78: ktms.v1.GetEmbeddingsRequest.AttributesEntry
+	nil,                               // 79: ktms.v1.TranslateRequest.AttributesEntry
+	nil,                               // 80: ktms.v1.TranslateRequest.NeedsEntry
+	nil,                               // 81: ktms.v1.CandidateEvaluation.AnswersEntry
+	nil,                               // 82: ktms.v1.EvaluateRolloutsRequest.CriteriaEntry
+	nil,                               // 83: ktms.v1.EvaluateRolloutsRequest.AttributesEntry
+	nil,                               // 84: ktms.v1.SubmitBatchRequest.AttributesEntry
+	nil,                               // 85: ktms.v1.SubmitBatchRequest.NeedsEntry
+	(*timestamppb.Timestamp)(nil),     // 86: google.protobuf.Timestamp
 }
 var file_ktms_v1_gateway_proto_depIdxs = []int32{
 	6,   // 0: ktms.v1.ToolCall.function:type_name -> ktms.v1.FunctionCall
@@ -5220,17 +5336,17 @@ var file_ktms_v1_gateway_proto_depIdxs = []int32{
 	1,   // 8: ktms.v1.ChatMessage.role:type_name -> ktms.v1.MessageRole
 	5,   // 9: ktms.v1.ChatMessage.tool_calls:type_name -> ktms.v1.ToolCall
 	15,  // 10: ktms.v1.ChatMessage.parts:type_name -> ktms.v1.ContentPart
-	61,  // 11: ktms.v1.SchemaProperty.properties:type_name -> ktms.v1.SchemaProperty.PropertiesEntry
+	62,  // 11: ktms.v1.SchemaProperty.properties:type_name -> ktms.v1.SchemaProperty.PropertiesEntry
 	17,  // 12: ktms.v1.SchemaProperty.items:type_name -> ktms.v1.SchemaProperty
-	62,  // 13: ktms.v1.ResponseSchema.properties:type_name -> ktms.v1.ResponseSchema.PropertiesEntry
+	63,  // 13: ktms.v1.ResponseSchema.properties:type_name -> ktms.v1.ResponseSchema.PropertiesEntry
 	17,  // 14: ktms.v1.ResponseSchema.items:type_name -> ktms.v1.SchemaProperty
 	0,   // 15: ktms.v1.GenerateTextRequest.effort:type_name -> ktms.v1.Effort
-	63,  // 16: ktms.v1.GenerateTextRequest.attributes:type_name -> ktms.v1.GenerateTextRequest.AttributesEntry
+	64,  // 16: ktms.v1.GenerateTextRequest.attributes:type_name -> ktms.v1.GenerateTextRequest.AttributesEntry
 	16,  // 17: ktms.v1.GenerateTextRequest.messages:type_name -> ktms.v1.ChatMessage
 	18,  // 18: ktms.v1.GenerateTextRequest.response_schema:type_name -> ktms.v1.ResponseSchema
 	8,   // 19: ktms.v1.GenerateTextRequest.tools:type_name -> ktms.v1.Tool
 	10,  // 20: ktms.v1.GenerateTextRequest.tool_choice:type_name -> ktms.v1.ToolChoice
-	64,  // 21: ktms.v1.GenerateTextRequest.needs:type_name -> ktms.v1.GenerateTextRequest.NeedsEntry
+	65,  // 21: ktms.v1.GenerateTextRequest.needs:type_name -> ktms.v1.GenerateTextRequest.NeedsEntry
 	5,   // 22: ktms.v1.Choice.tool_calls:type_name -> ktms.v1.ToolCall
 	20,  // 23: ktms.v1.GenerateTextResponse.usage:type_name -> ktms.v1.TokensUsage
 	21,  // 24: ktms.v1.GenerateTextResponse.details:type_name -> ktms.v1.Choice
@@ -5238,97 +5354,98 @@ var file_ktms_v1_gateway_proto_depIdxs = []int32{
 	7,   // 26: ktms.v1.GenerateTextChunk.tool_call_chunks:type_name -> ktms.v1.ToolCallChunk
 	0,   // 27: ktms.v1.ModelInfo.efforts:type_name -> ktms.v1.Effort
 	26,  // 28: ktms.v1.ModelInfo.languages:type_name -> ktms.v1.ModelLanguages
-	65,  // 29: ktms.v1.ModelInfo.competencies:type_name -> ktms.v1.ModelInfo.CompetenciesEntry
+	66,  // 29: ktms.v1.ModelInfo.competencies:type_name -> ktms.v1.ModelInfo.CompetenciesEntry
 	25,  // 30: ktms.v1.ListModelsResponse.models:type_name -> ktms.v1.ModelInfo
 	19,  // 31: ktms.v1.GenerateTextStreamRequest.request:type_name -> ktms.v1.GenerateTextRequest
-	66,  // 32: ktms.v1.SynthesizeSpeechRequest.attributes:type_name -> ktms.v1.SynthesizeSpeechRequest.AttributesEntry
-	67,  // 33: ktms.v1.SynthesizeSpeechRequest.needs:type_name -> ktms.v1.SynthesizeSpeechRequest.NeedsEntry
+	67,  // 32: ktms.v1.SynthesizeSpeechRequest.attributes:type_name -> ktms.v1.SynthesizeSpeechRequest.AttributesEntry
+	68,  // 33: ktms.v1.SynthesizeSpeechRequest.needs:type_name -> ktms.v1.SynthesizeSpeechRequest.NeedsEntry
 	20,  // 34: ktms.v1.SynthesizeSpeechResponse.usage:type_name -> ktms.v1.TokensUsage
-	68,  // 35: ktms.v1.GenerateImageRequest.attributes:type_name -> ktms.v1.GenerateImageRequest.AttributesEntry
-	69,  // 36: ktms.v1.GenerateImageRequest.needs:type_name -> ktms.v1.GenerateImageRequest.NeedsEntry
+	69,  // 35: ktms.v1.GenerateImageRequest.attributes:type_name -> ktms.v1.GenerateImageRequest.AttributesEntry
+	70,  // 36: ktms.v1.GenerateImageRequest.needs:type_name -> ktms.v1.GenerateImageRequest.NeedsEntry
 	20,  // 37: ktms.v1.GenerateImageResponse.usage:type_name -> ktms.v1.TokensUsage
 	2,   // 38: ktms.v1.JudgeQuestion.type:type_name -> ktms.v1.JudgeType
-	70,  // 39: ktms.v1.JudgeQuestion.options:type_name -> ktms.v1.JudgeQuestion.OptionsEntry
+	71,  // 39: ktms.v1.JudgeQuestion.options:type_name -> ktms.v1.JudgeQuestion.OptionsEntry
 	2,   // 40: ktms.v1.JudgeAnswer.type:type_name -> ktms.v1.JudgeType
-	71,  // 41: ktms.v1.JudgeAnswer.probabilities:type_name -> ktms.v1.JudgeAnswer.ProbabilitiesEntry
-	72,  // 42: ktms.v1.JudgeAnswer.legend:type_name -> ktms.v1.JudgeAnswer.LegendEntry
-	14,  // 43: ktms.v1.MediaPart.text:type_name -> ktms.v1.TextPart
-	11,  // 44: ktms.v1.MediaPart.image:type_name -> ktms.v1.ImagePart
-	12,  // 45: ktms.v1.MediaPart.audio:type_name -> ktms.v1.AudioPart
-	35,  // 46: ktms.v1.MediaPart.embedding:type_name -> ktms.v1.EmbeddingPart
-	73,  // 47: ktms.v1.JudgeRequest.questions:type_name -> ktms.v1.JudgeRequest.QuestionsEntry
-	74,  // 48: ktms.v1.JudgeRequest.attributes:type_name -> ktms.v1.JudgeRequest.AttributesEntry
-	36,  // 49: ktms.v1.JudgeRequest.state_media:type_name -> ktms.v1.MediaPart
-	75,  // 50: ktms.v1.JudgeRequest.needs:type_name -> ktms.v1.JudgeRequest.NeedsEntry
-	76,  // 51: ktms.v1.JudgeResponse.answers:type_name -> ktms.v1.JudgeResponse.AnswersEntry
-	20,  // 52: ktms.v1.JudgeResponse.usage:type_name -> ktms.v1.TokensUsage
-	77,  // 53: ktms.v1.GetEmbeddingsRequest.attributes:type_name -> ktms.v1.GetEmbeddingsRequest.AttributesEntry
-	39,  // 54: ktms.v1.GetEmbeddingsResponse.data:type_name -> ktms.v1.Embedding
-	20,  // 55: ktms.v1.GetEmbeddingsResponse.usage:type_name -> ktms.v1.TokensUsage
-	78,  // 56: ktms.v1.TranslateRequest.attributes:type_name -> ktms.v1.TranslateRequest.AttributesEntry
-	79,  // 57: ktms.v1.TranslateRequest.needs:type_name -> ktms.v1.TranslateRequest.NeedsEntry
-	43,  // 58: ktms.v1.TranslateResponse.translations:type_name -> ktms.v1.Translation
-	20,  // 59: ktms.v1.TranslateResponse.usage:type_name -> ktms.v1.TokensUsage
-	36,  // 60: ktms.v1.RolloutCandidate.action_media:type_name -> ktms.v1.MediaPart
-	80,  // 61: ktms.v1.CandidateEvaluation.answers:type_name -> ktms.v1.CandidateEvaluation.AnswersEntry
-	36,  // 62: ktms.v1.EvaluateRolloutsRequest.state_media:type_name -> ktms.v1.MediaPart
-	45,  // 63: ktms.v1.EvaluateRolloutsRequest.candidates:type_name -> ktms.v1.RolloutCandidate
-	81,  // 64: ktms.v1.EvaluateRolloutsRequest.criteria:type_name -> ktms.v1.EvaluateRolloutsRequest.CriteriaEntry
-	82,  // 65: ktms.v1.EvaluateRolloutsRequest.attributes:type_name -> ktms.v1.EvaluateRolloutsRequest.AttributesEntry
-	46,  // 66: ktms.v1.EvaluateRolloutsResponse.evaluations:type_name -> ktms.v1.CandidateEvaluation
-	20,  // 67: ktms.v1.EvaluateRolloutsResponse.usage:type_name -> ktms.v1.TokensUsage
-	3,   // 68: ktms.v1.Batch.state:type_name -> ktms.v1.BatchState
-	49,  // 69: ktms.v1.Batch.counts:type_name -> ktms.v1.BatchCounts
-	85,  // 70: ktms.v1.Batch.created_at:type_name -> google.protobuf.Timestamp
-	85,  // 71: ktms.v1.Batch.completed_at:type_name -> google.protobuf.Timestamp
-	19,  // 72: ktms.v1.BatchItemRequest.request:type_name -> ktms.v1.GenerateTextRequest
-	51,  // 73: ktms.v1.SubmitBatchRequest.items:type_name -> ktms.v1.BatchItemRequest
-	0,   // 74: ktms.v1.SubmitBatchRequest.effort:type_name -> ktms.v1.Effort
-	83,  // 75: ktms.v1.SubmitBatchRequest.attributes:type_name -> ktms.v1.SubmitBatchRequest.AttributesEntry
-	84,  // 76: ktms.v1.SubmitBatchRequest.needs:type_name -> ktms.v1.SubmitBatchRequest.NeedsEntry
-	50,  // 77: ktms.v1.SubmitBatchResponse.batch:type_name -> ktms.v1.Batch
-	22,  // 78: ktms.v1.BatchItemResult.response:type_name -> ktms.v1.GenerateTextResponse
-	55,  // 79: ktms.v1.BatchItemResult.error:type_name -> ktms.v1.BatchItemError
-	56,  // 80: ktms.v1.ListBatchResultsResponse.items:type_name -> ktms.v1.BatchItemResult
-	17,  // 81: ktms.v1.SchemaProperty.PropertiesEntry.value:type_name -> ktms.v1.SchemaProperty
-	17,  // 82: ktms.v1.ResponseSchema.PropertiesEntry.value:type_name -> ktms.v1.SchemaProperty
-	33,  // 83: ktms.v1.JudgeRequest.QuestionsEntry.value:type_name -> ktms.v1.JudgeQuestion
-	34,  // 84: ktms.v1.JudgeResponse.AnswersEntry.value:type_name -> ktms.v1.JudgeAnswer
-	34,  // 85: ktms.v1.CandidateEvaluation.AnswersEntry.value:type_name -> ktms.v1.JudgeAnswer
-	33,  // 86: ktms.v1.EvaluateRolloutsRequest.CriteriaEntry.value:type_name -> ktms.v1.JudgeQuestion
-	19,  // 87: ktms.v1.GatewayService.GenerateText:input_type -> ktms.v1.GenerateTextRequest
-	28,  // 88: ktms.v1.GatewayService.GenerateTextStream:input_type -> ktms.v1.GenerateTextStreamRequest
-	29,  // 89: ktms.v1.GatewayService.SynthesizeSpeech:input_type -> ktms.v1.SynthesizeSpeechRequest
-	31,  // 90: ktms.v1.GatewayService.GenerateImage:input_type -> ktms.v1.GenerateImageRequest
-	37,  // 91: ktms.v1.GatewayService.Judge:input_type -> ktms.v1.JudgeRequest
-	40,  // 92: ktms.v1.GatewayService.GetEmbeddings:input_type -> ktms.v1.GetEmbeddingsRequest
-	37,  // 93: ktms.v1.GatewayService.JudgeStream:input_type -> ktms.v1.JudgeRequest
-	42,  // 94: ktms.v1.GatewayService.Translate:input_type -> ktms.v1.TranslateRequest
-	47,  // 95: ktms.v1.GatewayService.EvaluateRollouts:input_type -> ktms.v1.EvaluateRolloutsRequest
-	24,  // 96: ktms.v1.GatewayService.ListModels:input_type -> ktms.v1.ListModelsRequest
-	52,  // 97: ktms.v1.GatewayService.SubmitBatch:input_type -> ktms.v1.SubmitBatchRequest
-	54,  // 98: ktms.v1.GatewayService.GetBatch:input_type -> ktms.v1.GetBatchRequest
-	57,  // 99: ktms.v1.GatewayService.ListBatchResults:input_type -> ktms.v1.ListBatchResultsRequest
-	59,  // 100: ktms.v1.GatewayService.CancelBatch:input_type -> ktms.v1.CancelBatchRequest
-	22,  // 101: ktms.v1.GatewayService.GenerateText:output_type -> ktms.v1.GenerateTextResponse
-	23,  // 102: ktms.v1.GatewayService.GenerateTextStream:output_type -> ktms.v1.GenerateTextChunk
-	30,  // 103: ktms.v1.GatewayService.SynthesizeSpeech:output_type -> ktms.v1.SynthesizeSpeechResponse
-	32,  // 104: ktms.v1.GatewayService.GenerateImage:output_type -> ktms.v1.GenerateImageResponse
-	38,  // 105: ktms.v1.GatewayService.Judge:output_type -> ktms.v1.JudgeResponse
-	41,  // 106: ktms.v1.GatewayService.GetEmbeddings:output_type -> ktms.v1.GetEmbeddingsResponse
-	38,  // 107: ktms.v1.GatewayService.JudgeStream:output_type -> ktms.v1.JudgeResponse
-	44,  // 108: ktms.v1.GatewayService.Translate:output_type -> ktms.v1.TranslateResponse
-	48,  // 109: ktms.v1.GatewayService.EvaluateRollouts:output_type -> ktms.v1.EvaluateRolloutsResponse
-	27,  // 110: ktms.v1.GatewayService.ListModels:output_type -> ktms.v1.ListModelsResponse
-	53,  // 111: ktms.v1.GatewayService.SubmitBatch:output_type -> ktms.v1.SubmitBatchResponse
-	50,  // 112: ktms.v1.GatewayService.GetBatch:output_type -> ktms.v1.Batch
-	58,  // 113: ktms.v1.GatewayService.ListBatchResults:output_type -> ktms.v1.ListBatchResultsResponse
-	60,  // 114: ktms.v1.GatewayService.CancelBatch:output_type -> ktms.v1.CancelBatchResponse
-	101, // [101:115] is the sub-list for method output_type
-	87,  // [87:101] is the sub-list for method input_type
-	87,  // [87:87] is the sub-list for extension type_name
-	87,  // [87:87] is the sub-list for extension extendee
-	0,   // [0:87] is the sub-list for field type_name
+	72,  // 41: ktms.v1.JudgeAnswer.probabilities:type_name -> ktms.v1.JudgeAnswer.ProbabilitiesEntry
+	73,  // 42: ktms.v1.JudgeAnswer.legend:type_name -> ktms.v1.JudgeAnswer.LegendEntry
+	35,  // 43: ktms.v1.JudgeAnswer.box:type_name -> ktms.v1.JudgeBox
+	14,  // 44: ktms.v1.MediaPart.text:type_name -> ktms.v1.TextPart
+	11,  // 45: ktms.v1.MediaPart.image:type_name -> ktms.v1.ImagePart
+	12,  // 46: ktms.v1.MediaPart.audio:type_name -> ktms.v1.AudioPart
+	36,  // 47: ktms.v1.MediaPart.embedding:type_name -> ktms.v1.EmbeddingPart
+	74,  // 48: ktms.v1.JudgeRequest.questions:type_name -> ktms.v1.JudgeRequest.QuestionsEntry
+	75,  // 49: ktms.v1.JudgeRequest.attributes:type_name -> ktms.v1.JudgeRequest.AttributesEntry
+	37,  // 50: ktms.v1.JudgeRequest.state_media:type_name -> ktms.v1.MediaPart
+	76,  // 51: ktms.v1.JudgeRequest.needs:type_name -> ktms.v1.JudgeRequest.NeedsEntry
+	77,  // 52: ktms.v1.JudgeResponse.answers:type_name -> ktms.v1.JudgeResponse.AnswersEntry
+	20,  // 53: ktms.v1.JudgeResponse.usage:type_name -> ktms.v1.TokensUsage
+	78,  // 54: ktms.v1.GetEmbeddingsRequest.attributes:type_name -> ktms.v1.GetEmbeddingsRequest.AttributesEntry
+	40,  // 55: ktms.v1.GetEmbeddingsResponse.data:type_name -> ktms.v1.Embedding
+	20,  // 56: ktms.v1.GetEmbeddingsResponse.usage:type_name -> ktms.v1.TokensUsage
+	79,  // 57: ktms.v1.TranslateRequest.attributes:type_name -> ktms.v1.TranslateRequest.AttributesEntry
+	80,  // 58: ktms.v1.TranslateRequest.needs:type_name -> ktms.v1.TranslateRequest.NeedsEntry
+	44,  // 59: ktms.v1.TranslateResponse.translations:type_name -> ktms.v1.Translation
+	20,  // 60: ktms.v1.TranslateResponse.usage:type_name -> ktms.v1.TokensUsage
+	37,  // 61: ktms.v1.RolloutCandidate.action_media:type_name -> ktms.v1.MediaPart
+	81,  // 62: ktms.v1.CandidateEvaluation.answers:type_name -> ktms.v1.CandidateEvaluation.AnswersEntry
+	37,  // 63: ktms.v1.EvaluateRolloutsRequest.state_media:type_name -> ktms.v1.MediaPart
+	46,  // 64: ktms.v1.EvaluateRolloutsRequest.candidates:type_name -> ktms.v1.RolloutCandidate
+	82,  // 65: ktms.v1.EvaluateRolloutsRequest.criteria:type_name -> ktms.v1.EvaluateRolloutsRequest.CriteriaEntry
+	83,  // 66: ktms.v1.EvaluateRolloutsRequest.attributes:type_name -> ktms.v1.EvaluateRolloutsRequest.AttributesEntry
+	47,  // 67: ktms.v1.EvaluateRolloutsResponse.evaluations:type_name -> ktms.v1.CandidateEvaluation
+	20,  // 68: ktms.v1.EvaluateRolloutsResponse.usage:type_name -> ktms.v1.TokensUsage
+	3,   // 69: ktms.v1.Batch.state:type_name -> ktms.v1.BatchState
+	50,  // 70: ktms.v1.Batch.counts:type_name -> ktms.v1.BatchCounts
+	86,  // 71: ktms.v1.Batch.created_at:type_name -> google.protobuf.Timestamp
+	86,  // 72: ktms.v1.Batch.completed_at:type_name -> google.protobuf.Timestamp
+	19,  // 73: ktms.v1.BatchItemRequest.request:type_name -> ktms.v1.GenerateTextRequest
+	52,  // 74: ktms.v1.SubmitBatchRequest.items:type_name -> ktms.v1.BatchItemRequest
+	0,   // 75: ktms.v1.SubmitBatchRequest.effort:type_name -> ktms.v1.Effort
+	84,  // 76: ktms.v1.SubmitBatchRequest.attributes:type_name -> ktms.v1.SubmitBatchRequest.AttributesEntry
+	85,  // 77: ktms.v1.SubmitBatchRequest.needs:type_name -> ktms.v1.SubmitBatchRequest.NeedsEntry
+	51,  // 78: ktms.v1.SubmitBatchResponse.batch:type_name -> ktms.v1.Batch
+	22,  // 79: ktms.v1.BatchItemResult.response:type_name -> ktms.v1.GenerateTextResponse
+	56,  // 80: ktms.v1.BatchItemResult.error:type_name -> ktms.v1.BatchItemError
+	57,  // 81: ktms.v1.ListBatchResultsResponse.items:type_name -> ktms.v1.BatchItemResult
+	17,  // 82: ktms.v1.SchemaProperty.PropertiesEntry.value:type_name -> ktms.v1.SchemaProperty
+	17,  // 83: ktms.v1.ResponseSchema.PropertiesEntry.value:type_name -> ktms.v1.SchemaProperty
+	33,  // 84: ktms.v1.JudgeRequest.QuestionsEntry.value:type_name -> ktms.v1.JudgeQuestion
+	34,  // 85: ktms.v1.JudgeResponse.AnswersEntry.value:type_name -> ktms.v1.JudgeAnswer
+	34,  // 86: ktms.v1.CandidateEvaluation.AnswersEntry.value:type_name -> ktms.v1.JudgeAnswer
+	33,  // 87: ktms.v1.EvaluateRolloutsRequest.CriteriaEntry.value:type_name -> ktms.v1.JudgeQuestion
+	19,  // 88: ktms.v1.GatewayService.GenerateText:input_type -> ktms.v1.GenerateTextRequest
+	28,  // 89: ktms.v1.GatewayService.GenerateTextStream:input_type -> ktms.v1.GenerateTextStreamRequest
+	29,  // 90: ktms.v1.GatewayService.SynthesizeSpeech:input_type -> ktms.v1.SynthesizeSpeechRequest
+	31,  // 91: ktms.v1.GatewayService.GenerateImage:input_type -> ktms.v1.GenerateImageRequest
+	38,  // 92: ktms.v1.GatewayService.Judge:input_type -> ktms.v1.JudgeRequest
+	41,  // 93: ktms.v1.GatewayService.GetEmbeddings:input_type -> ktms.v1.GetEmbeddingsRequest
+	38,  // 94: ktms.v1.GatewayService.JudgeStream:input_type -> ktms.v1.JudgeRequest
+	43,  // 95: ktms.v1.GatewayService.Translate:input_type -> ktms.v1.TranslateRequest
+	48,  // 96: ktms.v1.GatewayService.EvaluateRollouts:input_type -> ktms.v1.EvaluateRolloutsRequest
+	24,  // 97: ktms.v1.GatewayService.ListModels:input_type -> ktms.v1.ListModelsRequest
+	53,  // 98: ktms.v1.GatewayService.SubmitBatch:input_type -> ktms.v1.SubmitBatchRequest
+	55,  // 99: ktms.v1.GatewayService.GetBatch:input_type -> ktms.v1.GetBatchRequest
+	58,  // 100: ktms.v1.GatewayService.ListBatchResults:input_type -> ktms.v1.ListBatchResultsRequest
+	60,  // 101: ktms.v1.GatewayService.CancelBatch:input_type -> ktms.v1.CancelBatchRequest
+	22,  // 102: ktms.v1.GatewayService.GenerateText:output_type -> ktms.v1.GenerateTextResponse
+	23,  // 103: ktms.v1.GatewayService.GenerateTextStream:output_type -> ktms.v1.GenerateTextChunk
+	30,  // 104: ktms.v1.GatewayService.SynthesizeSpeech:output_type -> ktms.v1.SynthesizeSpeechResponse
+	32,  // 105: ktms.v1.GatewayService.GenerateImage:output_type -> ktms.v1.GenerateImageResponse
+	39,  // 106: ktms.v1.GatewayService.Judge:output_type -> ktms.v1.JudgeResponse
+	42,  // 107: ktms.v1.GatewayService.GetEmbeddings:output_type -> ktms.v1.GetEmbeddingsResponse
+	39,  // 108: ktms.v1.GatewayService.JudgeStream:output_type -> ktms.v1.JudgeResponse
+	45,  // 109: ktms.v1.GatewayService.Translate:output_type -> ktms.v1.TranslateResponse
+	49,  // 110: ktms.v1.GatewayService.EvaluateRollouts:output_type -> ktms.v1.EvaluateRolloutsResponse
+	27,  // 111: ktms.v1.GatewayService.ListModels:output_type -> ktms.v1.ListModelsResponse
+	54,  // 112: ktms.v1.GatewayService.SubmitBatch:output_type -> ktms.v1.SubmitBatchResponse
+	51,  // 113: ktms.v1.GatewayService.GetBatch:output_type -> ktms.v1.Batch
+	59,  // 114: ktms.v1.GatewayService.ListBatchResults:output_type -> ktms.v1.ListBatchResultsResponse
+	61,  // 115: ktms.v1.GatewayService.CancelBatch:output_type -> ktms.v1.CancelBatchResponse
+	102, // [102:116] is the sub-list for method output_type
+	88,  // [88:102] is the sub-list for method input_type
+	88,  // [88:88] is the sub-list for extension type_name
+	88,  // [88:88] is the sub-list for extension extendee
+	0,   // [0:88] is the sub-list for field type_name
 }
 
 func init() { file_ktms_v1_gateway_proto_init() }
@@ -5345,13 +5462,13 @@ func file_ktms_v1_gateway_proto_init() {
 	file_ktms_v1_gateway_proto_msgTypes[12].OneofWrappers = []any{}
 	file_ktms_v1_gateway_proto_msgTypes[13].OneofWrappers = []any{}
 	file_ktms_v1_gateway_proto_msgTypes[14].OneofWrappers = []any{}
-	file_ktms_v1_gateway_proto_msgTypes[31].OneofWrappers = []any{
+	file_ktms_v1_gateway_proto_msgTypes[32].OneofWrappers = []any{
 		(*MediaPart_Text)(nil),
 		(*MediaPart_Image)(nil),
 		(*MediaPart_Audio)(nil),
 		(*MediaPart_Embedding)(nil),
 	}
-	file_ktms_v1_gateway_proto_msgTypes[51].OneofWrappers = []any{
+	file_ktms_v1_gateway_proto_msgTypes[52].OneofWrappers = []any{
 		(*BatchItemResult_Response)(nil),
 		(*BatchItemResult_Error)(nil),
 	}
@@ -5361,7 +5478,7 @@ func file_ktms_v1_gateway_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ktms_v1_gateway_proto_rawDesc), len(file_ktms_v1_gateway_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   80,
+			NumMessages:   81,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

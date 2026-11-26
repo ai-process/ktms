@@ -1325,7 +1325,7 @@ type decisionsLevelReq struct {
 
 type decisionsQuestionReq struct {
 	Name         string               `json:"name"`
-	Type         string               `json:"type"` // "predicate" | "choice" | "score"
+	Type         string               `json:"type"` // "predicate" | "choice" | "score" | "box"
 	Instructions string               `json:"instructions"`
 	Choices      []decisionsChoiceReq `json:"choices"`
 	Levels       json.RawMessage      `json:"levels"`
@@ -1347,6 +1347,16 @@ type decisionsAnswerOut struct {
 	Score         *float64           `json:"score,omitempty"`
 	Probabilities map[string]float64 `json:"probabilities,omitempty"`
 	Confidence    *float64           `json:"confidence,omitempty"`
+	Box           *decisionsBoxOut   `json:"box,omitempty"`
+}
+
+// decisionsBoxOut is a box answer: edges as fractions of the image, from its
+// top-left corner. Experimental.
+type decisionsBoxOut struct {
+	Top    float64 `json:"top"`
+	Bottom float64 `json:"bottom"`
+	Left   float64 `json:"left"`
+	Right  float64 `json:"right"`
 }
 
 type decisionsResponseOut struct {
@@ -1376,6 +1386,8 @@ type decisionsInputPart struct {
 	} `json:"input_audio"`
 	Embedding []float32 `json:"embedding"`
 	Model     string    `json:"model"`
+	// Name lets questions refer to the part (experimental; see MediaPart.name).
+	Name string `json:"name"`
 }
 
 // decisionsInput splits input into JSON state and media parts. Only an array
@@ -1426,6 +1438,7 @@ func decisionsInput(raw json.RawMessage) (string, []*pb.MediaPart, error) {
 				Model:  p.Model,
 			}}})
 		}
+		media[len(media)-1].Name = p.Name
 	}
 	return "", media, nil
 }
@@ -1497,6 +1510,8 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 			Instructions: q.Instructions,
 		}
 		switch q.Type {
+		case "box":
+			jq.Type = pb.JudgeType_JUDGE_TYPE_BOX
 		case "predicate":
 			jq.Type = pb.JudgeType_JUDGE_TYPE_NOUL
 		case "choice":
@@ -1614,6 +1629,15 @@ func (a *OpenAIAPI) decisions(ctx context.Context, w http.ResponseWriter, r *htt
 			outAns.Probabilities = ans.Probabilities
 			conf := ans.Confidence
 			outAns.Confidence = &conf
+		case pb.JudgeType_JUDGE_TYPE_BOX:
+			outAns.Type = "box"
+			if b := ans.GetBox(); b != nil {
+				outAns.Box = &decisionsBoxOut{Top: b.Top, Bottom: b.Bottom, Left: b.Left, Right: b.Right}
+			}
+			if !ans.GetConfidenceUnset() {
+				conf := ans.Confidence
+				outAns.Confidence = &conf
+			}
 		case pb.JudgeType_JUDGE_TYPE_SCORE:
 			outAns.Type = "score"
 			sc := ans.Score
@@ -1964,6 +1988,7 @@ func (a *OpenAIAPI) decisionsRollouts(ctx context.Context, w http.ResponseWriter
 				default:
 					return invalid("candidate[%d].media[%d]: unsupported media type %q", i, mi, p.Type)
 				}
+				candMedia[len(candMedia)-1].Name = p.Name
 			}
 		}
 		pbCandidates = append(pbCandidates, &pb.RolloutCandidate{

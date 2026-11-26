@@ -146,6 +146,8 @@ func (f *fakeProxy) Judge(_ context.Context, r *pb.JudgeRequest) (*pb.JudgeRespo
 		switch q.Type {
 		case pb.JudgeType_JUDGE_TYPE_NOUL:
 			answers[id] = &pb.JudgeAnswer{Type: q.Type, Noul: 0.9}
+		case pb.JudgeType_JUDGE_TYPE_BOX:
+			answers[id] = &pb.JudgeAnswer{Type: q.Type, Box: &pb.JudgeBox{Top: 0.1, Bottom: 0.4, Left: 0.2, Right: 0.5}, ConfidenceUnset: true}
 		case pb.JudgeType_JUDGE_TYPE_CHOICE:
 			answers[id] = &pb.JudgeAnswer{Type: q.Type, Choice: "opt1", Confidence: 0.95}
 		case pb.JudgeType_JUDGE_TYPE_SCORE:

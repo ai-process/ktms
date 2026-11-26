@@ -384,6 +384,11 @@ func openAIDecisionInput(req *llm.JudgeRequest) (json.RawMessage, error) {
 func toOpenAIDecisionParts(media []*llm.JudgeMediaPart) ([]openAIDecisionInputPart, error) {
 	parts := make([]openAIDecisionInputPart, 0, len(media))
 	for i, p := range media {
+		// A name lets questions refer to the part, as in System One; here it
+		// becomes a label the model reads just before the part.
+		if p.Name != "" {
+			parts = append(parts, openAIDecisionInputPart{Type: "input_text", Text: p.Name + ":"})
+		}
 		switch p.Type {
 		case llm.JudgeMediaText:
 			parts = append(parts, openAIDecisionInputPart{Type: "input_text", Text: p.Text})
@@ -459,6 +464,10 @@ func toOpenAIDecisionQuestions(in map[string]*llm.JudgeQuestion) ([]openAIDecisi
 					Description: lvl,
 				})
 			}
+		case llm.JudgeBox:
+			// Decisions has no box; the capability filter keeps it off these
+			// chains, and this yields if a registry says otherwise.
+			return nil, llm.ErrJudgmentUnsupported
 		default:
 			return nil, fmt.Errorf("openai decisions: unsupported question type %q", q.Type)
 		}

@@ -60,6 +60,8 @@ func ToStatus(err error) error {
 	switch {
 	case errors.Is(err, ErrNotConfigured):
 		return status.Error(codes.FailedPrecondition, "not_configured")
+	case errors.Is(err, llm.ErrInvalidMedia):
+		return status.Error(codes.InvalidArgument, "bad_request: "+err.Error())
 	case errors.Is(err, ErrModelAccessDenied):
 		return status.Error(codes.PermissionDenied, "model access denied by key or team policy")
 	case errors.Is(err, ErrNoCapableModel), errors.Is(err, llm.ErrJudgmentUnsupported), errors.Is(err, llm.ErrEmbeddingUnsupported),
