@@ -3,6 +3,7 @@ package grpcapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -21,7 +22,8 @@ import (
 const judgeAutoTimeout = 250 * time.Millisecond
 
 type routePlan struct {
-	effort           string
+	needs            map[string]string // effort included as general
+	effort           string            // the general need as an effort, for meta and old clients
 	models           []*proxydb.Model
 	ruleName         string
 	routeMode        string
@@ -209,9 +211,11 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 		ctx = withRestricted(ctx)
 	}
 	isAuto := req.GetAutoRoute()
-	effortSpecified := req.GetEffortSpecified()
-
-	effort := effortToString(req.GetEffort())
+	needs, err := registry.RequestNeeds(req.GetNeeds(), effortToString(req.GetEffort()))
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "bad_request: needs: "+err.Error())
+	}
+	effortSpecified := req.GetEffortSpecified() || len(req.GetNeeds()) > 0
 	var (
 		routeMode  = router.RouteModeDirect
 		judgeScore float64
@@ -231,11 +235,17 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 			tr.add(router.Candidate{ID: req.GetModelOverride(), Dropped: router.DropNotFound})
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: unknown model %q", req.GetModelOverride())
 		}
-		if effort == "" && len(m.Efforts) > 0 {
-			effort = m.Efforts[0]
+		if len(needs) == 0 && len(m.Efforts) > 0 {
+			e := m.Efforts[0]
+			if registry.Serves(m, registry.EffortMedium) {
+				e = registry.EffortMedium // what HTTP sent for an exact model in 1.6
+			}
+			needs[registry.TopicGeneral] = registry.EffortLevel(e)
+		} else if g := m.Competencies[registry.TopicGeneral]; len(needs) == 0 && g != "" {
+			needs[registry.TopicGeneral] = g // usage meta keeps an effort
 		}
-		tr.matched(effort)
-		models, err := tr.filter(snap, []string{req.GetModelOverride()}, id.KeyID, effort, req.GetEnableGoogleSearch(), tr.capabilities(req))
+		tr.matched(needs)
+		models, err := tr.filter(snap, []string{req.GetModelOverride()}, id.KeyID, needs, req.GetEnableGoogleSearch(), tr.capabilities(req))
 		if err != nil {
 			return nil, router.ToStatus(err)
 		}
@@ -248,7 +258,8 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 			}
 		}
 		return &routePlan{
-			effort:     effort,
+			needs:      needs,
+			effort:     registry.LevelEffort(needs[registry.TopicGeneral]),
 			models:     models,
 			routeMode:  routeMode,
 			placement:  placement,
@@ -256,7 +267,8 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 		}, nil
 
 	case isAuto:
-		if effortSpecified && effort != "" {
+		effort := ""
+		if effortSpecified && len(needs) > 0 {
 			routeMode = router.RouteModeAutoEffort
 		} else if tr != nil {
 			// A dry run must not call a model: route as the judge's fallback does.
@@ -273,23 +285,50 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 				routeMode = router.RouteModeAutoDefault
 			}
 		}
+		if effort != "" {
+			needs[registry.TopicGeneral] = registry.EffortLevel(effort)
+		}
 
-	case effort == "":
-		return nil, status.Error(codes.InvalidArgument, "bad_request: effort is required")
+	case len(needs) == 0:
+		return nil, status.Error(codes.InvalidArgument, "bad_request: effort is required, or needs")
 	}
 
-	tr.matched(effort)
-	rule := router.Match(snap, effort, routingAttributes(req.GetAttributes(), id))
+	tr.matched(needs)
+	reqCaps := tr.capabilities(req)
+	rule := router.Match(snap, needs, routingAttributes(req.GetAttributes(), id))
+	var models []*proxydb.Model
+	if rule != nil && snap.Selects() && len(rule.Needs) > 0 {
+		// A rule takes every request at or above its needs; when its chain
+		// meets none of a higher one, the selection serves it instead.
+		if _, ferr := router.FilterChain(snap, router.ResolveChain(rule, router.CanaryKey(req.GetAttributes())), id.KeyID, needs, req.GetEnableGoogleSearch(), reqCaps...); errors.Is(ferr, router.ErrNoCapableModel) {
+			rule = nil
+		}
+	}
 	if rule == nil {
+		if !snap.Selects() {
+			tr.start(routeMode, nil, nil)
+			return nil, router.ToStatus(router.ErrNotConfigured)
+		}
 		tr.start(routeMode, nil, nil)
-		return nil, router.ToStatus(router.ErrNotConfigured)
+		if models, err = s.selectChain(ctx, snap, id, needs, req.GetEnableGoogleSearch(), true, reqCaps, placement, nil, tr); err != nil {
+			return nil, err
+		}
+		return &routePlan{
+			needs:      needs,
+			effort:     registry.LevelEffort(needs[registry.TopicGeneral]),
+			models:     models,
+			routeMode:  routeMode,
+			placement:  placement,
+			judgeScore: judgeScore,
+			judgeModel: judgeModel,
+			restricted: restricted,
+		}, nil
 	}
 	canaryKey := router.CanaryKey(req.GetAttributes())
 	chain := router.ResolveChain(rule, canaryKey)
 	tr.start(routeMode, chain, rule)
 
-	reqCaps := tr.capabilities(req)
-	models, err := tr.filter(snap, chain, id.KeyID, effort, req.GetEnableGoogleSearch(), reqCaps)
+	models, err = tr.filter(snap, chain, id.KeyID, needs, req.GetEnableGoogleSearch(), reqCaps)
 	if err != nil {
 		return nil, router.ToStatus(err)
 	}
@@ -314,7 +353,7 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 		shadowEval  bool
 	)
 	if rule.ShadowModel != "" && rule.ShadowPercentage > 0 && id.CanAccessModel(rule.ShadowModel) {
-		shadowChain, sErr := router.FilterChain(snap, []string{rule.ShadowModel}, id.KeyID, effort, req.GetEnableGoogleSearch(), reqCaps...)
+		shadowChain, sErr := router.FilterChain(snap, []string{rule.ShadowModel}, id.KeyID, needs, req.GetEnableGoogleSearch(), reqCaps...)
 		if sErr == nil && len(shadowChain) > 0 {
 			if placement != "" {
 				shadowChain, sErr = router.ApplyPlacement(shadowChain, placement)
@@ -328,7 +367,8 @@ func (s *ProxyServer) planRoute(ctx context.Context, snap *registry.Snapshot, id
 	}
 
 	return &routePlan{
-		effort:           effort,
+		needs:            needs,
+		effort:           registry.LevelEffort(needs[registry.TopicGeneral]),
 		models:           models,
 		ruleName:         rule.Name,
 		routeMode:        routeMode,

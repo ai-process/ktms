@@ -36,7 +36,8 @@ const (
 // nothing on a nil trace, so a real call pays nothing for them.
 type routeTrace struct {
 	caps         []string // capabilities the explained request needs
-	effort       string
+	needs        map[string]string
+	selected     bool // no rule took it: candidates are the selection
 	routeMode    string
 	chain        []string
 	rule         *proxydb.Rule
@@ -50,9 +51,9 @@ func (t *routeTrace) start(mode string, chain []string, rule *proxydb.Rule) {
 	}
 }
 
-func (t *routeTrace) matched(effort string) {
+func (t *routeTrace) matched(needs map[string]string) {
 	if t != nil {
-		t.effort = effort
+		t.needs = needs
 	}
 }
 
@@ -63,11 +64,11 @@ func (t *routeTrace) add(c ...router.Candidate) {
 }
 
 // filter is router.FilterChain, recording each model's fate when tracing.
-func (t *routeTrace) filter(snap *registry.Snapshot, use []string, keyID, effort string, search bool, caps []string) ([]*proxydb.Model, error) {
+func (t *routeTrace) filter(snap *registry.Snapshot, use []string, keyID string, needs map[string]string, search bool, caps []string) ([]*proxydb.Model, error) {
 	if t == nil {
-		return router.FilterChain(snap, use, keyID, effort, search, caps...)
+		return router.FilterChain(snap, use, keyID, needs, search, caps...)
 	}
-	cands := router.ExplainChain(snap, use, keyID, effort, search, caps...)
+	cands := router.ExplainChain(snap, use, keyID, needs, search, caps...)
 	t.add(cands...)
 	return router.Kept(cands)
 }
@@ -129,13 +130,16 @@ func (t *routeTrace) policy(ctx context.Context, id *apikeys.Identity, models []
 }
 
 // placed marks what ApplyPlacement removed.
-func (t *routeTrace) placed(before, after []*proxydb.Model) {
+func (t *routeTrace) placed(before, after []*proxydb.Model) { t.cut(before, after, dropPlacement) }
+
+// cut marks the models of before that after lacks with reason.
+func (t *routeTrace) cut(before, after []*proxydb.Model, reason string) {
 	if t == nil {
 		return
 	}
 	for _, m := range before {
 		if !slices.Contains(after, m) {
-			t.drop(m.ID, dropPlacement)
+			t.drop(m.ID, reason)
 		}
 	}
 }
@@ -160,6 +164,7 @@ func (s *ProxyServer) ExplainRoute(ctx context.Context, id *apikeys.Identity, in
 	req := &pb.GenerateTextRequest{
 		Effort:             in.GetEffort(),
 		EffortSpecified:    in.GetEffort() != pb.Effort_EFFORT_UNSPECIFIED,
+		Needs:              in.GetNeeds(),
 		AutoRoute:          in.GetAutoRoute(),
 		Attributes:         router.SanitizeAttributes(in.GetAttributes()),
 		Placement:          in.GetPlacement(),
@@ -188,20 +193,8 @@ func (s *ProxyServer) ExplainRoute(ctx context.Context, id *apikeys.Identity, in
 		}
 	}
 
-	out.Effort, out.RouteMode, out.Chain, out.JudgeSkipped = tr.effort, tr.routeMode, tr.chain, tr.judgeSkipped
-	if tr.rule != nil {
-		out.Rule, out.Weights = tr.rule.Name, tr.rule.Weights
-	}
-	for _, c := range tr.candidates {
-		rc := &pb.RouteCandidate{ModelId: c.ID, Dropped: c.Dropped}
-		if c.Model != nil {
-			rc.Vendor = c.Model.Vendor
-			if c.Dropped == dropVendorPaused && cooldown != nil {
-				rc.PausedFor = durationpb.New(cooldown.Remaining(c.Model))
-			}
-		}
-		out.Candidates = append(out.Candidates, rc)
-	}
+	out.JudgeSkipped = tr.judgeSkipped
+	tr.write(out, cooldown)
 	if err != nil {
 		out.Error = statusText(err)
 		return out
@@ -219,6 +212,28 @@ func (s *ProxyServer) ExplainRoute(ctx context.Context, id *apikeys.Identity, in
 		out.Error = statusText(status.Error(codes.Unavailable, "vendors_unavailable"))
 	}
 	return out
+}
+
+// write puts the trace into an ExplainRoute response.
+func (t *routeTrace) write(out *pb.ExplainRouteResponse, cooldown router.Cooldown) {
+	out.RouteMode, out.Chain, out.Selected = t.routeMode, t.chain, t.selected
+	if len(t.needs) > 0 {
+		out.Needs = t.needs
+		out.Effort = registry.LevelEffort(t.needs[registry.TopicGeneral])
+	}
+	if t.rule != nil {
+		out.Rule, out.Weights = t.rule.Name, t.rule.Weights
+	}
+	for _, c := range t.candidates {
+		rc := &pb.RouteCandidate{ModelId: c.ID, Dropped: c.Dropped, Excess: int32(c.Excess), BlendedPricePerMtok: c.Price}
+		if c.Model != nil {
+			rc.Vendor = c.Model.Vendor
+			if c.Dropped == dropVendorPaused && cooldown != nil {
+				rc.PausedFor = durationpb.New(cooldown.Remaining(c.Model))
+			}
+		}
+		out.Candidates = append(out.Candidates, rc)
+	}
 }
 
 // mediaCapabilities are what each non-text modality's chain is filtered by.
@@ -243,6 +258,7 @@ func (s *ProxyServer) explainMedia(ctx context.Context, id *apikeys.Identity, in
 		override: in.GetModelOverride(),
 		modality: in.GetModality(),
 		caps:     append([]string{capability}, in.GetCapabilities()...),
+		needs:    in.GetNeeds(),
 	}
 	if in.GetModality() == modalityTranslate {
 		source, target, err := languageTags(in.GetSourceLanguage(), in.GetTargetLanguage())
@@ -274,20 +290,7 @@ func (s *ProxyServer) explainMedia(ctx context.Context, id *apikeys.Identity, in
 			c.Dropped = dropCircuitOpen
 		}
 	}
-	out.Effort, out.RouteMode, out.Chain = tr.effort, tr.routeMode, tr.chain
-	if tr.rule != nil {
-		out.Rule, out.Weights = tr.rule.Name, tr.rule.Weights
-	}
-	for _, c := range tr.candidates {
-		rc := &pb.RouteCandidate{ModelId: c.ID, Dropped: c.Dropped}
-		if c.Model != nil {
-			rc.Vendor = c.Model.Vendor
-			if c.Dropped == dropVendorPaused && cooldown != nil {
-				rc.PausedFor = durationpb.New(cooldown.Remaining(c.Model))
-			}
-		}
-		out.Candidates = append(out.Candidates, rc)
-	}
+	tr.write(out, cooldown)
 	if err != nil {
 		out.Error = statusText(err)
 		return out

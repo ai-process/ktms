@@ -22,6 +22,7 @@ import (
 	"github.com/ai-process/ktms/internal/llm"
 	"github.com/ai-process/ktms/internal/observability"
 	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
 	"github.com/ai-process/ktms/internal/router"
 )
 
@@ -146,18 +147,35 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 		return nil, router.ToStatus(router.ErrNotConfigured)
 	}
 
-	effort := effortToString(req.GetEffort())
-	if effort == "" {
-		return nil, status.Error(codes.InvalidArgument, "bad_request: effort is required")
+	needs, err := registry.RequestNeeds(req.GetNeeds(), effortToString(req.GetEffort()))
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "bad_request: needs: "+err.Error())
+	}
+	if len(needs) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "bad_request: effort is required, or needs")
 	}
 
 	cleanAttrs := routingAttributes(req.GetAttributes(), id)
-	rule := router.Match(snap, effort, cleanAttrs)
-	if rule == nil {
+	canaryKey := router.CanaryKey(cleanAttrs)
+	var use []string
+	ruleName := ""
+	if rule := router.Match(snap, needs, cleanAttrs); rule != nil {
+		use, ruleName = router.ResolveChain(rule, canaryKey), rule.Name
+	} else if snap.Selects() {
+		// Ranked as a call would be; ResolveBatchModel then takes the first
+		// one the key may use, so the policy applies before the ranking does.
+		for _, c := range router.Select(snap, id.KeyID, needs, false, true, registry.CapabilityBatch) {
+			if c.Dropped == "" {
+				use = append(use, c.ID)
+			}
+		}
+		if len(use) == 0 {
+			return nil, router.ToStatus(router.ErrNoCapableModel)
+		}
+	} else {
 		return nil, router.ToStatus(router.ErrNotConfigured)
 	}
 
-	canaryKey := router.CanaryKey(cleanAttrs)
 	userID := router.UserID(cleanAttrs, id.Name)
 	allowed := id.CanAccessModel
 	if restricted {
@@ -166,10 +184,10 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 			return id.CanAccessModel(modelID) && router.IsNodeModel(snap.Models[modelID])
 		}
 	}
-	model, err := router.ResolveBatchModel(ctx, snap, s.throttle, router.ResolveChain(rule, canaryKey), id.KeyID, id.Name, userID, id.TeamID, allowed)
+	model, err := router.ResolveBatchModel(ctx, snap, s.throttle, use, id.KeyID, id.Name, userID, id.TeamID, allowed)
 	if restricted && (errors.Is(err, router.ErrModelAccessDenied) || errors.Is(err, router.ErrNoCapableModel)) {
 		// Name the restriction only when it is what refused: without it a model would serve.
-		if _, uerr := router.ResolveBatchModel(ctx, snap, nil, router.ResolveChain(rule, canaryKey), id.KeyID, id.Name, userID, id.TeamID, id.CanAccessModel); uerr == nil {
+		if _, uerr := router.ResolveBatchModel(ctx, snap, nil, use, id.KeyID, id.Name, userID, id.TeamID, id.CanAccessModel); uerr == nil {
 			return nil, noNodeModel("batches")
 		}
 	}
@@ -200,7 +218,7 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 	}
 
 	for i, it := range items {
-		chat := buildChat(it.GetRequest(), id, rule.Name, effort)
+		chat := buildChat(it.GetRequest(), id, ruleName, needs)
 		adapterItems[i] = &llm.BatchSubmitItem{
 			CustomID: it.GetCustomId(),
 			Chat:     chat,
@@ -238,7 +256,7 @@ func (s *ProxyServer) SubmitBatch(ctx context.Context, req *pb.SubmitBatchReques
 		TotalCount:    int32(len(items)),
 		DoneCount:     0,
 		FailedCount:   0,
-		Attributes:    batchAttributes(cleanAttrs, rule.Name),
+		Attributes:    batchAttributes(cleanAttrs, ruleName),
 		ActionID:      actionID,
 		CreatedAt:     time.Now().UTC(),
 	}

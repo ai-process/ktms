@@ -124,7 +124,7 @@ func TestFilterChainRequiresCapability(t *testing.T) {
 	keys := map[string]map[string]string{"key1": {registry.VendorGoogle: "g"}}
 	snap := registry.NewSnapshotForTest(models, nil, keys, nil)
 
-	chain, err := FilterChain(snap, []string{"flash", "tts"}, "key1", registry.EffortLow, false, registry.CapabilityTTS)
+	chain, err := FilterChain(snap, []string{"flash", "tts"}, "key1", en(registry.EffortLow), false, registry.CapabilityTTS)
 	if err != nil {
 		t.Fatalf("FilterChain: %v", err)
 	}
@@ -132,11 +132,11 @@ func TestFilterChainRequiresCapability(t *testing.T) {
 		t.Fatalf("chain = %+v, want only the tts model", chain)
 	}
 	// No capable model is a clearer failure than silently calling a text model.
-	if _, err := FilterChain(snap, []string{"flash"}, "key1", registry.EffortLow, false, registry.CapabilityTTS); !errors.Is(err, ErrNoCapableModel) {
+	if _, err := FilterChain(snap, []string{"flash"}, "key1", en(registry.EffortLow), false, registry.CapabilityTTS); !errors.Is(err, ErrNoCapableModel) {
 		t.Errorf("err = %v, want ErrNoCapableModel", err)
 	}
 	// Without a required capability the same chain is unfiltered.
-	chain, err = FilterChain(snap, []string{"flash", "tts"}, "key1", registry.EffortLow, false, "")
+	chain, err = FilterChain(snap, []string{"flash", "tts"}, "key1", en(registry.EffortLow), false, "")
 	if err != nil || len(chain) != 2 {
 		t.Errorf("unfiltered chain = %+v, err %v", chain, err)
 	}
@@ -156,16 +156,16 @@ func TestMatchModalityIgnoresTextRules(t *testing.T) {
 	attrs := map[string]string{"subject": "zh", "modality": "tts"}
 
 	// The general matcher takes the higher-priority text rule.
-	if got := Match(snap, registry.EffortLow, attrs); got == nil || got.Name != "zh-low" {
+	if got := Match(snap, en(registry.EffortLow), attrs); got == nil || got.Name != "zh-low" {
 		t.Fatalf("Match picked %v; the test's premise no longer holds", got)
 	}
 	// The modality matcher skips it and finds the speech rule.
-	got := MatchModality(snap, registry.EffortLow, "modality", "tts", attrs)
+	got := MatchModality(snap, nil, "modality", "tts", attrs)
 	if got == nil || got.Name != "tts-default" {
 		t.Fatalf("MatchModality = %v, want tts-default", got)
 	}
 	// No image rule configured is nil, not the low catch-all.
-	if got := MatchModality(snap, registry.EffortLow, "modality", "image", attrs); got != nil {
+	if got := MatchModality(snap, nil, "modality", "image", attrs); got != nil {
 		t.Errorf("MatchModality for an unconfigured modality = %v, want nil", got)
 	}
 }

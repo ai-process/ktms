@@ -95,13 +95,23 @@ func ResolveChain(rule *proxydb.Rule, hashKey string) []string {
 	return chain
 }
 
+// ruleTakes reports whether a rule's need predicates hold for a request: its
+// deprecated effort equal to the request's general level, as in 1.6, and each
+// of its needs reached at least at the rule's level.
+func ruleTakes(r *proxydb.Rule, needs map[string]string) bool {
+	if r.Effort != "" && needs[registry.TopicGeneral] != registry.EffortLevel(r.Effort) {
+		return false
+	}
+	return registry.RuleMatchesNeeds(r.Needs, needs)
+}
+
 // Match returns the first rule (priority desc) whose predicates all hold:
-// effort equal (or rule matches any) and every rule attribute pair equal to
-// the request's. Returns nil only on an unconfigured or invalid snapshot —
-// validation guarantees a catch-all per effort otherwise.
-func Match(snap *registry.Snapshot, effort string, attrs map[string]string) *proxydb.Rule {
+// its effort and needs (see ruleTakes) and every rule attribute pair equal to
+// the request's. nil means no rule takes the request: selection routes it
+// when models declare competencies, else the snapshot is not configured.
+func Match(snap *registry.Snapshot, needs map[string]string, attrs map[string]string) *proxydb.Rule {
 	for _, r := range snap.Rules {
-		if r.Effort != "" && r.Effort != effort {
+		if !ruleTakes(r, needs) {
 			continue
 		}
 		matched := true
@@ -123,13 +133,17 @@ func Match(snap *registry.Snapshot, effort string, attrs map[string]string) *pro
 // capture speech or image traffic just because its other predicates happen to
 // hold — that would hand back a chain FilterChain then strips to nothing.
 // nil means no rule is configured for this modality.
-func MatchModality(snap *registry.Snapshot, effort, modalityKey, modality string, attrs map[string]string) *proxydb.Rule {
+// A modality call without needs is matched by rules without them.
+func MatchModality(snap *registry.Snapshot, needs map[string]string, modalityKey, modality string, attrs map[string]string) *proxydb.Rule {
 	for _, r := range snap.Rules {
 		if r.Attributes[modalityKey] != modality {
 			continue
 		}
-		if r.Effort != "" && r.Effort != effort {
+		if len(needs) > 0 && !ruleTakes(r, modalityNeeds(needs)) {
 			continue
+		}
+		if len(needs) == 0 && (len(r.Needs) > 0 || r.Effort != "" && r.Effort != registry.EffortLow) {
+			continue // as in 1.6, where speech and images routed at low
 		}
 		matched := true
 		for k, v := range r.Attributes {
@@ -145,35 +159,64 @@ func MatchModality(snap *registry.Snapshot, effort, modalityKey, modality string
 	return nil
 }
 
+// modalityNeeds reads a modality call without a general need as general:
+// basic, the level speech and images routed at in 1.6, so a rule with
+// effort low keeps taking a call that names only other topics.
+func modalityNeeds(needs map[string]string) map[string]string {
+	if _, ok := needs[registry.TopicGeneral]; ok {
+		return needs
+	}
+	out := make(map[string]string, len(needs)+1)
+	for t, l := range needs {
+		out[t] = l
+	}
+	out[registry.TopicGeneral] = registry.LevelBasic
+	return out
+}
+
 // Why ExplainChain drops a model of a rule's chain.
 const (
 	DropNotFound    = "not_found"
-	DropEffort      = "effort"
+	DropEffort      = "effort" // the general need, effort included
+	DropNeeds       = "needs"  // a need of another topic
 	DropCapability  = "capability"
 	DropNoVendorKey = "no_vendor_key"
 )
 
 // Candidate is one model of a chain and why it was dropped ("" if kept).
-// Model is nil when the chain names a model the snapshot lacks.
+// Model is nil when the chain names a model the snapshot lacks. Excess and
+// Price are what selection ranked a kept model by.
 type Candidate struct {
 	ID      string
 	Model   *proxydb.Model
 	Dropped string
+	Excess  int
+	Price   float64
+}
+
+// needsDrop says why m fails needs, "" if it meets them all.
+func needsDrop(m *proxydb.Model, needs map[string]string) string {
+	if l, ok := needs[registry.TopicGeneral]; ok && !registry.Meets(m, registry.TopicGeneral, l) {
+		return DropEffort
+	}
+	if !registry.MeetsAll(m, needs) {
+		return DropNeeds
+	}
+	return ""
 }
 
 // walkChain is the one pass FilterChain and ExplainChain share, so a dry run
 // cannot drift from a call; dropped is "" for a model that stays.
-func walkChain(snap *registry.Snapshot, use []string, apiKeyID, effort string, needsGoogleSearch bool, caps []string, visit func(id string, m *proxydb.Model, dropped string)) {
+func walkChain(snap *registry.Snapshot, use []string, apiKeyID string, needs map[string]string, needsGoogleSearch bool, caps []string, visit func(id string, m *proxydb.Model, dropped string)) {
 	for _, id := range use {
 		m, ok := snap.Models[id]
 		if !ok { // disabled since the rule was written
 			visit(id, nil, DropNotFound)
 			continue
 		}
-		dropped := ""
+		dropped := needsDrop(m, needs)
 		switch {
-		case !registry.Serves(m, effort):
-			dropped = DropEffort
+		case dropped != "":
 		case needsGoogleSearch && !registry.HasCapability(m, registry.CapabilityGoogleSearch):
 			dropped = DropCapability
 		}
@@ -190,9 +233,9 @@ func walkChain(snap *registry.Snapshot, use []string, apiKeyID, effort string, n
 }
 
 // ExplainChain says what FilterChain does with each model of the chain.
-func ExplainChain(snap *registry.Snapshot, use []string, apiKeyID, effort string, needsGoogleSearch bool, requireCapabilities ...string) []Candidate {
+func ExplainChain(snap *registry.Snapshot, use []string, apiKeyID string, needs map[string]string, needsGoogleSearch bool, requireCapabilities ...string) []Candidate {
 	out := make([]Candidate, 0, len(use))
-	walkChain(snap, use, apiKeyID, effort, needsGoogleSearch, requireCapabilities, func(id string, m *proxydb.Model, dropped string) {
+	walkChain(snap, use, apiKeyID, needs, needsGoogleSearch, requireCapabilities, func(id string, m *proxydb.Model, dropped string) {
 		out = append(out, Candidate{ID: id, Model: m, Dropped: dropped})
 	})
 	return out
@@ -226,12 +269,12 @@ func chainErr(kept int, sawCapable bool) error {
 }
 
 // FilterChain narrows a rule's chain to models that can serve this request:
-// right effort, google_search capability when asked for, a vendor key
+// meeting its needs, google_search capability when asked for, a vendor key
 // where the vendor needs one, and all required capabilities.
-func FilterChain(snap *registry.Snapshot, use []string, apiKeyID, effort string, needsGoogleSearch bool, requireCapabilities ...string) ([]*proxydb.Model, error) {
+func FilterChain(snap *registry.Snapshot, use []string, apiKeyID string, needs map[string]string, needsGoogleSearch bool, requireCapabilities ...string) ([]*proxydb.Model, error) {
 	var out []*proxydb.Model
 	sawCapable := false
-	walkChain(snap, use, apiKeyID, effort, needsGoogleSearch, requireCapabilities, func(_ string, m *proxydb.Model, dropped string) {
+	walkChain(snap, use, apiKeyID, needs, needsGoogleSearch, requireCapabilities, func(_ string, m *proxydb.Model, dropped string) {
 		switch dropped {
 		case "":
 			out = append(out, m)

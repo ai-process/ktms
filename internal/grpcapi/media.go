@@ -25,11 +25,6 @@ const (
 	modalityImage = "image"
 )
 
-// mediaEffort is the tier speech and image route at. They have no effort of
-// their own — the capability filter decides what can serve them — but rules are
-// keyed by effort, so they need one, and the cheapest is the honest default.
-const mediaEffort = registry.EffortLow
-
 func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSpeechRequest) (*pb.SynthesizeSpeechResponse, error) {
 	if req.GetText() == "" {
 		return nil, status.Error(codes.InvalidArgument, "bad_request: text is empty")
@@ -46,7 +41,7 @@ func (s *ProxyServer) SynthesizeSpeech(ctx context.Context, req *pb.SynthesizeSp
 		}
 		speechText = redacted
 	}
-	plan, err := s.planMedia(ctx, req.GetAttributes(), req.GetModelOverride(), modalityTTS, registry.CapabilityTTS)
+	plan, err := s.planMediaNeeds(ctx, req.GetAttributes(), req.GetNeeds(), req.GetModelOverride(), modalityTTS, registry.CapabilityTTS)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +116,7 @@ func (s *ProxyServer) GenerateImage(ctx context.Context, req *pb.GenerateImageRe
 		}
 		prompt = redacted
 	}
-	plan, err := s.planMedia(ctx, req.GetAttributes(), req.GetModelOverride(), modalityImage, registry.CapabilityImage)
+	plan, err := s.planMediaNeeds(ctx, req.GetAttributes(), req.GetNeeds(), req.GetModelOverride(), modalityImage, registry.CapabilityImage)
 	if err != nil {
 		return nil, err
 	}
@@ -190,17 +185,50 @@ type mediaPlan struct {
 }
 
 func (s *ProxyServer) planMedia(ctx context.Context, attrs map[string]string, override, modality string, capabilities ...string) (*mediaPlan, error) {
+	return s.planMediaNeeds(ctx, attrs, nil, override, modality, capabilities...)
+}
+
+// planMediaNeeds is planMedia for a call that states needs.
+func (s *ProxyServer) planMediaNeeds(ctx context.Context, attrs, needs map[string]string, override, modality string, capabilities ...string) (*mediaPlan, error) {
 	id := apikeys.IdentityFrom(ctx)
 	if id == nil {
 		return nil, status.Error(codes.Unauthenticated, "no identity")
 	}
-	return s.planMediaFor(ctx, id, mediaQuery{attrs: attrs, override: override, modality: modality, caps: capabilities}, nil)
+	return s.planMediaFor(ctx, id, mediaQuery{attrs: attrs, needs: needs, override: override, modality: modality, caps: capabilities}, nil)
+}
+
+// mediaNarrow keeps what a modality call may use beyond its needs: without a
+// general need, a model described by efforts only at low, as in 1.6 (speech
+// and images routed at low); then the language pair, if any.
+func (t *routeTrace) mediaNarrow(needs map[string]string, pair *languagePair) func([]*proxydb.Model) ([]*proxydb.Model, error) {
+	return func(models []*proxydb.Model) ([]*proxydb.Model, error) {
+		if _, ok := needs[registry.TopicGeneral]; !ok {
+			var low []*proxydb.Model
+			for _, m := range models {
+				_, explicit := m.Competencies[registry.TopicGeneral]
+				if explicit || len(m.Efforts) == 0 || registry.Serves(m, registry.EffortLow) {
+					low = append(low, m)
+				} else if t != nil {
+					t.drop(m.ID, router.DropEffort)
+				}
+			}
+			if len(low) == 0 {
+				return nil, router.ToStatus(router.ErrNoCapableModel)
+			}
+			models = low
+		}
+		if pair != nil {
+			return t.languagePair(models, pair)
+		}
+		return models, nil
+	}
 }
 
 // mediaQuery is what a non-text call routes by. pair narrows a translate
 // chain to the models declaring the language pair.
 type mediaQuery struct {
 	attrs    map[string]string
+	needs    map[string]string // empty: the modality alone decides
 	override string
 	modality string
 	caps     []string
@@ -222,8 +250,15 @@ func (s *ProxyServer) planMediaFor(ctx context.Context, id *apikeys.Identity, q 
 	routing := routingAttributes(q.attrs, id)
 	routing[ModalityAttribute] = q.modality
 
+	needs, err := registry.RequestNeeds(q.needs, "")
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "bad_request: needs: "+err.Error())
+	}
+	restricted := restrictedCall(ctx, id)
 	var chain []string
 	var ruleName string
+	var models []*proxydb.Model
+	selected := false
 	if q.override != "" {
 		chain = []string{q.override}
 		tr.start(router.RouteModeOverride, chain, nil)
@@ -238,33 +273,43 @@ func (s *ProxyServer) planMediaFor(ctx context.Context, id *apikeys.Identity, q 
 	} else {
 		// Only rules that name the modality: a text rule matching on subject
 		// alone would otherwise win and yield a chain with nothing capable.
-		rule := router.MatchModality(snap, mediaEffort, ModalityAttribute, q.modality, routing)
-		if rule == nil {
+		rule := router.MatchModality(snap, needs, ModalityAttribute, q.modality, routing)
+		switch {
+		case rule != nil:
+			canaryKey := router.CanaryKey(routing)
+			chain = router.ResolveChain(rule, canaryKey)
+			ruleName = rule.Name
+			tr.start(router.RouteModeDirect, chain, rule)
+		case snap.Selects():
+			selected = true
+			tr.start(router.RouteModeDirect, nil, nil)
+		default:
 			return nil, status.Errorf(codes.FailedPrecondition,
 				"no_capable_model: no %s rule configured", q.modality)
 		}
-		canaryKey := router.CanaryKey(routing)
-		chain = router.ResolveChain(rule, canaryKey)
-		ruleName = rule.Name
-		tr.start(router.RouteModeDirect, chain, rule)
 	}
-	tr.matched(mediaEffort)
+	tr.matched(needs)
 
-	models, err := tr.filter(snap, chain, id.KeyID, mediaEffort, false, q.caps)
-	if err != nil {
-		return nil, router.ToStatus(err)
-	}
-	if q.pair != nil {
-		if models, err = tr.languagePair(models, q.pair); err != nil {
+	if selected {
+		placement := ""
+		if restricted {
+			placement = router.PlacementNodesOnly
+		}
+		if models, err = s.selectChain(ctx, snap, id, needs, false, false, q.caps, placement, tr.mediaNarrow(needs, q.pair), tr); err != nil {
+			return nil, err
+		}
+	} else {
+		if models, err = tr.filter(snap, chain, id.KeyID, needs, false, q.caps); err != nil {
+			return nil, router.ToStatus(err)
+		}
+		if models, err = tr.mediaNarrow(needs, q.pair)(models); err != nil {
+			return nil, err
+		}
+		tr.policy(ctx, id, models)
+		if models, err = teamModels(ctx, id, models); err != nil {
 			return nil, err
 		}
 	}
-
-	tr.policy(ctx, id, models)
-	if models, err = teamModels(ctx, id, models); err != nil {
-		return nil, err
-	}
-	restricted := restrictedCall(ctx, id)
 	if restricted {
 		before := models
 		if models, err = nodeModels(models, q.modality); err != nil {
@@ -279,6 +324,9 @@ func (s *ProxyServer) planMediaFor(ctx context.Context, id *apikeys.Identity, q 
 	}
 	if ruleName != "" {
 		meta["rule"] = ruleName
+	}
+	if len(needs) > 0 {
+		meta["needs"] = registry.FormatNeeds(needs)
 	}
 
 	return &mediaPlan{

@@ -69,6 +69,7 @@ func (s *ProxyServer) Translate(ctx context.Context, req *pb.TranslateRequest) (
 	plan, err := s.planMediaFor(ctx, id, mediaQuery{
 		attrs:    req.GetAttributes(),
 		override: req.GetModelOverride(),
+		needs:    req.GetNeeds(),
 		modality: modalityTranslate,
 		caps:     []string{registry.CapabilityTranslate},
 		pair:     pair,

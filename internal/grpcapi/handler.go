@@ -147,7 +147,7 @@ func (s *ProxyServer) GenerateText(ctx context.Context, req *pb.GenerateTextRequ
 		return nil, err
 	}
 
-	chat := buildChat(req, id, plan.ruleName, plan.effort)
+	chat := buildChat(req, id, plan.ruleName, plan.needs)
 	var vault *guardrails.TokenVault
 	if s.guardrails != nil && s.guardrails.Enabled {
 		if s.guardrails.PIIAction == guardrails.ActionRedact {
@@ -284,7 +284,7 @@ func (s *ProxyServer) GenerateTextStream(req *pb.GenerateTextStreamRequest, stre
 		return err
 	}
 
-	chat := buildChat(inner, id, plan.ruleName, plan.effort)
+	chat := buildChat(inner, id, plan.ruleName, plan.needs)
 	var (
 		vault    *guardrails.TokenVault
 		streamer *guardrails.StreamDesanitizer
@@ -556,7 +556,7 @@ func sendCachedStream(stream pb.GatewayService_GenerateTextStreamServer, cached 
 }
 
 // buildChat maps the wire request onto the vendored ChatContext.
-func buildChat(req *pb.GenerateTextRequest, id *apikeys.Identity, ruleName, effort string) *llm.ChatContext {
+func buildChat(req *pb.GenerateTextRequest, id *apikeys.Identity, ruleName string, needs map[string]string) *llm.ChatContext {
 	chat := llm.NewChatContext()
 	chat.Version = llm.ChatContextVersion2
 	chat.MessagesLimit = 0 // never cut: the client already chose what to send
@@ -681,7 +681,11 @@ func buildChat(req *pb.GenerateTextRequest, id *apikeys.Identity, ruleName, effo
 	// own usage_project survives the copy — it names the usage project, with
 	// the api key as the fallback (resolver in cmd/server/main.go).
 	meta := usageMeta(req.GetAttributes(), id)
-	meta["effort"] = effort
+	// effort stays for light-tokenmeter and reports: the general need as before.
+	meta["effort"] = registry.LevelEffort(needs[registry.TopicGeneral])
+	if len(needs) > 0 {
+		meta["needs"] = registry.FormatNeeds(needs)
+	}
 	if ruleName != "" {
 		meta["rule"] = ruleName
 	}
