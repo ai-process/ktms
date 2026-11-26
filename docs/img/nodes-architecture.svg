@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" width="960" height="420" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <style>
+    .bg { fill: #ffffff; }
+    .group { fill: #f6f8fa; stroke: #d0d7de; }
+    .ktmsg { fill: #ddf4ff; stroke: #0969da; }
+    .nodeg { fill: #dafbe1; stroke: #1a7f37; }
+    .box { fill: #ffffff; stroke: #d0d7de; }
+    .tunnel { fill: #fff1e5; stroke: #bc4c00; }
+    .g { fill: #1f2328; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; }
+    .t { fill: #1f2328; font-size: 14px; font-weight: 600; }
+    .s { fill: #59636e; font-size: 11.5px; }
+    .l { fill: #1f2328; font-size: 11.5px; }
+    .line { stroke: #59636e; stroke-width: 1.6; fill: none; }
+    .call { stroke: #0969da; stroke-width: 2.2; fill: none; }
+    .ah { fill: #59636e; }
+    .ahc { fill: #0969da; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0d1117; }
+      .group { fill: #161b22; stroke: #3d444d; }
+      .ktmsg { fill: #0a2348; stroke: #4493f8; }
+      .nodeg { fill: #0c2616; stroke: #3fb950; }
+      .box { fill: #0d1117; stroke: #3d444d; }
+      .tunnel { fill: #3d1d06; stroke: #db6d28; }
+      .g, .t, .l { fill: #f0f6fc; }
+      .s { fill: #9198a1; }
+      .line { stroke: #9198a1; }
+      .ah { fill: #9198a1; }
+      .call { stroke: #4493f8; }
+      .ahc { fill: #4493f8; }
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path class="ahc" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  <rect class="bg" width="960" height="420" rx="12"/>
+
+  <!-- Keystone -->
+  <rect class="ktmsg" x="20" y="40" width="220" height="340" rx="12"/>
+  <text class="g" x="40" y="68">KEYSTONE</text>
+  <rect class="box" x="40" y="100" width="180" height="60" rx="8"/>
+  <text class="t" x="130" y="126" text-anchor="middle">Node registry</text>
+  <text class="s" x="130" y="145" text-anchor="middle">models, load, level</text>
+  <rect class="box" x="40" y="280" width="180" height="60" rx="8"/>
+  <text class="t" x="130" y="306" text-anchor="middle">Router</text>
+  <text class="s" x="130" y="325" text-anchor="middle">slots · fallback</text>
+
+  <!-- Tunnel -->
+  <rect class="tunnel" x="300" y="280" width="150" height="60" rx="8"/>
+  <text class="t" x="375" y="306" text-anchor="middle">Quick tunnel</text>
+  <text class="s" x="375" y="325" text-anchor="middle">Cloudflare, or --endpoint</text>
+
+  <!-- Node machine -->
+  <rect class="nodeg" x="500" y="20" width="440" height="380" rx="12"/>
+  <text class="g" x="520" y="48">NODE MACHINE</text>
+  <rect class="box" x="530" y="100" width="160" height="60" rx="8"/>
+  <text class="t" x="610" y="126" text-anchor="middle">ktms-node</text>
+  <text class="s" x="610" y="145" text-anchor="middle">daemon</text>
+  <rect class="box" x="770" y="100" width="140" height="60" rx="8"/>
+  <text class="t" x="840" y="126" text-anchor="middle">Tray</text>
+  <text class="s" x="840" y="145" text-anchor="middle">menu bar app</text>
+  <rect class="box" x="530" y="190" width="160" height="56" rx="8"/>
+  <text class="t" x="610" y="214" text-anchor="middle">Usage log</text>
+  <text class="s" x="610" y="233" text-anchor="middle">no user, key or text</text>
+  <rect class="box" x="530" y="280" width="160" height="60" rx="8"/>
+  <text class="t" x="610" y="306" text-anchor="middle">Node gateway</text>
+  <text class="s" x="610" y="325" text-anchor="middle">chat and model list only</text>
+  <rect class="box" x="770" y="280" width="140" height="60" rx="8"/>
+  <text class="t" x="840" y="306" text-anchor="middle">Engine</text>
+  <text class="s" x="840" y="325" text-anchor="middle">Ollama, vLLM, mt…</text>
+
+  <!-- daemon -> registry -->
+  <path class="line" d="M530,130 L224,130" marker-end="url(#a)"/>
+  <text class="l" x="375" y="118" text-anchor="middle">register · heartbeat every 5 s</text>
+  <text class="s" x="375" y="148" text-anchor="middle">gRPC, node key, outbound</text>
+
+  <!-- calls -->
+  <path class="call" d="M220,310 L296,310" marker-end="url(#ac)"/>
+  <text class="l" x="258" y="300" text-anchor="middle">calls</text>
+  <path class="call" d="M450,310 L526,310" marker-end="url(#ac)"/>
+  <path class="call" d="M690,310 L766,310" marker-end="url(#ac)"/>
+
+  <!-- tray <-> daemon -->
+  <path class="line" d="M694,130 L766,130" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text class="s" x="730" y="120" text-anchor="middle">socket</text>
+
+  <!-- daemon -> log -->
+  <path class="line" d="M610,160 L610,186" marker-end="url(#a)"/>
+
+  <!-- daemon polls engine -->
+  <path class="line" d="M690,155 L812,276" marker-end="url(#a)"/>
+  <text class="s" x="770" y="215">polls load</text>
+</svg>
