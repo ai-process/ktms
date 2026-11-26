@@ -13,7 +13,8 @@ field tells Keystone what the call needs instead of naming a model:
 **Contents:** [Glossary](#glossary) · [Try it](#openai-compatible-http-api) · [Endpoints](#endpoints) ·
 [Choosing a model and placement](#choosing-a-model-and-placement) ·
 [Chat completions fields](#chat-completions-what-is-supported) · [Speech and images](#speech-and-images) ·
-[Errors](#errors) · [Anthropic Messages API](#anthropic-messages-api)
+[Errors](#errors) · [Anthropic Messages API](#anthropic-messages-api) ·
+[OpenAI Responses API](#openai-responses-api)
 
 ## Glossary
 
@@ -52,6 +53,7 @@ curl -s localhost:8080/v1/chat/completions \
 | --- | --- | --- |
 | `POST /v1/chat/completions` | `GenerateText` / `GenerateTextStream` | Text, multimodal parts (`image_url`, `input_audio`, `file`/`document`), structured output, `tools`, and SSE streaming. |
 | `POST /v1/messages` | `GenerateText` / `GenerateTextStream` | The [Anthropic Messages API](#anthropic-messages-api). |
+| `POST /v1/responses` | `GenerateText` / `GenerateTextStream` | The [OpenAI Responses API](#openai-responses-api), without stored state. |
 | `POST /v1/embeddings` | `GetEmbeddings` | Vector embeddings with `float` or `base64` encoding format and optional dimensionality. |
 | `POST /v1/audio/speech` | `SynthesizeSpeech` | Returns OGG/Opus audio. |
 | `POST /v1/images/generations` | `GenerateImage` | Returns `b64_json`. |
@@ -251,3 +253,79 @@ statuses of [the table above](#errors):
 
 The machine-readable reason, such as `throttled:rpm`, is the `message`. An error after the stream has
 started arrives as an `error` event.
+
+## OpenAI Responses API
+
+`POST /v1/responses` serves the [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses),
+so Codex CLI and the OpenAI Agents SDK run through Keystone. It is the same pipeline as
+`/v1/chat/completions`: keys, rules, fallback, limits, guardrails, cache, `X-KTMS-*` headers and
+usage events. The model that answers may be any vendor's; the answer is still a Responses object.
+[Experimental](stability.md#experimental) in 1.x.
+
+**Keystone keeps no response state.** Send the whole conversation in `input` each time, as Codex CLI
+and the Agents SDK do by default. `previous_response_id`, `conversation` and `item_reference` are
+rejected with `400`, and `GET /v1/responses/{id}` answers `404`.
+
+**Codex CLI**, in `~/.codex/config.toml`, with the key in `KTMS_API_KEY`:
+
+```toml
+model = "auto"                  # or a registry model id
+model_provider = "ktms"
+web_search = "disabled"         # optional: Keystone drops the hosted search tool anyway
+
+[model_providers.ktms]
+name = "Keystone"
+base_url = "http://localhost:8080/v1"
+env_key = "KTMS_API_KEY"
+wire_api = "responses"
+```
+
+Codex warns once that it does not know the model `auto` and uses its default model settings; that
+is expected.
+
+**The OpenAI SDKs and the Agents SDK** need only the base URL and the key:
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8080/v1", api_key="ktms_<your key>")
+reply = client.responses.create(model="auto", input="Say hi in three words.")
+print(reply.output_text, reply.model)        # `model` is the one that answered
+```
+
+```python
+from agents import Agent, OpenAIResponsesModel, Runner, set_tracing_disabled
+from openai import AsyncOpenAI
+
+set_tracing_disabled(True)                   # traces go to OpenAI otherwise
+client = AsyncOpenAI(base_url="http://localhost:8080/v1", api_key="ktms_<your key>")
+agent = Agent(name="assistant", model=OpenAIResponsesModel(model="auto", openai_client=client))
+print(Runner.run_sync(agent, "Say hi in three words.").final_output)
+```
+
+| Request field | Support |
+| --- | --- |
+| `model` | As on chat completions: `auto`, `auto:<topic>=<level>,…`, `auto:<effort>`, `auto:<placement>`, or a registry model id. `X-KTMS-Needs` applies too. |
+| `reasoning.effort` | The effort, as `reasoning_effort` on chat completions: `none` and `minimal` are `low`, `xhigh` is `high`. |
+| `instructions`, `system` and `developer` messages | Joined into the system instruction. |
+| `input` | A string, or items: `message` (`input_text`, `output_text`, `refusal`, `input_image` with a data URI or `https` `image_url`, `input_file` with `file_data`), `function_call`, `function_call_output` (text and images), `custom_tool_call` and `custom_tool_call_output`. `reasoning` items are dropped: another model cannot continue them. `file_id` and `file_url` are rejected: Keystone stores no files. |
+| `tools`, `tool_choice` | `function` tools (the same JSON Schema subset as `response_format`) and `custom` tools, which reach the model as a function with one `input` string. Hosted tools (`web_search`, `file_search`, `mcp` and the rest) are dropped and named in `X-KTMS-Ignored-Params` as `tools.<type>`. `tool_choice` `auto`, `none`, `required`, or a `function` or `custom` tool by name. |
+| `text.format` | `text`, `json_object` or `json_schema`, as `response_format` on chat completions. |
+| `max_output_tokens`, `temperature`, `top_p` | Passed to the model as on chat completions (see [Sampling](grpc-api.md#sampling)). |
+| `stream` | SSE events `response.created`, `response.in_progress`, `response.output_item.added`, `response.content_part.added`, `response.output_text.delta`, `response.output_text.done`, `response.content_part.done`, `response.function_call_arguments.delta` and `.done`, `response.custom_tool_call_input.delta` and `.done`, `response.output_item.done`, then `response.completed` or `response.incomplete`. |
+| `user`, `metadata` | Attributes, as on chat completions; `metadata.action_id` is the usage action label. |
+| `enable_cache`, `placement`, `data_classification` | Extensions, as on chat completions; so are the `X-KTMS-Cache`, `X-KTMS-Placement` and `X-KTMS-Needs` request headers. |
+| `previous_response_id`, `conversation`, `background`, `prompt` | Rejected with `400`. |
+| `store: true`, `parallel_tool_calls: false`, `text.verbosity`, `reasoning.summary` and any other field | Accepted, acted on by no model, and named in `X-KTMS-Ignored-Params`. |
+
+**The response.**
+
+- `status` is `completed`, or `incomplete` with `incomplete_details.reason` `max_output_tokens` or
+  `content_filter`.
+- `output` holds a `message` with the text, then a `function_call` or `custom_tool_call` per tool call.
+  `call_id` is the vendor's tool call id, or `call_…` when the vendor gives none.
+- `usage.input_tokens` includes `input_tokens_details.cached_tokens`. `store` is always `false`.
+
+**Errors** use OpenAI's shape, as on chat completions; see [the table above](#errors). An error
+after the stream has started ends it with `response.failed`, whose `response.error.code` is the
+machine-readable reason, such as `vendor_error`.

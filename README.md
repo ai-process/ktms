@@ -33,8 +33,8 @@ under 1 ms of added latency.
   vendors. → [Concepts](docs/concepts.md#concepts), [When a dependency fails](docs/operations.md#when-a-dependency-fails)
 - **More than text.** Streaming, structured (JSON-schema) output, batches at 50% discount, speech,
   images, typed judgments, embeddings and translation. → [Calling Keystone](docs/grpc-api.md#calling-keystone)
-- **Drop-in APIs.** OpenAI-compatible `/v1` and the Anthropic Messages API: point an existing SDK
-  at Keystone. → [HTTP APIs](docs/http-api.md#openai-compatible-http-api)
+- **Drop-in APIs.** OpenAI-compatible `/v1`, the OpenAI Responses API and the Anthropic Messages
+  API: point an existing SDK, Codex CLI or Claude Code at Keystone. → [HTTP APIs](docs/http-api.md#openai-compatible-http-api)
 - **Your own hardware.** Ollama, vLLM, llama.cpp, FreeToken or a translation engine on a Mac or a
   GPU box, with cloud fallback; restricted data never leaves them.
   → [Nodes](docs/nodes.md#run-a-node), [Restricted data](docs/concepts.md#restricted-data)
@@ -88,7 +88,7 @@ From a clone, with an AI assistant, or from scratch with `ktms init`: [Quick sta
 | [Nodes](docs/nodes.md) | The node daemon, running a local or translation node, troubleshooting |
 | [Console, CLI and AI assistants](docs/console-and-cli.md) | ktms-admin, the `ktms` command, its MCP server, the Claude Code plugin |
 | [Calling Keystone (gRPC)](docs/grpc-api.md) | Client SDKs, text, streaming, sampling, batches, speech, images, judge, translation, embeddings |
-| [HTTP APIs](docs/http-api.md) | OpenAI-compatible endpoints, model and placement selection, Anthropic Messages API |
+| [HTTP APIs](docs/http-api.md) | OpenAI-compatible endpoints, model and placement selection, Anthropic Messages and OpenAI Responses APIs |
 | [MCP gateway and agents](docs/mcp.md) | MCP servers behind Keystone, the agents' inbox |
 | [Concepts](docs/concepts.md) | Throttling, circuit breaker, back-off, usage reporting, restricted data, semantic cache |
 | [Error contract](docs/errors.md) | RPC status codes and reasons, batch item errors |

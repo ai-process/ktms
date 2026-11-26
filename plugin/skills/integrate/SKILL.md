@@ -5,8 +5,8 @@ description: Move a service's LLM calls onto Keystone (KTMS), the self-hosted LL
 
 # Connect a service to Keystone
 
-Keystone speaks the OpenAI wire format on HTTP `/v1`, the Anthropic Messages API on
-`/v1/messages`, and its own gRPC API on `:9090`. A service
+Keystone speaks the OpenAI wire format on HTTP `/v1` (chat completions and, without stored state,
+the Responses API), the Anthropic Messages API on `/v1/messages`, and its own gRPC API on `:9090`. A service
 needs a client key (`ktms_…`, scope `generate`) and the gateway's address; it never names vendor
 models, it states what the call needs (`general: basic`, `medical: proficient`) and Keystone
 picks the chain.
@@ -59,4 +59,5 @@ picks the chain.
 
 Sources: [OpenAI-compatible HTTP API](https://github.com/ai-process/ktms/blob/main/docs/http-api.md#openai-compatible-http-api),
 [Anthropic Messages API](https://github.com/ai-process/ktms/blob/main/docs/http-api.md#anthropic-messages-api),
+[OpenAI Responses API](https://github.com/ai-process/ktms/blob/main/docs/http-api.md#openai-responses-api),
 [Calling Keystone](https://github.com/ai-process/ktms/blob/main/docs/grpc-api.md#calling-keystone), [Error contract](https://github.com/ai-process/ktms/blob/main/docs/errors.md#error-contract).

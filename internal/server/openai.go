@@ -72,6 +72,10 @@ func (a *OpenAIAPI) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/models/{id...}", a.wrap(models, a.getModel))
 	mux.HandleFunc("POST /v1/messages", a.serve(chat, a.messages, writeAnthropicError, true))
 	mux.HandleFunc("POST /v1/messages/count_tokens", a.serve(chat, a.countTokens, writeAnthropicError, true))
+	mux.HandleFunc("POST /v1/responses", a.wrap(chat, a.responses))
+	mux.HandleFunc("GET /v1/responses/{id}", a.wrap(chat, responseNotStored))
+	mux.HandleFunc("DELETE /v1/responses/{id}", a.wrap(chat, responseNotStored))
+	mux.HandleFunc("GET /v1/responses/{id}/input_items", a.wrap(chat, responseNotStored))
 }
 
 type apiHandler func(ctx context.Context, w http.ResponseWriter, r *http.Request) error
@@ -266,41 +270,11 @@ func (m chatMessage) parseContent(ctx context.Context) (string, []*pb.ContentPar
 			if p.ImageURL == nil || p.ImageURL.URL == "" {
 				return "", nil, invalid("image_url part must contain a non-empty url")
 			}
-			rawURL := p.ImageURL.URL
-			detail := p.ImageURL.Detail
-			if detail == "" {
-				detail = "auto"
+			part, err := imageURLPart(ctx, p.ImageURL.URL, p.ImageURL.Detail)
+			if err != nil {
+				return "", nil, err
 			}
-			var imgData []byte
-			var mimeType string
-			if strings.HasPrefix(rawURL, "data:") {
-				var err error
-				mimeType, imgData, err = safefetch.ParseDataURI(rawURL)
-				if err != nil {
-					return "", nil, invalid("invalid data URI: %v", err)
-				}
-				if err := safefetch.ValidateMediaMimeType(mimeType); err != nil {
-					return "", nil, invalid("%v", err)
-				}
-			} else if strings.HasPrefix(rawURL, "https://") {
-				var err error
-				imgData, mimeType, err = safefetch.FetchURL(ctx, rawURL, maxRequestBytes)
-				if err != nil {
-					return "", nil, invalid("failed to fetch image: %v", err)
-				}
-			} else {
-				return "", nil, invalid("invalid image URL %q: only https and data URI schemes are allowed", rawURL)
-			}
-			parts = append(parts, &pb.ContentPart{
-				Part: &pb.ContentPart_Image{
-					Image: &pb.ImagePart{
-						MimeType: mimeType,
-						Data:     imgData,
-						Url:      rawURL,
-						Detail:   detail,
-					},
-				},
-			})
+			parts = append(parts, part)
 		case "input_audio":
 			if p.InputAudio == nil || p.InputAudio.Data == "" {
 				return "", nil, invalid("input_audio part must contain base64 data")
@@ -379,6 +353,35 @@ func (m chatMessage) parseContent(ctx context.Context) (string, []*pb.ContentPar
 		}
 	}
 	return b.String(), parts, nil
+}
+
+// imageURLPart reads an image given as a data URI or an https URL, which is
+// fetched through safefetch.
+func imageURLPart(ctx context.Context, rawURL, detail string) (*pb.ContentPart, error) {
+	if detail == "" {
+		detail = "auto"
+	}
+	var data []byte
+	var mimeType string
+	var err error
+	switch {
+	case strings.HasPrefix(rawURL, "data:"):
+		if mimeType, data, err = safefetch.ParseDataURI(rawURL); err != nil {
+			return nil, invalid("invalid data URI: %v", err)
+		}
+		if err := safefetch.ValidateMediaMimeType(mimeType); err != nil {
+			return nil, invalid("%v", err)
+		}
+	case strings.HasPrefix(rawURL, "https://"):
+		if data, mimeType, err = safefetch.FetchURL(ctx, rawURL, maxRequestBytes); err != nil {
+			return nil, invalid("failed to fetch image: %v", err)
+		}
+	default:
+		return nil, invalid("invalid image URL %q: only https and data URI schemes are allowed", rawURL)
+	}
+	return &pb.ContentPart{Part: &pb.ContentPart_Image{Image: &pb.ImagePart{
+		MimeType: mimeType, Data: data, Url: rawURL, Detail: detail,
+	}}}, nil
 }
 
 func hasMediaParts(parts []*pb.ContentPart) bool {

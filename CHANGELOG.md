@@ -8,6 +8,13 @@ All notable changes to KTMS are listed here. The format follows
 ## [Unreleased]
 
 ### Added
+- OpenAI Responses API (experimental): `POST /v1/responses`, so Codex CLI (`wire_api = "responses"`)
+  and the OpenAI Agents SDK run through Keystone with `model: "auto"` or a registry model id. It shares
+  routing, fallback, limits, guardrails, cache, `X-KTMS-*` headers and usage events with chat
+  completions, takes `function` and `custom` tools, `text.format` and `reasoning.effort`, and streams
+  the Responses SSE events. Keystone keeps no response state: `previous_response_id`, `conversation`
+  and `item_reference` are rejected, and `GET /v1/responses/{id}` answers 404. Hosted tools and
+  fields no model acts on, such as `store` and `text.verbosity`, are named in `X-KTMS-Ignored-Params`.
 - Judgments on images at TypeSafe (experimental). Image bytes in `state_media` go to System One as multipart
   assets with its images header instead of making TypeSafe yield; `MediaPart.name` lets state, instructions and
   criteria refer to an image (other judges get the name as a label). Images are checked from their header before
