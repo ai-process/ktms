@@ -70,6 +70,22 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 				return nil, guardrailStatus(err)
 			}
 			q.Instructions = sanitizedInst
+			// The JSON forms are what TypeSafe reads: every string in them
+			// goes through the same inspection.
+			inspect := func(t string) (string, error) {
+				out, _, err := s.guardrails.InspectText(ctx, t, vault)
+				return out, err
+			}
+			for _, raw := range []*json.RawMessage{&q.InstructionsJSON, &q.CriteriaJSON} {
+				if len(*raw) == 0 {
+					continue
+				}
+				sanitized, err := llm.MapJSONStrings(*raw, inspect)
+				if err != nil {
+					return nil, guardrailStatus(err)
+				}
+				*raw = sanitized
+			}
 			for i, opt := range q.Options {
 				sanitizedOpt, _, err := s.guardrails.InspectText(ctx, opt, vault)
 				if err != nil {
@@ -183,6 +199,9 @@ func judgeRequestFromProto(req *pb.JudgeRequest) (*llm.JudgeRequest, error) {
 		if q.GetInstructions() == "" && q.GetInstructionsJson() == "" {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: question %q has no instructions", id)
 		}
+		if q.GetInstructions() != "" && q.GetInstructionsJson() != "" {
+			return nil, status.Errorf(codes.InvalidArgument, "bad_request: question %q: instructions_json replaces instructions: send one or the other", id)
+		}
 		kind := judgeTypeFromProto(q.GetType())
 		instrJSON, critJSON, err := structuredQuestion(id, kind, q)
 		if err != nil {
@@ -208,7 +227,7 @@ func judgeRequestFromProto(req *pb.JudgeRequest) (*llm.JudgeRequest, error) {
 		default:
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: question %q has no type", id)
 		}
-		out.Questions[id] = &llm.JudgeQuestion{
+		out.Questions[id] = (&llm.JudgeQuestion{
 			Type:             kind,
 			Instructions:     q.GetInstructions(),
 			Options:          q.GetOptions(),
@@ -217,7 +236,7 @@ func judgeRequestFromProto(req *pb.JudgeRequest) (*llm.JudgeRequest, error) {
 			FalseCriteria:    q.GetFalseCriteria(),
 			InstructionsJSON: instrJSON,
 			CriteriaJSON:     critJSON,
-		}
+		}).Flat() // levels and options as text, for legends, scores and guardrails
 	}
 	return out, nil
 }
@@ -395,7 +414,16 @@ func judgeEstimate(req *llm.JudgeRequest) int64 {
 		}
 	}
 	for _, q := range req.Questions {
-		runes += utf8.RuneCountInString(q.Instructions)
+		// The flat fields mirror the JSON ones when those are set: count one.
+		if len(q.InstructionsJSON) > 0 {
+			runes += utf8.RuneCount(q.InstructionsJSON)
+		} else {
+			runes += utf8.RuneCountInString(q.Instructions)
+		}
+		if len(q.CriteriaJSON) > 0 {
+			runes += utf8.RuneCount(q.CriteriaJSON)
+			continue
+		}
 		for _, opt := range q.Options {
 			runes += utf8.RuneCountInString(opt)
 		}
@@ -403,7 +431,6 @@ func judgeEstimate(req *llm.JudgeRequest) int64 {
 			runes += utf8.RuneCountInString(level)
 		}
 		runes += utf8.RuneCountInString(q.TrueCriteria) + utf8.RuneCountInString(q.FalseCriteria)
-		runes += utf8.RuneCount(q.InstructionsJSON) + utf8.RuneCount(q.CriteriaJSON)
 	}
 	return int64(runes)/4 + extraTokens + 1
 }
@@ -441,7 +468,7 @@ func structuredQuestion(id, kind string, q *pb.JudgeQuestion) (json.RawMessage, 
 		}
 	case llm.JudgeNoul:
 		var m map[string]json.RawMessage
-		if json.Unmarshal([]byte(s), &m) != nil {
+		if json.Unmarshal([]byte(s), &m) != nil || len(m) == 0 {
 			return nil, nil, bad(`criteria_json for a noul is an object with "true" and "false"`)
 		}
 		for k := range m {
@@ -945,6 +972,9 @@ func evaluateRolloutsRequestFromProto(req *pb.EvaluateRolloutsRequest) (*llm.Eva
 		}
 	} else {
 		for id, q := range criteriaMap {
+			if q.GetInstructionsJson() != "" || q.GetCriteriaJson() != "" {
+				return nil, status.Errorf(codes.InvalidArgument, "bad_request: criteria %q: instructions_json and criteria_json are not supported in rollouts", id)
+			}
 			if q.GetInstructions() == "" {
 				return nil, status.Errorf(codes.InvalidArgument, "bad_request: criteria %q has no instructions", id)
 			}

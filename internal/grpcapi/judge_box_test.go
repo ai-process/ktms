@@ -73,3 +73,39 @@ func TestCriteriaJSONChecks(t *testing.T) {
 		}
 	}
 }
+
+// A score in criteria_json still has its levels as text (legends, composite
+// scores, guardrails); bad combinations are refused.
+func TestStructuredQuestionsAreReadAsText(t *testing.T) {
+	req, err := judgeRequestFromProto(&pb.JudgeRequest{StateJson: `{}`, Questions: map[string]*pb.JudgeQuestion{
+		"wear": {Type: pb.JudgeType_JUDGE_TYPE_SCORE, Instructions: "how worn?", CriteriaJson: `["new", {"description":"worn","examples":["ex"]}]`}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lv := req.Questions["wear"].Levels; len(lv) != 2 || lv[0] != "new" || lv[1] != `{"description":"worn","examples":["ex"]}` {
+		t.Fatalf("levels = %q", lv)
+	}
+	for name, q := range map[string]*pb.JudgeQuestion{
+		"empty noul": {Type: pb.JudgeType_JUDGE_TYPE_NOUL, Instructions: "?", CriteriaJson: `{}`},
+		"both":       {Type: pb.JudgeType_JUDGE_TYPE_NOUL, Instructions: "?", InstructionsJson: `["?"]`},
+	} {
+		if _, err := judgeRequestFromProto(&pb.JudgeRequest{StateJson: `{}`, Questions: map[string]*pb.JudgeQuestion{"q": q}}); status.Code(err) != codes.InvalidArgument {
+			t.Errorf("%s: want bad_request, got %v", name, err)
+		}
+	}
+	_, err = evaluateRolloutsRequestFromProto(&pb.EvaluateRolloutsRequest{StateJson: `{}`,
+		Candidates: []*pb.RolloutCandidate{{Id: "a", ActionJson: `{}`}, {Id: "b", ActionJson: `{}`}},
+		Criteria:   map[string]*pb.JudgeQuestion{"q": {Type: pb.JudgeType_JUDGE_TYPE_NOUL, Instructions: "?", CriteriaJson: `{"true":"y"}`}}})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Errorf("rollouts with criteria_json: %v", err)
+	}
+}
+
+// Guardrails see every string of the JSON forms, never the option keys.
+func TestMapJSONStrings(t *testing.T) {
+	out, err := llm.MapJSONStrings([]byte(`{"pothole":{"description":"call 555-0100","examples":["ex"]}}`),
+		func(s string) (string, error) { return strings.ReplaceAll(s, "555-0100", "[phone]"), nil })
+	if err != nil || string(out) != `{"pothole":{"description":"call [phone]","examples":["ex"]}}` {
+		t.Fatalf("out = %s, %v", out, err)
+	}
+}

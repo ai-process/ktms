@@ -278,8 +278,9 @@ state, in parallel.
   replaces `options`, `levels` and the criteria pair.
 - **Long context**: declare `long_context` on a TypeSafe model to send System One's long-context
   header on every call (262k tokens per request and per question instead of 64k and 32k).
-- **Sizes**: one request carries at most 16 MiB of media, and gRPC and HTTP bodies are capped at
-  16 MiB too (`GRPC_MAX_RECV_MSG_SIZE`, the HTTP limit), below TypeSafe's 32 MiB. Keystone keeps
+- **Sizes**: one request carries at most 16 MiB of media, below TypeSafe's 32 MiB. gRPC messages are
+  capped by `GRPC_MAX_RECV_MSG_SIZE` (16 MiB by default) and HTTP bodies at 16 MiB, where base64
+  leaves about 12 MiB of image bytes. Keystone keeps
   that ceiling: frames at 1568 px are well under it, and larger judge requests belong in several
   calls. Usage events count the images of each call in meta `images`; their tokens are in
   `usage.input`.

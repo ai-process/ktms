@@ -212,3 +212,22 @@ func TestTypeSafeLongContextHeader(t *testing.T) {
 		t.Errorf("long context header = %q", got)
 	}
 }
+
+// A long-context model with images sends both opt-in headers.
+func TestTypeSafeImagesAndLongContextHeaders(t *testing.T) {
+	var images, long string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		images, long = r.Header.Get(typeSafeImagesHeader), r.Header.Get(typeSafeLongContextHeader)
+		_, _ = io.WriteString(w, `{"answers":{"q":{"type":"noul","noul":0.5}}}`)
+	}))
+	defer srv.Close()
+	a := NewTypeSafeAdapter(srv.URL, "k", "jev-1.14.0").WithLongContext(true)
+	if _, err := a.Judge(context.Background(), &llm.JudgeRequest{
+		StateMedia: []*llm.JudgeMediaPart{{Type: llm.JudgeMediaImage, Name: "road", Data: pngOf(t, 640, 480)}},
+		Questions:  map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "is `road` usable?"}}}, "u", nil); err != nil {
+		t.Fatal(err)
+	}
+	if images != "true" || long != "true" {
+		t.Errorf("headers images=%q long=%q", images, long)
+	}
+}
