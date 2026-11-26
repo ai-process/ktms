@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 250" width="880" height="250" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <style>
+    .bg { fill: #ffffff; }
+    .group { fill: #f6f8fa; stroke: #d0d7de; }
+    .g-ktms { fill: #ddf4ff; stroke: #0969da; }
+    .g-node { fill: #dafbe1; stroke: #1a7f37; }
+    .g-warn { fill: #fff8c5; stroke: #9a6700; }
+    .box { fill: #ffffff; stroke: #d0d7de; }
+    .b-plain { fill: #f6f8fa; stroke: #d0d7de; }
+    .b-ktms { fill: #ddf4ff; stroke: #0969da; }
+    .b-node { fill: #dafbe1; stroke: #1a7f37; }
+    .b-warn { fill: #fff8c5; stroke: #9a6700; }
+    .b-hot { fill: #fff1e5; stroke: #bc4c00; }
+    .b-bad { fill: #ffebe9; stroke: #cf222e; }
+    .b-purple { fill: #fbefff; stroke: #8250df; }
+    .gl { fill: #1f2328; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; }
+    .t { fill: #1f2328; font-size: 14px; font-weight: 600; }
+    .s { fill: #59636e; font-size: 11.5px; }
+    .l { fill: #1f2328; font-size: 11.5px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .a-line { stroke: #59636e; stroke-width: 1.6; fill: none; }
+    .a-call { stroke: #0969da; stroke-width: 2.2; fill: none; }
+    .a-ok { stroke: #1a7f37; stroke-width: 2.2; fill: none; }
+    .a-dash { stroke: #59636e; stroke-width: 1.6; fill: none; stroke-dasharray: 6 5; }
+    .a-bad { stroke: #cf222e; stroke-width: 1.8; fill: none; stroke-dasharray: 6 5; }
+    .h-line, .h-dash { fill: #59636e; }
+    .h-call { fill: #0969da; }
+    .h-ok { fill: #1a7f37; }
+    .h-bad { fill: #cf222e; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0d1117; }
+      .group { fill: #161b22; stroke: #3d444d; }
+      .g-ktms { fill: #0a2348; stroke: #4493f8; }
+      .g-node { fill: #0c2616; stroke: #3fb950; }
+      .g-warn { fill: #2e2207; stroke: #d29922; }
+      .box { fill: #0d1117; stroke: #3d444d; }
+      .b-plain { fill: #161b22; stroke: #3d444d; }
+      .b-ktms { fill: #0c2d6b; stroke: #4493f8; }
+      .b-node { fill: #0f2f1b; stroke: #3fb950; }
+      .b-warn { fill: #3b2e0a; stroke: #d29922; }
+      .b-hot { fill: #3d1d06; stroke: #db6d28; }
+      .b-bad { fill: #3c0d12; stroke: #f85149; }
+      .b-purple { fill: #2a1650; stroke: #ab7df8; }
+      .gl, .t, .l { fill: #f0f6fc; }
+      .s { fill: #9198a1; }
+      .a-line, .a-dash { stroke: #9198a1; }
+      .h-line, .h-dash { fill: #9198a1; }
+      .a-call { stroke: #4493f8; } .h-call { fill: #4493f8; }
+      .a-ok { stroke: #3fb950; } .h-ok { fill: #3fb950; }
+      .a-bad { stroke: #f85149; } .h-bad { fill: #f85149; }
+    }
+  </style>
+  <defs><marker id="h-line" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-line" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-call" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-call" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-ok" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-dash" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-dash" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-bad" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+  <rect class="bg" width="880" height="250" rx="12"/>
+  <rect class="b-plain" x="20" y="85" width="150" height="50" rx="9"/>
+  <text class="t mono" x="95.0" y="115.0" text-anchor="middle">SubmitBatch</text>
+  <rect class="b-warn" x="220" y="85" width="140" height="50" rx="9"/>
+  <text class="t mono" x="290.0" y="115.0" text-anchor="middle">PENDING</text>
+  <rect class="b-ktms" x="410" y="85" width="140" height="50" rx="9"/>
+  <text class="t mono" x="480.0" y="106.0" text-anchor="middle">RUNNING</text>
+  <text class="s" x="480.0" y="125.0" text-anchor="middle">vendor batch API</text>
+  <path class="a-line" d="M170,110 L216,110" marker-end="url(#h-line)"/>
+  <path class="a-line" d="M360,110 L406,110" marker-end="url(#h-line)"/>
+  <rect class="b-node" x="620" y="20" width="140" height="40" rx="9"/>
+  <text class="t mono" x="690.0" y="45.0" text-anchor="middle">SUCCEEDED</text>
+  <path class="a-line" d="M550,110 L585,110 L585,40 L616,40" marker-end="url(#h-line)"/>
+  <rect class="b-bad" x="620" y="68" width="140" height="40" rx="9"/>
+  <text class="t mono" x="690.0" y="93.0" text-anchor="middle">FAILED</text>
+  <path class="a-line" d="M550,110 L585,110 L585,88 L616,88" marker-end="url(#h-line)"/>
+  <rect class="b-plain" x="620" y="116" width="140" height="40" rx="9"/>
+  <text class="t mono" x="690.0" y="141.0" text-anchor="middle">CANCELLED</text>
+  <path class="a-line" d="M550,110 L585,110 L585,136 L616,136" marker-end="url(#h-line)"/>
+  <rect class="b-plain" x="620" y="164" width="140" height="40" rx="9"/>
+  <text class="t mono" x="690.0" y="189.0" text-anchor="middle">EXPIRED</text>
+  <path class="a-line" d="M550,110 L585,110 L585,184 L616,184" marker-end="url(#h-line)"/>
+  <text class="s" x="440" y="236" text-anchor="middle">then ListBatchResults: each item's response or error</text>
+</svg>

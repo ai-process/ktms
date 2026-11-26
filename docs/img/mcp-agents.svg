@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 300" width="960" height="300" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <style>
+    .bg { fill: #ffffff; }
+    .group { fill: #f6f8fa; stroke: #d0d7de; }
+    .g-ktms { fill: #ddf4ff; stroke: #0969da; }
+    .g-node { fill: #dafbe1; stroke: #1a7f37; }
+    .g-warn { fill: #fff8c5; stroke: #9a6700; }
+    .box { fill: #ffffff; stroke: #d0d7de; }
+    .b-plain { fill: #f6f8fa; stroke: #d0d7de; }
+    .b-ktms { fill: #ddf4ff; stroke: #0969da; }
+    .b-node { fill: #dafbe1; stroke: #1a7f37; }
+    .b-warn { fill: #fff8c5; stroke: #9a6700; }
+    .b-hot { fill: #fff1e5; stroke: #bc4c00; }
+    .b-bad { fill: #ffebe9; stroke: #cf222e; }
+    .b-purple { fill: #fbefff; stroke: #8250df; }
+    .gl { fill: #1f2328; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; }
+    .t { fill: #1f2328; font-size: 14px; font-weight: 600; }
+    .s { fill: #59636e; font-size: 11.5px; }
+    .l { fill: #1f2328; font-size: 11.5px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .a-line { stroke: #59636e; stroke-width: 1.6; fill: none; }
+    .a-call { stroke: #0969da; stroke-width: 2.2; fill: none; }
+    .a-ok { stroke: #1a7f37; stroke-width: 2.2; fill: none; }
+    .a-dash { stroke: #59636e; stroke-width: 1.6; fill: none; stroke-dasharray: 6 5; }
+    .a-bad { stroke: #cf222e; stroke-width: 1.8; fill: none; stroke-dasharray: 6 5; }
+    .h-line, .h-dash { fill: #59636e; }
+    .h-call { fill: #0969da; }
+    .h-ok { fill: #1a7f37; }
+    .h-bad { fill: #cf222e; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0d1117; }
+      .group { fill: #161b22; stroke: #3d444d; }
+      .g-ktms { fill: #0a2348; stroke: #4493f8; }
+      .g-node { fill: #0c2616; stroke: #3fb950; }
+      .g-warn { fill: #2e2207; stroke: #d29922; }
+      .box { fill: #0d1117; stroke: #3d444d; }
+      .b-plain { fill: #161b22; stroke: #3d444d; }
+      .b-ktms { fill: #0c2d6b; stroke: #4493f8; }
+      .b-node { fill: #0f2f1b; stroke: #3fb950; }
+      .b-warn { fill: #3b2e0a; stroke: #d29922; }
+      .b-hot { fill: #3d1d06; stroke: #db6d28; }
+      .b-bad { fill: #3c0d12; stroke: #f85149; }
+      .b-purple { fill: #2a1650; stroke: #ab7df8; }
+      .gl, .t, .l { fill: #f0f6fc; }
+      .s { fill: #9198a1; }
+      .a-line, .a-dash { stroke: #9198a1; }
+      .h-line, .h-dash { fill: #9198a1; }
+      .a-call { stroke: #4493f8; } .h-call { fill: #4493f8; }
+      .a-ok { stroke: #3fb950; } .h-ok { fill: #3fb950; }
+      .a-bad { stroke: #f85149; } .h-bad { fill: #f85149; }
+    }
+  </style>
+  <defs><marker id="h-line" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-line" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-call" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-call" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-ok" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-dash" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-dash" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-bad" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+  <rect class="bg" width="960" height="300" rx="12"/>
+  <rect class="group" x="20" y="30" width="240" height="240" rx="12"/>
+  <text class="gl" x="38" y="56">ALICE</text>
+  <rect class="b-plain" x="40" y="80" width="200" height="64" rx="9"/>
+  <text class="t" x="140.0" y="99.0" text-anchor="middle">Alice's agent</text>
+  <text class="s" x="140.0" y="118.0" text-anchor="middle">Claude Code, Codex, any</text>
+  <text class="s" x="140.0" y="134.0" text-anchor="middle">MCP or A2A client</text>
+  <rect class="g-ktms" x="330" y="30" width="300" height="240" rx="12"/>
+  <text class="gl" x="348" y="56">KEYSTONE · AGENTS</text>
+  <rect class="box" x="350" y="75" width="260" height="56" rx="9"/>
+  <text class="t" x="480.0" y="99.0" text-anchor="middle">Tasks and conversations</text>
+  <text class="s" x="480.0" y="118.0" text-anchor="middle">stored in Postgres, A2A states</text>
+  <rect class="box" x="350" y="145" width="260" height="56" rx="9"/>
+  <text class="t" x="480.0" y="169.0" text-anchor="middle">Policy and guardrails</text>
+  <text class="s" x="480.0" y="188.0" text-anchor="middle">who may send, limits, holds</text>
+  <rect class="box" x="350" y="215" width="260" height="40" rx="9"/>
+  <text class="t" x="480.0" y="240.0" text-anchor="middle">Journal</text>
+  <rect class="g-node" x="700" y="30" width="240" height="240" rx="12"/>
+  <text class="gl" x="718" y="56">BOB</text>
+  <rect class="box" x="720" y="75" width="200" height="56" rx="9"/>
+  <text class="t mono" x="820.0" y="99.0" text-anchor="middle">ktms agents run</text>
+  <text class="s" x="820.0" y="118.0" text-anchor="middle">waits on the inbox</text>
+  <rect class="box" x="720" y="160" width="200" height="56" rx="9"/>
+  <text class="t mono" x="820.0" y="184.0" text-anchor="middle">claude / codex / agy</text>
+  <text class="s" x="820.0" y="203.0" text-anchor="middle">read-only</text>
+  <rect class="b-warn" x="740" y="230" width="160" height="28" rx="14.0"/>
+  <text class="l" x="820.0" y="248.0" text-anchor="middle">Bob answers needs_owner</text>
+  <path class="a-call" d="M240,100 L346,100" marker-end="url(#h-call)"/>
+  <text class="l" x="293" y="90" text-anchor="middle">send_message</text>
+  <path class="a-dash" d="M346,125 L240,125" marker-end="url(#h-dash)"/>
+  <text class="s" x="293" y="142" text-anchor="middle">outbox</text>
+  <path class="a-dash" d="M716,95 L614,95" marker-end="url(#h-dash)"/>
+  <text class="s" x="665" y="86" text-anchor="middle">inbox, wait</text>
+  <path class="a-call" d="M716,120 L614,120" marker-end="url(#h-call)"/>
+  <text class="l" x="665" y="136" text-anchor="middle">reply</text>
+  <path class="a-line" d="M820,131 L820,156" marker-end="url(#h-line)"/>
+</svg>

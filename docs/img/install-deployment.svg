@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 380" width="960" height="380" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <style>
+    .bg { fill: #ffffff; }
+    .group { fill: #f6f8fa; stroke: #d0d7de; }
+    .g-ktms { fill: #ddf4ff; stroke: #0969da; }
+    .g-node { fill: #dafbe1; stroke: #1a7f37; }
+    .g-warn { fill: #fff8c5; stroke: #9a6700; }
+    .box { fill: #ffffff; stroke: #d0d7de; }
+    .b-plain { fill: #f6f8fa; stroke: #d0d7de; }
+    .b-ktms { fill: #ddf4ff; stroke: #0969da; }
+    .b-node { fill: #dafbe1; stroke: #1a7f37; }
+    .b-warn { fill: #fff8c5; stroke: #9a6700; }
+    .b-hot { fill: #fff1e5; stroke: #bc4c00; }
+    .b-bad { fill: #ffebe9; stroke: #cf222e; }
+    .b-purple { fill: #fbefff; stroke: #8250df; }
+    .gl { fill: #1f2328; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; }
+    .t { fill: #1f2328; font-size: 14px; font-weight: 600; }
+    .s { fill: #59636e; font-size: 11.5px; }
+    .l { fill: #1f2328; font-size: 11.5px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .a-line { stroke: #59636e; stroke-width: 1.6; fill: none; }
+    .a-call { stroke: #0969da; stroke-width: 2.2; fill: none; }
+    .a-ok { stroke: #1a7f37; stroke-width: 2.2; fill: none; }
+    .a-dash { stroke: #59636e; stroke-width: 1.6; fill: none; stroke-dasharray: 6 5; }
+    .a-bad { stroke: #cf222e; stroke-width: 1.8; fill: none; stroke-dasharray: 6 5; }
+    .h-line, .h-dash { fill: #59636e; }
+    .h-call { fill: #0969da; }
+    .h-ok { fill: #1a7f37; }
+    .h-bad { fill: #cf222e; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0d1117; }
+      .group { fill: #161b22; stroke: #3d444d; }
+      .g-ktms { fill: #0a2348; stroke: #4493f8; }
+      .g-node { fill: #0c2616; stroke: #3fb950; }
+      .g-warn { fill: #2e2207; stroke: #d29922; }
+      .box { fill: #0d1117; stroke: #3d444d; }
+      .b-plain { fill: #161b22; stroke: #3d444d; }
+      .b-ktms { fill: #0c2d6b; stroke: #4493f8; }
+      .b-node { fill: #0f2f1b; stroke: #3fb950; }
+      .b-warn { fill: #3b2e0a; stroke: #d29922; }
+      .b-hot { fill: #3d1d06; stroke: #db6d28; }
+      .b-bad { fill: #3c0d12; stroke: #f85149; }
+      .b-purple { fill: #2a1650; stroke: #ab7df8; }
+      .gl, .t, .l { fill: #f0f6fc; }
+      .s { fill: #9198a1; }
+      .a-line, .a-dash { stroke: #9198a1; }
+      .h-line, .h-dash { fill: #9198a1; }
+      .a-call { stroke: #4493f8; } .h-call { fill: #4493f8; }
+      .a-ok { stroke: #3fb950; } .h-ok { fill: #3fb950; }
+      .a-bad { stroke: #f85149; } .h-bad { fill: #f85149; }
+    }
+  </style>
+  <defs><marker id="h-line" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-line" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-call" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-call" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-ok" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-dash" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-dash" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-bad" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+  <rect class="bg" width="960" height="380" rx="12"/>
+  <rect class="b-plain" x="20" y="60" width="160" height="60" rx="9"/>
+  <text class="t" x="100.0" y="86.0" text-anchor="middle">Your services</text>
+  <text class="s" x="100.0" y="105.0" text-anchor="middle">gRPC :9090, HTTP :8080</text>
+  <rect class="b-node" x="20" y="160" width="160" height="60" rx="9"/>
+  <text class="t" x="100.0" y="186.0" text-anchor="middle">Node daemons</text>
+  <text class="s" x="100.0" y="205.0" text-anchor="middle">gRPC with --tls</text>
+  <rect class="b-plain" x="20" y="260" width="160" height="60" rx="9"/>
+  <text class="t" x="100.0" y="286.0" text-anchor="middle">ktms-admin</text>
+  <text class="s" x="100.0" y="305.0" text-anchor="middle">Admin API</text>
+  <rect class="b-hot" x="230" y="140" width="150" height="100" rx="9"/>
+  <text class="t" x="305.0" y="177.0" text-anchor="middle">TLS</text>
+  <text class="s" x="305.0" y="196.0" text-anchor="middle">load balancer</text>
+  <text class="s" x="305.0" y="212.0" text-anchor="middle">or service mesh</text>
+  <rect class="g-ktms" x="430" y="30" width="200" height="320" rx="12"/>
+  <text class="gl" x="448" y="56">KEYSTONE × N</text>
+  <rect class="box" x="450" y="80" width="160" height="56" rx="9"/>
+  <text class="t" x="530.0" y="104.0" text-anchor="middle">replica</text>
+  <text class="s" x="530.0" y="123.0" text-anchor="middle">stateless</text>
+  <rect class="box" x="450" y="160" width="160" height="56" rx="9"/>
+  <text class="t" x="530.0" y="184.0" text-anchor="middle">replica</text>
+  <text class="s" x="530.0" y="203.0" text-anchor="middle">stateless</text>
+  <rect class="box" x="450" y="240" width="160" height="56" rx="9"/>
+  <text class="t" x="530.0" y="273.0" text-anchor="middle">…</text>
+  <rect class="b-plain" x="700" y="30" width="230" height="56" rx="9"/>
+  <text class="t" x="815.0" y="54.0" text-anchor="middle">Postgres</text>
+  <text class="s" x="815.0" y="73.0" text-anchor="middle">required: config, keys</text>
+  <path class="a-line" d="M630,58 L696,58" marker-end="url(#h-line)"/>
+  <rect class="b-plain" x="700" y="100" width="230" height="56" rx="9"/>
+  <text class="t" x="815.0" y="124.0" text-anchor="middle">Redis</text>
+  <text class="s" x="815.0" y="143.0" text-anchor="middle">limits, cache, node pool</text>
+  <path class="a-line" d="M630,128 L696,128" marker-end="url(#h-line)"/>
+  <rect class="b-plain" x="700" y="170" width="230" height="56" rx="9"/>
+  <text class="t" x="815.0" y="194.0" text-anchor="middle">light-tokenmeter</text>
+  <text class="s" x="815.0" y="213.0" text-anchor="middle">usage events</text>
+  <path class="a-line" d="M630,198 L696,198" marker-end="url(#h-line)"/>
+  <rect class="b-plain" x="700" y="240" width="230" height="56" rx="9"/>
+  <text class="t" x="815.0" y="264.0" text-anchor="middle">Vendors, nodes</text>
+  <text class="s" x="815.0" y="283.0" text-anchor="middle">the models</text>
+  <path class="a-line" d="M630,268 L696,268" marker-end="url(#h-line)"/>
+  <rect class="b-warn" x="700" y="310" width="230" height="56" rx="9"/>
+  <text class="t" x="815.0" y="334.0" text-anchor="middle">Prometheus</text>
+  <text class="s" x="815.0" y="353.0" text-anchor="middle">scrapes :9091, keep it internal</text>
+  <path class="a-dash" d="M696,338 L634,338" marker-end="url(#h-dash)"/>
+  <path class="a-call" d="M180,90 L226,160.0" marker-end="url(#h-call)"/>
+  <path class="a-call" d="M180,190 L226,190.0" marker-end="url(#h-call)"/>
+  <path class="a-call" d="M180,290 L226,220.0" marker-end="url(#h-call)"/>
+  <path class="a-call" d="M380,190 L426,190" marker-end="url(#h-call)"/>
+</svg>
