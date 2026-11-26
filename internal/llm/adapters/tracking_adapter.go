@@ -655,6 +655,14 @@ func (t *TrackingAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, user
 	return result, err
 }
 
+// CheckJudgeMedia forwards to the wrapped adapter's media check, if it has one.
+func (t *TrackingAdapter) CheckJudgeMedia(media []*llm.JudgeMediaPart) error {
+	if c, ok := t.adapter.(llm.JudgeMediaChecker); ok {
+		return c.CheckJudgeMedia(media)
+	}
+	return nil
+}
+
 // EvaluateRollouts forwards to the wrapped adapter's optional rollout judgment capability and
 // tracks usage. Adapters without one surface ErrJudgmentUnsupported.
 func (t *TrackingAdapter) EvaluateRollouts(ctx context.Context, req *llm.EvaluateRolloutsRequest, userID string, meta map[string]string) (*llm.EvaluateRolloutsResult, error) {

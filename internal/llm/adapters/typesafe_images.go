@@ -26,7 +26,7 @@ const (
 // only, without decoding pixels, and returns System One's format name.
 func typeSafeImageFormat(i int, data []byte) (string, error) {
 	bad := func(format string, args ...any) error {
-		return &llm.InvalidMediaError{Msg: fmt.Sprintf("state_media[%d]: ", i) + fmt.Sprintf(format, args...)}
+		return &llm.InvalidMediaError{Part: i, Msg: fmt.Sprintf(format, args...)}
 	}
 	if len(data) > typeSafeMaxImageSize {
 		return "", bad("image is %d bytes, max %d for TypeSafe", len(data), typeSafeMaxImageSize)

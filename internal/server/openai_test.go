@@ -45,6 +45,7 @@ type fakeProxy struct {
 	embedResp      *pb.GetEmbeddingsResponse
 	embedErr       error
 	rolloutReq     *pb.EvaluateRolloutsRequest
+	rolloutErr     error
 	translateReq   *pb.TranslateRequest
 	restricted     bool // the last call's context was restricted
 }
@@ -194,6 +195,9 @@ func (f *fakeProxy) GetEmbeddings(ctx context.Context, r *pb.GetEmbeddingsReques
 
 func (f *fakeProxy) EvaluateRollouts(_ context.Context, r *pb.EvaluateRolloutsRequest) (*pb.EvaluateRolloutsResponse, error) {
 	f.rolloutReq = r
+	if f.rolloutErr != nil {
+		return nil, f.rolloutErr
+	}
 	model := "jev"
 	if r.ModelOverride != "" {
 		model = r.ModelOverride
