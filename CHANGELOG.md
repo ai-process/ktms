@@ -22,6 +22,10 @@ All notable changes to KTMS are listed here. The format follows
   first three make the chain. Speech, images, judge and translate take `needs` too; without them only the modality
   (and the language pair) filters. `ExplainRoute` shows the needs, `selected`, every candidate with its excess and
   price, and `chain_length` for the ones cut. Usage meta keeps `effort` and adds `needs`.
+- HTTP: the model `auto:<topic>=<level>,…` (with placement and effort specifiers, joined by `:`), e.g.
+  `auto:medical=basic:cloud-first`, and the `X-KTMS-Needs` header for SDKs that cannot add a body field; the model
+  string wins per topic. `reasoning_effort` keeps meaning the general need for `auto` in 1.x and is deprecated.
+  Speech and image endpoints take both too.
 
 ### Changed
 
