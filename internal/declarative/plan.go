@@ -16,6 +16,8 @@ import (
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 	"github.com/ai-process/ktms/internal/apikeys"
 	"github.com/ai-process/ktms/internal/crypto"
+	"github.com/ai-process/ktms/internal/proxydb"
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 // Op is what a change does to one object.
@@ -40,6 +42,7 @@ type Change struct {
 type Plan struct {
 	Changes  []Change
 	Warnings []string
+	Hints    []string // deprecated fields and what to write instead; no change
 	steps    []step
 }
 
@@ -87,6 +90,9 @@ func (p *Plan) Write(w io.Writer) {
 	for _, warn := range p.Warnings {
 		fmt.Fprintf(w, "! %s\n", warn)
 	}
+	for _, h := range p.Hints {
+		fmt.Fprintf(w, "hint: %s\n", h)
+	}
 	if p.Empty() {
 		fmt.Fprintln(w, "No changes: Keystone matches the configuration.")
 		return
@@ -115,6 +121,7 @@ func Build(cfg *Config, live *State, opt Options) (*Plan, error) {
 		opt.Env = os.LookupEnv
 	}
 	p := &Plan{}
+	p.Hints = effortHints(cfg)
 	var conflicts []error
 	conflict := func(format string, a ...any) { conflicts = append(conflicts, fmt.Errorf(format, a...)) }
 
@@ -762,6 +769,39 @@ func policyDiff(live, want *pb.APIKeyPolicy) []string {
 		d = append(d, fmt.Sprintf("data classification %q → %q", live.GetDataClassification(), want.GetDataClassification()))
 	}
 	return d
+}
+
+// effortHints proposes competencies and needs for the deprecated efforts in
+// the file. Keystone reads them so until 2.0; the hint says what to write.
+func effortHints(cfg *Config) []string {
+	var out []string
+	for _, m := range cfg.Models {
+		if len(m.GetEfforts()) == 0 || m.GetCompetencies()[registry.TopicGeneral] != "" {
+			continue
+		}
+		lm := &proxydb.Model{Efforts: effortNames(m.GetEfforts())}
+		if g := registry.Competencies(lm)[registry.TopicGeneral]; g != "" {
+			out = append(out, fmt.Sprintf("model %s: write competencies: {general: %s} instead of the deprecated effort list (it then also serves the levels below)", m.GetId(), g))
+		}
+	}
+	if !cfg.Manages("rules") {
+		return out
+	}
+	for _, r := range cfg.Rules {
+		if e := r.GetEffort(); e != pb.Effort_EFFORT_UNSPECIFIED && r.GetNeeds()[registry.TopicGeneral] == "" {
+			l := registry.EffortLevel(effortNames([]pb.Effort{e})[0])
+			out = append(out, fmt.Sprintf("rule %s: write needs: {general: %s} instead of the deprecated effort (it then also matches the levels above)", r.GetName(), l))
+		}
+	}
+	return out
+}
+
+func effortNames(in []pb.Effort) []string {
+	out := make([]string, 0, len(in))
+	for _, e := range in {
+		out = append(out, strings.ToLower(strings.TrimPrefix(e.String(), "EFFORT_")))
+	}
+	return out
 }
 
 // rulesDiff names the rules added, removed and changed, matched by name.

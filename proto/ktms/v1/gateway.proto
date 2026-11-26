@@ -6,8 +6,9 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/ai-process/ktms/gen/ktms/v1;ktmsv1";
 
-// Effort is the only routing field the proxy is guaranteed to understand.
-// Everything else about a request's purpose travels in opaque attributes.
+// Effort is the coarse tier of a request: LOW, MEDIUM and HIGH are the needs
+// general: basic, proficient and expert. From 1.7 a request states needs
+// instead (see Needs below); effort stays as an alias until 2.0.
 enum Effort {
   EFFORT_UNSPECIFIED = 0;
   EFFORT_LOW = 1;
@@ -138,8 +139,16 @@ message ResponseSchema {
   optional bool additional_properties = 5;
 }
 
+// Needs and competencies (1.7): a model declares competencies, a request its
+// needs, both as topic -> level. Topics are free-form lowercase words chosen by
+// the operator ("general", "medical", "legal"); levels are ordered
+// basic < proficient < expert, and a model meets a need at its level or above.
+// An unknown level is INVALID_ARGUMENT; an unknown topic only finds no model.
+
 message GenerateTextRequest {
-  Effort effort = 1;
+  // Deprecated: use needs; LOW, MEDIUM and HIGH equal needs["general"] of
+  // basic, proficient and expert. Ignored for general when needs names it.
+  Effort effort = 1 [deprecated = true];
   // Opaque routing/usage attributes: "subject", "user_id", "task", ...
   // Matched by equality in rules and forwarded to usage meta.
   // Reserved names: "user_id" attributes the call to an end user (and provides default canary stickiness);
@@ -163,7 +172,11 @@ message GenerateTextRequest {
   // name. With effort_specified false a judge picks the effort, and that
   // choice is experimental; with it true the routing is stable.
   bool auto_route = 15;
-  bool effort_specified = 16; // true when effort was explicitly pinned by caller
+  bool effort_specified = 16 [deprecated = true]; // true when effort was explicitly pinned by caller; needs count as pinned
+  // What the request needs, topic -> level (basic | proficient | expert).
+  // A rule may match on them; without one, Keystone picks the models that
+  // meet them all, cheapest fit first (see the routing docs).
+  map<string, string> needs = 22;
   // "restricted" keeps the request, and the judge calls it makes, on self-hosted
   // nodes: no cloud vendor sees it and there is no cloud fallback. "" is
   // unrestricted unless the key or its team is restricted.
@@ -231,7 +244,7 @@ message ListModelsRequest {}
 message ModelInfo {
   string id = 1;
   string vendor = 2;
-  repeated Effort efforts = 3;
+  repeated Effort efforts = 3 [deprecated = true]; // use competencies
   repeated string capabilities = 4;
   int32 rpm = 5;
   double price_in_per_mtok = 6;
@@ -243,6 +256,7 @@ message ModelInfo {
   double price_cache_write_per_mtok = 11;
   ModelLanguages languages = 12; // translate: the pairs the model serves
   double price_per_million_chars = 13;
+  map<string, string> competencies = 14; // topic -> level, efforts included as general
 }
 
 // ModelLanguages are the language pairs a translate model serves: any source
@@ -331,6 +345,7 @@ message SynthesizeSpeechRequest {
   map<string, string> attributes = 3; // same routing/usage attributes as text
   string action_id = 4;
   string model_override = 5; // exact registry model id; bypasses rules
+  map<string, string> needs = 6; // as in GenerateTextRequest; empty filters by modality only
 }
 
 message SynthesizeSpeechResponse {
@@ -348,6 +363,7 @@ message GenerateImageRequest {
   map<string, string> attributes = 2;
   string action_id = 3;
   string model_override = 4;
+  map<string, string> needs = 5; // as in GenerateTextRequest; empty filters by modality only
 }
 
 message GenerateImageResponse {
@@ -419,6 +435,7 @@ message JudgeRequest {
   // narrow the chain to judge models that also declare "vision", "audio_input"
   // or "embedding_input"; guardrails inspect text parts only.
   repeated MediaPart state_media = 6;
+  map<string, string> needs = 7; // as in GenerateTextRequest; empty filters by modality only
 }
 
 message JudgeResponse {
@@ -459,6 +476,7 @@ message TranslateRequest {
   map<string, string> attributes = 5; // same routing/usage attributes as text
   string action_id = 6; // defaults to "translate" in usage
   string model_override = 7; // exact registry model id; bypasses rules
+  map<string, string> needs = 8; // as in GenerateTextRequest; empty filters by modality and language pair only
 }
 
 message Translation {
@@ -544,9 +562,10 @@ message BatchItemRequest {
 
 message SubmitBatchRequest {
   repeated BatchItemRequest items = 1;
-  Effort effort = 2;
+  Effort effort = 2 [deprecated = true]; // use needs
   map<string, string> attributes = 3;
   string client_batch_id = 4;
+  map<string, string> needs = 5; // as in GenerateTextRequest, for every item
 }
 
 message SubmitBatchResponse {

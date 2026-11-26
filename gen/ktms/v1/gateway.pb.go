@@ -22,8 +22,9 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Effort is the only routing field the proxy is guaranteed to understand.
-// Everything else about a request's purpose travels in opaque attributes.
+// Effort is the coarse tier of a request: LOW, MEDIUM and HIGH are the needs
+// general: basic, proficient and expert. From 1.7 a request states needs
+// instead (see Needs below); effort stays as an alias until 2.0.
 type Effort int32
 
 const (
@@ -1278,8 +1279,12 @@ func (x *ResponseSchema) GetAdditionalProperties() bool {
 }
 
 type GenerateTextRequest struct {
-	state  protoimpl.MessageState `protogen:"open.v1"`
-	Effort Effort                 `protobuf:"varint,1,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Deprecated: use needs; LOW, MEDIUM and HIGH equal needs["general"] of
+	// basic, proficient and expert. Ignored for general when needs names it.
+	//
+	// Deprecated: Marked as deprecated in ktms/v1/gateway.proto.
+	Effort Effort `protobuf:"varint,1,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"`
 	// Opaque routing/usage attributes: "subject", "user_id", "task", ...
 	// Matched by equality in rules and forwarded to usage meta.
 	// Reserved names: "user_id" attributes the call to an end user (and provides default canary stickiness);
@@ -1302,8 +1307,13 @@ type GenerateTextRequest struct {
 	// auto_route picks the chain by effort and placement instead of a model
 	// name. With effort_specified false a judge picks the effort, and that
 	// choice is experimental; with it true the routing is stable.
-	AutoRoute       bool `protobuf:"varint,15,opt,name=auto_route,json=autoRoute,proto3" json:"auto_route,omitempty"`
-	EffortSpecified bool `protobuf:"varint,16,opt,name=effort_specified,json=effortSpecified,proto3" json:"effort_specified,omitempty"` // true when effort was explicitly pinned by caller
+	AutoRoute bool `protobuf:"varint,15,opt,name=auto_route,json=autoRoute,proto3" json:"auto_route,omitempty"`
+	// Deprecated: Marked as deprecated in ktms/v1/gateway.proto.
+	EffortSpecified bool `protobuf:"varint,16,opt,name=effort_specified,json=effortSpecified,proto3" json:"effort_specified,omitempty"` // true when effort was explicitly pinned by caller; needs count as pinned
+	// What the request needs, topic -> level (basic | proficient | expert).
+	// A rule may match on them; without one, Keystone picks the models that
+	// meet them all, cheapest fit first (see the routing docs).
+	Needs map[string]string `protobuf:"bytes,22,rep,name=needs,proto3" json:"needs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// "restricted" keeps the request, and the judge calls it makes, on self-hosted
 	// nodes: no cloud vendor sees it and there is no cloud fallback. "" is
 	// unrestricted unless the key or its team is restricted.
@@ -1349,6 +1359,7 @@ func (*GenerateTextRequest) Descriptor() ([]byte, []int) {
 	return file_ktms_v1_gateway_proto_rawDescGZIP(), []int{14}
 }
 
+// Deprecated: Marked as deprecated in ktms/v1/gateway.proto.
 func (x *GenerateTextRequest) GetEffort() Effort {
 	if x != nil {
 		return x.Effort
@@ -1454,11 +1465,19 @@ func (x *GenerateTextRequest) GetAutoRoute() bool {
 	return false
 }
 
+// Deprecated: Marked as deprecated in ktms/v1/gateway.proto.
 func (x *GenerateTextRequest) GetEffortSpecified() bool {
 	if x != nil {
 		return x.EffortSpecified
 	}
 	return false
+}
+
+func (x *GenerateTextRequest) GetNeeds() map[string]string {
+	if x != nil {
+		return x.Needs
+	}
+	return nil
 }
 
 func (x *GenerateTextRequest) GetDataClassification() string {
@@ -1952,21 +1971,23 @@ func (*ListModelsRequest) Descriptor() ([]byte, []int) {
 }
 
 type ModelInfo struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	Id                   string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Vendor               string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`
-	Efforts              []Effort               `protobuf:"varint,3,rep,packed,name=efforts,proto3,enum=ktms.v1.Effort" json:"efforts,omitempty"`
-	Capabilities         []string               `protobuf:"bytes,4,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
-	Rpm                  int32                  `protobuf:"varint,5,opt,name=rpm,proto3" json:"rpm,omitempty"`
-	PriceInPerMtok       float64                `protobuf:"fixed64,6,opt,name=price_in_per_mtok,json=priceInPerMtok,proto3" json:"price_in_per_mtok,omitempty"`
-	PriceOutPerMtok      float64                `protobuf:"fixed64,7,opt,name=price_out_per_mtok,json=priceOutPerMtok,proto3" json:"price_out_per_mtok,omitempty"`
-	PriceInBatchPerMtok  float64                `protobuf:"fixed64,8,opt,name=price_in_batch_per_mtok,json=priceInBatchPerMtok,proto3" json:"price_in_batch_per_mtok,omitempty"`
-	PriceOutBatchPerMtok float64                `protobuf:"fixed64,9,opt,name=price_out_batch_per_mtok,json=priceOutBatchPerMtok,proto3" json:"price_out_batch_per_mtok,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Id     string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Vendor string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`
+	// Deprecated: Marked as deprecated in ktms/v1/gateway.proto.
+	Efforts              []Effort `protobuf:"varint,3,rep,packed,name=efforts,proto3,enum=ktms.v1.Effort" json:"efforts,omitempty"` // use competencies
+	Capabilities         []string `protobuf:"bytes,4,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	Rpm                  int32    `protobuf:"varint,5,opt,name=rpm,proto3" json:"rpm,omitempty"`
+	PriceInPerMtok       float64  `protobuf:"fixed64,6,opt,name=price_in_per_mtok,json=priceInPerMtok,proto3" json:"price_in_per_mtok,omitempty"`
+	PriceOutPerMtok      float64  `protobuf:"fixed64,7,opt,name=price_out_per_mtok,json=priceOutPerMtok,proto3" json:"price_out_per_mtok,omitempty"`
+	PriceInBatchPerMtok  float64  `protobuf:"fixed64,8,opt,name=price_in_batch_per_mtok,json=priceInBatchPerMtok,proto3" json:"price_in_batch_per_mtok,omitempty"`
+	PriceOutBatchPerMtok float64  `protobuf:"fixed64,9,opt,name=price_out_batch_per_mtok,json=priceOutBatchPerMtok,proto3" json:"price_out_batch_per_mtok,omitempty"`
 	// Effective prompt-cache rates, vendor defaults applied.
-	PriceCacheReadPerMtok  float64         `protobuf:"fixed64,10,opt,name=price_cache_read_per_mtok,json=priceCacheReadPerMtok,proto3" json:"price_cache_read_per_mtok,omitempty"`
-	PriceCacheWritePerMtok float64         `protobuf:"fixed64,11,opt,name=price_cache_write_per_mtok,json=priceCacheWritePerMtok,proto3" json:"price_cache_write_per_mtok,omitempty"`
-	Languages              *ModelLanguages `protobuf:"bytes,12,opt,name=languages,proto3" json:"languages,omitempty"` // translate: the pairs the model serves
-	PricePerMillionChars   float64         `protobuf:"fixed64,13,opt,name=price_per_million_chars,json=pricePerMillionChars,proto3" json:"price_per_million_chars,omitempty"`
+	PriceCacheReadPerMtok  float64           `protobuf:"fixed64,10,opt,name=price_cache_read_per_mtok,json=priceCacheReadPerMtok,proto3" json:"price_cache_read_per_mtok,omitempty"`
+	PriceCacheWritePerMtok float64           `protobuf:"fixed64,11,opt,name=price_cache_write_per_mtok,json=priceCacheWritePerMtok,proto3" json:"price_cache_write_per_mtok,omitempty"`
+	Languages              *ModelLanguages   `protobuf:"bytes,12,opt,name=languages,proto3" json:"languages,omitempty"` // translate: the pairs the model serves
+	PricePerMillionChars   float64           `protobuf:"fixed64,13,opt,name=price_per_million_chars,json=pricePerMillionChars,proto3" json:"price_per_million_chars,omitempty"`
+	Competencies           map[string]string `protobuf:"bytes,14,rep,name=competencies,proto3" json:"competencies,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // topic -> level, efforts included as general
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -2015,6 +2036,7 @@ func (x *ModelInfo) GetVendor() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in ktms/v1/gateway.proto.
 func (x *ModelInfo) GetEfforts() []Effort {
 	if x != nil {
 		return x.Efforts
@@ -2090,6 +2112,13 @@ func (x *ModelInfo) GetPricePerMillionChars() float64 {
 		return x.PricePerMillionChars
 	}
 	return 0
+}
+
+func (x *ModelInfo) GetCompetencies() map[string]string {
+	if x != nil {
+		return x.Competencies
+	}
+	return nil
 }
 
 // ModelLanguages are the language pairs a translate model serves: any source
@@ -2243,7 +2272,8 @@ type SynthesizeSpeechRequest struct {
 	Language      string                 `protobuf:"bytes,2,opt,name=language,proto3" json:"language,omitempty"`                                                                               // steers pronunciation, e.g. "Serbian"
 	Attributes    map[string]string      `protobuf:"bytes,3,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // same routing/usage attributes as text
 	ActionId      string                 `protobuf:"bytes,4,opt,name=action_id,json=actionId,proto3" json:"action_id,omitempty"`
-	ModelOverride string                 `protobuf:"bytes,5,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"` // exact registry model id; bypasses rules
+	ModelOverride string                 `protobuf:"bytes,5,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`                                      // exact registry model id; bypasses rules
+	Needs         map[string]string      `protobuf:"bytes,6,rep,name=needs,proto3" json:"needs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // as in GenerateTextRequest; empty filters by modality only
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2311,6 +2341,13 @@ func (x *SynthesizeSpeechRequest) GetModelOverride() string {
 		return x.ModelOverride
 	}
 	return ""
+}
+
+func (x *SynthesizeSpeechRequest) GetNeeds() map[string]string {
+	if x != nil {
+		return x.Needs
+	}
+	return nil
 }
 
 type SynthesizeSpeechResponse struct {
@@ -2411,6 +2448,7 @@ type GenerateImageRequest struct {
 	Attributes    map[string]string      `protobuf:"bytes,2,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	ActionId      string                 `protobuf:"bytes,3,opt,name=action_id,json=actionId,proto3" json:"action_id,omitempty"`
 	ModelOverride string                 `protobuf:"bytes,4,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`
+	Needs         map[string]string      `protobuf:"bytes,5,rep,name=needs,proto3" json:"needs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // as in GenerateTextRequest; empty filters by modality only
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2471,6 +2509,13 @@ func (x *GenerateImageRequest) GetModelOverride() string {
 		return x.ModelOverride
 	}
 	return ""
+}
+
+func (x *GenerateImageRequest) GetNeeds() map[string]string {
+	if x != nil {
+		return x.Needs
+	}
+	return nil
 }
 
 type GenerateImageResponse struct {
@@ -2917,7 +2962,8 @@ type JudgeRequest struct {
 	// Multimodal state judged alongside state_json. Images, audio and embeddings
 	// narrow the chain to judge models that also declare "vision", "audio_input"
 	// or "embedding_input"; guardrails inspect text parts only.
-	StateMedia    []*MediaPart `protobuf:"bytes,6,rep,name=state_media,json=stateMedia,proto3" json:"state_media,omitempty"`
+	StateMedia    []*MediaPart      `protobuf:"bytes,6,rep,name=state_media,json=stateMedia,proto3" json:"state_media,omitempty"`
+	Needs         map[string]string `protobuf:"bytes,7,rep,name=needs,proto3" json:"needs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // as in GenerateTextRequest; empty filters by modality only
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2990,6 +3036,13 @@ func (x *JudgeRequest) GetModelOverride() string {
 func (x *JudgeRequest) GetStateMedia() []*MediaPart {
 	if x != nil {
 		return x.StateMedia
+	}
+	return nil
+}
+
+func (x *JudgeRequest) GetNeeds() map[string]string {
+	if x != nil {
+		return x.Needs
 	}
 	return nil
 }
@@ -3291,6 +3344,7 @@ type TranslateRequest struct {
 	Attributes     map[string]string      `protobuf:"bytes,5,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // same routing/usage attributes as text
 	ActionId       string                 `protobuf:"bytes,6,opt,name=action_id,json=actionId,proto3" json:"action_id,omitempty"`                                                               // defaults to "translate" in usage
 	ModelOverride  string                 `protobuf:"bytes,7,opt,name=model_override,json=modelOverride,proto3" json:"model_override,omitempty"`                                                // exact registry model id; bypasses rules
+	Needs          map[string]string      `protobuf:"bytes,8,rep,name=needs,proto3" json:"needs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`           // as in GenerateTextRequest; empty filters by modality and language pair only
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -3372,6 +3426,13 @@ func (x *TranslateRequest) GetModelOverride() string {
 		return x.ModelOverride
 	}
 	return ""
+}
+
+func (x *TranslateRequest) GetNeeds() map[string]string {
+	if x != nil {
+		return x.Needs
+	}
+	return nil
 }
 
 type Translation struct {
@@ -4023,11 +4084,13 @@ func (x *BatchItemRequest) GetRequest() *GenerateTextRequest {
 }
 
 type SubmitBatchRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Items         []*BatchItemRequest    `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	Effort        Effort                 `protobuf:"varint,2,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"`
-	Attributes    map[string]string      `protobuf:"bytes,3,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	ClientBatchId string                 `protobuf:"bytes,4,opt,name=client_batch_id,json=clientBatchId,proto3" json:"client_batch_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Items []*BatchItemRequest    `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	// Deprecated: Marked as deprecated in ktms/v1/gateway.proto.
+	Effort        Effort            `protobuf:"varint,2,opt,name=effort,proto3,enum=ktms.v1.Effort" json:"effort,omitempty"` // use needs
+	Attributes    map[string]string `protobuf:"bytes,3,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ClientBatchId string            `protobuf:"bytes,4,opt,name=client_batch_id,json=clientBatchId,proto3" json:"client_batch_id,omitempty"`
+	Needs         map[string]string `protobuf:"bytes,5,rep,name=needs,proto3" json:"needs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // as in GenerateTextRequest, for every item
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4069,6 +4132,7 @@ func (x *SubmitBatchRequest) GetItems() []*BatchItemRequest {
 	return nil
 }
 
+// Deprecated: Marked as deprecated in ktms/v1/gateway.proto.
 func (x *SubmitBatchRequest) GetEffort() Effort {
 	if x != nil {
 		return x.Effort
@@ -4088,6 +4152,13 @@ func (x *SubmitBatchRequest) GetClientBatchId() string {
 		return x.ClientBatchId
 	}
 	return ""
+}
+
+func (x *SubmitBatchRequest) GetNeeds() map[string]string {
+	if x != nil {
+		return x.Needs
+	}
+	return nil
 }
 
 type SubmitBatchResponse struct {
@@ -4614,9 +4685,9 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\x0fPropertiesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
 	"\x05value\x18\x02 \x01(\v2\x17.ktms.v1.SchemaPropertyR\x05value:\x028\x01B\x18\n" +
-	"\x16_additional_properties\"\xf2\a\n" +
-	"\x13GenerateTextRequest\x12'\n" +
-	"\x06effort\x18\x01 \x01(\x0e2\x0f.ktms.v1.EffortR\x06effort\x12L\n" +
+	"\x16_additional_properties\"\xf3\b\n" +
+	"\x13GenerateTextRequest\x12+\n" +
+	"\x06effort\x18\x01 \x01(\x0e2\x0f.ktms.v1.EffortB\x02\x18\x01R\x06effort\x12L\n" +
 	"\n" +
 	"attributes\x18\x02 \x03(\v2,.ktms.v1.GenerateTextRequest.AttributesEntryR\n" +
 	"attributes\x120\n" +
@@ -4635,14 +4706,19 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\fenable_cache\x18\r \x01(\bR\venableCache\x12\x1c\n" +
 	"\tplacement\x18\x0e \x01(\tR\tplacement\x12\x1d\n" +
 	"\n" +
-	"auto_route\x18\x0f \x01(\bR\tautoRoute\x12)\n" +
-	"\x10effort_specified\x18\x10 \x01(\bR\x0feffortSpecified\x12/\n" +
+	"auto_route\x18\x0f \x01(\bR\tautoRoute\x12-\n" +
+	"\x10effort_specified\x18\x10 \x01(\bB\x02\x18\x01R\x0feffortSpecified\x12=\n" +
+	"\x05needs\x18\x16 \x03(\v2'.ktms.v1.GenerateTextRequest.NeedsEntryR\x05needs\x12/\n" +
 	"\x13data_classification\x18\x11 \x01(\tR\x12dataClassification\x12%\n" +
 	"\vtemperature\x18\x12 \x01(\x01H\x00R\vtemperature\x88\x01\x01\x12\x18\n" +
 	"\x05top_p\x18\x13 \x01(\x01H\x01R\x04topP\x88\x01\x01\x12\x12\n" +
 	"\x04stop\x18\x14 \x03(\tR\x04stop\x12\x17\n" +
 	"\x04seed\x18\x15 \x01(\x03H\x02R\x04seed\x88\x01\x01\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a8\n" +
+	"\n" +
+	"NeedsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0e\n" +
 	"\f_temperatureB\b\n" +
@@ -4699,11 +4775,11 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\vjudge_model\x18\f \x01(\tR\n" +
 	"judgeModel\x12-\n" +
 	"\x12ignored_parameters\x18\r \x03(\tR\x11ignoredParameters\"\x13\n" +
-	"\x11ListModelsRequest\"\xbe\x04\n" +
+	"\x11ListModelsRequest\"\xcd\x05\n" +
 	"\tModelInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
-	"\x06vendor\x18\x02 \x01(\tR\x06vendor\x12)\n" +
-	"\aefforts\x18\x03 \x03(\x0e2\x0f.ktms.v1.EffortR\aefforts\x12\"\n" +
+	"\x06vendor\x18\x02 \x01(\tR\x06vendor\x12-\n" +
+	"\aefforts\x18\x03 \x03(\x0e2\x0f.ktms.v1.EffortB\x02\x18\x01R\aefforts\x12\"\n" +
 	"\fcapabilities\x18\x04 \x03(\tR\fcapabilities\x12\x10\n" +
 	"\x03rpm\x18\x05 \x01(\x05R\x03rpm\x12)\n" +
 	"\x11price_in_per_mtok\x18\x06 \x01(\x01R\x0epriceInPerMtok\x12+\n" +
@@ -4714,14 +4790,18 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	" \x01(\x01R\x15priceCacheReadPerMtok\x12:\n" +
 	"\x1aprice_cache_write_per_mtok\x18\v \x01(\x01R\x16priceCacheWritePerMtok\x125\n" +
 	"\tlanguages\x18\f \x01(\v2\x17.ktms.v1.ModelLanguagesR\tlanguages\x125\n" +
-	"\x17price_per_million_chars\x18\r \x01(\x01R\x14pricePerMillionChars\"@\n" +
+	"\x17price_per_million_chars\x18\r \x01(\x01R\x14pricePerMillionChars\x12H\n" +
+	"\fcompetencies\x18\x0e \x03(\v2$.ktms.v1.ModelInfo.CompetenciesEntryR\fcompetencies\x1a?\n" +
+	"\x11CompetenciesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"@\n" +
 	"\x0eModelLanguages\x12\x16\n" +
 	"\x06source\x18\x01 \x03(\tR\x06source\x12\x16\n" +
 	"\x06target\x18\x02 \x03(\tR\x06target\"@\n" +
 	"\x12ListModelsResponse\x12*\n" +
 	"\x06models\x18\x01 \x03(\v2\x12.ktms.v1.ModelInfoR\x06models\"S\n" +
 	"\x19GenerateTextStreamRequest\x126\n" +
-	"\arequest\x18\x01 \x01(\v2\x1c.ktms.v1.GenerateTextRequestR\arequest\"\x9e\x02\n" +
+	"\arequest\x18\x01 \x01(\v2\x1c.ktms.v1.GenerateTextRequestR\arequest\"\x9b\x03\n" +
 	"\x17SynthesizeSpeechRequest\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\x12\x1a\n" +
 	"\blanguage\x18\x02 \x01(\tR\blanguage\x12P\n" +
@@ -4729,8 +4809,13 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"attributes\x18\x03 \x03(\v20.ktms.v1.SynthesizeSpeechRequest.AttributesEntryR\n" +
 	"attributes\x12\x1b\n" +
 	"\taction_id\x18\x04 \x01(\tR\bactionId\x12%\n" +
-	"\x0emodel_override\x18\x05 \x01(\tR\rmodelOverride\x1a=\n" +
+	"\x0emodel_override\x18\x05 \x01(\tR\rmodelOverride\x12A\n" +
+	"\x05needs\x18\x06 \x03(\v2+.ktms.v1.SynthesizeSpeechRequest.NeedsEntryR\x05needs\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a8\n" +
+	"\n" +
+	"NeedsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8d\x02\n" +
 	"\x18SynthesizeSpeechResponse\x12\x14\n" +
@@ -4741,15 +4826,20 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\x0eresolved_model\x18\x04 \x01(\tR\rresolvedModel\x12'\n" +
 	"\x0fresolved_vendor\x18\x05 \x01(\tR\x0eresolvedVendor\x12*\n" +
 	"\x05usage\x18\x06 \x01(\v2\x14.ktms.v1.TokensUsageR\x05usage\x12!\n" +
-	"\fmatched_rule\x18\a \x01(\tR\vmatchedRule\"\x80\x02\n" +
+	"\fmatched_rule\x18\a \x01(\tR\vmatchedRule\"\xfa\x02\n" +
 	"\x14GenerateImageRequest\x12\x16\n" +
 	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12M\n" +
 	"\n" +
 	"attributes\x18\x02 \x03(\v2-.ktms.v1.GenerateImageRequest.AttributesEntryR\n" +
 	"attributes\x12\x1b\n" +
 	"\taction_id\x18\x03 \x01(\tR\bactionId\x12%\n" +
-	"\x0emodel_override\x18\x04 \x01(\tR\rmodelOverride\x1a=\n" +
+	"\x0emodel_override\x18\x04 \x01(\tR\rmodelOverride\x12>\n" +
+	"\x05needs\x18\x05 \x03(\v2(.ktms.v1.GenerateImageRequest.NeedsEntryR\x05needs\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a8\n" +
+	"\n" +
+	"NeedsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xe9\x01\n" +
 	"\x15GenerateImageResponse\x12\x14\n" +
@@ -4793,7 +4883,7 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\x05image\x18\x02 \x01(\v2\x12.ktms.v1.ImagePartH\x00R\x05image\x12*\n" +
 	"\x05audio\x18\x03 \x01(\v2\x12.ktms.v1.AudioPartH\x00R\x05audio\x126\n" +
 	"\tembedding\x18\x04 \x01(\v2\x16.ktms.v1.EmbeddingPartH\x00R\tembeddingB\x06\n" +
-	"\x04part\"\xc6\x03\n" +
+	"\x04part\"\xb8\x04\n" +
 	"\fJudgeRequest\x12\x1d\n" +
 	"\n" +
 	"state_json\x18\x01 \x01(\tR\tstateJson\x12B\n" +
@@ -4804,11 +4894,16 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\taction_id\x18\x04 \x01(\tR\bactionId\x12%\n" +
 	"\x0emodel_override\x18\x05 \x01(\tR\rmodelOverride\x123\n" +
 	"\vstate_media\x18\x06 \x03(\v2\x12.ktms.v1.MediaPartR\n" +
-	"stateMedia\x1aT\n" +
+	"stateMedia\x126\n" +
+	"\x05needs\x18\a \x03(\v2 .ktms.v1.JudgeRequest.NeedsEntryR\x05needs\x1aT\n" +
 	"\x0eQuestionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
 	"\x05value\x18\x02 \x01(\v2\x16.ktms.v1.JudgeQuestionR\x05value:\x028\x01\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a8\n" +
+	"\n" +
+	"NeedsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbf\x02\n" +
 	"\rJudgeResponse\x12=\n" +
@@ -4843,7 +4938,7 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\x05usage\x18\x02 \x01(\v2\x14.ktms.v1.TokensUsageR\x05usage\x12%\n" +
 	"\x0eresolved_model\x18\x03 \x01(\tR\rresolvedModel\x12'\n" +
 	"\x0fresolved_vendor\x18\x04 \x01(\tR\x0eresolvedVendor\x12!\n" +
-	"\fmatched_rule\x18\x05 \x01(\tR\vmatchedRule\"\xe0\x02\n" +
+	"\fmatched_rule\x18\x05 \x01(\tR\vmatchedRule\"\xd6\x03\n" +
 	"\x10TranslateRequest\x12\x14\n" +
 	"\x05texts\x18\x01 \x03(\tR\x05texts\x12'\n" +
 	"\x0fsource_language\x18\x02 \x01(\tR\x0esourceLanguage\x12'\n" +
@@ -4853,8 +4948,13 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"attributes\x18\x05 \x03(\v2).ktms.v1.TranslateRequest.AttributesEntryR\n" +
 	"attributes\x12\x1b\n" +
 	"\taction_id\x18\x06 \x01(\tR\bactionId\x12%\n" +
-	"\x0emodel_override\x18\a \x01(\tR\rmodelOverride\x1a=\n" +
+	"\x0emodel_override\x18\a \x01(\tR\rmodelOverride\x12:\n" +
+	"\x05needs\x18\b \x03(\v2$.ktms.v1.TranslateRequest.NeedsEntryR\x05needs\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a8\n" +
+	"\n" +
+	"NeedsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"[\n" +
 	"\vTranslation\x12\x12\n" +
@@ -4923,15 +5023,20 @@ const file_ktms_v1_gateway_proto_rawDesc = "" +
 	"\fcompleted_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\"g\n" +
 	"\x10BatchItemRequest\x12\x1b\n" +
 	"\tcustom_id\x18\x01 \x01(\tR\bcustomId\x126\n" +
-	"\arequest\x18\x02 \x01(\v2\x1c.ktms.v1.GenerateTextRequestR\arequest\"\xa2\x02\n" +
+	"\arequest\x18\x02 \x01(\v2\x1c.ktms.v1.GenerateTextRequestR\arequest\"\x9e\x03\n" +
 	"\x12SubmitBatchRequest\x12/\n" +
-	"\x05items\x18\x01 \x03(\v2\x19.ktms.v1.BatchItemRequestR\x05items\x12'\n" +
-	"\x06effort\x18\x02 \x01(\x0e2\x0f.ktms.v1.EffortR\x06effort\x12K\n" +
+	"\x05items\x18\x01 \x03(\v2\x19.ktms.v1.BatchItemRequestR\x05items\x12+\n" +
+	"\x06effort\x18\x02 \x01(\x0e2\x0f.ktms.v1.EffortB\x02\x18\x01R\x06effort\x12K\n" +
 	"\n" +
 	"attributes\x18\x03 \x03(\v2+.ktms.v1.SubmitBatchRequest.AttributesEntryR\n" +
 	"attributes\x12&\n" +
-	"\x0fclient_batch_id\x18\x04 \x01(\tR\rclientBatchId\x1a=\n" +
+	"\x0fclient_batch_id\x18\x04 \x01(\tR\rclientBatchId\x12<\n" +
+	"\x05needs\x18\x05 \x03(\v2&.ktms.v1.SubmitBatchRequest.NeedsEntryR\x05needs\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a8\n" +
+	"\n" +
+	"NeedsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\";\n" +
 	"\x13SubmitBatchResponse\x12$\n" +
@@ -5014,7 +5119,7 @@ func file_ktms_v1_gateway_proto_rawDescGZIP() []byte {
 }
 
 var file_ktms_v1_gateway_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_ktms_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 73)
+var file_ktms_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 80)
 var file_ktms_v1_gateway_proto_goTypes = []any{
 	(Effort)(0),                       // 0: ktms.v1.Effort
 	(MessageRole)(0),                  // 1: ktms.v1.MessageRole
@@ -5080,136 +5185,150 @@ var file_ktms_v1_gateway_proto_goTypes = []any{
 	nil,                               // 61: ktms.v1.SchemaProperty.PropertiesEntry
 	nil,                               // 62: ktms.v1.ResponseSchema.PropertiesEntry
 	nil,                               // 63: ktms.v1.GenerateTextRequest.AttributesEntry
-	nil,                               // 64: ktms.v1.SynthesizeSpeechRequest.AttributesEntry
-	nil,                               // 65: ktms.v1.GenerateImageRequest.AttributesEntry
-	nil,                               // 66: ktms.v1.JudgeQuestion.OptionsEntry
-	nil,                               // 67: ktms.v1.JudgeAnswer.ProbabilitiesEntry
-	nil,                               // 68: ktms.v1.JudgeAnswer.LegendEntry
-	nil,                               // 69: ktms.v1.JudgeRequest.QuestionsEntry
-	nil,                               // 70: ktms.v1.JudgeRequest.AttributesEntry
-	nil,                               // 71: ktms.v1.JudgeResponse.AnswersEntry
-	nil,                               // 72: ktms.v1.GetEmbeddingsRequest.AttributesEntry
-	nil,                               // 73: ktms.v1.TranslateRequest.AttributesEntry
-	nil,                               // 74: ktms.v1.CandidateEvaluation.AnswersEntry
-	nil,                               // 75: ktms.v1.EvaluateRolloutsRequest.CriteriaEntry
-	nil,                               // 76: ktms.v1.EvaluateRolloutsRequest.AttributesEntry
-	nil,                               // 77: ktms.v1.SubmitBatchRequest.AttributesEntry
-	(*timestamppb.Timestamp)(nil),     // 78: google.protobuf.Timestamp
+	nil,                               // 64: ktms.v1.GenerateTextRequest.NeedsEntry
+	nil,                               // 65: ktms.v1.ModelInfo.CompetenciesEntry
+	nil,                               // 66: ktms.v1.SynthesizeSpeechRequest.AttributesEntry
+	nil,                               // 67: ktms.v1.SynthesizeSpeechRequest.NeedsEntry
+	nil,                               // 68: ktms.v1.GenerateImageRequest.AttributesEntry
+	nil,                               // 69: ktms.v1.GenerateImageRequest.NeedsEntry
+	nil,                               // 70: ktms.v1.JudgeQuestion.OptionsEntry
+	nil,                               // 71: ktms.v1.JudgeAnswer.ProbabilitiesEntry
+	nil,                               // 72: ktms.v1.JudgeAnswer.LegendEntry
+	nil,                               // 73: ktms.v1.JudgeRequest.QuestionsEntry
+	nil,                               // 74: ktms.v1.JudgeRequest.AttributesEntry
+	nil,                               // 75: ktms.v1.JudgeRequest.NeedsEntry
+	nil,                               // 76: ktms.v1.JudgeResponse.AnswersEntry
+	nil,                               // 77: ktms.v1.GetEmbeddingsRequest.AttributesEntry
+	nil,                               // 78: ktms.v1.TranslateRequest.AttributesEntry
+	nil,                               // 79: ktms.v1.TranslateRequest.NeedsEntry
+	nil,                               // 80: ktms.v1.CandidateEvaluation.AnswersEntry
+	nil,                               // 81: ktms.v1.EvaluateRolloutsRequest.CriteriaEntry
+	nil,                               // 82: ktms.v1.EvaluateRolloutsRequest.AttributesEntry
+	nil,                               // 83: ktms.v1.SubmitBatchRequest.AttributesEntry
+	nil,                               // 84: ktms.v1.SubmitBatchRequest.NeedsEntry
+	(*timestamppb.Timestamp)(nil),     // 85: google.protobuf.Timestamp
 }
 var file_ktms_v1_gateway_proto_depIdxs = []int32{
-	6,  // 0: ktms.v1.ToolCall.function:type_name -> ktms.v1.FunctionCall
-	9,  // 1: ktms.v1.Tool.function:type_name -> ktms.v1.FunctionDefinition
-	18, // 2: ktms.v1.FunctionDefinition.parameters:type_name -> ktms.v1.ResponseSchema
-	4,  // 3: ktms.v1.ToolChoice.mode:type_name -> ktms.v1.ToolChoice.Mode
-	14, // 4: ktms.v1.ContentPart.text:type_name -> ktms.v1.TextPart
-	11, // 5: ktms.v1.ContentPart.image:type_name -> ktms.v1.ImagePart
-	12, // 6: ktms.v1.ContentPart.audio:type_name -> ktms.v1.AudioPart
-	13, // 7: ktms.v1.ContentPart.document:type_name -> ktms.v1.DocumentPart
-	1,  // 8: ktms.v1.ChatMessage.role:type_name -> ktms.v1.MessageRole
-	5,  // 9: ktms.v1.ChatMessage.tool_calls:type_name -> ktms.v1.ToolCall
-	15, // 10: ktms.v1.ChatMessage.parts:type_name -> ktms.v1.ContentPart
-	61, // 11: ktms.v1.SchemaProperty.properties:type_name -> ktms.v1.SchemaProperty.PropertiesEntry
-	17, // 12: ktms.v1.SchemaProperty.items:type_name -> ktms.v1.SchemaProperty
-	62, // 13: ktms.v1.ResponseSchema.properties:type_name -> ktms.v1.ResponseSchema.PropertiesEntry
-	17, // 14: ktms.v1.ResponseSchema.items:type_name -> ktms.v1.SchemaProperty
-	0,  // 15: ktms.v1.GenerateTextRequest.effort:type_name -> ktms.v1.Effort
-	63, // 16: ktms.v1.GenerateTextRequest.attributes:type_name -> ktms.v1.GenerateTextRequest.AttributesEntry
-	16, // 17: ktms.v1.GenerateTextRequest.messages:type_name -> ktms.v1.ChatMessage
-	18, // 18: ktms.v1.GenerateTextRequest.response_schema:type_name -> ktms.v1.ResponseSchema
-	8,  // 19: ktms.v1.GenerateTextRequest.tools:type_name -> ktms.v1.Tool
-	10, // 20: ktms.v1.GenerateTextRequest.tool_choice:type_name -> ktms.v1.ToolChoice
-	5,  // 21: ktms.v1.Choice.tool_calls:type_name -> ktms.v1.ToolCall
-	20, // 22: ktms.v1.GenerateTextResponse.usage:type_name -> ktms.v1.TokensUsage
-	21, // 23: ktms.v1.GenerateTextResponse.details:type_name -> ktms.v1.Choice
-	20, // 24: ktms.v1.GenerateTextChunk.usage:type_name -> ktms.v1.TokensUsage
-	7,  // 25: ktms.v1.GenerateTextChunk.tool_call_chunks:type_name -> ktms.v1.ToolCallChunk
-	0,  // 26: ktms.v1.ModelInfo.efforts:type_name -> ktms.v1.Effort
-	26, // 27: ktms.v1.ModelInfo.languages:type_name -> ktms.v1.ModelLanguages
-	25, // 28: ktms.v1.ListModelsResponse.models:type_name -> ktms.v1.ModelInfo
-	19, // 29: ktms.v1.GenerateTextStreamRequest.request:type_name -> ktms.v1.GenerateTextRequest
-	64, // 30: ktms.v1.SynthesizeSpeechRequest.attributes:type_name -> ktms.v1.SynthesizeSpeechRequest.AttributesEntry
-	20, // 31: ktms.v1.SynthesizeSpeechResponse.usage:type_name -> ktms.v1.TokensUsage
-	65, // 32: ktms.v1.GenerateImageRequest.attributes:type_name -> ktms.v1.GenerateImageRequest.AttributesEntry
-	20, // 33: ktms.v1.GenerateImageResponse.usage:type_name -> ktms.v1.TokensUsage
-	2,  // 34: ktms.v1.JudgeQuestion.type:type_name -> ktms.v1.JudgeType
-	66, // 35: ktms.v1.JudgeQuestion.options:type_name -> ktms.v1.JudgeQuestion.OptionsEntry
-	2,  // 36: ktms.v1.JudgeAnswer.type:type_name -> ktms.v1.JudgeType
-	67, // 37: ktms.v1.JudgeAnswer.probabilities:type_name -> ktms.v1.JudgeAnswer.ProbabilitiesEntry
-	68, // 38: ktms.v1.JudgeAnswer.legend:type_name -> ktms.v1.JudgeAnswer.LegendEntry
-	14, // 39: ktms.v1.MediaPart.text:type_name -> ktms.v1.TextPart
-	11, // 40: ktms.v1.MediaPart.image:type_name -> ktms.v1.ImagePart
-	12, // 41: ktms.v1.MediaPart.audio:type_name -> ktms.v1.AudioPart
-	35, // 42: ktms.v1.MediaPart.embedding:type_name -> ktms.v1.EmbeddingPart
-	69, // 43: ktms.v1.JudgeRequest.questions:type_name -> ktms.v1.JudgeRequest.QuestionsEntry
-	70, // 44: ktms.v1.JudgeRequest.attributes:type_name -> ktms.v1.JudgeRequest.AttributesEntry
-	36, // 45: ktms.v1.JudgeRequest.state_media:type_name -> ktms.v1.MediaPart
-	71, // 46: ktms.v1.JudgeResponse.answers:type_name -> ktms.v1.JudgeResponse.AnswersEntry
-	20, // 47: ktms.v1.JudgeResponse.usage:type_name -> ktms.v1.TokensUsage
-	72, // 48: ktms.v1.GetEmbeddingsRequest.attributes:type_name -> ktms.v1.GetEmbeddingsRequest.AttributesEntry
-	39, // 49: ktms.v1.GetEmbeddingsResponse.data:type_name -> ktms.v1.Embedding
-	20, // 50: ktms.v1.GetEmbeddingsResponse.usage:type_name -> ktms.v1.TokensUsage
-	73, // 51: ktms.v1.TranslateRequest.attributes:type_name -> ktms.v1.TranslateRequest.AttributesEntry
-	43, // 52: ktms.v1.TranslateResponse.translations:type_name -> ktms.v1.Translation
-	20, // 53: ktms.v1.TranslateResponse.usage:type_name -> ktms.v1.TokensUsage
-	36, // 54: ktms.v1.RolloutCandidate.action_media:type_name -> ktms.v1.MediaPart
-	74, // 55: ktms.v1.CandidateEvaluation.answers:type_name -> ktms.v1.CandidateEvaluation.AnswersEntry
-	36, // 56: ktms.v1.EvaluateRolloutsRequest.state_media:type_name -> ktms.v1.MediaPart
-	45, // 57: ktms.v1.EvaluateRolloutsRequest.candidates:type_name -> ktms.v1.RolloutCandidate
-	75, // 58: ktms.v1.EvaluateRolloutsRequest.criteria:type_name -> ktms.v1.EvaluateRolloutsRequest.CriteriaEntry
-	76, // 59: ktms.v1.EvaluateRolloutsRequest.attributes:type_name -> ktms.v1.EvaluateRolloutsRequest.AttributesEntry
-	46, // 60: ktms.v1.EvaluateRolloutsResponse.evaluations:type_name -> ktms.v1.CandidateEvaluation
-	20, // 61: ktms.v1.EvaluateRolloutsResponse.usage:type_name -> ktms.v1.TokensUsage
-	3,  // 62: ktms.v1.Batch.state:type_name -> ktms.v1.BatchState
-	49, // 63: ktms.v1.Batch.counts:type_name -> ktms.v1.BatchCounts
-	78, // 64: ktms.v1.Batch.created_at:type_name -> google.protobuf.Timestamp
-	78, // 65: ktms.v1.Batch.completed_at:type_name -> google.protobuf.Timestamp
-	19, // 66: ktms.v1.BatchItemRequest.request:type_name -> ktms.v1.GenerateTextRequest
-	51, // 67: ktms.v1.SubmitBatchRequest.items:type_name -> ktms.v1.BatchItemRequest
-	0,  // 68: ktms.v1.SubmitBatchRequest.effort:type_name -> ktms.v1.Effort
-	77, // 69: ktms.v1.SubmitBatchRequest.attributes:type_name -> ktms.v1.SubmitBatchRequest.AttributesEntry
-	50, // 70: ktms.v1.SubmitBatchResponse.batch:type_name -> ktms.v1.Batch
-	22, // 71: ktms.v1.BatchItemResult.response:type_name -> ktms.v1.GenerateTextResponse
-	55, // 72: ktms.v1.BatchItemResult.error:type_name -> ktms.v1.BatchItemError
-	56, // 73: ktms.v1.ListBatchResultsResponse.items:type_name -> ktms.v1.BatchItemResult
-	17, // 74: ktms.v1.SchemaProperty.PropertiesEntry.value:type_name -> ktms.v1.SchemaProperty
-	17, // 75: ktms.v1.ResponseSchema.PropertiesEntry.value:type_name -> ktms.v1.SchemaProperty
-	33, // 76: ktms.v1.JudgeRequest.QuestionsEntry.value:type_name -> ktms.v1.JudgeQuestion
-	34, // 77: ktms.v1.JudgeResponse.AnswersEntry.value:type_name -> ktms.v1.JudgeAnswer
-	34, // 78: ktms.v1.CandidateEvaluation.AnswersEntry.value:type_name -> ktms.v1.JudgeAnswer
-	33, // 79: ktms.v1.EvaluateRolloutsRequest.CriteriaEntry.value:type_name -> ktms.v1.JudgeQuestion
-	19, // 80: ktms.v1.GatewayService.GenerateText:input_type -> ktms.v1.GenerateTextRequest
-	28, // 81: ktms.v1.GatewayService.GenerateTextStream:input_type -> ktms.v1.GenerateTextStreamRequest
-	29, // 82: ktms.v1.GatewayService.SynthesizeSpeech:input_type -> ktms.v1.SynthesizeSpeechRequest
-	31, // 83: ktms.v1.GatewayService.GenerateImage:input_type -> ktms.v1.GenerateImageRequest
-	37, // 84: ktms.v1.GatewayService.Judge:input_type -> ktms.v1.JudgeRequest
-	40, // 85: ktms.v1.GatewayService.GetEmbeddings:input_type -> ktms.v1.GetEmbeddingsRequest
-	37, // 86: ktms.v1.GatewayService.JudgeStream:input_type -> ktms.v1.JudgeRequest
-	42, // 87: ktms.v1.GatewayService.Translate:input_type -> ktms.v1.TranslateRequest
-	47, // 88: ktms.v1.GatewayService.EvaluateRollouts:input_type -> ktms.v1.EvaluateRolloutsRequest
-	24, // 89: ktms.v1.GatewayService.ListModels:input_type -> ktms.v1.ListModelsRequest
-	52, // 90: ktms.v1.GatewayService.SubmitBatch:input_type -> ktms.v1.SubmitBatchRequest
-	54, // 91: ktms.v1.GatewayService.GetBatch:input_type -> ktms.v1.GetBatchRequest
-	57, // 92: ktms.v1.GatewayService.ListBatchResults:input_type -> ktms.v1.ListBatchResultsRequest
-	59, // 93: ktms.v1.GatewayService.CancelBatch:input_type -> ktms.v1.CancelBatchRequest
-	22, // 94: ktms.v1.GatewayService.GenerateText:output_type -> ktms.v1.GenerateTextResponse
-	23, // 95: ktms.v1.GatewayService.GenerateTextStream:output_type -> ktms.v1.GenerateTextChunk
-	30, // 96: ktms.v1.GatewayService.SynthesizeSpeech:output_type -> ktms.v1.SynthesizeSpeechResponse
-	32, // 97: ktms.v1.GatewayService.GenerateImage:output_type -> ktms.v1.GenerateImageResponse
-	38, // 98: ktms.v1.GatewayService.Judge:output_type -> ktms.v1.JudgeResponse
-	41, // 99: ktms.v1.GatewayService.GetEmbeddings:output_type -> ktms.v1.GetEmbeddingsResponse
-	38, // 100: ktms.v1.GatewayService.JudgeStream:output_type -> ktms.v1.JudgeResponse
-	44, // 101: ktms.v1.GatewayService.Translate:output_type -> ktms.v1.TranslateResponse
-	48, // 102: ktms.v1.GatewayService.EvaluateRollouts:output_type -> ktms.v1.EvaluateRolloutsResponse
-	27, // 103: ktms.v1.GatewayService.ListModels:output_type -> ktms.v1.ListModelsResponse
-	53, // 104: ktms.v1.GatewayService.SubmitBatch:output_type -> ktms.v1.SubmitBatchResponse
-	50, // 105: ktms.v1.GatewayService.GetBatch:output_type -> ktms.v1.Batch
-	58, // 106: ktms.v1.GatewayService.ListBatchResults:output_type -> ktms.v1.ListBatchResultsResponse
-	60, // 107: ktms.v1.GatewayService.CancelBatch:output_type -> ktms.v1.CancelBatchResponse
-	94, // [94:108] is the sub-list for method output_type
-	80, // [80:94] is the sub-list for method input_type
-	80, // [80:80] is the sub-list for extension type_name
-	80, // [80:80] is the sub-list for extension extendee
-	0,  // [0:80] is the sub-list for field type_name
+	6,   // 0: ktms.v1.ToolCall.function:type_name -> ktms.v1.FunctionCall
+	9,   // 1: ktms.v1.Tool.function:type_name -> ktms.v1.FunctionDefinition
+	18,  // 2: ktms.v1.FunctionDefinition.parameters:type_name -> ktms.v1.ResponseSchema
+	4,   // 3: ktms.v1.ToolChoice.mode:type_name -> ktms.v1.ToolChoice.Mode
+	14,  // 4: ktms.v1.ContentPart.text:type_name -> ktms.v1.TextPart
+	11,  // 5: ktms.v1.ContentPart.image:type_name -> ktms.v1.ImagePart
+	12,  // 6: ktms.v1.ContentPart.audio:type_name -> ktms.v1.AudioPart
+	13,  // 7: ktms.v1.ContentPart.document:type_name -> ktms.v1.DocumentPart
+	1,   // 8: ktms.v1.ChatMessage.role:type_name -> ktms.v1.MessageRole
+	5,   // 9: ktms.v1.ChatMessage.tool_calls:type_name -> ktms.v1.ToolCall
+	15,  // 10: ktms.v1.ChatMessage.parts:type_name -> ktms.v1.ContentPart
+	61,  // 11: ktms.v1.SchemaProperty.properties:type_name -> ktms.v1.SchemaProperty.PropertiesEntry
+	17,  // 12: ktms.v1.SchemaProperty.items:type_name -> ktms.v1.SchemaProperty
+	62,  // 13: ktms.v1.ResponseSchema.properties:type_name -> ktms.v1.ResponseSchema.PropertiesEntry
+	17,  // 14: ktms.v1.ResponseSchema.items:type_name -> ktms.v1.SchemaProperty
+	0,   // 15: ktms.v1.GenerateTextRequest.effort:type_name -> ktms.v1.Effort
+	63,  // 16: ktms.v1.GenerateTextRequest.attributes:type_name -> ktms.v1.GenerateTextRequest.AttributesEntry
+	16,  // 17: ktms.v1.GenerateTextRequest.messages:type_name -> ktms.v1.ChatMessage
+	18,  // 18: ktms.v1.GenerateTextRequest.response_schema:type_name -> ktms.v1.ResponseSchema
+	8,   // 19: ktms.v1.GenerateTextRequest.tools:type_name -> ktms.v1.Tool
+	10,  // 20: ktms.v1.GenerateTextRequest.tool_choice:type_name -> ktms.v1.ToolChoice
+	64,  // 21: ktms.v1.GenerateTextRequest.needs:type_name -> ktms.v1.GenerateTextRequest.NeedsEntry
+	5,   // 22: ktms.v1.Choice.tool_calls:type_name -> ktms.v1.ToolCall
+	20,  // 23: ktms.v1.GenerateTextResponse.usage:type_name -> ktms.v1.TokensUsage
+	21,  // 24: ktms.v1.GenerateTextResponse.details:type_name -> ktms.v1.Choice
+	20,  // 25: ktms.v1.GenerateTextChunk.usage:type_name -> ktms.v1.TokensUsage
+	7,   // 26: ktms.v1.GenerateTextChunk.tool_call_chunks:type_name -> ktms.v1.ToolCallChunk
+	0,   // 27: ktms.v1.ModelInfo.efforts:type_name -> ktms.v1.Effort
+	26,  // 28: ktms.v1.ModelInfo.languages:type_name -> ktms.v1.ModelLanguages
+	65,  // 29: ktms.v1.ModelInfo.competencies:type_name -> ktms.v1.ModelInfo.CompetenciesEntry
+	25,  // 30: ktms.v1.ListModelsResponse.models:type_name -> ktms.v1.ModelInfo
+	19,  // 31: ktms.v1.GenerateTextStreamRequest.request:type_name -> ktms.v1.GenerateTextRequest
+	66,  // 32: ktms.v1.SynthesizeSpeechRequest.attributes:type_name -> ktms.v1.SynthesizeSpeechRequest.AttributesEntry
+	67,  // 33: ktms.v1.SynthesizeSpeechRequest.needs:type_name -> ktms.v1.SynthesizeSpeechRequest.NeedsEntry
+	20,  // 34: ktms.v1.SynthesizeSpeechResponse.usage:type_name -> ktms.v1.TokensUsage
+	68,  // 35: ktms.v1.GenerateImageRequest.attributes:type_name -> ktms.v1.GenerateImageRequest.AttributesEntry
+	69,  // 36: ktms.v1.GenerateImageRequest.needs:type_name -> ktms.v1.GenerateImageRequest.NeedsEntry
+	20,  // 37: ktms.v1.GenerateImageResponse.usage:type_name -> ktms.v1.TokensUsage
+	2,   // 38: ktms.v1.JudgeQuestion.type:type_name -> ktms.v1.JudgeType
+	70,  // 39: ktms.v1.JudgeQuestion.options:type_name -> ktms.v1.JudgeQuestion.OptionsEntry
+	2,   // 40: ktms.v1.JudgeAnswer.type:type_name -> ktms.v1.JudgeType
+	71,  // 41: ktms.v1.JudgeAnswer.probabilities:type_name -> ktms.v1.JudgeAnswer.ProbabilitiesEntry
+	72,  // 42: ktms.v1.JudgeAnswer.legend:type_name -> ktms.v1.JudgeAnswer.LegendEntry
+	14,  // 43: ktms.v1.MediaPart.text:type_name -> ktms.v1.TextPart
+	11,  // 44: ktms.v1.MediaPart.image:type_name -> ktms.v1.ImagePart
+	12,  // 45: ktms.v1.MediaPart.audio:type_name -> ktms.v1.AudioPart
+	35,  // 46: ktms.v1.MediaPart.embedding:type_name -> ktms.v1.EmbeddingPart
+	73,  // 47: ktms.v1.JudgeRequest.questions:type_name -> ktms.v1.JudgeRequest.QuestionsEntry
+	74,  // 48: ktms.v1.JudgeRequest.attributes:type_name -> ktms.v1.JudgeRequest.AttributesEntry
+	36,  // 49: ktms.v1.JudgeRequest.state_media:type_name -> ktms.v1.MediaPart
+	75,  // 50: ktms.v1.JudgeRequest.needs:type_name -> ktms.v1.JudgeRequest.NeedsEntry
+	76,  // 51: ktms.v1.JudgeResponse.answers:type_name -> ktms.v1.JudgeResponse.AnswersEntry
+	20,  // 52: ktms.v1.JudgeResponse.usage:type_name -> ktms.v1.TokensUsage
+	77,  // 53: ktms.v1.GetEmbeddingsRequest.attributes:type_name -> ktms.v1.GetEmbeddingsRequest.AttributesEntry
+	39,  // 54: ktms.v1.GetEmbeddingsResponse.data:type_name -> ktms.v1.Embedding
+	20,  // 55: ktms.v1.GetEmbeddingsResponse.usage:type_name -> ktms.v1.TokensUsage
+	78,  // 56: ktms.v1.TranslateRequest.attributes:type_name -> ktms.v1.TranslateRequest.AttributesEntry
+	79,  // 57: ktms.v1.TranslateRequest.needs:type_name -> ktms.v1.TranslateRequest.NeedsEntry
+	43,  // 58: ktms.v1.TranslateResponse.translations:type_name -> ktms.v1.Translation
+	20,  // 59: ktms.v1.TranslateResponse.usage:type_name -> ktms.v1.TokensUsage
+	36,  // 60: ktms.v1.RolloutCandidate.action_media:type_name -> ktms.v1.MediaPart
+	80,  // 61: ktms.v1.CandidateEvaluation.answers:type_name -> ktms.v1.CandidateEvaluation.AnswersEntry
+	36,  // 62: ktms.v1.EvaluateRolloutsRequest.state_media:type_name -> ktms.v1.MediaPart
+	45,  // 63: ktms.v1.EvaluateRolloutsRequest.candidates:type_name -> ktms.v1.RolloutCandidate
+	81,  // 64: ktms.v1.EvaluateRolloutsRequest.criteria:type_name -> ktms.v1.EvaluateRolloutsRequest.CriteriaEntry
+	82,  // 65: ktms.v1.EvaluateRolloutsRequest.attributes:type_name -> ktms.v1.EvaluateRolloutsRequest.AttributesEntry
+	46,  // 66: ktms.v1.EvaluateRolloutsResponse.evaluations:type_name -> ktms.v1.CandidateEvaluation
+	20,  // 67: ktms.v1.EvaluateRolloutsResponse.usage:type_name -> ktms.v1.TokensUsage
+	3,   // 68: ktms.v1.Batch.state:type_name -> ktms.v1.BatchState
+	49,  // 69: ktms.v1.Batch.counts:type_name -> ktms.v1.BatchCounts
+	85,  // 70: ktms.v1.Batch.created_at:type_name -> google.protobuf.Timestamp
+	85,  // 71: ktms.v1.Batch.completed_at:type_name -> google.protobuf.Timestamp
+	19,  // 72: ktms.v1.BatchItemRequest.request:type_name -> ktms.v1.GenerateTextRequest
+	51,  // 73: ktms.v1.SubmitBatchRequest.items:type_name -> ktms.v1.BatchItemRequest
+	0,   // 74: ktms.v1.SubmitBatchRequest.effort:type_name -> ktms.v1.Effort
+	83,  // 75: ktms.v1.SubmitBatchRequest.attributes:type_name -> ktms.v1.SubmitBatchRequest.AttributesEntry
+	84,  // 76: ktms.v1.SubmitBatchRequest.needs:type_name -> ktms.v1.SubmitBatchRequest.NeedsEntry
+	50,  // 77: ktms.v1.SubmitBatchResponse.batch:type_name -> ktms.v1.Batch
+	22,  // 78: ktms.v1.BatchItemResult.response:type_name -> ktms.v1.GenerateTextResponse
+	55,  // 79: ktms.v1.BatchItemResult.error:type_name -> ktms.v1.BatchItemError
+	56,  // 80: ktms.v1.ListBatchResultsResponse.items:type_name -> ktms.v1.BatchItemResult
+	17,  // 81: ktms.v1.SchemaProperty.PropertiesEntry.value:type_name -> ktms.v1.SchemaProperty
+	17,  // 82: ktms.v1.ResponseSchema.PropertiesEntry.value:type_name -> ktms.v1.SchemaProperty
+	33,  // 83: ktms.v1.JudgeRequest.QuestionsEntry.value:type_name -> ktms.v1.JudgeQuestion
+	34,  // 84: ktms.v1.JudgeResponse.AnswersEntry.value:type_name -> ktms.v1.JudgeAnswer
+	34,  // 85: ktms.v1.CandidateEvaluation.AnswersEntry.value:type_name -> ktms.v1.JudgeAnswer
+	33,  // 86: ktms.v1.EvaluateRolloutsRequest.CriteriaEntry.value:type_name -> ktms.v1.JudgeQuestion
+	19,  // 87: ktms.v1.GatewayService.GenerateText:input_type -> ktms.v1.GenerateTextRequest
+	28,  // 88: ktms.v1.GatewayService.GenerateTextStream:input_type -> ktms.v1.GenerateTextStreamRequest
+	29,  // 89: ktms.v1.GatewayService.SynthesizeSpeech:input_type -> ktms.v1.SynthesizeSpeechRequest
+	31,  // 90: ktms.v1.GatewayService.GenerateImage:input_type -> ktms.v1.GenerateImageRequest
+	37,  // 91: ktms.v1.GatewayService.Judge:input_type -> ktms.v1.JudgeRequest
+	40,  // 92: ktms.v1.GatewayService.GetEmbeddings:input_type -> ktms.v1.GetEmbeddingsRequest
+	37,  // 93: ktms.v1.GatewayService.JudgeStream:input_type -> ktms.v1.JudgeRequest
+	42,  // 94: ktms.v1.GatewayService.Translate:input_type -> ktms.v1.TranslateRequest
+	47,  // 95: ktms.v1.GatewayService.EvaluateRollouts:input_type -> ktms.v1.EvaluateRolloutsRequest
+	24,  // 96: ktms.v1.GatewayService.ListModels:input_type -> ktms.v1.ListModelsRequest
+	52,  // 97: ktms.v1.GatewayService.SubmitBatch:input_type -> ktms.v1.SubmitBatchRequest
+	54,  // 98: ktms.v1.GatewayService.GetBatch:input_type -> ktms.v1.GetBatchRequest
+	57,  // 99: ktms.v1.GatewayService.ListBatchResults:input_type -> ktms.v1.ListBatchResultsRequest
+	59,  // 100: ktms.v1.GatewayService.CancelBatch:input_type -> ktms.v1.CancelBatchRequest
+	22,  // 101: ktms.v1.GatewayService.GenerateText:output_type -> ktms.v1.GenerateTextResponse
+	23,  // 102: ktms.v1.GatewayService.GenerateTextStream:output_type -> ktms.v1.GenerateTextChunk
+	30,  // 103: ktms.v1.GatewayService.SynthesizeSpeech:output_type -> ktms.v1.SynthesizeSpeechResponse
+	32,  // 104: ktms.v1.GatewayService.GenerateImage:output_type -> ktms.v1.GenerateImageResponse
+	38,  // 105: ktms.v1.GatewayService.Judge:output_type -> ktms.v1.JudgeResponse
+	41,  // 106: ktms.v1.GatewayService.GetEmbeddings:output_type -> ktms.v1.GetEmbeddingsResponse
+	38,  // 107: ktms.v1.GatewayService.JudgeStream:output_type -> ktms.v1.JudgeResponse
+	44,  // 108: ktms.v1.GatewayService.Translate:output_type -> ktms.v1.TranslateResponse
+	48,  // 109: ktms.v1.GatewayService.EvaluateRollouts:output_type -> ktms.v1.EvaluateRolloutsResponse
+	27,  // 110: ktms.v1.GatewayService.ListModels:output_type -> ktms.v1.ListModelsResponse
+	53,  // 111: ktms.v1.GatewayService.SubmitBatch:output_type -> ktms.v1.SubmitBatchResponse
+	50,  // 112: ktms.v1.GatewayService.GetBatch:output_type -> ktms.v1.Batch
+	58,  // 113: ktms.v1.GatewayService.ListBatchResults:output_type -> ktms.v1.ListBatchResultsResponse
+	60,  // 114: ktms.v1.GatewayService.CancelBatch:output_type -> ktms.v1.CancelBatchResponse
+	101, // [101:115] is the sub-list for method output_type
+	87,  // [87:101] is the sub-list for method input_type
+	87,  // [87:87] is the sub-list for extension type_name
+	87,  // [87:87] is the sub-list for extension extendee
+	0,   // [0:87] is the sub-list for field type_name
 }
 
 func init() { file_ktms_v1_gateway_proto_init() }
@@ -5242,7 +5361,7 @@ func file_ktms_v1_gateway_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ktms_v1_gateway_proto_rawDesc), len(file_ktms_v1_gateway_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   73,
+			NumMessages:   80,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

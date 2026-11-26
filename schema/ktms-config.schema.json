@@ -154,6 +154,20 @@
             },
             "type": "array"
           },
+          "competencies": {
+            "additionalProperties": {
+              "enum": [
+                "basic",
+                "proficient",
+                "expert"
+              ]
+            },
+            "description": "topic -\u003e level, e.g. {\"general\": \"expert\", \"medical\": \"proficient\"}",
+            "propertyNames": {
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+            },
+            "type": "object"
+          },
           "daily_tokens_per_key": {
             "type": [
               "integer",
@@ -349,6 +363,20 @@
           },
           "name": {
             "type": "string"
+          },
+          "needs": {
+            "additionalProperties": {
+              "enum": [
+                "basic",
+                "proficient",
+                "expert"
+              ]
+            },
+            "description": "topic -\u003e level, e.g. {\"general\": \"expert\", \"medical\": \"proficient\"}",
+            "propertyNames": {
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+            },
+            "type": "object"
           },
           "priority": {
             "type": "integer"

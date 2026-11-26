@@ -7,6 +7,7 @@ import (
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 	"github.com/ai-process/ktms/internal/apikeys"
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 // SchemaURL is where the published schema lives, for editors' $schema hints.
@@ -35,8 +36,8 @@ func Schema() []byte {
 		"required":             []string{"api_version"},
 		"properties": map[string]any{
 			"api_version":      map[string]any{"const": APIVersion},
-			"models":           list(messageSchema((&pb.ModelSpec{}).ProtoReflect().Descriptor(), "id", "vendor")),
-			"rules":            list(messageSchema((&pb.RuleSpec{}).ProtoReflect().Descriptor(), "name", "priority", "use")),
+			"models":           list(withLevels(messageSchema((&pb.ModelSpec{}).ProtoReflect().Descriptor(), "id", "vendor"), "competencies")),
+			"rules":            list(withLevels(messageSchema((&pb.RuleSpec{}).ProtoReflect().Descriptor(), "name", "priority", "use"), "needs")),
 			"user_rate_limits": list(messageSchema((&pb.UserRateLimitSpec{}).ProtoReflect().Descriptor(), "user_id", "model_id")),
 			"organizations": list(obj(map[string]any{
 				"name": str,
@@ -82,6 +83,17 @@ func Schema() []byte {
 	}
 	b, _ := json.MarshalIndent(s, "", "  ")
 	return append(b, '\n')
+}
+
+// withLevels narrows a topic -> level map field to topic names and the three levels.
+func withLevels(s map[string]any, field string) map[string]any {
+	s["properties"].(map[string]any)[field] = map[string]any{
+		"type":                 "object",
+		"propertyNames":        map[string]any{"pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"},
+		"additionalProperties": map[string]any{"enum": []string{registry.LevelBasic, registry.LevelProficient, registry.LevelExpert}},
+		"description":          "topic -> level, e.g. {\"general\": \"expert\", \"medical\": \"proficient\"}",
+	}
+	return s
 }
 
 // keyPolicySchema is APIKeyPolicy's, with data_classification as the enum the team's is.
