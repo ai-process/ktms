@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 300" width="880" height="300" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <style>
+    .bg { fill: #ffffff; }
+    .group { fill: #f6f8fa; stroke: #d0d7de; }
+    .g-ktms { fill: #ddf4ff; stroke: #0969da; }
+    .g-node { fill: #dafbe1; stroke: #1a7f37; }
+    .g-warn { fill: #fff8c5; stroke: #9a6700; }
+    .box { fill: #ffffff; stroke: #d0d7de; }
+    .b-plain { fill: #f6f8fa; stroke: #d0d7de; }
+    .b-ktms { fill: #ddf4ff; stroke: #0969da; }
+    .b-node { fill: #dafbe1; stroke: #1a7f37; }
+    .b-warn { fill: #fff8c5; stroke: #9a6700; }
+    .b-hot { fill: #fff1e5; stroke: #bc4c00; }
+    .b-bad { fill: #ffebe9; stroke: #cf222e; }
+    .b-purple { fill: #fbefff; stroke: #8250df; }
+    .gl { fill: #1f2328; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; }
+    .t { fill: #1f2328; font-size: 14px; font-weight: 600; }
+    .s { fill: #59636e; font-size: 11.5px; }
+    .l { fill: #1f2328; font-size: 11.5px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .a-line { stroke: #59636e; stroke-width: 1.6; fill: none; }
+    .a-call { stroke: #0969da; stroke-width: 2.2; fill: none; }
+    .a-ok { stroke: #1a7f37; stroke-width: 2.2; fill: none; }
+    .a-dash { stroke: #59636e; stroke-width: 1.6; fill: none; stroke-dasharray: 6 5; }
+    .a-bad { stroke: #cf222e; stroke-width: 1.8; fill: none; stroke-dasharray: 6 5; }
+    .h-line, .h-dash { fill: #59636e; }
+    .h-call { fill: #0969da; }
+    .h-ok { fill: #1a7f37; }
+    .h-bad { fill: #cf222e; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0d1117; }
+      .group { fill: #161b22; stroke: #3d444d; }
+      .g-ktms { fill: #0a2348; stroke: #4493f8; }
+      .g-node { fill: #0c2616; stroke: #3fb950; }
+      .g-warn { fill: #2e2207; stroke: #d29922; }
+      .box { fill: #0d1117; stroke: #3d444d; }
+      .b-plain { fill: #161b22; stroke: #3d444d; }
+      .b-ktms { fill: #0c2d6b; stroke: #4493f8; }
+      .b-node { fill: #0f2f1b; stroke: #3fb950; }
+      .b-warn { fill: #3b2e0a; stroke: #d29922; }
+      .b-hot { fill: #3d1d06; stroke: #db6d28; }
+      .b-bad { fill: #3c0d12; stroke: #f85149; }
+      .b-purple { fill: #2a1650; stroke: #ab7df8; }
+      .gl, .t, .l { fill: #f0f6fc; }
+      .s { fill: #9198a1; }
+      .a-line, .a-dash { stroke: #9198a1; }
+      .h-line, .h-dash { fill: #9198a1; }
+      .a-call { stroke: #4493f8; } .h-call { fill: #4493f8; }
+      .a-ok { stroke: #3fb950; } .h-ok { fill: #3fb950; }
+      .a-bad { stroke: #f85149; } .h-bad { fill: #f85149; }
+    }
+  </style>
+  <defs><marker id="h-line" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-line" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-call" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-call" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-ok" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-dash" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-dash" d="M0,0 L10,5 L0,10 z"/></marker><marker id="h-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="h-bad" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+  <rect class="bg" width="880" height="300" rx="12"/>
+  <rect class="group" x="20" y="20" width="630" height="260" rx="12"/>
+  <text class="gl" x="38" y="46">YOUR MACHINE</text>
+  <rect class="b-plain" x="40" y="70" width="150" height="64" rx="9"/>
+  <text class="t mono" x="115.0" y="98.0" text-anchor="middle">install.sh</text>
+  <text class="s" x="115.0" y="117.0" text-anchor="middle">one command</text>
+  <rect class="b-plain" x="40" y="190" width="150" height="64" rx="9"/>
+  <text class="t" x="115.0" y="218.0" text-anchor="middle">Your first call</text>
+  <text class="s" x="115.0" y="237.0" text-anchor="middle">curl or an SDK</text>
+  <rect class="g-ktms" x="220" y="50" width="410" height="215" rx="12"/>
+  <text class="gl" x="238" y="76">~/KTMS · DOCKER COMPOSE</text>
+  <rect class="box" x="245" y="90" width="360" height="60" rx="9"/>
+  <text class="t" x="425.0" y="116.0" text-anchor="middle">Keystone</text>
+  <text class="s" x="425.0" y="135.0" text-anchor="middle">:8080 HTTP · :9090 gRPC</text>
+  <rect class="box" x="245" y="190" width="110" height="56" rx="9"/>
+  <text class="t" x="300.0" y="214.0" text-anchor="middle">Postgres</text>
+  <text class="s" x="300.0" y="233.0" text-anchor="middle">config, keys</text>
+  <rect class="box" x="370" y="190" width="110" height="56" rx="9"/>
+  <text class="t" x="425.0" y="214.0" text-anchor="middle">Redis</text>
+  <text class="s" x="425.0" y="233.0" text-anchor="middle">limits, cache</text>
+  <rect class="box" x="495" y="190" width="110" height="56" rx="9"/>
+  <text class="t mono" x="550.0" y="214.0" text-anchor="middle">.env</text>
+  <text class="s" x="550.0" y="233.0" text-anchor="middle">generated keys</text>
+  <rect class="b-plain" x="690" y="85" width="170" height="70" rx="9"/>
+  <text class="t" x="775.0" y="107.0" text-anchor="middle">Your vendor</text>
+  <text class="s" x="775.0" y="126.0" text-anchor="middle">OpenAI, Anthropic</text>
+  <text class="s" x="775.0" y="142.0" text-anchor="middle">or Gemini</text>
+  <path class="a-line" d="M190,102 L216,102" marker-end="url(#h-line)"/>
+  <path class="a-call" d="M190,222 L205,222 L205,135 L241,135" marker-end="url(#h-call)"/>
+  <path class="a-line" d="M300,150 L300,186" marker-end="url(#h-line)"/>
+  <path class="a-line" d="M425,150 L425,186" marker-end="url(#h-line)"/>
+  <path class="a-call" d="M605,120 L686,120" marker-end="url(#h-call)"/>
+  <text class="l" x="645" y="110" text-anchor="middle">your key</text>
+</svg>

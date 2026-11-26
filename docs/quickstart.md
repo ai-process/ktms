@@ -1,41 +1,67 @@
 # Quick start (Docker Compose)
 
-The fastest way to try Keystone is one command. It needs Docker with the Compose plugin, runs the
-published images (no clone, no build) with Postgres and Redis on localhost only, asks for an
-OpenAI, Anthropic or Gemini key unless one is in the environment, and prints your first request:
+**The problem.** Before you wire a gateway into anything, you want to see one call go through it,
+on your own machine, in minutes.
+
+**The approach.** One command runs the published images of Keystone, Postgres and Redis with
+Docker Compose on localhost, asks for one vendor key and prints a first request with a ready client
+key. Nothing is cloned or built.
+
+<p align="center"><img src="img/quickstart-stack.svg" alt="install.sh starts Keystone, Postgres and Redis in ~/ktms with Docker Compose; your first call goes to Keystone, which calls your vendor with your key" width="800"></p>
+
+**Contents:** [One command](#one-command) · [From a clone](#from-a-clone) ·
+[First call](#2-make-your-first-call) · [With an AI assistant](#with-an-ai-assistant) ·
+[From scratch with `ktms init`](#setting-it-up-from-scratch-with-ktms-init)
+
+## One command
+
+Needs Docker with the Compose plugin.
 
 ```bash
 curl -fsSL https://ai-process.dev/install.sh | sh
 ```
 
-It keeps its files in `~/ktms` (a generated keyring, admin and client keys in `.env`), and a re-run
-keeps them while it adds new vendor keys or moves to a new release. Options such as `--port`,
-`--version` and `--uninstall` are in `sh -s -- --help`; the script is
-[`scripts/install.sh`](../scripts/install.sh).
+| What | Where |
+| --- | --- |
+| Compose file and `.env` (generated keyring, admin and client keys) | `~/ktms` |
+| HTTP and OpenAI-compatible API | `localhost:8080` |
+| gRPC | `localhost:9090` |
+| Vendor key | Asked for, unless `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` is set |
 
-From a clone instead, Docker Compose builds the image from source. With `AUTO_SEED` enabled (default in compose), the proxy automatically initializes default models, routing rules, and a ready-to-use client key (`ktms_dev_default_key`).
+A re-run keeps the files, adds new vendor keys and moves to a new release. Options (`sh -s -- --help`):
 
-## 1. Launch the stack
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--dir DIR` | `~/ktms` | Where `compose.yaml` and `.env` live. |
+| `--version vX.Y.Z` | latest | Release to run. |
+| `--port N`, `--grpc-port N` | `8080`, `9090` | Ports on localhost. |
+| `--no-prompt` | — | Never ask for a vendor key. |
+| `--no-start` | — | Write the files, start nothing. |
+| `--uninstall` | — | Stop the stack and delete its data and files. |
+
+The script is [`scripts/install.sh`](../scripts/install.sh).
+
+## From a clone
+
+Compose builds the image from source. With `AUTO_SEED` (on in Compose), Keystone creates default
+models, rules and a client key `ktms_dev_default_key` on first start.
+
+### 1. Launch the stack
 
 ```bash
-git clone https://github.com/ai-process/ktms.git
-cd ktms
-
-# Pass your vendor API key (OpenAI, Gemini, or Anthropic)
-OPENAI_API_KEY=sk-... docker compose up -d --build
-
-# Verify readiness
-curl -s http://localhost:8080/readyz     # {"status":"ready"}
+git clone https://github.com/ai-process/ktms.git && cd ktms
+OPENAI_API_KEY=sk-... docker compose up -d --build     # or GEMINI_API_KEY, ANTHROPIC_API_KEY
+curl -s http://localhost:8080/readyz                    # {"status":"ready"}
 ```
 
-Alternatively, run `./scripts/quickstart.sh` for an interactive setup that generates master encryption and bootstrap keys, configures `.env`, and launches the stack.
+- `./scripts/quickstart.sh` does the same interactively: it generates the encryption and bootstrap
+  keys, writes `.env` and starts the stack.
+- On every start, `AUTO_SEED` copies `OPENAI_API_KEY`, `GEMINI_API_KEY` and `ANTHROPIC_API_KEY`
+  to the client key `dev-default` (or `$SEED_CLIENT_NAME`).
 
-> [!NOTE]
-> With `AUTO_SEED=true` (enabled by default in Compose), the proxy automatically syncs vendor API keys from environment variables (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`) to the client key named `dev-default` (or `$SEED_CLIENT_NAME`) on every startup.
+### 2. Make your first call
 
-## 2. Make your first call
-
-You can immediately query the proxy using the OpenAI-compatible HTTP endpoint:
+With `curl`:
 
 ```bash
 curl -s http://localhost:8080/v1/chat/completions \
@@ -44,7 +70,7 @@ curl -s http://localhost:8080/v1/chat/completions \
   -d '{"model":"auto","messages":[{"role":"user","content":"Say hi in three words."}]}'
 ```
 
-Or using the official OpenAI Python SDK:
+With the OpenAI Python SDK:
 
 ```python
 from openai import OpenAI
@@ -57,38 +83,53 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
-The response includes canonical observability headers (`X-KTMS-Vendor`, `X-KTMS-Rule`, `X-KTMS-Placement`) along with backwards-compatible `X-LLM-Proxy-*` headers.
+The response headers say how it was routed:
+
+| Header | Meaning |
+| --- | --- |
+| `X-KTMS-Vendor` | The vendor that answered. |
+| `X-KTMS-Rule` | The rule that matched. |
+| `X-KTMS-Placement` | Cloud or your own nodes. |
+
+The old `X-LLM-Proxy-*` headers are sent too, for older clients. Next:
+[HTTP APIs](http-api.md#openai-compatible-http-api) and [Configuration](configuration.md#setting-it-up-keys-models-rules).
 
 ## With an AI assistant
 
-In Claude Code, the [plugin](console-and-cli.md#claude-code-plugin-and-skills) deploys and configures the stack for
-you: install it, run `/ktms:assess` to see where Keystone fits your system and what to do first,
-`/ktms:deploy` for Compose or Helm with Keystone, light-tokenmeter and ktms-admin, and
-`/ktms:integrate` to connect a service.
+In Claude Code, the [plugin](console-and-cli.md#claude-code-plugin-and-skills) deploys and
+configures the stack for you:
 
 ```bash
 claude plugin marketplace add ai-process/ktms && claude plugin install ktms@ai-process
 ```
 
-For other assistants, [Prompts for AI assistants](https://ai-process.dev/docs/prompts/) covers the
-same tasks, starting with [Deploy the stack](https://ai-process.dev/docs/prompts/deploy-stack/).
+| Skill | What it does |
+| --- | --- |
+| `/ktms:assess` | Looks at your system and says where Keystone fits and what to do first. |
+| `/ktms:deploy` | Compose or Helm with Keystone, light-tokenmeter and ktms-admin. |
+| `/ktms:integrate` | Moves a service's LLM calls onto Keystone. |
 
----
+Other assistants: [Prompts for AI assistants](https://ai-process.dev/docs/prompts/), starting with
+[Deploy the stack](https://ai-process.dev/docs/prompts/deploy-stack/).
 
 ## Setting it up from scratch with `ktms init`
 
-To start without auto-seeding, set `AUTO_SEED=false` and let the [`ktms` command](console-and-cli.md#command-line-tool)
-ask for the rest:
+To start without auto-seeding, set `AUTO_SEED=false` and let the
+[`ktms` command](console-and-cli.md#command-line-tool) ask for the rest:
 
 ```bash
 ktms init                       # a context named local; ktms init prod for another one
 ```
 
-It asks for the Admin API address and the admin key (`BOOTSTRAP_ADMIN_KEY`, `dev-bootstrap` in
-Compose), keeps the key in the keychain or a `0600` file under a context it makes current, then for
-the vendor keys (OpenAI, Gemini, Anthropic; `OPENAI_API_KEY` and the like are offered when set) and
-a client key name. It writes `ktms.yaml` with the default models and rules of those vendors, shows
-the plan and applies it:
+It asks, in order:
+
+1. the Admin API address and the admin key (`BOOTSTRAP_ADMIN_KEY`, `dev-bootstrap` in Compose),
+   which it keeps in the keychain or a `0600` file under a new current context;
+2. the vendor keys (OpenAI, Gemini, Anthropic; `OPENAI_API_KEY` and the like are offered when set);
+3. a client key name.
+
+Then it writes `ktms.yaml` with the default models and rules of those vendors, shows the plan and
+applies it:
 
 ```text
 + model gpt-4o-mini
@@ -102,8 +143,8 @@ New client keys. They are shown only now; store them in your secret manager:
   my-app: ktms_…
 ```
 
-The vendor keys go to Keystone and stay out of the file; the client key is kept in the context too,
-so a test call needs nothing more. From then on the file is the configuration:
+Vendor keys go to Keystone and stay out of the file. The client key is kept in the context too, so
+a test call needs nothing more. From then on the file is the configuration:
 
 ```bash
 ktms chat "Say hi"              # the answer, then rule, model and vendor
@@ -111,7 +152,7 @@ ktms config plan -f ktms.yaml   # after editing it
 ktms config apply -f ktms.yaml
 ```
 
-On a Keystone that has models already, `ktms init` writes them to `ktms.yaml` instead. The same
-steps one by one are `ktms context set`, `ktms keys mint`, `ktms vendor-keys set` and
-[`ktms config apply`](configuration.md#configuration-as-a-file). Once real keys exist in production, unset
-`BOOTSTRAP_ADMIN_KEY`.
+- On a Keystone that has models already, `ktms init` writes them to `ktms.yaml` instead.
+- The same steps one by one: `ktms context set`, `ktms keys mint`, `ktms vendor-keys set` and
+  [`ktms config apply`](configuration.md#configuration-as-a-file).
+- Once real keys exist in production, unset `BOOTSTRAP_ADMIN_KEY`.

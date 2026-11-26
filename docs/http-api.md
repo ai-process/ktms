@@ -1,12 +1,33 @@
 # HTTP APIs
 
+**The problem.** Most code and tools already speak the OpenAI or Anthropic API. Rewriting them for
+a gateway's own protocol is work nobody wants to do.
+
+**The approach.** Keystone serves both APIs on `HTTP_ADDR` (`:8080`). You change the base URL and the
+key, and get Keystone's routing, fallback, limits and usage accounting. Everything is shared with
+gRPC: the same `ktms_…` keys (scope `generate`), vendor keys, rules and usage events. The `model`
+field tells Keystone what the call needs instead of naming a model:
+
+<p align="center"><img src="img/http-api-model.svg" alt="The model string auto:medical=basic,legal=proficient:cloud-first has three parts: auto lets Keystone choose, then the needs as topic=level pairs, then the placement" width="800"></p>
+
+**Contents:** [Glossary](#glossary) · [Try it](#openai-compatible-http-api) · [Endpoints](#endpoints) ·
+[Choosing a model and placement](#choosing-a-model-and-placement) ·
+[Chat completions fields](#chat-completions-what-is-supported) · [Speech and images](#speech-and-images) ·
+[Errors](#errors) · [Anthropic Messages API](#anthropic-messages-api)
+
+## Glossary
+
+| Term | Meaning |
+| --- | --- |
+| **`auto`** | Let Keystone choose the model by rules or selection. |
+| **Needs** | `topic=level` pairs, such as `medical=basic`; see [Needs and competencies](concepts.md#needs-and-competencies). |
+| **Placement** | Where a call may run: `nodes_first`, `nodes_only`, `cloud_first`, `cloud_only`. |
+| **Judge** | A fast model that guesses how hard a prompt is when `auto` comes without needs. |
+| **Attributes** | Key–value context for rules and usage, taken from `metadata` and `user`. |
+
 ## OpenAI-compatible HTTP API
 
-The data plane is also available as HTTP/JSON in the OpenAI wire format, so existing
-OpenAI SDKs, LangChain, `curl` and similar tools work by changing the base URL and key.
-It runs on `HTTP_ADDR` (default `:8080`) and shares everything with gRPC: the same
-`ktms_…` API keys (scope `generate`), vendor credentials, rules, fallbacks, throttling and
-usage reporting. Set `HTTP_API_ENABLED=false` to turn it off.
+Point an OpenAI SDK, LangChain or `curl` at Keystone. `HTTP_API_ENABLED=false` turns the API off.
 
 ```python
 from openai import OpenAI
@@ -30,6 +51,7 @@ curl -s localhost:8080/v1/chat/completions \
 | Endpoint | Maps to | Notes |
 | --- | --- | --- |
 | `POST /v1/chat/completions` | `GenerateText` / `GenerateTextStream` | Text, multimodal parts (`image_url`, `input_audio`, `file`/`document`), structured output, `tools`, and SSE streaming. |
+| `POST /v1/messages` | `GenerateText` / `GenerateTextStream` | The [Anthropic Messages API](#anthropic-messages-api). |
 | `POST /v1/embeddings` | `GetEmbeddings` | Vector embeddings with `float` or `base64` encoding format and optional dimensionality. |
 | `POST /v1/audio/speech` | `SynthesizeSpeech` | Returns OGG/Opus audio. |
 | `POST /v1/images/generations` | `GenerateImage` | Returns `b64_json`. |
@@ -39,56 +61,68 @@ curl -s localhost:8080/v1/chat/completions \
 | `POST /v1/translate` | `Translate` | Protobuf JSON of `TranslateRequest` / `TranslateResponse` (see [Translation](grpc-api.md#translation)). |
 | `GET /v1/models`, `GET /v1/models/{id}` | `ListModels` | Only models the key holds a vendor credential for. |
 
-Authentication is `Authorization: Bearer ktms_…` (legacy `llm_…` keys are also supported). Response headers provide full observability:
-- `X-KTMS-Vendor` and `X-KTMS-Rule`: vendor and matching rule that served the request.
-- `X-KTMS-Placement`: infrastructure placement (`nodes_first`, `nodes_only`, `cloud_first`, `cloud_only`).
-- `X-KTMS-Route-Mode`: routing mechanism (`direct`, `override`, `auto-judge`, `auto-default`, `auto-effort`).
-- `X-KTMS-Judge-Score` and `X-KTMS-Judge-Model`: evaluation confidence and judge model ID when judge evaluates task complexity.
-- `X-KTMS-Ignored-Params`: the sampling fields the serving model did not get, comma-separated (see [Sampling](grpc-api.md#sampling)). It has no `X-LLM-Proxy-*` twin.
+Authentication: `Authorization: Bearer ktms_…` (legacy `llm_…` keys work too).
+
+**Response headers** say how the call was routed:
+
+| Header | Meaning |
+| --- | --- |
+| `X-KTMS-Vendor`, `X-KTMS-Rule` | The vendor and the rule that served the call. |
+| `X-KTMS-Placement` | `nodes_first`, `nodes_only`, `cloud_first` or `cloud_only`. |
+| `X-KTMS-Route-Mode` | `direct`, `override`, `auto-judge`, `auto-default` or `auto-effort`. |
+| `X-KTMS-Judge-Score`, `X-KTMS-Judge-Model` | The judge's confidence and model, when a judge picked the level. |
+| `X-KTMS-Ignored-Params` | Sampling fields the serving model did not get, comma-separated (see [Sampling](grpc-api.md#sampling)). No `X-LLM-Proxy-*` twin. |
 
 > [!NOTE]
-> **Backwards Compatibility**: All legacy `X-LLM-Proxy-*` response headers are dual-emitted alongside `X-KTMS-*` with standard RFC 8594 `Deprecation: true`, `Sunset`, and `Warning` headers to provide seamless zero-downtime migration for existing clients.
+> The legacy `X-LLM-Proxy-*` response headers are sent next to `X-KTMS-*`, with RFC 8594
+> `Deprecation: true`, `Sunset` and `Warning` headers, so older clients keep working while they move.
 
 ### Choosing a model and placement
 
-The `model` parameter supports smart auto-routing and infrastructure placement:
-
 | `model` | Behaviour |
 | --- | --- |
-| `auto` (or empty) | Smart auto-selection with default `nodes_first` placement. Evaluates prompt complexity via Judge (or uses `reasoning_effort` if provided). |
+| `auto` (or empty) | Keystone chooses, with `nodes_first` placement. A judge guesses the general level, unless `reasoning_effort` is given. |
 | `auto:<topic>=<level>,…` (e.g. `auto:medical=basic,legal=proficient`) | Routes by these [needs](concepts.md#needs-and-competencies) with `nodes_first` placement; combines with a placement by `:`, e.g. `auto:medical=basic:cloud-first`. |
-| `auto:low`, `auto:medium`, `auto:high` | Pinned general need (`basic`, `proficient`, `expert`) with `nodes_first` placement. Deprecated in favour of `auto:general=<level>`. |
-| `auto:nodes-first`, `auto:nodes-only`, `auto:cloud-first`, `auto:cloud-only` | Auto-routing with explicit compute locality policy. |
-| `auto:<placement>:<effort>` (e.g. `auto:nodes-only:high`) | Combined placement policy and pinned effort level. |
-| anything else | Exact registry model ID (`model_override`): bypasses rules but not throttles. |
+| `auto:low`, `auto:medium`, `auto:high` | Pinned general need (`basic`, `proficient`, `expert`) with `nodes_first`. Deprecated: use `auto:general=<level>`. |
+| `auto:nodes-first`, `auto:nodes-only`, `auto:cloud-first`, `auto:cloud-only` | Auto routing with a placement. |
+| `auto:<placement>:<effort>` (e.g. `auto:nodes-only:high`) | A placement and a pinned effort. |
+| anything else | An exact registry model id (`model_override`): bypasses rules, not limits. |
 
-#### Infrastructure Placement Policies
-- `nodes_first` (default): Prefers registered self-hosted compute nodes (`VendorLocal`, `VendorOllama`), falling back to cloud providers if unavailable or busy.
-- `nodes_only` (aliases: `nodes`, `private`, `self_hosted`): Restricts routing strictly to self-hosted nodes. Fails if no capable node is available. A preference of the request; for a guarantee that also covers the judge and holds per key or team, see [Restricted data](concepts.md#restricted-data).
-- `cloud_first`: Prefers managed cloud providers, falling back to registered nodes.
-- `cloud_only`: Excludes self-hosted nodes completely.
+**Placement policies.**
 
-Placement precedence:
-1. `X-KTMS-Placement` (or legacy `X-LLM-Proxy-Placement`) HTTP header
-2. Request body `"placement": "..."`
-3. Model suffix (e.g. `model: "auto:nodes-only"`)
-4. Default: `nodes_first`
+| Placement | Aliases | Behaviour |
+| --- | --- | --- |
+| `nodes_first` (default) | | Your nodes (`local`, `ollama`) first, cloud vendors when they are unavailable or busy. |
+| `nodes_only` | `nodes`, `private`, `self_hosted` | Only your nodes; fails when none can serve. A preference of the request: for a guarantee that also covers the judge and holds per key or team, see [Restricted data](concepts.md#restricted-data). |
+| `cloud_first` | | Cloud vendors first, then your nodes. |
+| `cloud_only` | | Never your nodes. |
 
-#### Fast Judge Auto-Selection
-When `model: "auto"` is requested without an explicit effort level, the proxy evaluates prompt complexity using the configured Judge model (such as `jev-latest` or OpenAI Decisions) with a 250ms deadline. If the judge is not configured or times out, it safely falls back to standard medium effort without dropping the request.
+Where the placement comes from, first wins:
 
-Needs and effort precedence:
-1. Needs in the model string (e.g. `auto:medical=basic`), then the `X-KTMS-Needs` header
-   (`medical=basic, legal=proficient`) for the topics the model leaves out. The header is for SDKs
+1. the `X-KTMS-Placement` header (or legacy `X-LLM-Proxy-Placement`);
+2. `"placement"` in the body;
+3. the model suffix, e.g. `auto:nodes-only`;
+4. the default, `nodes_first`.
+
+**Needs and effort**, first wins:
+
+1. Needs in the model string (`auto:medical=basic`), then the `X-KTMS-Needs` header
+   (`medical=basic, legal=proficient`) for topics the model string leaves out. The header is for SDKs
    that cannot add a body field. Needs pin the route: no judge.
-2. Pinned effort in the model string (e.g. `auto:low`): the general need, unless the needs name `general`.
-3. `reasoning_effort` request field (`low`, `medium`, `high`): in 1.x it keeps meaning the general
-   need for `auto` and skips the judge; deprecated. It is not passed to the vendor.
-4. Dynamic Judge evaluation of the general level (fails open to `medium`).
+2. A pinned effort in the model string (`auto:low`): the general need, unless the needs name `general`.
+3. `reasoning_effort` (`low`, `medium`, `high`): in 1.x the general need for `auto`, skipping the
+   judge; deprecated, and not passed to the vendor.
+4. The judge: for `model: "auto"` without any of the above, the configured judge model (such as
+   `jev-latest` or OpenAI Decisions) rates the prompt within 250 ms. Without a judge, or when it is
+   late, the level is `medium`.
 
-Routing attributes (what rules match on, and what usage events carry) come from OpenAI's own
-fields: `metadata` is passed through as attributes, `user` becomes `attributes["user_id"]`
-(unless `metadata.user_id` is set), and `metadata.action_id` is used as the usage action label.
+**Attributes** (what rules match and usage events carry) come from OpenAI's own fields:
+
+| Field | Becomes |
+| --- | --- |
+| `metadata` | Attributes, as they are. |
+| `user` | `attributes["user_id"]`, unless `metadata.user_id` is set. |
+| `metadata.action_id` | The usage action label. |
 
 ```json
 {"model": "auto:nodes-first", "user": "u-42", "metadata": {"subject": "french", "action_id": "app.quiz"},
@@ -99,36 +133,36 @@ fields: `metadata` is passed through as attributes, `user` becomes `attributes["
 
 | Request field | Support |
 | --- | --- |
-| `messages` | `system`/`developer` messages become the system instruction, `user`/`assistant` the conversation. Content is a string or text parts. |
+| `messages` | `system`/`developer` messages become the system instruction, `user`/`assistant` the conversation. Content is a string or parts: text, `image_url`, `input_audio`, `file`. |
 | `max_tokens`, `max_completion_tokens` | Output ceiling (`max_output_tokens`). Set one: an unbounded answer is the costliest failure. |
 | `response_format` | `json_schema` is enforced: `type` (incl. `number` and `["string","null"]`), `properties`, `items`, `required`, `enum`, `format` and boolean `additionalProperties` are carried. Enums on non-string types, and formats a vendor rejects, reach the model as a hint in the description. Other keywords (`minimum`, `pattern`, `oneOf`, ...) are dropped. `json_object` asks for JSON in the prompt. |
-| `stream` | Real incremental SSE streaming backed by gRPC server streaming. Once the first chunk is emitted, stream is locked to the selected model; `stream_options.include_usage` is honoured on completion. |
+| `stream` | Real incremental SSE. Once the first chunk is sent, the stream stays on that model; `stream_options.include_usage` is honoured. |
 | `reasoning_effort`, `user`, `metadata` | Routing, as above. |
 | `enable_google_search` | Extension: let a Google model ground the answer in search. |
 | `n` | Must be 1. |
-| `tools`, `tool_choice` | Supported. Function declarations with JSON Schema parameters. `tool_choice` supports `"auto"`, `"none"`, `"required"`, or specific function names. |
-| `role: "tool"` | Supported. Tool responses with `tool_call_id`. |
-| Image/audio content parts | Rejected with `400`. |
+| `tools`, `tool_choice` | Function declarations with JSON Schema parameters. `tool_choice`: `"auto"`, `"none"`, `"required"` or a function name. |
+| `role: "tool"` | Tool responses with `tool_call_id`. |
 | `temperature`, `top_p`, `stop`, `seed` | Passed to the model as far as it takes them; the rest is named in `X-KTMS-Ignored-Params` (see [Sampling](grpc-api.md#sampling)). `stop` is a string or an array. |
 | `logprobs`, penalties… | Accepted and ignored. |
 
-The response is a standard `chat.completion` with `finish_reason` (`"stop"`, `"tool_calls"`, `"length"`, or `"content_filter"`) and token `usage`.
+The response is a standard `chat.completion` with `finish_reason` (`"stop"`, `"tool_calls"`,
+`"length"` or `"content_filter"`) and token `usage`.
 
 ### Speech and images
 
-`POST /v1/audio/speech` takes `model`, `input` and an optional `language` extension (pronunciation
-hint, e.g. `"Serbian"`); `voice`, `response_format` and `speed` are ignored. The body of the response
-is OGG/Opus whatever format was requested; check the `Content-Type`.
+| Endpoint | Takes | Ignores or refuses | Returns |
+| --- | --- | --- | --- |
+| `POST /v1/audio/speech` | `model`, `input`, optional `language` (a pronunciation hint, e.g. `"Serbian"`) | `voice`, `response_format` and `speed` are ignored | OGG/Opus whatever format was asked; check `Content-Type`. |
+| `POST /v1/images/generations` | `model`, `prompt` | `n` must be 1; `response_format: "url"` is refused | `data[0].b64_json` |
 
-`POST /v1/images/generations` takes `model` and `prompt`; `n` must be 1 and `response_format: "url"`
-is rejected (the image is returned as `data[0].b64_json`).
-
-Both route by a rule for the `tts` / `image` [modality](configuration.md#speech-image-and-judgment-rules), or, once models declare competencies, by selection among the models with that capability. `X-KTMS-Needs` narrows them; an effort in the model value (`auto:high`) is ignored here, as before.
+Both route by a rule for the `tts` / `image` [modality](configuration.md#speech-image-and-judgment-rules),
+or, once models declare competencies, by selection among the models with that capability.
+`X-KTMS-Needs` narrows them; an effort in the model value (`auto:high`) is ignored here.
 
 ### Errors
 
-Errors use OpenAI's shape, `{"error": {"message", "type", "param", "code"}}`, and the proxy's
-[error contract](errors.md#error-contract) shows up in `code`:
+Errors use OpenAI's shape, `{"error": {"message", "type", "param", "code"}}`, with the reason from
+the [error contract](errors.md#error-contract) in `code`:
 
 | HTTP | `type` | `code` examples |
 | --- | --- | --- |
@@ -140,18 +174,18 @@ Errors use OpenAI's shape, `{"error": {"message", "type", "param", "code"}}`, an
 | 502 | `server_error` | `vendor_error` |
 | 503 | `server_error` | `vendors_unavailable`, `auth_unavailable`, `storage_unavailable`, `throttled:spend_unavailable` (with `SPEND_LIMITS_FAIL_MODE=closed`): retry with backoff |
 
-OpenAI SDKs retry 429 and 5xx automatically; for `throttled:*` and `vendor_error` you may want to
-disable that (`max_retries=0`) and handle them yourself.
+OpenAI SDKs retry 429 and 5xx by themselves. For `throttled:*` and `vendor_error` you may want to turn
+that off (`max_retries=0`) and handle them yourself.
 
 ## Anthropic Messages API
 
-`POST /v1/messages` serves the [Anthropic Messages API](https://docs.anthropic.com/en/api/messages)
-on `HTTP_ADDR`, so Claude Code and the Anthropic SDKs run through Keystone. It is the same pipeline
-as `/v1/chat/completions`: the same keys (scope `generate`), rules, fallback, limits, guardrails,
-cache, `X-KTMS-*` headers and usage events. The model that answers may be any vendor's, and the
-answer is still a Messages response. The Messages API is [experimental](stability.md#experimental) in 1.x.
+`POST /v1/messages` serves the [Anthropic Messages API](https://docs.anthropic.com/en/api/messages),
+so Claude Code and the Anthropic SDKs run through Keystone. It is the same pipeline as
+`/v1/chat/completions`: keys, rules, fallback, limits, guardrails, cache, `X-KTMS-*` headers and
+usage events. The model that answers may be any vendor's; the answer is still a Messages response.
+[Experimental](stability.md#experimental) in 1.x.
 
-Claude Code, with a KTMS key:
+**Claude Code**, with a KTMS key:
 
 ```bash
 export ANTHROPIC_BASE_URL=http://localhost:8080
@@ -161,11 +195,11 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL=auto:low      # Claude Code's background ca
 claude
 ```
 
-Claude Code warns once that it does not recognize the model `auto`; that is expected. It asks for
-up to 32,000-64,000 output tokens, which Keystone passes on as `max_tokens`; if a model your rules
-pick caps output lower, set `CLAUDE_CODE_MAX_OUTPUT_TOKENS` to fit it.
+- Claude Code warns once that it does not know the model `auto`; that is expected.
+- It asks for 32,000–64,000 output tokens, passed on as `max_tokens`. If a model your rules pick
+  caps output lower, set `CLAUDE_CODE_MAX_OUTPUT_TOKENS` to fit it.
 
-The Anthropic SDKs need only the base URL and the key:
+**The Anthropic SDKs** need only the base URL and the key:
 
 ```python
 import anthropic
@@ -190,19 +224,30 @@ print(reply.content[0].text, reply.model)   # `model` is the one that answered
 | `top_k` | Accepted, sent to no model, and named in `X-KTMS-Ignored-Params`. |
 | `thinking`, `service_tier` | Accepted and ignored. |
 
-The key goes in `x-api-key` or `Authorization: Bearer`. The response's `stop_reason` is `end_turn`,
-`tool_use`, `max_tokens` or `refusal`, and `usage` splits `cache_read_input_tokens` and
-`cache_creation_input_tokens` out of `input_tokens`. Tool call ids are the vendor's, or `toolu_…`
-when the vendor gives none.
+**The response.**
 
-`POST /v1/messages/count_tokens` answers with the estimate the token budgets reserve, not a
-tokenizer's count: about four characters per token, tool definitions included, a flat allowance
-per image or document (`url` sources are not fetched), and the `X-KTMS-Token-Count: estimate`
-header.
+- The key goes in `x-api-key` or `Authorization: Bearer`.
+- `stop_reason` is `end_turn`, `tool_use`, `max_tokens` or `refusal`.
+- `usage` splits `cache_read_input_tokens` and `cache_creation_input_tokens` out of `input_tokens`.
+- Tool call ids are the vendor's, or `toolu_…` when the vendor gives none.
 
-Errors use the Messages shape, `{"type": "error", "error": {"type", "message"}}`, with the HTTP
-statuses of [the table above](#errors): `invalid_request_error` (400), `authentication_error`
-(401), `permission_error` (403), `not_found_error` (404), `rate_limit_error` (429, with
-`Retry-After`), `overloaded_error` (503), `timeout_error` (504) and `api_error` for the rest. The
-machine-readable reason, such as `throttled:rpm`, is the `message`. An error after the stream has
+**`POST /v1/messages/count_tokens`** returns the estimate the token budgets reserve, not a
+tokenizer's count: about four characters per token, tool definitions included, a flat allowance per
+image or document (`url` sources are not fetched), with the header `X-KTMS-Token-Count: estimate`.
+
+**Errors** use the Messages shape, `{"type": "error", "error": {"type", "message"}}`, with the HTTP
+statuses of [the table above](#errors):
+
+| HTTP | `error.type` |
+| --- | --- |
+| 400 | `invalid_request_error` |
+| 401 | `authentication_error` |
+| 403 | `permission_error` |
+| 404 | `not_found_error` |
+| 429 | `rate_limit_error`, with `Retry-After` |
+| 503 | `overloaded_error` |
+| 504 | `timeout_error` |
+| other | `api_error` |
+
+The machine-readable reason, such as `throttled:rpm`, is the `message`. An error after the stream has
 started arrives as an `error` event.

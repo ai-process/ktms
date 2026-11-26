@@ -1,25 +1,54 @@
 # Calling Keystone
 
-Authenticate every call with `authorization: Bearer ktms_…` (legacy `llm_…` keys supported) gRPC metadata.
+**The problem.** Services need more than chat: typed JSON output, cheap batch jobs, speech, images,
+judgments, translation and embeddings. Each vendor exposes these differently, and some only for
+some models.
 
-You can import the committed Go stubs directly from this repository:
+**The approach.** One gRPC service, `ktms.v1.GatewayService` on `:9090`, has an RPC per kind of work.
+A request describes the work (needs, attributes, schema); Keystone picks the model, checks the
+answer, falls back and accounts for it. The same RPCs are on [HTTP](http-api.md#openai-compatible-http-api).
+
+**Contents:** [Glossary](#glossary) · [Try it](#try-it) · [Clients](#client-sdks) ·
+[GenerateText](#generatetext) · [Sampling](#sampling) · [Streaming](#generatetextstream) ·
+[Batches](#batch-text-generation) · [Speech and images](#synthesizespeech-generateimage) ·
+[Judge](#judge) · [Translation](#translation) · [Embeddings](#embeddings) · [ListModels](#listmodels)
+
+## Glossary
+
+| Term | Meaning |
+| --- | --- |
+| **Needs** | What a request needs: topic → level; see [Needs and competencies](concepts.md#needs-and-competencies). |
+| **Attributes** | Your context for rules and usage: `user_id`, `usage_project`, anything else. |
+| **`action_id`** | Your label for the call site in usage reports, e.g. `app.summarize`. |
+| **Response schema** | A JSON Schema the answer must follow; Keystone checks it where the vendor does not. |
+| **Batch** | Many generations sent to a vendor's batch API at half price, answered within a day. |
+| **Judge** | Typed answers (yes/no, choice, score) with probabilities instead of text. |
+
+## Try it
+
+Every call carries `authorization: Bearer ktms_…` metadata (legacy `llm_…` keys work too). gRPC
+reflection is on, so `grpcurl` needs no `.proto` files:
+
 ```bash
-go get github.com/ai-process/ktms/gen/ktms/v1
+grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
+  "needs": {"general": "basic"},
+  "messages": [{"role": "MESSAGE_ROLE_USER", "text": "Say hi in three words."}],
+  "max_output_tokens": 50
+}' localhost:9090 ktms.v1.GatewayService/GenerateText
 ```
 
 ## Client SDKs
 
-Generate a client for your language from `proto/ktms/v1` (below). Pre-built SDKs on the Buf
-Schema Registry are planned and will be announced in the CHANGELOG when they are published.
+| Language | How |
+| --- | --- |
+| Go | `go get github.com/ai-process/ktms/gen/ktms/v1` (the committed stubs) |
+| Python | `make proto-py` → `gen/python/` |
+| TypeScript | `make proto-ts` → `gen/ts/` |
+| Other | Generate from `proto/ktms/v1` with `buf`. |
 
-## Local Client Generation
-
-Generate client stubs with `buf`, without installing local compiler plugins:
-```bash
-make proto     # Go stubs in gen/
-make proto-py  # Python stubs in gen/python/
-make proto-ts  # TypeScript stubs in gen/ts/
-```
+`make proto` regenerates the Go stubs in `gen/`; all targets use `buf` remote plugins, so no local
+compiler plugins are needed. Pre-built SDKs on the Buf Schema Registry are planned and will be
+announced in the CHANGELOG when they are published.
 
 ## GenerateText
 
@@ -37,37 +66,45 @@ make proto-ts  # TypeScript stubs in gen/ts/
 }
 ```
 
+**Routing fields.**
+
 | Field | Notes |
 | --- | --- |
-| `needs` | What the request needs: topic → `basic`, `proficient` or `expert`; see [Needs and competencies](concepts.md#needs-and-competencies). |
-| `effort` | Deprecated: `EFFORT_LOW`, `EFFORT_MEDIUM`, `EFFORT_HIGH` are `general` at `basic`, `proficient`, `expert`; `needs.general` wins over it. |
-| `attributes` | Opaque key/values matched by rules and copied to usage events. `user_id` charges the per-user daily budget (falls back to `svc:<key_name>` for service callers without `user_id`). `usage_project` overrides the usage project (see below). |
-| `base_system_instruction`, `request_instruction` | System content never travels as a message. |
-| `response_schema` | Unset = free text. Set = JSON output in that shape: types `string`, `integer`, `number`, `boolean`, `object`, `array`, plus `required`, `nullable`, `enum`, `format` and `additional_properties`. Vendors with structured output enforce it; for the others the proxy checks the reply (types, required keys, enum values, extra keys when `additional_properties` is false), retries once and then falls back. A `format` a vendor rejects is passed to the model in the description instead. |
-| `tools`, `tool_choice` | Function/tool declarations with JSON Schema parameters. `tool_choice` specifies auto, required, none, or a specific named function. In non-streaming calls, arguments of `strict` tools are checked against their parameters, since not every vendor enforces strict; a call outside them is retried once and then falls back. Streamed tool calls reach the caller as they arrive and are not checked. |
-| `messages` | Chat history. Supports `MESSAGE_ROLE_USER`, `MESSAGE_ROLE_ASSISTANT`, and `MESSAGE_ROLE_TOOL` (with `tool_call_id`). User messages support multimodal `parts` (`ContentPart`: `text`, `image`, `audio`, `document`). Assistant messages can carry `tool_calls`. |
-| `max_output_tokens` | Ceiling, `0` = none. Output tokens are the expensive ones; set it. |
-| `temperature`, `top_p`, `stop`, `seed` | Sampling, passed to the model that serves the call; unset leaves its default. `temperature` 0..2, `top_p` 0..1, up to 16 non-empty `stop` sequences; other values get `INVALID_ARGUMENT`. See [Sampling](#sampling). |
-| `enable_google_search` | Only Google models declaring `google_search` can serve it. |
+| `needs` | What the request needs: topic → `basic`, `proficient` or `expert`. |
+| `attributes` | Opaque key/values matched by rules and copied to usage events. `user_id` charges the per-user daily budget (falls back to `svc:<key_name>` for service callers without `user_id`). `usage_project` overrides the usage project. |
+| `placement` | `nodes_first`, `nodes_only`, `cloud_first`, `cloud_only`. |
+| `data_classification` | `restricted` keeps the call and the judge calls it makes on your own nodes, with no cloud fallback; see [Restricted data](concepts.md#restricted-data). |
+| `model_override` | Exact model id; bypasses rules but **not** limits. |
+| `auto_route` | Smart model selection; without needs or a pinned effort, a judge picks the general level. |
 | `action_id` | Free-form label for usage attribution. |
-| `model_override` | Exact model id; bypasses rules but **not** throttles. |
-| `placement` | Compute locality preference: `nodes_first`, `nodes_only`, `cloud_first`, `cloud_only`. |
-| `data_classification` | `restricted` keeps the call and the judge calls it makes on self-hosted nodes, with no cloud fallback; see [Restricted data](concepts.md#restricted-data). |
-| `auto_route` | Enables smart model auto-selection; without needs or a pinned effort, a judge picks the general level. |
+| `effort` | Deprecated: `EFFORT_LOW`, `EFFORT_MEDIUM`, `EFFORT_HIGH` are `general` at `basic`, `proficient`, `expert`; `needs.general` wins over it. |
 | `effort_specified` | Deprecated: the caller pinned the effort (skips the judge). Needs count as pinned. |
 
-The response carries `choices`, token `usage`, `resolved_model`, `resolved_vendor`,
-`matched_rule` (empty on override), structured `details` (`Choice` objects with text, tool calls, and finish reasons),
-`cached` status, routing metadata: `route_mode`, `placement`, `judge_score`, and `judge_model`, and
-`ignored_parameters`: the sampling fields the resolved model did not get.
+**Content fields.**
+
+| Field | Notes |
+| --- | --- |
+| `base_system_instruction`, `request_instruction` | System content; it never travels as a message. |
+| `messages` | Chat history: `MESSAGE_ROLE_USER`, `MESSAGE_ROLE_ASSISTANT` and `MESSAGE_ROLE_TOOL` (with `tool_call_id`). User messages take multimodal `parts` (`ContentPart`: `text`, `image`, `audio`, `document`). Assistant messages can carry `tool_calls`. |
+| `response_schema` | Unset = free text. Set = JSON in that shape: types `string`, `integer`, `number`, `boolean`, `object`, `array`, plus `required`, `nullable`, `enum`, `format` and `additional_properties`. Vendors with structured output enforce it; for the others Keystone checks the reply (types, required keys, enum values, extra keys when `additional_properties` is false), retries once and then falls back. A `format` a vendor rejects reaches the model in the description. |
+| `tools`, `tool_choice` | Function declarations with JSON Schema parameters; `tool_choice` is auto, required, none or a named function. In non-streaming calls the arguments of `strict` tools are checked, since not every vendor enforces strict; a call outside them is retried once, then falls back. Streamed tool calls are not checked. |
+| `max_output_tokens` | Ceiling, `0` = none. Output tokens are the expensive ones; set it. |
+| `temperature`, `top_p`, `stop`, `seed` | Sampling for the serving model; unset leaves its default. `temperature` 0..2, `top_p` 0..1, up to 16 non-empty `stop` sequences; other values are `INVALID_ARGUMENT`. See [Sampling](#sampling). |
+| `enable_google_search` | Only Google models declaring `google_search` can serve it. |
+
+**The response** carries `choices`, token `usage`, `resolved_model`, `resolved_vendor`,
+`matched_rule` (empty on override), `details` (`Choice` objects with text, tool calls and finish
+reasons), `cached`, the routing metadata `route_mode`, `placement`, `judge_score` and `judge_model`,
+and `ignored_parameters`: the sampling fields the resolved model did not get.
 
 ## Sampling
 
-`temperature`, `top_p`, `stop` and `seed` reach the model that serves the call, as far as its API
-takes them. A field the model does not take is left out of its request rather than failing the call,
-and the response names it, as it names a value the model got changed: `ignored_parameters` in gRPC (on the first chunk of a stream), the
-`X-KTMS-Ignored-Params` header over HTTP. Fallback models are judged one by one, so the list
-describes the model that answered.
+`temperature`, `top_p`, `stop` and `seed` reach the serving model as far as its API takes them.
+
+- A field the model does not take is left out of its request instead of failing the call.
+- The response names it, and a value that was changed: `ignored_parameters` in gRPC (on the first
+  chunk of a stream), the `X-KTMS-Ignored-Params` header over HTTP.
+- Fallback models are judged one by one, so the list describes the model that answered.
 
 | Vendor | Takes |
 | --- | --- |
@@ -81,34 +118,47 @@ describes the model that answered.
 | Other `bedrock` models | `temperature` (capped at 1), `top_p`, up to 4 `stop` sequences. |
 | `bedrock` application inference profiles (ARNs) | Up to 4 `stop` sequences: the ARN does not say which model is behind it. With `sampling` declared, also `temperature` (capped at 1) or `top_p`, not both, which every family takes. |
 
-A temperature above a vendor's cap is lowered to it and reported as `temperature`. When a vendor
-takes fewer stop sequences than the call has, it gets the first ones and `stop` is reported. The model is told apart
-by its id. When the id misleads, declare a capability: `no_sampling` for a model whose API rejects a
-field this table sends, `sampling` for one that takes what its vendor's table row allows, such as
-an Azure deployment of a chat model named like a reasoning one. Sampling is part of the response
-cache key. Batch results do not carry `ignored_parameters`. Over HTTP, empty stop sequences are
-dropped before the call.
+- A temperature above a vendor's cap is lowered to it and reported as `temperature`.
+- When a vendor takes fewer stop sequences than the call has, it gets the first ones and `stop` is
+  reported.
+- The model is told apart by its id. When the id misleads, declare a capability: `no_sampling` for a
+  model whose API rejects a field this table sends, `sampling` for one that takes what its vendor's
+  row allows, such as an Azure deployment of a chat model named like a reasoning one.
+- Sampling is part of the response cache key. Batch results carry no `ignored_parameters`. Over
+  HTTP, empty stop sequences are dropped before the call.
 
 ## GenerateTextStream
 
-Server-streaming RPC `rpc GenerateTextStream(GenerateTextStreamRequest) returns (stream GenerateTextChunk)`.
+`rpc GenerateTextStream(GenerateTextStreamRequest) returns (stream GenerateTextChunk)`
 
-- Takes a `GenerateTextStreamRequest` containing the standard `GenerateTextRequest`.
-- Streams incremental `GenerateTextChunk` items containing `delta` (token text), `tool_call_chunks`, `resolved_model`, `resolved_vendor`, `matched_rule`, `cached`, `route_mode`, `placement`, `judge_score`, `judge_model`, `ignored_parameters`, and final `finish_reason` with token `usage`.
-- **Fallback guarantee:** If upstream models fail before the first chunk is sent, the router falls back to the next model in the rule's chain. Once the first chunk is transmitted to the caller, the stream is locked to that model to guarantee integrity.
-- Usage events and daily token budgets are settled on stream completion.
+- The request wraps a standard `GenerateTextRequest`.
+- Chunks carry `delta` (text), `tool_call_chunks`, `resolved_model`, `resolved_vendor`,
+  `matched_rule`, `cached`, `route_mode`, `placement`, `judge_score`, `judge_model`,
+  `ignored_parameters`, and at the end `finish_reason` with token `usage`.
+- **Fallback:** if models fail before the first chunk, the next model of the chain is tried. Once
+  the first chunk is sent, the stream stays on that model.
+- Usage events and daily token budgets are settled when the stream ends.
 
 ## Batch text generation
 
-For offline or bulk workflows (such as page generation, backfills, or data pipelines) that prioritize cost over latency, batch generation processes thousands of items asynchronously through vendor Batch APIs (e.g., Google Gemini Batch API) at a **50% discount** compared to interactive calls. Jobs typically finish within 24 hours (vendor timeout at 48 hours).
+For offline work that cares about cost, not latency (page generation, backfills, pipelines): items
+go to vendors' batch APIs (e.g. the Gemini Batch API) at a **50% discount**. Jobs usually finish
+within 24 hours; vendors give up at 48.
 
-- **Route resolution:** Resolved once upon submission. The proxy selects the first model in the rule's chain (or, without a matching rule, in the [selection](concepts.md#needs-and-competencies)) that has the `batch` capability, a vendor key for the client (not needed for `local` models), and available daily budget. Once submitted, there is no vendor fallback; per-item outcomes are returned to the client.
-- **Privacy:** Prompts are streamed/submitted to the vendor and never persisted in the proxy database.
-- **Throttling & Accounting:** RPM limits do not apply to batches. Daily token budgets are checked at submission (rejecting if already exhausted) and tokens are deducted when final item results arrive. Results are retained for `RESULTS_RETENTION_DAYS` (default 7 days; accepts integer days or Go duration strings).
+<p align="center"><img src="img/grpc-batch.svg" alt="SubmitBatch creates a PENDING batch that becomes RUNNING at the vendor's batch API and ends as SUCCEEDED, FAILED, CANCELLED or EXPIRED; ListBatchResults then returns each item's response or error" width="800"></p>
+
+| Aspect | Behaviour |
+| --- | --- |
+| Route | Resolved once, at submission: the first model of the rule's chain (or of the [selection](concepts.md#needs-and-competencies)) with the `batch` capability, a vendor key for the client (not needed for `local`) and daily budget left. No vendor fallback afterwards. |
+| Privacy | Prompts go to the vendor and are never stored in Keystone's database. |
+| Limits | RPM does not apply. Daily token budgets are checked at submission (refused when exhausted) and charged when results arrive. |
+| Retention | Results are kept `RESULTS_RETENTION_DAYS` (7 days; integer days or a Go duration). |
 
 ### SubmitBatch
 
-Takes a list of items (`custom_id` unique within the batch, and standard `GenerateTextRequest`), batch-level `needs` (or the deprecated `effort`) and `attributes`, and an optional `client_batch_id` for idempotency (resubmitting with the same client batch ID returns the existing batch):
+Takes items (`custom_id`, unique within the batch, and a `GenerateTextRequest`), batch-level `needs`
+(or the deprecated `effort`) and `attributes`, and an optional `client_batch_id`: resubmitting with
+the same id returns the existing batch.
 
 ```bash
 grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
@@ -134,11 +184,13 @@ grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
 }' localhost:9090 ktms.v1.GatewayService/SubmitBatch
 ```
 
-Returns a `Batch` with status `BATCH_STATE_PENDING` (or `BATCH_STATE_RUNNING`), total item count, model, and creation timestamp.
+Returns a `Batch` in `BATCH_STATE_PENDING` (or `BATCH_STATE_RUNNING`) with the item count, the model
+and the creation time.
 
 ### GetBatch
 
-Polls batch state (`PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `EXPIRED`) and progress counts (`total`, `done`, `failed`):
+State (`PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `EXPIRED`) and progress (`total`,
+`done`, `failed`):
 
 ```bash
 grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
@@ -148,7 +200,9 @@ grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
 
 ### ListBatchResults
 
-Pages through completed items with `page_token` (and `next_page_token`). Each item contains its `custom_id` and either a successful `response` (`GenerateTextResponse` with choices, usage, resolved_model, resolved_vendor, matched_rule) or an `error` (`BatchItemError` with gRPC code, message, and error reason):
+Pages through finished items with `page_token` / `next_page_token`. Each item has its `custom_id` and
+either a `response` (`GenerateTextResponse`) or an `error` (`BatchItemError` with a gRPC code, a
+message and a [reason](errors.md#batch-item-error-reasons)):
 
 ```bash
 grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
@@ -159,7 +213,8 @@ grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
 
 ### CancelBatch
 
-Requests cancellation of an unfinished batch job at the vendor. The batch remains `RUNNING` until vendor confirmation is polled: already completed items preserve their results, while remaining unfinished items fail with reason `batch_cancelled`.
+Asks the vendor to cancel. The batch stays `RUNNING` until the vendor confirms: finished items keep
+their results, and the rest fail with `batch_cancelled`.
 
 ```bash
 grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
@@ -169,16 +224,19 @@ grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
 
 ## SynthesizeSpeech, GenerateImage
 
-`SynthesizeSpeech` takes `text` (read verbatim) and an optional `language` and returns OGG/Opus
-`audio`. `GenerateImage` takes a `prompt` and returns `image` bytes with a `mime_type`.
-Both accept `attributes`, `action_id` and `model_override`, and need the rules in
+| RPC | Takes | Returns |
+| --- | --- | --- |
+| `SynthesizeSpeech` | `text` (read verbatim), optional `language` | OGG/Opus `audio` |
+| `GenerateImage` | `prompt` | `image` bytes with a `mime_type` |
+
+Both take `attributes`, `action_id` and `model_override`, and need the rules in
 [Speech, image and judgment rules](configuration.md#speech-image-and-judgment-rules).
 
 ## Judge
 
-`Judge` answers typed questions about one state instead of writing text, so you get
-calibrated probabilities to branch on rather than prose to parse. All questions in a call
-are answered against the same state in parallel.
+`Judge` answers typed questions about one state instead of writing text: you get calibrated
+probabilities to branch on, not prose to parse. All questions of a call are answered against the same
+state, in parallel.
 
 | Type | Question | Answer |
 | --- | --- | --- |
@@ -197,20 +255,21 @@ are answered against the same state in parallel.
 }
 ```
 
-Multimodal state goes in `state_media` (`text`, `image`, `audio`, `embedding` parts), alongside
-or instead of `state_json`. Each media kind narrows the chain to judge models that also declare
-`vision`, `audio_input` or `embedding_input`; TypeSafe takes JSON state only. Image URLs must be
-`https` and are forwarded, not fetched. Guardrails inspect text parts only. Limits: 32 parts,
-16 MiB of media, 16384 embedding dimensions.
-
-Supported decision vendors are [TypeSafe](https://typesafe.ai) (`jev-latest`, billing input only) and [OpenAI](https://openai.com) (`gpt-6-luna`, billing input and output tokens); both write no text and declare the `judge` capability.
+- **Multimodal state** goes in `state_media` (`text`, `image`, `audio`, `embedding` parts), with or
+  instead of `state_json`. Each media kind narrows the chain to judge models that also declare
+  `vision`, `audio_input` or `embedding_input`; TypeSafe takes JSON state only.
+- Image URLs must be `https` and are forwarded, not fetched. Guardrails inspect text parts only.
+- Limits: 32 parts, 16 MiB of media, 16384 embedding dimensions.
+- Judge vendors: [TypeSafe](https://typesafe.ai) (`jev-latest`, billing input only) and
+  [OpenAI](https://openai.com) (`gpt-6-luna`, billing input and output tokens). Both write no text
+  and declare the `judge` capability.
 
 ## Translation
 
 `Translate` (HTTP `POST /v1/translate`, same JSON) translates a batch of texts. The client always
-makes the same call; which engine translates is the translate rule's choice — a local MT model on
-a node, any chat model by prompt, a cloud MT vendor — with the usual fallback, limits, guardrails
-and usage reporting. Comparing engines is a config change, not a code change.
+makes the same call; which engine translates is the translate rule's choice: a local MT model on a
+node, any chat model by prompt, or a cloud MT vendor, with the usual fallback, limits, guardrails and
+usage. Comparing engines is a config change, not a code change.
 
 ```json
 {"texts": ["Great location, friendly staff.", "Chambre trop petite."],
@@ -220,18 +279,18 @@ and usage reporting. Comparing engines is a config change, not a code change.
  "attributes": {"pipeline": "reviews"}, "action_id": "reviews.translate"}
 ```
 
-The reply holds one `translations[]` entry per text, in order (`text`,
-`detected_source_language`), with `resolved_model`, `matched_rule` and `usage` (tokens as the
-engine counts them, and `characters`). Limits: 128 texts and 256 KiB per call. Blank texts come
-back as they are, and a `source_language` equal to the target returns the texts without a call.
-
-Models that translate declare the `translate` capability and the pairs they serve; a model
-without the request's pair is skipped, not tried. `languages` is required on a translate model (`"*"` for
-any). A tag covers its longer variants: `"de"` takes `"de-AT"`, `"zh-Hant"` takes `"zh-Hant-TW"`.
+- **The reply** has one `translations[]` entry per text, in order (`text`,
+  `detected_source_language`), with `resolved_model`, `matched_rule` and `usage` (tokens as the
+  engine counts them, and `characters`).
+- **Limits:** 128 texts and 256 KiB per call. Blank texts come back as they are; a
+  `source_language` equal to the target returns the texts without a call.
+- **Language pairs:** translate models declare the `translate` capability and `languages` (required,
+  `"*"` for any). A model without the request's pair is skipped, not tried. A tag covers its longer
+  variants: `"de"` takes `"de-AT"`, `"zh-Hant"` takes `"zh-Hant-TW"`.
 
 ```yaml
 models:
-  - id: opus-mt-de              # a node MT model (ktms-mt, see Run a node)
+  - id: opus-mt-de              # a node MT model (ktms-mt, see Nodes)
     vendor: local
     efforts: [EFFORT_LOW]
     capabilities: [translate]
@@ -259,21 +318,21 @@ rules:
     use: [gemma4:26b, gemini-2.5-flash]
 ```
 
-A chat model translates through a prompt Keystone writes: the texts go as JSON data, the reply
-is structured output with one item per text, and Keystone checks the count and the ids before
-answering. A reply that does not line up is retried once on the same model, then the chain moves
-on. Batches are split into chunks of up to 32 texts.
-
-Usage goes to light-tokenmeter like any call: `action_id` defaults to `translate`, tokens are
-reported as usual, the character count goes in `meta.characters`, and `cost_nanousd` adds
-`price_per_million_chars` (for engines billed by character) to the token price. A failed
-attempt bills its tokens only; the characters are billed once, by the translation delivered.
-Spend limits count both. `ktms translate --to de [--from en] [FILE|-]` translates a file line by line, and
-`ktms route explain KEY --modality translate --from fr --to de` shows which models a pair reaches.
+- **A chat model** translates through a prompt Keystone writes: the texts go as JSON data, the reply
+  is structured output with one item per text, and Keystone checks the count and the ids. A reply
+  that does not line up is retried once on the same model, then the chain moves on. Batches are split
+  into chunks of up to 32 texts.
+- **Usage:** `action_id` defaults to `translate`, tokens are reported as usual, the character count
+  goes in `meta.characters`, and `cost_nanousd` adds `price_per_million_chars` to the token price. A
+  failed attempt bills its tokens only; characters are billed once, by the translation delivered.
+  Spend limits count both.
+- **CLI:** `ktms translate --to de [--from en] [FILE|-]` translates a file line by line;
+  `ktms route explain KEY --modality translate --from fr --to de` shows which models a pair reaches.
 
 ## Embeddings
 
-Vector representations of text. Vector space isolation is strictly enforced: `auto` model routing and cross-model fallbacks are disallowed to prevent corrupting downstream vector indices. Models must declare the `embedding` capability.
+Vectors for text. To keep vector indexes consistent, `auto` routing and cross-model fallback are not
+allowed: name the model. Models must declare the `embedding` capability.
 
 ```bash
 grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
@@ -284,5 +343,5 @@ grpcurl -plaintext -H "authorization: Bearer ktms_<key>" -d '{
 
 ## ListModels
 
-Returns the models the calling key can use (those whose vendor it holds a credential for), with
-competencies (efforts read as `general`), the deprecated efforts, capabilities, rpm and prices.
+The models the calling key can use (those whose vendor it holds a key for), with competencies
+(efforts read as `general`), the deprecated efforts, capabilities, rpm and prices.
