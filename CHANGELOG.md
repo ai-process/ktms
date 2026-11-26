@@ -26,6 +26,14 @@ All notable changes to KTMS are listed here. The format follows
   `auto:medical=basic:cloud-first`, and the `X-KTMS-Needs` header for SDKs that cannot add a body field; the model
   string wins per topic. `reasoning_effort` keeps meaning the general need for `auto` in 1.x and is deprecated.
   Speech and image endpoints take both too.
+- `ktms route explain --needs` and `ktms chat --needs`, `needs` in the MCP tool `explain_route`, competencies and needs
+  columns in `ktms models list` and `ktms rules list`; docs (concepts, configuration, gRPC and HTTP APIs) and the
+  plugin skills speak of needs and competencies.
+- Stability: needs, competencies, `auto:<topic>=<level>`, `X-KTMS-Needs` and the levels are stable; the selection order
+  and price formula are experimental in 1.7; every effort field is deprecated until 2.0. The `effort` metric label
+  is the general need (`default` without one); usage meta gains `needs`.
+- Upgrade ktms-admin with this release (to the version that knows competencies and needs): an older console
+  drops them when it saves a model or the rules.
 
 ### Changed
 

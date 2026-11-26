@@ -56,7 +56,8 @@ The `model` parameter supports smart auto-routing and infrastructure placement:
 | `model` | Behaviour |
 | --- | --- |
 | `auto` (or empty) | Smart auto-selection with default `nodes_first` placement. Evaluates prompt complexity via Judge (or uses `reasoning_effort` if provided). |
-| `auto:low`, `auto:medium`, `auto:high` | Pinned effort level with `nodes_first` placement. |
+| `auto:<topic>=<level>,…` (e.g. `auto:medical=basic,legal=proficient`) | Routes by these [needs](concepts.md#needs-and-competencies) with `nodes_first` placement; combines with a placement by `:`, e.g. `auto:medical=basic:cloud-first`. |
+| `auto:low`, `auto:medium`, `auto:high` | Pinned general need (`basic`, `proficient`, `expert`) with `nodes_first` placement. Deprecated in favour of `auto:general=<level>`. |
 | `auto:nodes-first`, `auto:nodes-only`, `auto:cloud-first`, `auto:cloud-only` | Auto-routing with explicit compute locality policy. |
 | `auto:<placement>:<effort>` (e.g. `auto:nodes-only:high`) | Combined placement policy and pinned effort level. |
 | anything else | Exact registry model ID (`model_override`): bypasses rules but not throttles. |
@@ -76,10 +77,14 @@ Placement precedence:
 #### Fast Judge Auto-Selection
 When `model: "auto"` is requested without an explicit effort level, the proxy evaluates prompt complexity using the configured Judge model (such as `jev-latest` or OpenAI Decisions) with a 250ms deadline. If the judge is not configured or times out, it safely falls back to standard medium effort without dropping the request.
 
-Effort precedence:
-1. Pinned effort in model string (e.g. `auto:low`)
-2. `reasoning_effort` request field (`low`, `medium`, `high`) — skips judge evaluation
-3. Dynamic Judge evaluation (fails open to `medium`)
+Needs and effort precedence:
+1. Needs in the model string (e.g. `auto:medical=basic`), then the `X-KTMS-Needs` header
+   (`medical=basic, legal=proficient`) for the topics the model leaves out. The header is for SDKs
+   that cannot add a body field. Needs pin the route: no judge.
+2. Pinned effort in the model string (e.g. `auto:low`): the general need, unless the needs name `general`.
+3. `reasoning_effort` request field (`low`, `medium`, `high`): in 1.x it keeps meaning the general
+   need for `auto` and skips the judge; deprecated. It is not passed to the vendor.
+4. Dynamic Judge evaluation of the general level (fails open to `medium`).
 
 Routing attributes (what rules match on, and what usage events carry) come from OpenAI's own
 fields: `metadata` is passed through as attributes, `user` becomes `attributes["user_id"]`
@@ -118,7 +123,7 @@ is OGG/Opus whatever format was requested; check the `Content-Type`.
 `POST /v1/images/generations` takes `model` and `prompt`; `n` must be 1 and `response_format: "url"`
 is rejected (the image is returned as `data[0].b64_json`).
 
-Both need rules for the `tts` / `image` [modality](configuration.md#speech-image-and-judgment-rules).
+Both route by a rule for the `tts` / `image` [modality](configuration.md#speech-image-and-judgment-rules), or, once models declare competencies, by selection among the models with that capability. `X-KTMS-Needs` narrows them; an effort in the model value (`auto:high`) is ignored here, as before.
 
 ### Errors
 
@@ -173,14 +178,14 @@ print(reply.content[0].text, reply.model)   # `model` is the one that answered
 
 | Request field | Support |
 | --- | --- |
-| `model` | As on chat completions: `auto`, `auto:<effort>`, `auto:<placement>`, or a registry model id. |
+| `model` | As on chat completions: `auto`, `auto:<topic>=<level>,…`, `auto:<effort>`, `auto:<placement>`, or a registry model id. `X-KTMS-Needs` applies too. |
 | `system` | A string or `text` blocks, joined into the system instruction. |
 | `messages` | `user` and `assistant` turns with `text`, `image` and `document` blocks (`base64` or `https` `url` sources; `text` and `content` documents become text), `tool_use` and `tool_result` (text and images). `thinking`, `redacted_thinking` and server-tool blocks in assistant turns are dropped: another model cannot continue them. |
 | `tools`, `tool_choice` | Client tools with `input_schema` (the same JSON Schema subset as `response_format`); `tool_choice` `auto`, `any`, `tool` and `none`. Server tools such as `web_search` are rejected with `400`. |
 | `max_tokens` | Required, the output ceiling. |
 | `stream` | SSE events `message_start`, `ping`, `content_block_start`, `content_block_delta` (`text_delta`, `input_json_delta`), `content_block_stop`, `message_delta` and `message_stop`. `message_start` carries an input token estimate; `message_delta` carries the vendor's counts. |
 | `metadata.user_id` | `attributes["user_id"]`, as `user` on chat completions; other `metadata` keys are attributes, and `action_id` is the usage action label. Claude Code's `user_id` names a session: Keystone keeps its account (or, without one, its device) as the user and puts the session in `attributes["session_id"]`, so per-user limits and reports span sessions. |
-| `enable_cache`, `placement` | Extensions, as on chat completions; so are the `X-KTMS-Cache` and `X-KTMS-Placement` request headers (set them in Claude Code with `ANTHROPIC_CUSTOM_HEADERS`). |
+| `enable_cache`, `placement` | Extensions, as on chat completions; so are the `X-KTMS-Cache`, `X-KTMS-Placement` and `X-KTMS-Needs` request headers (set them in Claude Code with `ANTHROPIC_CUSTOM_HEADERS`). |
 | `temperature`, `top_p`, `stop_sequences` | Passed to the model as on chat completions (see [Sampling](grpc-api.md#sampling)). A stop sequence ends the answer with `stop_reason` `end_turn`. |
 | `top_k` | Accepted, sent to no model, and named in `X-KTMS-Ignored-Params`. |
 | `thinking`, `service_tier` | Accepted and ignored. |

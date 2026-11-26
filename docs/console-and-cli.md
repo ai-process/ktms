@@ -76,11 +76,13 @@ ktms completion zsh > "${fpath[1]}/_ktms"     # also bash and fish
 ktms mcp                                      # tools for AI assistants, see below
 ```
 
-`ktms route explain KEY --effort low [--attr k=v] [--placement P] [--model M]` asks Keystone where
-such a request would go: the rule, every model of its chain kept or dropped with the reason (no
-vendor key, key or team policy, capability, placement, circuit open, vendor paused, no node), and
-what a call would try. It runs Keystone's own routing (`AdminService/ExplainRoute`), calls no vendor
-or judge and spends nothing; rate limits and budgets are not checked. With `--auto` and no effort it
+`ktms route explain KEY --needs medical=basic [--attr k=v] [--placement P] [--model M]` asks Keystone
+where such a request would go: the rule, every model of its chain kept or dropped with the reason
+(needs, no vendor key, key or team policy, capability, placement, circuit open, vendor paused, no
+node), and what a call would try. Without a matching rule it shows the selection: every model with
+its excess over the needs and blended price, the ones past the third as `chain_length`. `--effort`
+still works as the deprecated general need. It runs Keystone's own routing (`AdminService/ExplainRoute`), calls no vendor
+or judge and spends nothing; rate limits and budgets are not checked. With `--auto` and no needs or effort it
 shows the judge's fallback, medium. `--modality translate --from fr --to de` (or `judge`, `tts`,
 `image`) explains that RPC's route instead, models without the language pair dropped as `language_pair`.
 

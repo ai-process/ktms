@@ -232,7 +232,7 @@ self-hosted OpenAI-compatible server such as Ollama or llama.cpp; the model's `e
     "id": "gemini-2.5-flash",              // referenced by rules and model_override; also sent to the vendor
     "vendor": "google",
     "endpoint": "",                         // optional base-URL override (Azure, self-hosted gateways…)
-    "efforts": ["EFFORT_LOW", "EFFORT_MEDIUM"],
+    "competencies": {"general": "proficient", "legal": "basic"}, // topic -> basic | proficient | expert
     "capabilities": ["google_search"],
     "rpm": 600,                             // per client key per minute, 0 = unlimited
     "price_in_per_mtok": 0.30,              // for usage reporting
@@ -251,6 +251,11 @@ self-hosted OpenAI-compatible server such as Ollama or llama.cpp; the model's `e
 ```
 
 (The `//` comments are for illustration; strip them from real JSON.) Send it to `UpsertModel`.
+
+`competencies` replace the deprecated `efforts` (see [Needs and competencies](concepts.md#needs-and-competencies)).
+A model needs one of them. A model with only `efforts: [EFFORT_LOW, EFFORT_MEDIUM]` reads as
+`general: proficient` and keeps serving exactly low and medium; `ktms config plan` prints a `hint:`
+with the competencies to write instead.
 
 When `price_in_batch_per_mtok` and `price_out_batch_per_mtok` are `0`, the proxy automatically defaults them to half the regular price (`price_in_per_mtok / 2`, `price_out_per_mtok / 2`).
 
@@ -300,15 +305,21 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"rules":[
 ```
 
 - The **highest priority** matching rule wins; priorities and names are unique.
-- A rule matches when its `effort` equals the request's (unspecified = any effort) **and**
-  every attribute in the rule equals the request's attribute.
+- A rule matches when the request needs each topic of the rule's `needs` at least at that level
+  (`{"medical": "proficient"}` takes `medical: expert` too) **and** every attribute in the rule
+  equals the request's attribute. The deprecated `effort` still matches the general need exactly
+  (unspecified = any).
+- The chain is filtered to the models that meet all of the request's needs.
 - `use` is the ordered **fallback chain**, cheaper-first by convention. If the first model
   is throttled or its vendor is unavailable, the next is tried.
 - `weights` (optional) enables **weighted traffic routing** (Canary or A/B testing). If specified, `weights` must contain exactly one positive integer per model in `use` (e.g. `[90, 10]`). When an explicit `canary_key` or `user_id` attribute is provided, distribution is deterministic and sticky per key (salted per rule name). If omitted or when `canary_mode: "random"` is passed, routing uses weighted random distribution. When `weights` is omitted, routing is strictly deterministic (100% on `use[0]`).
 - `shadow_model` and `shadow_percentage` (optional) enable **Shadow Routing (Request Mirroring)**: asynchronously duplicates a sample (0.0–100.0%) of incoming traffic to a candidate shadow model in the background without affecting caller latency or responses. Shadow calls are non-billable to end-users (recorded at 0 nano-USD cost in usage events), carry `is_shadow: "true"` and `shadow: "true"` metadata, do not count against caller spend limits or daily token budgets, respect model RPM limits and global concurrency semaphores (512 for shadow, 256 for evaluation) to protect proxy resources and upstream providers, and never trip circuit breakers for primary traffic.
 - `shadow_eval` (optional boolean, requires `shadow_model`): enables automated quality evaluation comparing primary vs shadow model outputs using an internal `Judge` model asynchronously in the background. The judge evaluates preference (`primary`, `shadow`, or `tie`) and quality scores without adding latency to the primary caller, respects judge model RPM and circuit breakers without consuming caller spend limits, and exports results via Prometheus metrics (`ktms_shadow_judge_evaluations_total` and `ktms_shadow_judge_scores`).
-- Validation requires a **catch-all** (no attribute predicates) for every effort, so no
+- Once a model declares competencies, a request no rule takes is routed by
+  [selection](concepts.md#needs-and-competencies), and rules are optional. Without competencies,
+  validation requires a **catch-all** (no attribute predicates, no needs) for every effort, so no
   request can ever fall through. `anything-else` above covers all three at once.
+- A rule with `needs` must have a model in its chain that meets them.
 - `ReplaceRules` swaps the whole set atomically; there is no per-rule CRUD.
 
 Inspect the live configuration with `GetConfig`.
@@ -384,9 +395,12 @@ grpcurl -plaintext -H "authorization: Bearer $ADMIN_KEY" -d '{"name":"search-ser
 
 ### Speech, image and judgment rules
 
-These modalities carry no effort. The proxy routes them at `EFFORT_LOW` with a reserved
-`attributes["modality"]` set to `tts`, `image`, `judge` or `translate`, and only rules that name that
-modality can match, over models that declare the matching capability:
+These modalities may state `needs`; without them only the modality filters (and, for translation,
+the language pair), except that a model described by efforts serves them only if it lists
+`EFFORT_LOW`, as in 1.6. The proxy routes them with a reserved `attributes["modality"]` set to `tts`,
+`image`, `judge` or `translate`, and only rules that name that modality can match, over models that
+declare the matching capability. Without such a rule, and with competencies declared, selection
+picks among the models with that capability:
 
 ```json
 {"name":"speech", "priority":100, "attributes":{"modality":"tts"},

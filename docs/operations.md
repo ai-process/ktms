@@ -57,7 +57,7 @@ metrics are served next to them.
 
 | Metric | Labels | What it tells you |
 | --- | --- | --- |
-| `ktms_requests_total` | `vendor`, `model`, `effort`, `status` (`success`, `error`, `canceled`) | Upstream calls and their outcome; `canceled` is a caller that went away. |
+| `ktms_requests_total` | `vendor`, `model`, `effort`, `status` (`success`, `error`, `canceled`) | Upstream calls and their outcome; `canceled` is a caller that went away. `effort` is the request's `general` need as `low`, `medium` or `high`, `default` without one. |
 | `ktms_request_duration_seconds` | `vendor`, `model`, `effort` | Upstream call duration, histogram; for a stream, the whole stream. |
 | `ktms_time_to_first_token_seconds` | `vendor`, `model` | Time to the first streamed chunk, histogram. |
 | `ktms_tokens_total` | `vendor`, `model`, `type` (`input`, `output`) | Tokens consumed. |

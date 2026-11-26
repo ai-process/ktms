@@ -18,8 +18,10 @@ under 1 ms of added latency.
   credentials live encrypted in Postgres (AES-256-GCM); clients never see them.
   → [Vendor keys](docs/configuration.md#2-vendor-keys-per-client),
   [rotating the encryption key](docs/configuration.md#rotating-the-encryption-key)
-- **Routing by rules, not code.** Clients send an *effort* and free-form *attributes*; ordered
-  rules map them to a model chain with fallbacks, changed at runtime without a redeploy.
+- **Routing by rules, not code.** Clients send their *needs* (`medical: basic`) and free-form
+  *attributes*; models declare *competencies*. Ordered rules map them to a model chain with
+  fallbacks, and a request no rule takes gets the cheapest models that fit. All of it changes at
+  runtime without a redeploy.
   → [Models and rules](docs/configuration.md#setting-it-up-keys-models-rules),
   [Concepts](docs/concepts.md#concepts)
 - **Configuration as code.** One YAML file, planned and applied like Terraform.
@@ -101,8 +103,9 @@ From a clone, with an AI assistant, or from scratch with `ktms init`: [Quick sta
 | **Client key** | A `ktms_…` API key a service calls Keystone with. Has scopes (`generate`, `admin`, `admin:read`, `mcp`, …) and an optional policy with limits. → [API keys](docs/configuration.md#1-api-keys) |
 | **Vendor key** | A provider's API key (OpenAI, Anthropic, …), stored encrypted and assigned to one client key. → [Vendor keys](docs/configuration.md#2-vendor-keys-per-client) |
 | **Model** | A vendor model registered in Keystone with its prices, limits and capabilities. → [Models](docs/configuration.md#3-models) |
-| **Rule** | Maps an effort and attributes to an ordered model chain; the first matching rule by priority wins. → [Rules](docs/configuration.md#4-rules) |
-| **Effort** | `LOW`, `MEDIUM` or `HIGH`: how much model a request needs. The only routing field Keystone understands; with the HTTP model `auto` a judge can pick it. → [Concepts](docs/concepts.md#concepts) |
+| **Rule** | Maps needs and attributes to an ordered model chain; the first matching rule by priority wins. → [Rules](docs/configuration.md#4-rules) |
+| **Competencies, needs** | Topic → level (`basic` < `proficient` < `expert`): what a model is good at, and what a request needs. Without a matching rule Keystone selects the models that meet the needs, least excess and cheapest first. → [Needs and competencies](docs/concepts.md#needs-and-competencies) |
+| **Effort** | Deprecated: `LOW`, `MEDIUM` or `HIGH`, the needs `general: basic`, `proficient`, `expert`. With the HTTP model `auto` a judge can pick it. → [Needs and competencies](docs/concepts.md#needs-and-competencies) |
 | **Attributes** | Free-form key–value pairs on a request that rules match on and usage records carry. |
 | **Modality** | The `modality` attribute (`tts`, `image`, `judge`, `translate`) that sends a request to rules and models for that kind of work. → [Speech, image and judgment rules](docs/configuration.md#speech-image-and-judgment-rules) |
 | **Fallback chain** | The models a rule lists; Keystone moves to the next one when a model fails, is throttled or paused. |

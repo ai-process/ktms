@@ -11,13 +11,15 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/ai-process/ktms/internal/registry"
 )
 
 // route is what Keystone reports about how it served a call.
 var routeHeaders = []string{"Rule", "Model", "Vendor", "Route-Mode", "Placement", "Judge-Model", "Judge-Score", "Cache"}
 
 func (a *app) chatCmd() *cobra.Command {
-	var model, effort, system, user, keyFile, format string
+	var model, effort, needs, system, user, keyFile, format string
 	var attrs map[string]string
 	var maxTokens int
 	cmd := &cobra.Command{
@@ -59,6 +61,19 @@ that served it.`,
 				msgs = append(msgs, map[string]string{"role": "system", "content": system})
 			}
 			msgs = append(msgs, map[string]string{"role": "user", "content": prompt})
+			if needs != "" {
+				n, err := registry.ParseNeeds(needs)
+				if err != nil {
+					return usageError{fmt.Errorf("--needs: %w", err)}
+				}
+				if model != "auto" && !strings.HasPrefix(model, "auto:") {
+					return usageError{errors.New("--needs routes by needs: use it with --model auto")}
+				}
+				if strings.Contains(model, "=") {
+					return usageError{errors.New("--needs: the model value already names needs; put them in one place")}
+				}
+				model += ":" + registry.FormatNeeds(n)
+			}
 			body := map[string]any{"model": model, "messages": msgs}
 			if effort != "" {
 				body["reasoning_effort"] = effort
@@ -136,7 +151,8 @@ that served it.`,
 	}
 	f := cmd.Flags()
 	f.StringVar(&model, "model", "auto", "model id, or auto to let the rules choose")
-	f.StringVar(&effort, "effort", "", "low, medium or high")
+	f.StringVar(&needs, "needs", "", "what the request needs, topic=level,... (with --model auto)")
+	f.StringVar(&effort, "effort", "", "deprecated: low, medium or high, the general need")
 	f.StringVar(&system, "system", "", "system prompt")
 	f.StringVar(&user, "user", "", "end-user id (user_id for limits and rules)")
 	f.StringToStringVar(&attrs, "attr", nil, "request attribute key=value, matched by rules")

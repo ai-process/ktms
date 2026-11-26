@@ -15,8 +15,9 @@ fix bugs.
 | Error contract | The status codes and reason strings in [Error contract](errors.md#error-contract) and the HTTP [Errors](http-api.md#errors) table keep their meaning. New reasons may appear, so treat unknown ones like their status code. |
 | Environment variables | Names, defaults and meaning of every variable in [Configuration reference](configuration.md#configuration-reference). |
 | Database | Any 1.x release upgrades the database of an earlier one by itself (`AUTO_MIGRATE`, forward-only). No manual SQL steps. The tables are not an API: read and write through the RPCs. |
-| Prometheus metrics | Names and labels of `ktms_*` metrics, except the experimental ones listed below. |
-| Usage events (`usage.v1`) | Field numbers and meaning, checked by `buf breaking` like `ktms.v1`. |
+| Prometheus metrics | Names and labels of `ktms_*` metrics, except the experimental ones listed below. The `effort` label stays: for a request with needs it is the `general` need as `low`, `medium` or `high`, and `default` without one (as speech and images always had). Needs get no label: topics are unbounded. |
+| Usage events (`usage.v1`) | Field numbers and meaning, checked by `buf breaking` like `ktms.v1`. The meta keys KTMS writes keep their format, `effort` and `needs` (1.7) included. |
+| Needs and competencies (1.7) | `ModelSpec.competencies`, `needs` on requests and rules, `ModelInfo.competencies`, the HTTP model `auto:<topic>=<level>,…` and the `X-KTMS-Needs` header, the levels `basic` < `proficient` < `expert` and their meaning: a model meets a need at its level or below. |
 | Node daemon | A 1.x daemon works with any 1.x gateway, in both directions. |
 | Helm chart (`oci://ghcr.io/ai-process/charts/ktms`) | Value names and meaning; new values may appear. The chart version is the release version. |
 
@@ -32,13 +33,20 @@ These work and are supported, but may change in a minor release. The change is t
 - **The configuration file format** (`api_version: ktms.ai-process.dev/v1alpha1`) and the
   `ktms` command, until the format reaches `v1`.
 
-- **The judge's effort choice:** when a request is auto-routed without a pinned effort
-  (`model: "auto"` or `auto:<placement>` over HTTP without `reasoning_effort`; `auto_route` with
-  `effort_specified` false in gRPC), a judge picks the effort. Its choice, the `auto-judge` and
-  `auto-default` values of `route_mode`, `judge_score`, `judge_model` and the
-  `X-KTMS-Judge-Score` and `X-KTMS-Judge-Model` headers are experimental. Auto-routing with a
-  pinned effort (`auto:<effort>`, `auto:<placement>:<effort>`, route mode `auto-effort`),
-  placement policies, `model_override` and the `X-KTMS-Route-Mode` header are stable.
+- **The judge's choice of the general level:** when a request is auto-routed without needs or a
+  pinned effort (`model: "auto"` or `auto:<placement>` over HTTP without `reasoning_effort` or
+  `X-KTMS-Needs`; `auto_route` without `needs` and with `effort_specified` false in gRPC), a judge
+  picks the `general` level. Its choice, the `auto-judge` and `auto-default` values of
+  `route_mode`, `judge_score`, `judge_model` and the `X-KTMS-Judge-Score` and
+  `X-KTMS-Judge-Model` headers are experimental. Auto-routing with needs or a pinned effort
+  (`auto:<topic>=<level>`, `auto:<effort>`, `auto:<placement>:<effort>`, route mode
+  `auto-effort`), placement policies, `model_override` and the `X-KTMS-Route-Mode` header are
+  stable.
+- **Selection without a rule (1.7):** its order (placement class, then excess, then the blended
+  price `(3 × price_in + price_out) / 4` per million tokens, or the price per million characters
+  for translation, then the model id) and the chain of three, and the `excess` and
+  `blended_price_per_mtok` fields of `ExplainRoute`. Which models qualify (needs met, capabilities,
+  vendor key, `allowed_models`) is stable.
 - **Shadow traffic and its evaluation:** the `shadow_model`, `shadow_percentage` and `shadow_eval`
   rule fields, and the `ktms_shadow_*` metrics.
 - **Latent features:** the semantic cache (`SEMANTIC_CACHE_*`), latent guardrails
@@ -91,3 +99,11 @@ advance:
 | --- | --- | --- |
 | `LLMPROXY_ENCRYPTION_KEYS` | `KTMS_ENCRYPTION_KEYS` | 2.0 |
 | `X-LLM-Proxy-*` request and response headers | `X-KTMS-*` | On their `Sunset` date, 2027-03-01, as already announced in the responses |
+
+- **Effort (until 2.0):** the `Effort` enum, `GenerateTextRequest.effort` and `effort_specified`,
+  `SubmitBatchRequest.effort`, `ModelSpec.efforts`, `ModelInfo.efforts`, `RuleSpec.effort`,
+  `ExplainRoute`'s `effort` fields, the HTTP models `auto:low`, `auto:medium`, `auto:high`, and
+  `reasoning_effort` meaning the general need for the model `auto`. They keep working through 1.x
+  as the topic `general` (low, medium, high = basic, proficient, expert); a model described by
+  efforts keeps serving exactly those. Write `competencies` and `needs` instead; no warning is logged,
+  as effort is still how most 1.x clients route.

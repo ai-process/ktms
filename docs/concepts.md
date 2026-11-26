@@ -1,7 +1,49 @@
 # Concepts
 
-**Effort** is the only routing field the proxy understands; everything else about a request's
+A request states its **needs**; models declare **competencies**; everything else about a request's
 purpose travels in free-form attributes, so the proxy knows nothing about your product.
+
+## Needs and competencies
+
+Both are maps of a **topic** to a **level**. The operator picks the topics: lowercase words such as
+`general`, `medical` or `legal`. The levels are ordered: `basic` < `proficient` < `expert`.
+
+- A model's **competencies** say what it is good at, e.g. `{general: expert, medical: proficient}`.
+  A model meets any need at its own level or below: `medical: proficient` serves `medical: basic`.
+- A request's **needs** say what the code needs, e.g. `{medical: basic}`. The code knows topics, not
+  models. An unknown level is `INVALID_ARGUMENT`. An unknown topic is no error: no model has it, and
+  `ExplainRoute` shows that.
+- **Capabilities** stay for technical abilities without a level: tools, vision, search.
+  **Attributes** stay the call's context (`user_id`, project, task) for usage and rules.
+- **Effort is deprecated.** `LOW`, `MEDIUM` and `HIGH` are the needs `general: basic`,
+  `proficient` and `expert`, and a request may still send them until 2.0. A model's `efforts` read as
+  `general` at the highest effort listed. Such a model keeps serving exactly the efforts it lists, so
+  a 1.6 configuration routes as before; a model with `competencies` follows the order above.
+
+**Rules come first.** A rule matches on needs (each of its topics at least at its level) and on
+attributes. A matching rule replaces the selection with its own chain; canary weights and shadow
+traffic exist only in rules. A rule with needs takes higher needs too (`medical: basic` takes
+`medical: expert`); when no model of its chain meets such a request, the selection serves it.
+
+**Selection without a rule.** When no rule matches and some model declares competencies, Keystone
+picks the chain itself:
+
+1. Candidates: enabled models that meet every need and the request's capabilities, have a vendor
+   key, and that the key's and team's `allowed_models` allow. A text call skips speech, image, judge,
+   translate and embedding models.
+2. Order:
+   - placement class first (`nodes_first` or `cloud_first`); price ranks only within a class, so free
+     nodes do not take traffic from `cloud_first`;
+   - then **excess**: levels above the need, summed over the needed topics, so an expert is not
+     spent on a basic task (a model described by efforts counts at its highest effort);
+   - then the **blended price** per million tokens at the standard rate, `(3 × price_in + price_out) / 4`;
+     a translation call ranks by `price_per_million_chars` instead, as translation is billed by
+     characters; speech, images and judgments rank by their token prices;
+   - then the model id.
+3. The first three make the chain; the others are its fallbacks no more. With nothing left the call
+   gets `no_capable_model`.
+
+Configurations without competencies keep needing a catch-all rule for every effort, as in 1.6.
 
 **Throttling & Wait Buffer:**
 - **GCRA Rate Limiting:** Enforces requests-per-minute (`rpm`) via the Generic Cell Rate Algorithm in Redis, with configurable burst capacity (`rpm_burst`, defaulting to `rpm - 1` to preserve classic fixed-window behavior, `< 0` to disable burst). Key limits and user limits are evaluated atomically.
@@ -27,7 +69,9 @@ purpose travels in free-form attributes, so the proxy knows nothing about your p
 - Local node models are never paused: the node pool has its own admission control.
 
 **Usage reporting.** When `USAGE_COLLECTOR_HOST` is set, every call emits an event (vendor,
-model, tokens, duration, status, `action_id`, rule name and your attributes as metadata) to a
+model, tokens, duration, status, `action_id`, rule name and your attributes as metadata; KTMS adds
+`effort`, the general need as `low|medium|high`, and from 1.7 `needs`, as `topic=level,…` with
+topics sorted, e.g. `general=basic,medical=proficient`) to a
 gRPC service implementing [`usage-proto/usage/v1/usage.proto`](../usage-proto/usage/v1/usage.proto).
 Events are attributed to the project named by the `usage_project` attribute, falling back to the
 API key's name. Any service implementing `RecordUsageEvent(s)` works as a sink. When

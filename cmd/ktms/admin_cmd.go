@@ -13,6 +13,8 @@ import (
 	"github.com/spf13/cobra"
 
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
+	"github.com/ai-process/ktms/internal/registry"
+	"github.com/ai-process/ktms/internal/router"
 )
 
 // call runs fn against the Admin API within --timeout.
@@ -147,10 +149,10 @@ func (a *app) modelsCmd() *cobra.Command {
 					for i, e := range m.GetEfforts() {
 						efforts[i] = strings.ToLower(strings.TrimPrefix(e.String(), "EFFORT_"))
 					}
-					rows = append(rows, []string{m.GetId(), m.GetVendor(), list(efforts),
+					rows = append(rows, []string{m.GetId(), m.GetVendor(), orDash(registry.FormatNeeds(m.GetCompetencies())), list(efforts),
 						fmt.Sprintf("%g/%g", m.GetPriceInPerMtok(), m.GetPriceOutPerMtok()), yesNo(m.GetEnabled())})
 				}
-				return p.rows([]string{"ID", "VENDOR", "EFFORTS", "USD/MTOK IN/OUT", "ENABLED"}, rows)
+				return p.rows([]string{"ID", "VENDOR", "COMPETENCIES", "EFFORTS", "USD/MTOK IN/OUT", "ENABLED"}, rows)
 			})
 		},
 	}
@@ -190,10 +192,10 @@ func (a *app) rulesCmd() *cobra.Command {
 						attrs = append(attrs, k+"="+v)
 					}
 					sort.Strings(attrs)
-					rows = append(rows, []string{strconv.Itoa(int(r.GetPriority())), r.GetName(), effort, list(attrs),
+					rows = append(rows, []string{strconv.Itoa(int(r.GetPriority())), r.GetName(), orDash(registry.FormatNeeds(r.GetNeeds())), effort, list(attrs),
 						strings.Join(r.GetUse(), " → "), yesNo(r.GetEnabled())})
 				}
-				return p.rows([]string{"PRIORITY", "NAME", "EFFORT", "ATTRIBUTES", "USE", "ENABLED"}, rows)
+				return p.rows([]string{"PRIORITY", "NAME", "NEEDS", "EFFORT", "ATTRIBUTES", "USE", "ENABLED"}, rows)
 			})
 		},
 	}
@@ -819,9 +821,16 @@ func (a *app) vendorKeysCmd() *cobra.Command {
 var efforts = map[string]pb.Effort{"low": pb.Effort_EFFORT_LOW, "medium": pb.Effort_EFFORT_MEDIUM, "high": pb.Effort_EFFORT_HIGH}
 
 // explainRequest builds ExplainRoute's request from names a person types.
-func explainRequest(key, effort string, auto bool, attrs map[string]string, placement, model string, caps []string, dataClass string) (*pb.ExplainRouteRequest, error) {
+func explainRequest(key, effort, needs string, auto bool, attrs map[string]string, placement, model string, caps []string, dataClass string) (*pb.ExplainRouteRequest, error) {
 	req := &pb.ExplainRouteRequest{ApiKeyName: key, AutoRoute: auto, Attributes: attrs, Placement: placement, ModelOverride: model, Capabilities: caps,
 		DataClassification: dataClass}
+	if needs != "" {
+		n, err := registry.ParseNeeds(needs)
+		if err != nil {
+			return nil, usageError{fmt.Errorf("--needs: %w", err)}
+		}
+		req.Needs = n
+	}
 	if effort != "" {
 		e, ok := efforts[effort]
 		if !ok {
@@ -833,17 +842,18 @@ func explainRequest(key, effort string, auto bool, attrs map[string]string, plac
 }
 
 func (a *app) routeCmd() *cobra.Command {
-	var effort, placement, model, dataClass, format, modality, from, to string
+	var effort, needs, placement, model, dataClass, format, modality, from, to string
 	var auto bool
 	var attrs map[string]string
 	var caps []string
 	explain := &cobra.Command{
-		Use:   "explain CLIENT_KEY [--effort E | --auto | --modality M] [--attr k=v] [--placement P] [--model M] [--capability C]",
+		Use:   "explain CLIENT_KEY [--needs topic=level,... | --effort E | --auto | --modality M] [--attr k=v] [--placement P] [--model M] [--capability C]",
 		Short: "Show where a request with this key would go, and why each model is kept or dropped",
 		Long: `Dry-run routing on the server, on the same code as a real call: the rule a request
 would match and every model of its chain, kept or dropped with the reason
-(no vendor key, key or team policy, capability, placement, circuit open, vendor
-paused, no node, language pair). It calls no vendor or judge and spends no limit.
+(needs, no vendor key, key or team policy, capability, placement, circuit open,
+vendor paused, no node, language pair). Without a matching rule it shows the
+selection: every model, ranked by excess over the needs and blended price. It calls no vendor or judge and spends no limit.
 --modality routes as that RPC does: translate (with --to and --from), judge,
 tts or image.`,
 		Args: cobra.ExactArgs(1),
@@ -852,7 +862,7 @@ tts or image.`,
 			if err != nil {
 				return err
 			}
-			req, err := explainRequest(args[0], effort, auto, attrs, placement, model, caps, dataClass)
+			req, err := explainRequest(args[0], effort, needs, auto, attrs, placement, model, caps, dataClass)
 			if err != nil {
 				return err
 			}
@@ -869,7 +879,10 @@ tts or image.`,
 					return p.data(res)
 				}
 				rule := orDash(res.GetRule())
-				fmt.Fprintf(a.stdout, "rule: %s   effort: %s   route mode: %s\n", rule, orDash(res.GetEffort()), orDash(res.GetRouteMode()))
+				if res.GetSelected() {
+					rule = "(none: selected by needs)"
+				}
+				fmt.Fprintf(a.stdout, "rule: %s   needs: %s   route mode: %s\n", rule, orDash(registry.FormatNeeds(res.GetNeeds())), orDash(res.GetRouteMode()))
 				if res.GetJudgeSkipped() {
 					fmt.Fprintln(a.stdout, "(auto route without an effort: a real call asks the judge first; shown with its fallback, medium)")
 				}
@@ -882,9 +895,21 @@ tts or image.`,
 							state += fmt.Sprintf(" (%s left)", d.AsDuration().Round(time.Second))
 						}
 					}
-					rows = append(rows, []string{strconv.Itoa(i + 1), c.GetModelId(), orDash(c.GetVendor()), state})
+					row := []string{strconv.Itoa(i + 1), c.GetModelId(), orDash(c.GetVendor()), state}
+					if res.GetSelected() {
+						rank := "-"
+						if c.GetDropped() == "" || c.GetDropped() == router.DropChainLength {
+							rank = fmt.Sprintf("+%d, $%.4g", c.GetExcess(), c.GetBlendedPricePerMtok())
+						}
+						row = append(row, rank)
+					}
+					rows = append(rows, row)
 				}
-				if err := p.rows([]string{"#", "MODEL", "VENDOR", "STATE"}, rows); err != nil {
+				head := []string{"#", "MODEL", "VENDOR", "STATE"}
+				if res.GetSelected() {
+					head = append(head, "EXCESS, USD/MTOK")
+				}
+				if err := p.rows(head, rows); err != nil {
 					return err
 				}
 				fmt.Fprintf(a.stdout, "tries: %s\n", orDash(strings.Join(res.GetModels(), " → ")))
@@ -899,7 +924,8 @@ tts or image.`,
 		},
 	}
 	f := explain.Flags()
-	f.StringVar(&effort, "effort", "", "low, medium or high")
+	f.StringVar(&needs, "needs", "", "what the request needs, topic=level,... (basic, proficient or expert)")
+	f.StringVar(&effort, "effort", "", "deprecated: low, medium or high, the general need")
 	f.BoolVar(&auto, "auto", false, "auto route, as model auto on /v1")
 	f.StringToStringVar(&attrs, "attr", nil, "request attribute key=value, matched by rules")
 	f.StringVar(&placement, "placement", "", "nodes_first, nodes_only, cloud_first or cloud_only")

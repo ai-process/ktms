@@ -167,7 +167,7 @@ func (a *app) mcpServer(allowWrite bool) *mcp.Server {
 			}
 			return textResult(text), nil, nil
 		})
-	mcp.AddTool(srv, tool("list_models", "Models", "Models in the registry with vendors, efforts and prices."+untrusted, read),
+	mcp.AddTool(srv, tool("list_models", "Models", "Models in the registry with vendors, competencies, efforts and prices."+untrusted, read),
 		a.adminTool(func(ctx context.Context, c pb.AdminServiceClient, _ struct{}) (any, error) {
 			cfg, err := c.GetConfig(ctx, &pb.GetConfigRequest{})
 			if err != nil {
@@ -272,7 +272,8 @@ func (a *app) mcpServer(allowWrite bool) *mcp.Server {
 		"Where a request with this client key would go, on Keystone's own routing code: the matched rule and every model of its chain, kept or dropped with the reason (no_vendor_key, key_policy, team_policy, capability, placement, circuit_open, vendor_paused, node_unavailable, language_pair, ...); modality explains translate, judge, tts or image calls. Calls no vendor and spends nothing; auto_route without effort does not ask the judge."+untrusted, read),
 		adminTool(a, func(ctx context.Context, c pb.AdminServiceClient, in struct {
 			Key          string            `json:"api_key_name" jsonschema:"the client key's name"`
-			Effort       string            `json:"effort,omitempty" jsonschema:"low, medium or high"`
+			Needs        map[string]string `json:"needs,omitempty" jsonschema:"what the request needs: topic -> basic, proficient or expert, e.g. {\"medical\": \"basic\"}"`
+			Effort       string            `json:"effort,omitempty" jsonschema:"deprecated: low, medium or high, the general need"`
 			AutoRoute    bool              `json:"auto_route,omitempty" jsonschema:"auto route, as model auto on /v1"`
 			Attributes   map[string]string `json:"attributes,omitempty" jsonschema:"request attributes the rules match on"`
 			Placement    string            `json:"placement,omitempty" jsonschema:"nodes_first, nodes_only, cloud_first or cloud_only"`
@@ -283,7 +284,10 @@ func (a *app) mcpServer(allowWrite bool) *mcp.Server {
 			Source       string            `json:"source_language,omitempty" jsonschema:"translate: source language, empty for detected"`
 			Target       string            `json:"target_language,omitempty" jsonschema:"translate: target language"`
 		}) (any, error) {
-			req, err := explainRequest(in.Key, in.Effort, in.AutoRoute, in.Attributes, in.Placement, in.Model, in.Capabilities, in.DataClass)
+			req, err := explainRequest(in.Key, in.Effort, "", in.AutoRoute, in.Attributes, in.Placement, in.Model, in.Capabilities, in.DataClass)
+			if err == nil && len(in.Needs) > 0 {
+				req.Needs = in.Needs
+			}
 			if err != nil {
 				return nil, err
 			}
