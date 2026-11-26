@@ -77,9 +77,13 @@ func TestRolloutTypeSafeImageCheckedBeforeAnyCall(t *testing.T) {
 	fake := &fakeRolloutServer{}
 	srv := httptest.NewServer(fake)
 	defer srv.Close()
-	m := judgeModel("jev-rollout", srv.URL)
+	next := &fakeRolloutServer{}
+	nextSrv := httptest.NewServer(next)
+	defer nextSrv.Close()
+	m, m2 := judgeModel("jev-rollout", srv.URL), judgeModel("jev-next", nextSrv.URL)
 	m.Capabilities = append(m.Capabilities, registry.CapabilityVision)
-	s := newJudgeServer(t, []*proxydb.Model{m}, []*proxydb.Rule{judgeRule("jev-rollout")}, nil)
+	m2.Capabilities = append(m2.Capabilities, registry.CapabilityVision)
+	s := newJudgeServer(t, []*proxydb.Model{m, m2}, []*proxydb.Rule{judgeRule("jev-rollout", "jev-next")}, nil)
 
 	state := []*pb.MediaPart{pngPart(t, 640, 480)}
 	_, err := s.EvaluateRollouts(testIdentity(), rolloutWith(state,
@@ -88,8 +92,8 @@ func TestRolloutTypeSafeImageCheckedBeforeAnyCall(t *testing.T) {
 	if status.Code(err) != codes.InvalidArgument || !strings.Contains(err.Error(), "candidates[1].action_media[1]: image is 1920x1080") {
 		t.Fatalf("err = %v", err)
 	}
-	if fake.calls != 0 {
-		t.Errorf("vendor called %d times", fake.calls)
+	if fake.calls != 0 || next.calls != 0 {
+		t.Errorf("vendor called %d times, fallback %d times", fake.calls, next.calls)
 	}
 
 	_, err = s.EvaluateRollouts(testIdentity(), rolloutWith([]*pb.MediaPart{pngPart(t, 100, 100)}, []*pb.MediaPart{pngPart(t, 640, 480)}))

@@ -231,3 +231,25 @@ func TestTypeSafeImagesAndLongContextHeaders(t *testing.T) {
 		t.Errorf("headers images=%q long=%q", images, long)
 	}
 }
+
+// The pre-call check agrees with what the call itself would refuse or yield on.
+func TestTypeSafeCheckJudgeMedia(t *testing.T) {
+	a := NewTypeSafeAdapter("http://unused", "k", "jev-1.14.0")
+	img := func(name string, w, h int) *llm.JudgeMediaPart {
+		return &llm.JudgeMediaPart{Type: llm.JudgeMediaImage, Name: name, Data: pngOf(t, w, h)}
+	}
+	if err := a.CheckJudgeMedia([]*llm.JudgeMediaPart{img("", 640, 480), img("road", 640, 480)}); err != nil {
+		t.Errorf("valid media: %v", err)
+	}
+	if err := a.CheckJudgeMedia([]*llm.JudgeMediaPart{img("", 640, 480), {Type: llm.JudgeMediaText, Text: "t"}}); !errors.Is(err, llm.ErrJudgmentUnsupported) {
+		t.Errorf("text part: %v", err)
+	}
+	err := a.CheckJudgeMedia([]*llm.JudgeMediaPart{img("", 640, 480), img("ktms-image-1", 640, 480)})
+	var im *llm.InvalidMediaError
+	if !errors.As(err, &im) || im.Part != 1 || err.Error() != `state_media[1]: name "ktms-image-1" is used twice` {
+		t.Errorf("generated name clash: %v", err)
+	}
+	if err := NewTrackingAdapter(a, nil, "typesafe", "jev-1.14.0").CheckJudgeMedia([]*llm.JudgeMediaPart{img("", 1920, 1080)}); !errors.Is(err, llm.ErrInvalidMedia) {
+		t.Errorf("tracking adapter does not forward: %v", err)
+	}
+}

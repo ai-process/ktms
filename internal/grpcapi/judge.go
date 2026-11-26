@@ -766,6 +766,7 @@ func candidateMediaError(err error, cand, nState int) error {
 		return err
 	}
 	out := *im
+	out.Field = "state_media"
 	if out.Part >= nState {
 		out.Field, out.Part = fmt.Sprintf("candidates[%d].action_media", cand), out.Part-nState
 	}
