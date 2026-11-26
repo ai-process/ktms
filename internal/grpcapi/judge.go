@@ -70,6 +70,22 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 				return nil, guardrailStatus(err)
 			}
 			q.Instructions = sanitizedInst
+			// The JSON forms are what TypeSafe reads: every string in them
+			// goes through the same inspection.
+			inspect := func(t string) (string, error) {
+				out, _, err := s.guardrails.InspectText(ctx, t, vault)
+				return out, err
+			}
+			for _, raw := range []*json.RawMessage{&q.InstructionsJSON, &q.CriteriaJSON} {
+				if len(*raw) == 0 {
+					continue
+				}
+				sanitized, err := llm.MapJSONStrings(*raw, inspect)
+				if err != nil {
+					return nil, guardrailStatus(err)
+				}
+				*raw = sanitized
+			}
 			for i, opt := range q.Options {
 				sanitizedOpt, _, err := s.guardrails.InspectText(ctx, opt, vault)
 				if err != nil {
@@ -180,20 +196,30 @@ func judgeRequestFromProto(req *pb.JudgeRequest) (*llm.JudgeRequest, error) {
 		ActionID:   req.GetActionId(),
 	}
 	for id, q := range req.GetQuestions() {
-		if q.GetInstructions() == "" {
+		if q.GetInstructions() == "" && q.GetInstructionsJson() == "" {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: question %q has no instructions", id)
 		}
+		if q.GetInstructions() != "" && q.GetInstructionsJson() != "" {
+			return nil, status.Errorf(codes.InvalidArgument, "bad_request: question %q: instructions_json replaces instructions: send one or the other", id)
+		}
 		kind := judgeTypeFromProto(q.GetType())
-		switch kind {
-		case llm.JudgeChoice:
+		instrJSON, critJSON, err := structuredQuestion(id, kind, q)
+		if err != nil {
+			return nil, err
+		}
+		switch {
+		case critJSON != nil:
+		case kind == llm.JudgeChoice:
 			if len(q.GetOptions()) < 2 {
 				return nil, status.Errorf(codes.InvalidArgument, "bad_request: choice %q needs at least two options", id)
 			}
-		case llm.JudgeScore:
+		case kind == llm.JudgeScore:
 			if len(q.GetLevels()) < 2 {
 				return nil, status.Errorf(codes.InvalidArgument, "bad_request: score %q needs at least two levels", id)
 			}
-		case llm.JudgeNoul:
+		}
+		switch kind {
+		case llm.JudgeChoice, llm.JudgeScore, llm.JudgeNoul:
 		case llm.JudgeBox:
 			if !hasImage(media) {
 				return nil, status.Errorf(codes.InvalidArgument, "bad_request: box %q needs an image in state_media", id)
@@ -201,14 +227,16 @@ func judgeRequestFromProto(req *pb.JudgeRequest) (*llm.JudgeRequest, error) {
 		default:
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: question %q has no type", id)
 		}
-		out.Questions[id] = &llm.JudgeQuestion{
-			Type:          kind,
-			Instructions:  q.GetInstructions(),
-			Options:       q.GetOptions(),
-			Levels:        q.GetLevels(),
-			TrueCriteria:  q.GetTrueCriteria(),
-			FalseCriteria: q.GetFalseCriteria(),
-		}
+		out.Questions[id] = (&llm.JudgeQuestion{
+			Type:             kind,
+			Instructions:     q.GetInstructions(),
+			Options:          q.GetOptions(),
+			Levels:           q.GetLevels(),
+			TrueCriteria:     q.GetTrueCriteria(),
+			FalseCriteria:    q.GetFalseCriteria(),
+			InstructionsJSON: instrJSON,
+			CriteriaJSON:     critJSON,
+		}).Flat() // levels and options as text, for legends, scores and guardrails
 	}
 	return out, nil
 }
@@ -386,7 +414,16 @@ func judgeEstimate(req *llm.JudgeRequest) int64 {
 		}
 	}
 	for _, q := range req.Questions {
-		runes += utf8.RuneCountInString(q.Instructions)
+		// The flat fields mirror the JSON ones when those are set: count one.
+		if len(q.InstructionsJSON) > 0 {
+			runes += utf8.RuneCount(q.InstructionsJSON)
+		} else {
+			runes += utf8.RuneCountInString(q.Instructions)
+		}
+		if len(q.CriteriaJSON) > 0 {
+			runes += utf8.RuneCount(q.CriteriaJSON)
+			continue
+		}
 		for _, opt := range q.Options {
 			runes += utf8.RuneCountInString(opt)
 		}
@@ -396,6 +433,53 @@ func judgeEstimate(req *llm.JudgeRequest) int64 {
 		runes += utf8.RuneCountInString(q.TrueCriteria) + utf8.RuneCountInString(q.FalseCriteria)
 	}
 	return int64(runes)/4 + extraTokens + 1
+}
+
+// structuredQuestion checks the JSON forms of a question: valid JSON of the
+// shape its type takes, and not mixed with the plain fields they replace.
+func structuredQuestion(id, kind string, q *pb.JudgeQuestion) (json.RawMessage, json.RawMessage, error) {
+	bad := func(format string, args ...any) error {
+		return status.Errorf(codes.InvalidArgument, "bad_request: question %q: "+format, append([]any{id}, args...)...)
+	}
+	var instr json.RawMessage
+	if s := q.GetInstructionsJson(); s != "" {
+		if !json.Valid([]byte(s)) {
+			return nil, nil, bad("instructions_json is not valid JSON")
+		}
+		instr = json.RawMessage(s)
+	}
+	s := q.GetCriteriaJson()
+	if s == "" {
+		return instr, nil, nil
+	}
+	if len(q.GetOptions()) > 0 || len(q.GetLevels()) > 0 || q.GetTrueCriteria() != "" || q.GetFalseCriteria() != "" {
+		return nil, nil, bad("criteria_json replaces options, levels and the criteria pair: send one or the other")
+	}
+	switch kind {
+	case llm.JudgeChoice:
+		var m map[string]json.RawMessage
+		if json.Unmarshal([]byte(s), &m) != nil || len(m) < 2 {
+			return nil, nil, bad("criteria_json for a choice is an object with at least two options")
+		}
+	case llm.JudgeScore:
+		var a []json.RawMessage
+		if json.Unmarshal([]byte(s), &a) != nil || len(a) < 2 {
+			return nil, nil, bad("criteria_json for a score is an array of at least two levels")
+		}
+	case llm.JudgeNoul:
+		var m map[string]json.RawMessage
+		if json.Unmarshal([]byte(s), &m) != nil || len(m) == 0 {
+			return nil, nil, bad(`criteria_json for a noul is an object with "true" and "false"`)
+		}
+		for k := range m {
+			if k != "true" && k != "false" {
+				return nil, nil, bad(`criteria_json for a noul takes only "true" and "false"`)
+			}
+		}
+	default:
+		return nil, nil, bad("criteria_json does not apply to this type")
+	}
+	return instr, json.RawMessage(s), nil
 }
 
 func hasImage(media []*llm.JudgeMediaPart) bool {
@@ -888,6 +972,9 @@ func evaluateRolloutsRequestFromProto(req *pb.EvaluateRolloutsRequest) (*llm.Eva
 		}
 	} else {
 		for id, q := range criteriaMap {
+			if q.GetInstructionsJson() != "" || q.GetCriteriaJson() != "" {
+				return nil, status.Errorf(codes.InvalidArgument, "bad_request: criteria %q: instructions_json and criteria_json are not supported in rollouts", id)
+			}
 			if q.GetInstructions() == "" {
 				return nil, status.Errorf(codes.InvalidArgument, "bad_request: criteria %q has no instructions", id)
 			}

@@ -270,7 +270,24 @@ state, in parallel.
   as a text label before it.
 - **Box** (experimental) is TypeSafe `jev-1.14.0` only: declare `box` on that model and pin the
   version rather than `jev-latest`. A missing object still gets a box, so ask a noul "is it there?"
-  beside it.
+  beside it. `ExplainRoute` shows a box chain when you pass `capabilities: ["box"]`.
+- **Structured questions** (experimental): `instructions_json` and `criteria_json` take the JSON
+  forms System One accepts, such as `["Which defect is in", "road", "?"]` or a choice option
+  `{"description": "a pothole", "examples": ["ex-pothole"]}` with example images named in
+  `state_media`. TypeSafe gets them as they are; other judges get them as text. `criteria_json`
+  replaces `options`, `levels` and the criteria pair.
+- **Long context**: declare `long_context` on a TypeSafe model to send System One's long-context
+  header on every call (262k tokens per request and per question instead of 64k and 32k).
+- **Sizes**: one request carries at most 16 MiB of media, below TypeSafe's 32 MiB. gRPC messages are
+  capped by `GRPC_MAX_RECV_MSG_SIZE` (16 MiB by default) and HTTP bodies at 16 MiB, where base64
+  leaves about 12 MiB of image bytes. Keystone keeps
+  that ceiling: frames at 1568 px are well under it, and larger judge requests belong in several
+  calls. Usage events count the images of each call in meta `images`; their tokens are in
+  `usage.input`.
+- **Patterns** stay on the client and need no gateway support: a cheap noul ("is the frame
+  usable?") before an expensive question, a choice plus a noul ("is this about it at all?"),
+  routing on `confidence`, a composite of several scores, and all questions about one state in one
+  request (one state's tokens).
 - Image URLs must be `https` and are forwarded, not fetched. Guardrails inspect text parts only.
 - Limits: 32 parts, 16 MiB of media, 16384 embedding dimensions.
 - Judge vendors: [TypeSafe](https://typesafe.ai) (`jev-latest`, billing input only) and

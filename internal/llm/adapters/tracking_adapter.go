@@ -616,6 +616,11 @@ func (t *TrackingAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, user
 		// cost is one state plus n instructions, and n explains the spread.
 		if req != nil {
 			trackMeta["questions"] = strconv.Itoa(len(req.Questions))
+			// Images are billed as input tokens with no formula yet: the
+			// count lets reports relate tokens to images.
+			if n := judgeImages(req.StateMedia); n > 0 {
+				trackMeta["images"] = strconv.Itoa(n)
+			}
 		}
 		if err != nil {
 			msg := err.Error()
@@ -933,4 +938,14 @@ func recordCacheTokens(vendor, model string, u llm.TokensUsage) {
 	if u.CacheWrite > 0 {
 		observability.CacheTokensTotal.WithLabelValues(vendor, model, "write").Add(float64(u.CacheWrite))
 	}
+}
+
+func judgeImages(media []*llm.JudgeMediaPart) int {
+	n := 0
+	for _, p := range media {
+		if p.Type == llm.JudgeMediaImage {
+			n++
+		}
+	}
+	return n
 }

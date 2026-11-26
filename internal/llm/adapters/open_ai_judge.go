@@ -412,6 +412,9 @@ func toOpenAIDecisionParts(media []*llm.JudgeMediaPart) ([]openAIDecisionInputPa
 	return parts, nil
 }
 
+// flatQuestion reads a question's JSON forms as text, which is all Decisions takes.
+func flatQuestion(q *llm.JudgeQuestion) *llm.JudgeQuestion { return q.Flat() }
+
 // toOpenAIDecisionQuestions transforms vendor-neutral questions to OpenAI's Decisions API schema.
 // Keys are sorted for deterministic JSON serialization in test fixtures and logs.
 func toOpenAIDecisionQuestions(in map[string]*llm.JudgeQuestion) ([]openAIDecisionQuestion, error) {
@@ -423,7 +426,7 @@ func toOpenAIDecisionQuestions(in map[string]*llm.JudgeQuestion) ([]openAIDecisi
 
 	out := make([]openAIDecisionQuestion, 0, len(ids))
 	for _, id := range ids {
-		q := in[id]
+		q := flatQuestion(in[id])
 		oq := openAIDecisionQuestion{
 			Name:         id,
 			Instructions: q.Instructions,

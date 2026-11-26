@@ -1,7 +1,9 @@
 package llm
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 )
 
@@ -26,6 +28,11 @@ type JudgeQuestion struct {
 	Levels        []string
 	TrueCriteria  string
 	FalseCriteria string
+	// InstructionsJSON and CriteriaJSON are the structured forms (an object or
+	// array, possibly naming images); when set they replace Instructions and
+	// the per-type criteria fields.
+	InstructionsJSON json.RawMessage
+	CriteriaJSON     json.RawMessage
 }
 
 // Judge state media kinds.
@@ -154,4 +161,96 @@ type Judge interface {
 // RolloutJudge is an optional capability for adapters supporting native batch rollout scoring.
 type RolloutJudge interface {
 	EvaluateRollouts(ctx context.Context, req *EvaluateRolloutsRequest, userID string, meta map[string]string) (*EvaluateRolloutsResult, error)
+}
+
+// Flat returns q with its JSON forms read as text into the plain fields
+// (compact JSON for objects, the string itself for a JSON string), for judges
+// that take text and for what reads levels and options. The JSON stays set.
+func (q *JudgeQuestion) Flat() *JudgeQuestion {
+	if len(q.InstructionsJSON) == 0 && len(q.CriteriaJSON) == 0 {
+		return q
+	}
+	out := *q
+	if len(q.InstructionsJSON) > 0 {
+		out.Instructions = JSONText(q.InstructionsJSON)
+	}
+	if len(q.CriteriaJSON) == 0 {
+		return &out
+	}
+	switch q.Type {
+	case JudgeChoice:
+		var m map[string]json.RawMessage
+		if json.Unmarshal(q.CriteriaJSON, &m) == nil {
+			out.Options = make(map[string]string, len(m))
+			for k, v := range m {
+				out.Options[k] = JSONText(v)
+			}
+		}
+	case JudgeScore:
+		var a []json.RawMessage
+		if json.Unmarshal(q.CriteriaJSON, &a) == nil {
+			out.Levels = make([]string, len(a))
+			for i, v := range a {
+				out.Levels[i] = JSONText(v)
+			}
+		}
+	case JudgeNoul:
+		var m map[string]json.RawMessage
+		if json.Unmarshal(q.CriteriaJSON, &m) == nil {
+			out.TrueCriteria, out.FalseCriteria = JSONText(m["true"]), JSONText(m["false"])
+		}
+	}
+	return &out
+}
+
+// JSONText is a JSON value as text: a string as itself, anything else compact.
+func JSONText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	var b bytes.Buffer
+	if json.Compact(&b, raw) == nil {
+		return b.String()
+	}
+	return string(raw)
+}
+
+// MapJSONStrings applies fn to every string value in raw (not to object
+// keys, which name options) and returns the re-encoded JSON.
+func MapJSONStrings(raw json.RawMessage, fn func(string) (string, error)) (json.RawMessage, error) {
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return nil, err
+	}
+	var walk func(any) (any, error)
+	walk = func(x any) (any, error) {
+		switch t := x.(type) {
+		case string:
+			return fn(t)
+		case []any:
+			for i := range t {
+				var err error
+				if t[i], err = walk(t[i]); err != nil {
+					return nil, err
+				}
+			}
+		case map[string]any:
+			for k := range t {
+				var err error
+				if t[k], err = walk(t[k]); err != nil {
+					return nil, err
+				}
+			}
+		}
+		return x, nil
+	}
+	v, err := walk(v)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(v)
 }

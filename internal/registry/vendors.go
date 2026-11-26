@@ -135,6 +135,11 @@ const CapabilityEmbeddingInput = "embedding_input"
 // is on an image (TypeSafe jev-1.14.0 and later). Experimental.
 const CapabilityBox = "box"
 
+// CapabilityLongContext asks TypeSafe for its long context (262k tokens per
+// request and per question instead of 64k and 32k): a model option, not a
+// request one. Experimental.
+const CapabilityLongContext = "long_context"
+
 func ValidVendor(v string) bool {
 	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorAnthropic || v == VendorLocal || v == VendorGroq || v == VendorMistral || v == VendorAzure || v == VendorBedrock
 }

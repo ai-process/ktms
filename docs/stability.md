@@ -71,7 +71,7 @@ These work and are supported, but may change in a minor release. The change is t
   (`GUARDRAILS_LATENT_*`), the encoder settings (`LATENT_*`), and embeddings in judge state
   (`EmbeddingPart`, `input_embedding` over HTTP).
 - **Images in judgments at TypeSafe, image names and Box:** `MediaPart.name`, `JUDGE_TYPE_BOX`,
-  `JudgeBox`, `JudgeAnswer.box` and `confidence_unset`, the `box` capability and the image checks
+  `JudgeBox`, `JudgeAnswer.box` and `confidence_unset`, `JudgeQuestion.instructions_json` and `criteria_json`, the `box` and `long_context` capabilities and the image checks
   (TypeSafe calls the feature "Dreamer-ready"). Guardrails do not inspect images.
 - **`JudgeStream` and `EvaluateRollouts`**, and `POST /v1/decisions/rollouts` over HTTP.
 - **The MCP gateway:** `/mcp`, the `MCPServerSpec` RPCs, `allowed_mcp`, the `mcp_servers` and

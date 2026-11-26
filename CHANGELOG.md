@@ -13,6 +13,10 @@ All notable changes to KTMS are listed here. The format follows
   criteria refer to an image (other judges get the name as a label). Images are checked from their header before
   the call (PNG or JPEG, each side 280–1568 px, 16 MiB, no EXIF rotation) and refused with `bad_request` naming the
   size and the limit. Judge calls with images get more time: 8 s plus 2 s per MiB, at most a minute.
+- Structured judge questions (experimental): `JudgeQuestion.instructions_json` and `criteria_json` take System One's
+  JSON forms (objects, arrays, image names, `{"description", "examples"}`); TypeSafe gets them as they are, other
+  judges as text. The `long_context` capability sends TypeSafe's long-context header for that model. Usage meta
+  counts the images of a judge call (`images`).
 - `JUDGE_TYPE_BOX` (experimental): where an object is on an image, answered as `JudgeAnswer.box` with
   `confidence_unset` when the vendor gives no confidence; the `box` capability narrows the chain (TypeSafe
   `jev-1.14.0`). `/v1/decisions` takes `"type": "box"` questions and a `name` on input parts.
