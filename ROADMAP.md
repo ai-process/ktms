@@ -16,10 +16,6 @@ Every 1.x release is additive: new RPCs, fields, endpoints and settings. Anythin
 
 ## Now
 
-### Coding agents and API
-
-- OpenAI Responses API at `/v1/responses` for Codex CLI and the Agents SDK.
-
 ### Routing and providers
 
 - A pool of keys per vendor, spread across requests and rotated around vendor rate limits.

@@ -81,6 +81,7 @@ These work and are supported, but may change in a minor release. The change is t
   `ktms_agent_*` metrics.
 - **The Anthropic Messages API:** `POST /v1/messages`, `POST /v1/messages/count_tokens` and the
   `X-KTMS-Token-Count` header.
+- **The OpenAI Responses API:** `POST /v1/responses`.
 
 ## Compatibility with ktms-admin and light-tokenmeter
 
