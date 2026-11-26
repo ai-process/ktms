@@ -43,7 +43,7 @@ func main() {
 	os.Exit(runAgent(args))
 }
 
-// settings are the flags the agent and the doctor share.
+// settings are the flags the daemon and the doctor share.
 type settings struct {
 	fs            *flag.FlagSet
 	showVersion   *bool
@@ -97,7 +97,7 @@ func newSettings(name string) *settings {
 		cloudflared:   fs.String("cloudflared-path", "", "cloudflared binary for --expose=cloudflared (default: from PATH)"),
 		nodeID:        fs.String("node-id", "", "Unique Node ID (defaults to hostname)"),
 		nodeName:      fs.String("node-name", "", "Human-readable node name"),
-		engineURL:     fs.String("engine-url", "", "Local engine URL the agent polls (default "+nodeagent.DefaultEngineURL+", or --endpoint if only that is set)"),
+		engineURL:     fs.String("engine-url", "", "Local engine URL the daemon polls (default "+nodeagent.DefaultEngineURL+", or --endpoint if only that is set)"),
 		endpoint:      fs.String("endpoint", "", "Address the proxy dials to reach the engine (default: --engine-url)"),
 		engine:        fs.String("engine", "ollama", "Inference engine (ollama, vllm, tgi, llamacpp, freetoken, decisions, mt)"),
 		keyFile:       fs.String("node-key-file", "", "Path to file containing node authentication key"),
@@ -110,7 +110,7 @@ func newSettings(name string) *settings {
 		stats:         fs.Bool("stats", true, "Keep a local log of the requests the proxy sends here, for `stats`"),
 		statsDir:      fs.String("stats-dir", nodeagent.DefaultStatsDir(), "Where the usage log is kept"),
 		statsKeep:     fs.String("stats-retention", "90d", "How long the usage log is kept (e.g. 90d, 36h; 0 = forever)"),
-		stateDir:      fs.String("state-dir", nodeagent.DefaultHome(), "Where the agent keeps state that outlives a restart, such as a manual pause"),
+		stateDir:      fs.String("state-dir", nodeagent.DefaultHome(), "Where the daemon keeps state that outlives a restart, such as a manual pause"),
 		controlSocket: fs.String("control-socket", nodeagent.DefaultControlSocket(), "Unix socket for the owner's control API (the tray, `status`, `pause`); empty turns it off"),
 	}
 	fs.Var(&s.onlyModels, "only-model", "Report only these engine models to the proxy; repeat the flag or comma-separate (default: every model the engine has)")
@@ -119,7 +119,7 @@ func newSettings(name string) *settings {
 	return s
 }
 
-// config resolves the flags and environment into an agent configuration.
+// config resolves the flags and environment into a daemon configuration.
 func (s *settings) config() (nodeagent.AgentConfig, error) {
 	nodeKey := os.Getenv("NODE_KEY")
 	if nodeKey == "" && *s.keyFile != "" {
@@ -156,7 +156,7 @@ func (s *settings) config() (nodeagent.AgentConfig, error) {
 		if !set["max-concurrent"] {
 			maxConcurrent = nodeagent.FreeTokenMaxRunning
 		}
-		// The agent polls `ft serve` itself, which reads its --api-key from this
+		// The daemon polls `ft serve` itself, which reads its --api-key from this
 		// variable; NODE_AUTH_TOKEN may belong to a proxy in front of it.
 		if key := os.Getenv("FREETOKEN_API_KEY"); key != "" {
 			engineToken = key
@@ -235,9 +235,9 @@ func runAgent(args []string) int {
 		return 1
 	}
 
-	log.Info().Str("node_id", cfg.NodeID).Str("engine", cfg.Engine).Str("engine_url", cfg.EngineURL).Str("endpoint", cfg.Endpoint).Msg("starting node-agent")
+	log.Info().Str("node_id", cfg.NodeID).Str("engine", cfg.Engine).Str("engine_url", cfg.EngineURL).Str("endpoint", cfg.Endpoint).Msg("starting node daemon")
 	if err := nodeagent.NewAgent(cfg).Run(context.Background()); err != nil {
-		fmt.Fprintf(os.Stderr, "node-agent error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "node daemon error: %v\n", err)
 		return 1
 	}
 	return 0
@@ -295,7 +295,7 @@ func runSchedule(args []string, stdout, stderr io.Writer) int {
 func runStats(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("stats", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	dir := fs.String("dir", nodeagent.DefaultStatsDir(), "Usage log directory (the agent's --stats-dir)")
+	dir := fs.String("dir", nodeagent.DefaultStatsDir(), "Usage log directory (the daemon's --stats-dir)")
 	since := fs.String("since", "24h", "Start: 24h, 7d, 2026-10-01 or 2026-10-01T15:04 (local time)")
 	until := fs.String("until", "", "End, same forms (default: now)")
 	by := fs.String("by", "", "Rows per hour, day or model (default: hour up to two days, else day)")

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installs and updates a local KTMS inference node: Ollama (or the ktms-mt
-# translation engine), cloudflared and the node agent as per-user services.
+# translation engine), cloudflared and the node daemon as per-user services.
 # Safe to re-run; see --help.
 set -eu
 
@@ -50,7 +50,7 @@ Options:
   --max-concurrency N    parallel requests this machine serves (default 1; 2 with ollama,mt, one
                          of them kept for translation)
   --context N            context tokens per request (default 8192)
-  --version vX.Y.Z       node agent release to install (default: latest)
+  --version vX.Y.Z       node daemon release to install (default: latest)
   --key-file PATH        read the node key from a file instead of asking
   --new-key              ask for the node key again even if one is stored
   --plaintext            talk to the proxy without TLS
@@ -583,7 +583,7 @@ cleanup_legacy() {
 	case $LEGACY_MODELS in "$LEGACY_DIR"/*) say "The old Ollama kept its models in $LEGACY_MODELS; they are now in $moved${LEGACY_MODELS#"$LEGACY_DIR"}." ;; esac
 }
 
-# ---- Ollama, cloudflared, node agent ----------------------------------------
+# ---- Ollama, cloudflared, node daemon ----------------------------------------
 
 find_ollama_bin() {
 	for p in "$BASE/ollama/ollama" "$BASE/ollama/bin/ollama"; do
@@ -695,7 +695,7 @@ ensure_cloudflared() {
 	CF_CHANGED=1 # the running tunnel still uses the old binary until the node restarts
 }
 
-# stage_agent downloads, verifies and smoke-tests the agent, leaving it in $BASE/bin/ktms-node.new.
+# stage_agent downloads, verifies and smoke-tests the daemon, leaving it in $BASE/bin/ktms-node.new.
 # The running binary is only replaced later, so a bad download or a blocked binary changes nothing.
 stage_agent() {
 	if [ "$VERSION" = latest ]; then
@@ -707,16 +707,16 @@ stage_agent() {
 	ver=${tag#v}
 	AGENT_TAG=$tag # the tray comes from the same release; later steps reuse $tag
 	if [ -x "$BASE/bin/ktms-node" ] && [ "$("$BASE/bin/ktms-node" --version 2>/dev/null || true)" = "$ver" ]; then
-		say "Node agent $ver is already installed."
+		say "Node daemon $ver is already installed."
 		AGENT_STAGED=0
 		return 0
 	fi
-	step "Downloading node agent $ver"
+	step "Downloading node daemon $ver"
 	asset="ktms-node_${ver}_${OS}_${ARCH}.tar.gz"
 	legacy_asset="llm-proxy-node_${ver}_${OS}_${ARCH}.tar.gz"
 	tmp=$(mktemp -d "$BASE/dl.XXXXXX")
 	curl -fsSL -o "$tmp/checksums.txt" "$GITHUB/$REPO/releases/download/$tag/checksums.txt" ||
-		die "release $tag has no node agent binaries (they exist from v0.10.0 on); pass --version with a newer release"
+		die "release $tag has no node daemon binaries (they exist from v0.10.0 on); pass --version with a newer release"
 	want=$(awk -v a="$asset" '$2 == a { print $1 }' "$tmp/checksums.txt")
 	if [ -z "$want" ]; then
 		want=$(awk -v a="$legacy_asset" '$2 == a { print $1 }' "$tmp/checksums.txt")
@@ -736,20 +736,20 @@ stage_agent() {
 	if [ "$OS" = darwin ]; then xattr -dr com.apple.quarantine "$BASE/bin" 2>/dev/null || true; fi
 	got=$("$BASE/bin/ktms-node.new" --version 2>&1) || {
 		rm -f "$BASE/bin/ktms-node.new"
-		die "the new node agent does not start on this machine ($got). The installed one was left untouched."
+		die "the new node daemon does not start on this machine ($got). The installed one was left untouched."
 	}
-	say "Downloaded and verified node agent $got."
+	say "Downloaded and verified node daemon $got."
 	AGENT_STAGED=1
 }
 
-# agent_bin is the agent this run will leave installed: the staged one, else the current one.
+# agent_bin is the daemon this run will leave installed: the staged one, else the current one.
 agent_bin() {
 	if [ "${AGENT_STAGED:-0}" = 1 ]; then echo "$BASE/bin/ktms-node.new"; else echo "$BASE/bin/ktms-node"; fi
 }
 
 # agent_has_schedule tells whether an agent binary knows schedules; older ones
 # exit on the unknown --schedule-file flag, so it is only passed to newer ones.
-# An empty NODE_KEY keeps an older agent from starting for real on the probe.
+# An empty NODE_KEY keeps an older daemon from starting for real on the probe.
 agent_has_schedule() { # binary
 	[ -x "$1" ] && NODE_KEY="" "$1" schedule --file /dev/null --quiet </dev/null >/dev/null 2>&1
 }
@@ -759,7 +759,7 @@ agent_has_stats() { # binary
 	[ -x "$1" ] && NODE_KEY="" "$1" stats --dir "$BASE/stats" --since 1m </dev/null >/dev/null 2>&1
 }
 
-# check_schedule validates a schedule file with the agent's own parser, or dies.
+# check_schedule validates a schedule file with the daemon's own parser, or dies.
 check_schedule() { # binary file what
 	out=$("$1" schedule --file "$2" 2>&1) || die "invalid $3: ${out#"schedule: $2: "}"
 }
@@ -774,7 +774,7 @@ install_schedule() {
 		check_schedule "$bin" "$BASE/schedule" "$BASE/schedule (fix it, or pass a new one with --schedule FILE)"
 		return 0
 	fi
-	agent_has_schedule "$bin" || die "this node agent version does not support --schedule; install a newer one with --version"
+	agent_has_schedule "$bin" || die "this node daemon version does not support --schedule; install a newer one with --version"
 	check_schedule "$bin" "$SCHEDULE_SRC" "--schedule $SCHEDULE_SRC"
 	rm -f "$BASE/schedule.prev"
 	[ -f "$BASE/schedule" ] && cp -p "$BASE/schedule" "$BASE/schedule.prev"
@@ -823,7 +823,7 @@ ensure_model() {
 	fi
 	case $(schedule_status "$(agent_bin)") in
 	"now 0%"*)
-		say "The schedule pauses the node now: $MODEL is not loaded; the agent loads it before the next window."
+		say "The schedule pauses the node now: $MODEL is not loaded; the daemon loads it before the next window."
 		return 0
 		;;
 	esac
@@ -836,7 +836,7 @@ write_service() { # id program args... (stdin: nothing)
 	shift
 	out=$(mktemp "$BASE/svc.XXXXXX")
 	case $id in
-	node) log="$BASE/logs/node.log" envs="" desc="KTMS node agent" ;;
+	node) log="$BASE/logs/node.log" envs="" desc="KTMS node daemon" ;;
 	mt) log="$BASE/logs/mt.log" envs=$(mt_env) desc="KTMS machine translation" ;;
 	*) log="$BASE/logs/ollama.log" envs=$(ollama_env) desc="KTMS Ollama" ;;
 	esac
@@ -847,7 +847,7 @@ write_service() { # id program args... (stdin: nothing)
 # has_engine tells whether this node runs the engine (ollama or mt).
 has_engine() { case ",${ENGINE:-ollama}," in *",$1,"*) return 0 ;; esac; return 1; }
 
-# engine_args are the agent's flags for the engines this node runs, with the
+# engine_args are the daemon's flags for the engines this node runs, with the
 # models it reports: Ollama stays the primary engine when both run.
 engine_args() {
 	case ${ENGINE:-ollama} in
@@ -862,7 +862,7 @@ agent_has_extra_engine() { # binary
 	[ -x "$1" ] && "$1" --help 2>&1 | grep -q -- '-extra-engine'
 }
 
-# write_node_service renders the agent's service for the flags the given binary knows.
+# write_node_service renders the daemon's service for the flags the given binary knows.
 write_node_service() { # binary
 	bin=$1
 	# shellcheck disable=SC2046 # engine_args is two flag pairs without spaces
@@ -876,7 +876,7 @@ write_node_service() { # binary
 	fi
 	# Always passed, file or not: a schedule created later needs no reinstall.
 	agent_has_schedule "$bin" && set -- "$@" --schedule-file "$BASE/schedule"
-	# Explicit: the agent's own default follows $KTMS_HOME, which its service does not set.
+	# Explicit: the daemon's own default follows $KTMS_HOME, which its service does not set.
 	agent_has_stats "$bin" && set -- "$@" --stats-dir "$BASE/stats"
 	# Keep the machine awake while the node runs.
 	if [ "$OS" = darwin ]; then
@@ -887,7 +887,7 @@ write_node_service() { # binary
 	write_service node "$@"
 }
 
-# run_doctor explains why the node is not working, in plain language. Returns the agent's status.
+# run_doctor explains why the node is not working, in plain language. Returns the daemon's status.
 run_doctor() {
 	step "Diagnosing"
 	# shellcheck disable=SC2046
@@ -935,7 +935,7 @@ render_tray_plist() { # program
 	printf '\t<key>StandardOutPath</key><string>%s</string>\n\t<key>StandardErrorPath</key><string>%s</string>\n</dict>\n</plist>\n' "$(xml_esc "$BASE/logs/tray.log")" "$(xml_esc "$BASE/logs/tray.log")"
 }
 
-# install_tray puts the tray of the agent's release in place and starts it at
+# install_tray puts the tray of the daemon's release in place and starts it at
 # login. A release without one is skipped: the node itself does not need it.
 install_tray() {
 	[ "$TRAY" = 1 ] || return 0
@@ -1060,7 +1060,7 @@ print_status() {
 	tray="not installed (add it with --tray)"
 	if [ "$OS" = darwin ] && [ -d "$TRAY_APP" ]; then tray="$TRAY_APP, starts at login"; fi
 	if [ "$OS" = linux ] && [ -f "$TRAY_DESKTOP" ]; then tray="$BASE/bin/ktms-node-tray, starts at login"; fi
-	stats="needs a newer node agent"
+	stats="needs a newer node daemon"
 	agent_has_stats "$BASE/bin/ktms-node" && stats="$BASE/bin/ktms-node stats --since 24h (log in $BASE/stats)"
 	cat <<EOF
 
@@ -1157,7 +1157,7 @@ main() {
 				check_schedule "$BASE/bin/ktms-node" "$SCHEDULE_SRC" "--schedule $SCHEDULE_SRC"
 				say "Schedule $SCHEDULE_SRC is valid: $out."
 			else
-				say "Schedule $SCHEDULE_SRC will be checked by the downloaded agent before anything changes."
+				say "Schedule $SCHEDULE_SRC will be checked by the downloaded daemon before anything changes."
 			fi
 		fi
 		what="Ollama on $OLLAMA_ADDR"
@@ -1182,7 +1182,7 @@ main() {
 	stage_agent
 	install_schedule
 	if [ "$ENGINE" = ollama,mt ] && ! agent_has_extra_engine "$BASE/bin/ktms-node.new" && ! agent_has_extra_engine "$BASE/bin/ktms-node"; then
-		die "--engine ollama,mt needs node agent 1.6.0-beta.5 or later; pass a newer --version"
+		die "--engine ollama,mt needs node daemon 1.6.0-beta.5 or later; pass a newer --version"
 	fi
 	if has_engine mt; then ensure_mt; fi
 	if has_engine ollama; then
@@ -1205,13 +1205,13 @@ main() {
 	install_service node "$SVC_TMP" && node_changed=1
 	if [ "$node_changed" = 1 ] || ! svc_running node; then
 		if ! start_node_and_wait; then
-			run_doctor || true # best effort: an older agent may not have it
+			run_doctor || true # best effort: an older daemon may not have it
 			if [ "$AGENT_STAGED" = 1 ] && [ -x "$BASE/bin/ktms-node.prev" ]; then
-				warn "The new node agent did not come up; restoring the previous one."
+				warn "The new node daemon did not come up; restoring the previous one."
 				svc_stop node
 				mv "$BASE/bin/ktms-node.prev" "$BASE/bin/ktms-node"
 				restore_schedule
-				write_node_service "$BASE/bin/ktms-node" # its flags, not the new agent's
+				write_node_service "$BASE/bin/ktms-node" # its flags, not the new daemon's
 				install_service node "$SVC_TMP" || true
 				svc_start node || true
 			fi

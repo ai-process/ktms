@@ -15,7 +15,7 @@ import (
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 )
 
-// Where the agent takes its schedule from.
+// Where the daemon takes its schedule from.
 const (
 	ScheduleSourceLocal = "local" // --schedule-file
 	ScheduleSourceKTMS  = "ktms"  // what KTMS sends with each heartbeat; the file is ignored
@@ -143,7 +143,7 @@ func (a *Agent) setScheduleSource(src string) error {
 }
 
 // applyManaged takes a schedule KTMS sent and reports whether it changed
-// anything. A schedule the agent cannot parse is refused and the last one holds.
+// anything. A schedule the daemon cannot parse is refused and the last one holds.
 func (a *Agent) applyManaged(ns *pb.NodeSchedule) bool {
 	p := &a.pause
 	if a.source != ScheduleSourceKTMS {
@@ -207,8 +207,8 @@ func (a *Agent) capacityUntil() *time.Time {
 	return nil
 }
 
-// sourceSetting is the schedule source the agent starts with: the saved
-// choice, else the flag. The doctor reads it without a running agent.
+// sourceSetting is the schedule source the daemon starts with: the saved
+// choice, else the flag. The doctor reads it without a running daemon.
 func sourceSetting(cfg AgentConfig) string {
 	var s Settings
 	if cfg.StateDir != "" {

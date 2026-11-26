@@ -20,7 +20,7 @@ const (
 	statsPullTimeout  = 5 * time.Second
 )
 
-// statsState is the agent's usage-log bookkeeping; only Run's goroutine touches it.
+// statsState is the daemon's usage-log bookkeeping; only Run's goroutine touches it.
 type statsState struct {
 	store     *StatsStore
 	cursor    string

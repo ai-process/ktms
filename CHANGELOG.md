@@ -16,6 +16,14 @@ All notable changes to KTMS are listed here. The format follows
   efforts keeps serving exactly those. Once a model declares competencies, the catch-all rule per effort is no longer
   required. `ktms config plan` hints at the competencies and needs to write instead of efforts.
 
+### Changed
+
+- The process on a node is now called the node daemon (was: node agent) in the docs, the tray, `ktms-node --help`
+  and its messages; "agent" is left to AI agents. Nothing else changes: the `ktms-node` binary, the
+  `ktms-node.service` unit, flags and environment variables keep their names, and `docs/nodes.md#node-agent`
+  still opens the section. On Linux the unit description changes too, so the first re-run of
+  `install-node.sh` restarts the node once.
+
 ## [1.6.1] - 2026-11-25
 
 ### Added

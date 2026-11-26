@@ -32,12 +32,12 @@ to the next model of the chain), 401, 404 `model_not_found` (also moves on), 500
 A batch is translated whole or not at all: one text in a language the bundle has no model for
 fails the call, and KTMS sends the batch to the next model. Bundles with a `fallback`, such as
 `opus-mt-de`, never hit this on detected languages. `GET /health` needs no key. With `KTMS_MT_API_KEY` (or `api_key` in the config) set, the other
-routes need `Authorization: Bearer <key>`; give the node agent the same key in `NODE_AUTH_TOKEN`.
+routes need `Authorization: Bearer <key>`; give the node daemon the same key in `NODE_AUTH_TOKEN`.
 
 ## Install
 
 On a node, `install-node.sh --engine mt --model opus-mt-de` does all of this: a venv, the models,
-a LaunchAgent or systemd user service on `127.0.0.1:11436`, and the node agent. By hand:
+a LaunchAgent or systemd user service on `127.0.0.1:11436`, and the node daemon. By hand:
 
 ```bash
 python3.12 -m venv ~/.ktms-mt/venv
