@@ -1,9 +1,28 @@
 # API stability
 
-From 1.0, KTMS follows [semantic versioning](https://semver.org): within 1.x nothing in the public
-API below changes incompatibly. Breaking changes wait for 2.0, except the one removal announced
-before 1.0 and listed under [Deprecated](#deprecated). Minor releases add features; patch releases
-fix bugs.
+**The problem.** A gateway sits under every service that calls a model. If an upgrade breaks its
+API, every one of those services breaks with it.
+
+**The approach.** From 1.0, KTMS follows [semantic versioning](https://semver.org). Within 1.x
+nothing in the public API below changes incompatibly: minor releases only add, patch releases fix
+bugs, and breaking changes wait for 2.0. The one exception, announced before 1.0, is listed under
+[Deprecated](#deprecated). Parts still settling are marked experimental and may change in a minor
+release, always with a CHANGELOG entry.
+
+<p align="center"><img src="img/stability-versions.svg" alt="Releases 1.0 to 1.x only add RPCs, fields, endpoints and settings, patch releases fix bugs, and any 1.x upgrades from any earlier 1.x in one step; breaking changes and removals wait for 2.0; experimental parts may change in a minor release" width="800"></p>
+
+**Contents:** [Glossary](#glossary) · [What is public](#what-is-public) · [Experimental](#experimental) ·
+[Compatibility](#compatibility-with-ktms-admin-and-light-tokenmeter) · [Upgrading](#upgrading) ·
+[Deprecated](#deprecated)
+
+## Glossary
+
+| Term | Meaning |
+| --- | --- |
+| **Public API** | What 1.x keeps compatible: the surfaces in the table below. |
+| **Experimental** | Works and is supported, but may change in a minor release, with a CHANGELOG entry. |
+| **Deprecated** | Still works through 1.x, logs a warning, removed in 2.0. |
+| **Additive change** | New RPCs, fields, endpoints, settings or metrics; nothing renamed or removed. |
 
 ## What is public
 
@@ -21,7 +40,7 @@ fix bugs.
 | Node daemon | A 1.x daemon works with any 1.x gateway, in both directions. |
 | Helm chart (`oci://ghcr.io/ai-process/charts/ktms`) | Value names and meaning; new values may appear. The chart version is the release version. |
 
-Not public, and free to change in any release: Redis key layout, log message text, the
+**Not public**, free to change in any release: the Redis key layout, log message text, the
 `internal/` Go packages, CLI output of the tools in `cmd/` other than their flags, and benchmark
 numbers.
 
@@ -32,7 +51,6 @@ These work and are supported, but may change in a minor release. The change is t
 
 - **The configuration file format** (`api_version: ktms.ai-process.dev/v1alpha1`) and the
   `ktms` command, until the format reaches `v1`.
-
 - **The judge's choice of the general level:** when a request is auto-routed without needs or a
   pinned effort (`model: "auto"` or `auto:<placement>` over HTTP without `reasoning_effort` or
   `X-KTMS-Needs`; `auto_route` without `needs` and with `effort_specified` false in gRPC), a judge
@@ -73,21 +91,15 @@ These work and are supported, but may change in a minor release. The change is t
 
 ## Upgrading
 
-- **Within 1.x, upgrade in one step** from any earlier 1.x release: migrations run forward at
-  startup and cover every release in between. `scripts/upgrade-test.sh` upgrades from the
-  previous release and from the oldest release of the same major on every pull request and
-  before each release.
-- **Rolling upgrades work within 1.x:** migrations only add, so replicas of the previous release
-  keep serving on the migrated database while new ones start; the upgrade test runs the old
-  release again after the new one migrated. A change that cannot be additive waits for 2.0.
-  Until the roll finishes, old replicas do not apply what the new release added (for example a
-  new kind of limit), so finish rolls promptly.
-- **Downgrades are not supported.** Migrations have no down step; to go back, restore the
-  database backup taken before the upgrade.
-- **From 0.x, go through 0.14.x to 1.0,** then to later 1.x releases: 0.x made no
-  compatibility promise, and only the 0.14 → 1.0 step is tested (by the 1.0 release).
-- **Read the [CHANGELOG](../CHANGELOG.md)** before upgrading: it lists every change in Added,
-  Changed, Deprecated, Removed, Fixed and Security.
+| Path | How |
+| --- | --- |
+| Within 1.x | One step from any earlier 1.x: migrations run forward at startup and cover every release in between. `scripts/upgrade-test.sh` upgrades from the previous release and from the oldest release of the same major on every pull request and before each release. |
+| Rolling, within 1.x | Works: migrations only add, so replicas of the previous release keep serving on the migrated database while new ones start; the upgrade test runs the old release again after the new one migrated. Until the roll finishes, old replicas do not apply what the new release added (for example a new kind of limit), so finish rolls promptly. |
+| Downgrade | Not supported: migrations have no down step. Restore the backup taken before the upgrade. |
+| From 0.x | Through 0.14.x to 1.0, then to later 1.x releases. 0.x made no compatibility promise, and only the 0.14 → 1.0 step is tested (by the 1.0 release). |
+
+Read the [CHANGELOG](../CHANGELOG.md) before upgrading: it lists every change in Added, Changed,
+Deprecated, Removed, Fixed and Security.
 
 ## Deprecated
 

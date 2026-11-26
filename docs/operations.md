@@ -1,40 +1,71 @@
 # Operations
 
-- **Health:** `GET :8080/healthz` (process up, with its `version`) and `GET :8080/readyz` (database reachable).
-- **Logs:** structured JSON via zerolog. Vendor keys, client keys and the keyring are never logged.
-- **Config changes** are picked up by all replicas within `ROUTING_RELOAD_SECONDS`; the replica that
-  handled the admin call applies them immediately.
-- **Upgrades:** migrations run at startup under a database advisory lock, so rolling deploys are
-  safe. Roll forward by deploying a newer image tag; see [Upgrading](stability.md#upgrading).
-- **Graceful shutdown:** on SIGTERM in-flight calls get `SHUTDOWN_TIMEOUT` to finish.
+**The problem.** A gateway in front of every LLM call must not become the outage. Its dependencies
+fail, its counters drift, and a lost encryption key loses every vendor key.
+
+**The approach.** Keystone keeps serving when a dependency fails: limits and accounting fail open,
+known keys keep working, and routing serves from the last good snapshot. What fails open is counted
+in metrics, so you alert on it instead of finding out from the bill.
+
+<p align="center"><img src="img/operations-dependencies.svg" alt="Keystone keeps serving when Postgres is down (known keys keep working, config from the last snapshot), when Redis is down (limits fail open, caches miss, node models skipped), when light-tokenmeter is down (events queued and retried) and when a vendor is down (retry, breaker, next model); every dependency failure counts in ktms_dependency_errors_total" width="860"></p>
+
+**Contents:** [Glossary](#glossary) · [Daily operations](#daily-operations) ·
+[Backups](#backups-and-the-encryption-keyring) · [When a dependency fails](#when-a-dependency-fails) ·
+[Metrics and alerts](#metrics-and-alerts) · [Sizing](#sizing)
+
+## Glossary
+
+| Term | Meaning |
+| --- | --- |
+| **Fail open** | A dependency is down and the call goes through anyway, unmetered. |
+| **Fail closed** | A dependency is down and the call is refused. Only spend limits can be set to this. |
+| **Snapshot** | The validated configuration each replica routes from, reloaded every `ROUTING_RELOAD_SECONDS`. |
+| **Keyring** | `KTMS_ENCRYPTION_KEYS`; it is not in the database and must be backed up apart. |
+
+## Daily operations
+
+| Topic | How |
+| --- | --- |
+| Health | `GET :8080/healthz` (process up, with its `version`) and `GET :8080/readyz` (database reachable). |
+| Logs | Structured JSON (zerolog). Vendor keys, client keys and the keyring are never logged. |
+| Config changes | All replicas pick them up within `ROUTING_RELOAD_SECONDS`; the replica that handled the admin call at once. |
+| Upgrades | Migrations run at startup under a database advisory lock, so rolling deploys are safe. Roll forward with a newer image tag; see [Upgrading](stability.md#upgrading). |
+| Shutdown | On SIGTERM, calls in flight get `SHUTDOWN_TIMEOUT` to finish. |
 
 ## Backups and the encryption keyring
 
-- **Back up Postgres.** It holds everything durable: client keys (as hashes), vendor keys
-  (encrypted), models, rules, limits, tenants, node keys and batches. Use `pg_dump` or your
-  provider's snapshots, and test a restore.
-- **Back up the keyring separately.** `KTMS_ENCRYPTION_KEYS` is not in the database. Keep it in a
-  secret manager, not next to the dumps: a dump plus the keyring is every vendor key in
-  plaintext. **If the keyring is lost, every stored vendor key is lost**, and each has to be set
-  again with `SetVendorKey`; client keys, config and limits survive.
-- **Keep old key versions as long as the backups that need them.** A dump taken before a
-  rotation can only be read with the versions it was written with.
-- **Restore:** stop every replica, restore the dump, **flush the gateway's Redis keys** (the
-  `REDIS_KEY_PREFIX` namespace), then start a release at least as new as the one that took the
-  dump. The flush matters: cached responses are keyed by the config version, which the restore
-  rolls back, so later changes would reuse version numbers whose cache entries belong to another
-  config. An older release could run on the restored schema but would ignore what was added
-  after it, so do not restore with one.
-- **Redis is not backed up.** It holds rate, token and spend counters, the response and semantic
-  caches, and the node pool: registrations (with encrypted node auth tokens), heartbeats, slot
-  leases, the node circuit breaker and drain flags. Losing it resets the current day's and
-  month's counters (spend limits then allow up to one more full cap in the current period),
-  empties the caches, drops every node from routing until its next heartbeat re-registers it,
-  and clears drain flags, so drained nodes take traffic again.
+| What | Holds | Back up? |
+| --- | --- | --- |
+| **Postgres** | Client keys (as hashes), vendor keys (encrypted), models, rules, limits, tenants, node keys, batches. | Yes: `pg_dump` or your provider's snapshots. Test a restore. |
+| **The keyring** | The keys that decrypt the vendor keys. | Yes, **apart from the dumps**, in a secret manager. A dump plus the keyring is every vendor key in plaintext. |
+| **Redis** | Rate, token and spend counters, response and semantic caches, the node pool (registrations with encrypted node tokens, heartbeats, slot leases, the node breaker, drain flags). | No. |
+
+- **If the keyring is lost, every stored vendor key is lost** and must be set again with
+  `SetVendorKey`; client keys, config and limits survive.
+- **Keep old key versions as long as the backups that need them.** A dump taken before a rotation
+  can only be read with the versions it was written with.
+- **Losing Redis** resets the current day's and month's counters (spend limits then allow up to one
+  more full cap in the period), empties the caches, drops every node from routing until its next
+  heartbeat re-registers it, and clears drain flags, so drained nodes take traffic again.
+
+**Restore:**
+
+1. Stop every replica.
+2. Restore the dump.
+3. **Flush the gateway's Redis keys** (the `REDIS_KEY_PREFIX` namespace). Cached responses are keyed
+   by the config version, which the restore rolls back, so later changes would reuse version numbers
+   whose cache entries belong to another config.
+4. Start a release at least as new as the one that took the dump. An older release could run on the
+   restored schema but would ignore what was added after it.
 
 ## When a dependency fails
 
-Failed calls to Redis, Postgres and the usage collector are counted in `ktms_dependency_errors_total{dependency,operation}`; alert on it. Nothing below needs a restart: the Redis pool, the Postgres pool and the collector connection reconnect by themselves. After 3 consecutive Redis transport failures, Redis calls fail fast without network IO for 2s, then are tried again, so a hung Redis costs a request about one `REDIS_TIMEOUT`, not one per command.
+- Failed calls to Redis, Postgres and the usage collector count in
+  `ktms_dependency_errors_total{dependency,operation}`; alert on it.
+- Nothing below needs a restart: the Redis pool, the Postgres pool and the collector connection
+  reconnect by themselves.
+- After 3 Redis transport failures in a row, Redis calls fail fast without network IO for 2s, then
+  are tried again, so a hung Redis costs a request about one `REDIS_TIMEOUT`, not one per command.
 
 | Dependency | What breaks | Behaviour | Why |
 | --- | --- | --- | --- |
@@ -119,22 +150,14 @@ A long stream is not slow, so latency alerts use the time to the first token. Al
 
 ## Sizing
 
-From the [benchmark](install.md#resource-footprint): about 0.65 s of CPU per 1,000 proxied requests, under
-50 MiB of memory at 4,000 RPS, no drift at a steady load. Upstream time does not cost CPU, so size
-by request rate, not by how long vendors take to answer.
+From the [benchmark](install.md#resource-footprint): about 0.65 s of CPU per 1,000 requests, under
+50 MiB of memory at 4,000 RPS, no drift at a steady load. Upstream time costs no CPU, so size by
+request rate, not by how long vendors take to answer.
 
-- **CPU:** plan 1 vCPU per 1,000 RPS, which leaves headroom for TLS, logging and streaming.
-  Guardrails, the semantic cache and the latent encoder add CPU per call; measure them with
-  `go test -bench` (see [Semantic cache and latent guardrails](concepts.md#semantic-cache-and-latent-guardrails)).
-- **Memory:** memory follows the bodies in flight, not RPS. The chart's default (256 MiB request,
-  512 MiB limit) covers thousands of concurrent short calls; raise it for large prompts, images
-  or audio (`GRPC_MAX_RECV_MSG_SIZE` is 16 MiB per message).
-- **Replicas:** run at least two behind a load balancer; they share nothing but Postgres and
-  Redis. Each replica keeps its own circuit breakers and vendor pauses.
-- **Postgres:** replicas × `DB_MAX_CONNS` (25 by default) must fit under `max_connections` with
-  room for migrations and the other services. Routing serves from a snapshot reloaded every
-  `ROUTING_RELOAD_SECONDS`, so the hot path costs one indexed key lookup per call; size
-  Postgres for that query rate.
-- **Redis:** a few commands per call when limits, caches or the node pool are on, each bounded by
-  `REDIS_TIMEOUT`. Keep it in the same zone as the gateway; one small instance serves every
-  replica.
+| Resource | Plan | Notes |
+| --- | --- | --- |
+| CPU | 1 vCPU per 1,000 RPS | Leaves headroom for TLS, logging and streaming. Guardrails, the semantic cache and the latent encoder add CPU per call; measure them with `go test -bench` (see [Semantic cache and latent guardrails](concepts.md#semantic-cache-and-latent-guardrails)). |
+| Memory | The chart's default: 256 MiB request, 512 MiB limit | Memory follows the bodies in flight, not RPS. The default covers thousands of short concurrent calls; raise it for large prompts, images or audio (`GRPC_MAX_RECV_MSG_SIZE` is 16 MiB per message). |
+| Replicas | At least two behind a load balancer | They share nothing but Postgres and Redis. Each keeps its own circuit breakers and vendor pauses. |
+| Postgres | replicas × `DB_MAX_CONNS` (25) under `max_connections` | Leave room for migrations and other services. Routing serves from a snapshot, so the hot path is one indexed key lookup per call; size Postgres for that rate. |
+| Redis | One small instance for all replicas, in the same zone | A few commands per call when limits, caches or the node pool are on, each bounded by `REDIS_TIMEOUT`. |
