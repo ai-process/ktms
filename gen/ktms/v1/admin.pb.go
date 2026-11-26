@@ -2121,7 +2121,7 @@ type NodeInfo struct {
 	WarmModels      []string               `protobuf:"bytes,18,rep,name=warm_models,json=warmModels,proto3" json:"warm_models,omitempty"`
 	CapacityPercent uint32                 `protobuf:"varint,19,opt,name=capacity_percent,json=capacityPercent,proto3" json:"capacity_percent,omitempty"` // current level of the node's schedule
 	EffectiveSlots  int32                  `protobuf:"varint,20,opt,name=effective_slots,json=effectiveSlots,proto3" json:"effective_slots,omitempty"`    // concurrent requests allowed at that level
-	ScheduleSource  string                 `protobuf:"bytes,21,opt,name=schedule_source,json=scheduleSource,proto3" json:"schedule_source,omitempty"`     // local | ktms; empty from agents that predate it
+	ScheduleSource  string                 `protobuf:"bytes,21,opt,name=schedule_source,json=scheduleSource,proto3" json:"schedule_source,omitempty"`     // local | ktms; empty from daemons that predate it
 	CapacitySource  string                 `protobuf:"bytes,22,opt,name=capacity_source,json=capacitySource,proto3" json:"capacity_source,omitempty"`     // schedule | override | ktms_schedule | ktms_override | default
 	CapacityUntil   *timestamppb.Timestamp `protobuf:"bytes,23,opt,name=capacity_until,json=capacityUntil,proto3" json:"capacity_until,omitempty"`        // end of the override behind capacity_percent
 	unknownFields   protoimpl.UnknownFields
@@ -2487,7 +2487,7 @@ func (x *GetNodeScheduleRequest) GetNodeId() string {
 	return ""
 }
 
-// NodeScheduleInfo is what KTMS keeps for a node: the agent follows it only
+// NodeScheduleInfo is what KTMS keeps for a node: the node daemon follows it only
 // when it runs with schedule_source "ktms" (NodeInfo.schedule_source).
 type NodeScheduleInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`

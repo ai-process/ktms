@@ -565,10 +565,10 @@ type HeartbeatRequest struct {
 	Resources      *NodeResources         `protobuf:"bytes,5,opt,name=resources,proto3" json:"resources,omitempty"`
 	Models         []*NodeModelSpec       `protobuf:"bytes,6,rep,name=models,proto3" json:"models,omitempty"`
 	// Share of time the node may spend on proxy requests, 0-100, from its local
-	// schedule. Unset means 100, so agents that predate it keep full capacity.
+	// schedule. Unset means 100, so daemons that predate it keep full capacity.
 	CapacityPercent *uint32 `protobuf:"varint,7,opt,name=capacity_percent,json=capacityPercent,proto3,oneof" json:"capacity_percent,omitempty"`
-	// Where the agent takes its levels from: "local" (its own schedule file) or
-	// "ktms" (HeartbeatResponse.schedule). Empty from agents that predate it.
+	// Where the node daemon takes its levels from: "local" (its own schedule file) or
+	// "ktms" (HeartbeatResponse.schedule). Empty from daemons that predate it.
 	ScheduleSource string `protobuf:"bytes,8,opt,name=schedule_source,json=scheduleSource,proto3" json:"schedule_source,omitempty"`
 	// What set capacity_percent: schedule, override (by the owner, on the machine),
 	// ktms_schedule, ktms_override or default (no schedule, 100%).
@@ -679,11 +679,11 @@ func (x *HeartbeatRequest) GetCapacityUntil() *timestamppb.Timestamp {
 	return nil
 }
 
-// NodeSchedule is the schedule KTMS keeps for a node whose agent takes its
+// NodeSchedule is the schedule KTMS keeps for a node whose daemon takes its
 // levels from KTMS.
 type NodeSchedule struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`         // rules in the agent's format, "[days] HH:MM-HH:MM level" per line; empty = 100%
+	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`         // rules in the daemon's format, "[days] HH:MM-HH:MM level" per line; empty = 100%
 	Version       int64                  `protobuf:"varint,2,opt,name=version,proto3" json:"version,omitempty"`  // bumps on every change of text or override; 0 = none set yet
 	Override      *NodeCapacityOverride  `protobuf:"bytes,3,opt,name=override,proto3" json:"override,omitempty"` // unset = none
 	unknownFields protoimpl.UnknownFields
@@ -801,8 +801,8 @@ type HeartbeatResponse struct {
 	DrainRequested      bool                   `protobuf:"varint,3,opt,name=drain_requested,json=drainRequested,proto3" json:"drain_requested,omitempty"`
 	ActiveProxyRequests int32                  `protobuf:"varint,4,opt,name=active_proxy_requests,json=activeProxyRequests,proto3" json:"active_proxy_requests,omitempty"` // requests still running, not counting post-request cooldown
 	CapacityApplied     bool                   `protobuf:"varint,5,opt,name=capacity_applied,json=capacityApplied,proto3" json:"capacity_applied,omitempty"`               // false from proxies that ignore capacity_percent
-	// The node's schedule in KTMS, sent only to agents with schedule_source "ktms".
-	// Unset when the proxy could not read it: the agent keeps the last one it got.
+	// The node's schedule in KTMS, sent only to daemons with schedule_source "ktms".
+	// Unset when the proxy could not read it: the daemon keeps the last one it got.
 	Schedule      *NodeSchedule `protobuf:"bytes,6,opt,name=schedule,proto3" json:"schedule,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

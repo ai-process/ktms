@@ -135,7 +135,7 @@ func (d *Doctor) Run(ctx context.Context) []Finding {
 	return append(out, d.checkStats()...)
 }
 
-// checkControl asks the running agent for its manual level over the control socket.
+// checkControl asks the running daemon for its manual level over the control socket.
 func (d *Doctor) checkControl(ctx context.Context) []Finding {
 	if d.Cfg.ControlSocket == "" {
 		return nil
@@ -144,17 +144,17 @@ func (d *Doctor) checkControl(ctx context.Context) []Finding {
 	defer cancel()
 	s, err := NewControlClient(d.Cfg.ControlSocket).Status(ctx)
 	if errors.Is(err, ErrAgentDown) {
-		return []Finding{{"Control", LevelWarn, "No agent answers on " + d.Cfg.ControlSocket + ": the node is not running, or runs an agent older than the control API.",
+		return []Finding{{"Control", LevelWarn, "No daemon answers on " + d.Cfg.ControlSocket + ": the node is not running, or runs a daemon older than the control API.",
 			"Start the node service; the tray and `ktms-node status` need it running."}}
 	}
 	if err != nil {
-		return []Finding{{"Control", LevelWarn, "The agent's control socket does not answer properly: " + shortErr(err), ""}}
+		return []Finding{{"Control", LevelWarn, "The daemon's control socket does not answer properly: " + shortErr(err), ""}}
 	}
 	if o := s.Level.Override; o != nil {
 		return []Finding{{"Control", LevelOK, fmt.Sprintf("Level set by hand: %d%% until %s.", o.Level, o.Until.Local().Format("Mon 15:04")),
 			"`ktms-node resume` returns the node to its schedule."}}
 	}
-	msg := fmt.Sprintf("The running agent answers on its control socket: %d%%, %s.", s.Level.Effective, s.State)
+	msg := fmt.Sprintf("The running daemon answers on its control socket: %d%%, %s.", s.Level.Effective, s.State)
 	if s.ScheduleSource == ScheduleSourceKTMS {
 		msg += " Its schedule is set by KTMS; the local schedule file is ignored."
 	}
@@ -163,8 +163,8 @@ func (d *Doctor) checkControl(ctx context.Context) []Finding {
 
 // ---- usage log ------------------------------------------------------------
 
-// checkStats tells whether the agent keeps its usage log: the directory must
-// take writes, and a running agent moves the cursor every minute.
+// checkStats tells whether the daemon keeps its usage log: the directory must
+// take writes, and a running daemon moves the cursor every minute.
 func (d *Doctor) checkStats() []Finding {
 	if d.Cfg.StatsDir == "" {
 		return nil
@@ -179,10 +179,10 @@ func (d *Doctor) checkStats() []Finding {
 	age, ok := st.CursorAge(d.Now())
 	switch {
 	case !ok:
-		return []Finding{{"Usage log", LevelOK, "No usage log yet; the agent starts it once it is registered.", ""}}
+		return []Finding{{"Usage log", LevelOK, "No usage log yet; the daemon starts it once it is registered.", ""}}
 	case age > 10*time.Minute:
-		return []Finding{{"Usage log", LevelWarn, fmt.Sprintf("The agent last pulled its usage log %s ago.", age.Round(time.Minute)),
-			"Check that the agent runs and that the proxy keeps the log (NODE_USAGE_RETENTION_HOURS above 0, KTMS with PullNodeUsage)."}}
+		return []Finding{{"Usage log", LevelWarn, fmt.Sprintf("The daemon last pulled its usage log %s ago.", age.Round(time.Minute)),
+			"Check that the daemon runs and that the proxy keeps the log (NODE_USAGE_RETENTION_HOURS above 0, KTMS with PullNodeUsage)."}}
 	}
 	return []Finding{{"Usage log", LevelOK, fmt.Sprintf("Usage log kept in %s; `ktms-node stats` shows it.", d.Cfg.StatsDir), ""}}
 }
@@ -213,7 +213,7 @@ func (d *Doctor) checkSchedule() (*Schedule, []Finding) {
 	s, err := LoadSchedule(d.Cfg.ScheduleFile)
 	if err != nil {
 		return nil, []Finding{{"Schedule", LevelProblem, "The schedule file is invalid: " + shortErr(err),
-			"Fix that line. A running agent keeps its last valid schedule until the file is fixed."}}
+			"Fix that line. A running daemon keeps its last valid schedule until the file is fixed."}}
 	}
 	msg := "Schedule: " + s.Status(d.Now()) + "."
 	if s != nil && s.Level(d.Now()) == 0 {
@@ -265,7 +265,7 @@ func (d *Doctor) checkEngine(ctx context.Context) (models []*pb.NodeModelSpec, f
 		if freeToken {
 			fix = "Set NODE_AUTH_TOKEN or FREETOKEN_API_KEY to the key `ft serve` was started with (--api-key)."
 		}
-		return nil, []Finding{{"Engine", LevelProblem, fmt.Sprintf("The engine at %s refuses this agent (HTTP %d).", d.Cfg.EngineURL, resp.StatusCode), fix}}, false
+		return nil, []Finding{{"Engine", LevelProblem, fmt.Sprintf("The engine at %s refuses this daemon (HTTP %d).", d.Cfg.EngineURL, resp.StatusCode), fix}}, false
 	case resp.StatusCode >= 500:
 		return nil, []Finding{{"Engine", LevelProblem, fmt.Sprintf("The engine at %s is failing (HTTP %d).", d.Cfg.EngineURL, resp.StatusCode), "Check the engine's own log."}}, false
 	}
@@ -465,7 +465,7 @@ func (d *Doctor) checkProxy(ctx context.Context) []Finding {
 			return []Finding{{"Proxy", LevelProblem, fmt.Sprintf("The name %s cannot be resolved.", host), "Check --proxy-addr for typos, and this machine's DNS and network. (" + shortErr(err) + ")"}}
 		}
 	}
-	// Behind a CONNECT proxy a direct dial fails though the agent works; the gRPC call below tests the real path.
+	// Behind a CONNECT proxy a direct dial fails though the daemon works; the gRPC call below tests the real path.
 	if !d.UsesProxy(d.Cfg.ProxyAddr) {
 		if err := d.DialTCP(ctx, d.Cfg.ProxyAddr); err != nil {
 			return []Finding{{"Proxy", LevelProblem, fmt.Sprintf("Cannot connect to the proxy at %s.", d.Cfg.ProxyAddr), "Check the address and port, a VPN or firewall, and that the proxy is up. (" + shortErr(err) + ")"}}
@@ -498,7 +498,7 @@ func (d *Doctor) checkProxy(ctx context.Context) []Finding {
 			if m[1] == d.Cfg.NodeID {
 				return []Finding{reach, {"Node key", LevelOK, fmt.Sprintf("The key is valid and bound to this node id (%s).", m[1]), ""}}
 			}
-			return []Finding{reach, {"Node key", LevelProblem, fmt.Sprintf("This key belongs to node %q but this agent runs as %q.", m[1], d.Cfg.NodeID), fmt.Sprintf("Run with --node-id %s, or ask for a key minted for %s.", m[1], d.Cfg.NodeID)}}
+			return []Finding{reach, {"Node key", LevelProblem, fmt.Sprintf("This key belongs to node %q but this daemon runs as %q.", m[1], d.Cfg.NodeID), fmt.Sprintf("Run with --node-id %s, or ask for a key minted for %s.", m[1], d.Cfg.NodeID)}}
 		}
 		return []Finding{reach, {"Node key", LevelProblem, "The proxy refused the key for this operation: it is probably not a node key.", "Use a key minted with MintNodeKey (starts with ktms_node_)."}}
 	case codes.Unavailable:
@@ -518,7 +518,7 @@ func hasProblem(fs []Finding) bool {
 	return false
 }
 
-// checkRegistration asks the proxy to vet the exact models the agent would report, so a key
+// checkRegistration asks the proxy to vet the exact models the daemon would report, so a key
 // whose allowed_models excludes one of them is caught here rather than at registration.
 func (d *Doctor) checkRegistration(ctx context.Context, models []*pb.NodeModelSpec) []Finding {
 	conn, err := grpclib.DialContext(ctx, d.Cfg.ProxyAddr, grpclib.WithTransportCredentials(NewAgent(d.Cfg).dialCredentials()))
@@ -532,7 +532,7 @@ func (d *Doctor) checkRegistration(ctx context.Context, models []*pb.NodeModelSp
 	if err == nil {
 		if dropped := resp.GetDroppedModels(); len(dropped) > 0 {
 			return []Finding{{"Registration", LevelWarn,
-				fmt.Sprintf("The node key does not allow %s, which this agent would report; the proxy ignores them.", strings.Join(dropped, ", ")),
+				fmt.Sprintf("The node key does not allow %s, which this daemon would report; the proxy ignores them.", strings.Join(dropped, ", ")),
 				"Report only the allowed models: --only-model " + strings.Join(resp.GetAcceptedModels(), " --only-model ") + " (install-node.sh does this for its --model)."}}
 		}
 		return []Finding{{"Registration", LevelOK, fmt.Sprintf("The proxy would accept this node with %d model(s).", len(resp.GetAcceptedModels())), ""}}

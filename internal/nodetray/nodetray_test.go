@@ -66,7 +66,7 @@ func TestBuildView(t *testing.T) {
 		"waiting for requests": {s: status(func(s *nodeagent.Status) {
 			s.Level.Effective, s.Requests.ProxyActive, s.CanAbort = 0, 2, true
 		}), icon: IconWaiting, title: "2", level: "Pausing: waiting for 2 requests (schedule)", stop: "Stop now (cuts 2 requests)"},
-		"agent down": {err: errors.New("dial unix: no such file"), icon: IconWarn, level: "The node agent does not answer"},
+		"agent down": {err: errors.New("dial unix: no such file"), icon: IconWarn, level: "The node daemon does not answer"},
 		"proxy down": {s: status(func(s *nodeagent.Status) { s.Connection.LastError = "unavailable" }), icon: IconWarn, fill: 100},
 		"ktms override": {s: status(func(s *nodeagent.Status) {
 			s.Level.Effective, s.Level.Source, s.Requests.Inflight = 30, nodeagent.SourceKTMSOverride, 3
@@ -344,7 +344,7 @@ func TestWebGuardsAndRelays(t *testing.T) {
 		t.Fatal("index not served")
 	}
 
-	// Reads relay to the agent; writes need the header a cross-site form cannot send.
+	// Reads relay to the daemon; writes need the header a cross-site form cannot send.
 	if r, _ := c.Get(base + "/api/v1/status"); r.StatusCode != http.StatusOK || last.URL.Path != "/v1/status" || last.Header.Get("Cookie") != "" {
 		t.Fatalf("relay: %d %q cookie %q", r.StatusCode, last.URL.Path, last.Header.Get("Cookie"))
 	}

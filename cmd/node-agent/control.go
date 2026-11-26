@@ -14,7 +14,7 @@ import (
 	"github.com/ai-process/ktms/internal/nodeagent"
 )
 
-// controlCommands talk to the running agent over its control socket.
+// controlCommands talk to the running daemon over its control socket.
 var controlCommands = map[string]func(args []string, stdout, stderr io.Writer) int{
 	"status":   runStatus,
 	"pause":    runPause,
@@ -27,7 +27,7 @@ var controlCommands = map[string]func(args []string, stdout, stderr io.Writer) i
 func controlFlags(name string, stderr io.Writer) (*flag.FlagSet, *string) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	socket := fs.String("control-socket", nodeagent.DefaultControlSocket(), "The agent's control socket")
+	socket := fs.String("control-socket", nodeagent.DefaultControlSocket(), "The daemon's control socket")
 	return fs, socket
 }
 

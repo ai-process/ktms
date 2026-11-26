@@ -17,7 +17,7 @@ const (
 	retryMax     = 5 * time.Minute
 )
 
-// errStopped means shutdown was requested while the agent was waiting to retry.
+// errStopped means shutdown was requested while the daemon was waiting to retry.
 var errStopped = errors.New("stopped while waiting for the proxy to accept this node")
 
 // backoff doubles from initial up to max.

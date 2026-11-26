@@ -17,7 +17,7 @@ fix bugs.
 | Database | Any 1.x release upgrades the database of an earlier one by itself (`AUTO_MIGRATE`, forward-only). No manual SQL steps. The tables are not an API: read and write through the RPCs. |
 | Prometheus metrics | Names and labels of `ktms_*` metrics, except the experimental ones listed below. |
 | Usage events (`usage.v1`) | Field numbers and meaning, checked by `buf breaking` like `ktms.v1`. |
-| Node agent | A 1.x agent works with any 1.x gateway, in both directions. |
+| Node daemon | A 1.x daemon works with any 1.x gateway, in both directions. |
 | Helm chart (`oci://ghcr.io/ai-process/charts/ktms`) | Value names and meaning; new values may appear. The chart version is the release version. |
 
 Not public, and free to change in any release: Redis key layout, log message text, the
