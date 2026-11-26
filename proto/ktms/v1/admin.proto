@@ -272,7 +272,7 @@ message GetNodeScheduleRequest {
   string node_id = 1;
 }
 
-// NodeScheduleInfo is what KTMS keeps for a node: the agent follows it only
+// NodeScheduleInfo is what KTMS keeps for a node: the node daemon follows it only
 // when it runs with schedule_source "ktms" (NodeInfo.schedule_source).
 message NodeScheduleInfo {
   string node_id = 1;

@@ -2487,7 +2487,7 @@ func (x *GetNodeScheduleRequest) GetNodeId() string {
 	return ""
 }
 
-// NodeScheduleInfo is what KTMS keeps for a node: the agent follows it only
+// NodeScheduleInfo is what KTMS keeps for a node: the node daemon follows it only
 // when it runs with schedule_source "ktms" (NodeInfo.schedule_source).
 type NodeScheduleInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
