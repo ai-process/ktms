@@ -28,6 +28,12 @@ All notable changes to KTMS are listed here. The format follows
   `confidence_unset` when the vendor gives no confidence; the `box` capability narrows the chain (TypeSafe
   `jev-1.14.0`). `/v1/decisions` takes `"type": "box"` questions and a `name` on input parts.
 
+### Fixed
+- `EvaluateRollouts` checks candidate media before any vendor call and answers `bad_request` (HTTP 400) naming the
+  candidate and the part, as `Judge` does for `state_media`: a malformed `action_media` part (was `Unknown`), state and
+  action media over the part or byte ceiling together (was `vendor_error`), a name used in both, and an image TypeSafe
+  would refuse in any candidate. Such refusals end the chain and do not trip the circuit breaker.
+
 ## [1.7.0] - 2026-11-26
 
 ### Added

@@ -227,6 +227,29 @@ func toTypeSafeQuestions(in map[string]*llm.JudgeQuestion) map[string]typeSafeQu
 	return out
 }
 
+// CheckJudgeMedia runs the checks systemOneCall would, without building a
+// body, so a rollout batch with one bad image fails before any candidate bills.
+func (a *TypeSafeAdapter) CheckJudgeMedia(media []*llm.JudgeMediaPart) error {
+	refs := make(map[string]bool, len(media))
+	for i, p := range media {
+		if p.Type != llm.JudgeMediaImage || len(p.Data) == 0 {
+			return llm.ErrJudgmentUnsupported
+		}
+		if _, err := typeSafeImageFormat(i, p.Data); err != nil {
+			return err
+		}
+		ref := p.Name
+		if ref == "" {
+			ref = fmt.Sprintf("ktms-image-%d", i+1)
+		}
+		if refs[ref] {
+			return &llm.InvalidMediaError{Part: i, Msg: fmt.Sprintf("name %q is used twice", ref)}
+		}
+		refs[ref] = true
+	}
+	return nil
+}
+
 // systemOneCall builds the request: plain JSON without images, else multipart
 // with each image as a file part named in "assets". A named image is referred
 // to by its name wherever the caller wrote it; unnamed images get a generated
@@ -280,7 +303,7 @@ func (a *TypeSafeAdapter) systemOneCall(req *llm.JudgeRequest) (judgeCall, error
 			unnamed = append(unnamed, ref)
 		}
 		if _, dup := sr.Assets[ref]; dup {
-			return judgeCall{}, &llm.InvalidMediaError{Msg: fmt.Sprintf("state_media[%d]: name %q is used twice", i, ref)}
+			return judgeCall{}, &llm.InvalidMediaError{Part: i, Msg: fmt.Sprintf("name %q is used twice", ref)}
 		}
 		part := fmt.Sprintf("image-%d", i+1)
 		sr.Assets[ref] = typeSafeAssetEntry{Type: "image", Part: part, Format: format}

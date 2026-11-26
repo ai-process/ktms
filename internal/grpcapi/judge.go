@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -184,7 +185,7 @@ func judgeRequestFromProto(req *pb.JudgeRequest) (*llm.JudgeRequest, error) {
 	if len(req.GetQuestions()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "bad_request: no questions")
 	}
-	media, err := judgeMediaFromProto(req.GetStateMedia())
+	media, err := judgeMediaFromProto("state_media", req.GetStateMedia())
 	if err != nil {
 		return nil, err
 	}
@@ -241,14 +242,15 @@ func judgeRequestFromProto(req *pb.JudgeRequest) (*llm.JudgeRequest, error) {
 	return out, nil
 }
 
-// judgeMediaFromProto validates and converts state media. Ceilings are checked
-// here rather than left to the vendor so an oversized state never reserves budget.
-func judgeMediaFromProto(in []*pb.MediaPart) ([]*llm.JudgeMediaPart, error) {
+// judgeMediaFromProto validates and converts the media of one request field.
+// Ceilings are checked here rather than left to the vendor so oversized media
+// never reserves budget.
+func judgeMediaFromProto(field string, in []*pb.MediaPart) ([]*llm.JudgeMediaPart, error) {
 	if len(in) > maxJudgeMediaParts {
-		return nil, status.Errorf(codes.InvalidArgument, "bad_request: state_media has %d parts, max %d", len(in), maxJudgeMediaParts)
+		return nil, status.Errorf(codes.InvalidArgument, "bad_request: %s has %d parts, max %d", field, len(in), maxJudgeMediaParts)
 	}
 	bad := func(i int, format string, args ...any) error {
-		return status.Errorf(codes.InvalidArgument, "bad_request: state_media[%d]: "+format, append([]any{i}, args...)...)
+		return status.Errorf(codes.InvalidArgument, "bad_request: %s[%d]: "+format, append([]any{field, i}, args...)...)
 	}
 	out := make([]*llm.JudgeMediaPart, 0, len(in))
 	names := map[string]bool{}
@@ -332,7 +334,7 @@ func judgeMediaFromProto(in []*pb.MediaPart) ([]*llm.JudgeMediaPart, error) {
 			return nil, bad(i, "part is empty")
 		}
 		if total > maxJudgeMediaBytes {
-			return nil, status.Errorf(codes.InvalidArgument, "bad_request: state_media exceeds %d bytes", maxJudgeMediaBytes)
+			return nil, status.Errorf(codes.InvalidArgument, "bad_request: %s exceeds %d bytes", field, maxJudgeMediaBytes)
 		}
 		if name := p.GetName(); name != "" {
 			if strings.TrimSpace(name) == "" || len(name) > maxJudgeMediaName {
@@ -723,6 +725,54 @@ func (s *ProxyServer) EvaluateRollouts(ctx context.Context, req *pb.EvaluateRoll
 	}, nil
 }
 
+// checkCandidateMedia applies the state_media ceilings to what one candidate
+// sends: the shared state media and its own action media together.
+func checkCandidateMedia(i int, state, action []*llm.JudgeMediaPart) error {
+	if len(action) == 0 {
+		return nil
+	}
+	field := fmt.Sprintf("candidates[%d]", i)
+	if n := len(state) + len(action); n > maxJudgeMediaParts {
+		return status.Errorf(codes.InvalidArgument, "bad_request: %s: state_media and action_media have %d parts together, max %d", field, n, maxJudgeMediaParts)
+	}
+	total := 0
+	names := map[string]bool{}
+	for _, p := range state {
+		total += judgeMediaSize(p)
+		names[p.Name] = p.Name != ""
+	}
+	for k, p := range action {
+		total += judgeMediaSize(p)
+		if names[p.Name] {
+			return status.Errorf(codes.InvalidArgument, "bad_request: %s.action_media[%d]: name %q is used in state_media too", field, k, p.Name)
+		}
+	}
+	if total > maxJudgeMediaBytes {
+		return status.Errorf(codes.InvalidArgument, "bad_request: %s: state_media and action_media exceed %d bytes together", field, maxJudgeMediaBytes)
+	}
+	return nil
+}
+
+// judgeMediaSize is what one part counts toward maxJudgeMediaBytes.
+func judgeMediaSize(p *llm.JudgeMediaPart) int {
+	return len(p.Text) + len(p.Data) + len(p.URL) + 4*len(p.Embedding)
+}
+
+// candidateMediaError points an adapter's media refusal at the request field:
+// a candidate's media is the shared state media followed by its action media.
+func candidateMediaError(err error, cand, nState int) error {
+	var im *llm.InvalidMediaError
+	if !errors.As(err, &im) || im.Field != "" {
+		return err
+	}
+	out := *im
+	out.Field = "state_media"
+	if out.Part >= nState {
+		out.Field, out.Part = fmt.Sprintf("candidates[%d].action_media", cand), out.Part-nState
+	}
+	return &out
+}
+
 // maxRolloutConcurrency bounds parallel rollout evaluations to avoid socket starvation.
 const maxRolloutConcurrency = 16
 
@@ -739,27 +789,25 @@ func executeParallelCandidateRollouts(ctx context.Context, judge llm.Judge, roll
 	}
 	g.SetLimit(concurrency)
 
+	media := make([][]*llm.JudgeMediaPart, len(rolloutReq.Candidates))
+	checker, _ := judge.(llm.JudgeMediaChecker)
+	for i, c := range rolloutReq.Candidates {
+		if len(rolloutReq.StateMedia) > 0 || len(c.ActionMedia) > 0 {
+			media[i] = append(slices.Clip(rolloutReq.StateMedia), c.ActionMedia...)
+		}
+		if checker != nil && len(media[i]) > 0 {
+			if err := checker.CheckJudgeMedia(media[i]); err != nil {
+				return nil, candidateMediaError(err, i, len(rolloutReq.StateMedia))
+			}
+		}
+	}
+
 	for i, cand := range rolloutReq.Candidates {
 		idx := i
 		c := cand
 		g.Go(func() error {
 			candState := composeCandidateState(rolloutReq.StateJSON, c.ActionJSON, c.ActionText)
-			var candMedia []*llm.JudgeMediaPart
-			if len(rolloutReq.StateMedia) > 0 || len(c.ActionMedia) > 0 {
-				candMedia = make([]*llm.JudgeMediaPart, 0, len(rolloutReq.StateMedia)+len(c.ActionMedia))
-				candMedia = append(candMedia, rolloutReq.StateMedia...)
-				candMedia = append(candMedia, c.ActionMedia...)
-			}
-			if len(candMedia) > maxJudgeMediaParts {
-				return status.Errorf(codes.InvalidArgument, "candidate[%d] combined media parts %d exceed ceiling %d", idx, len(candMedia), maxJudgeMediaParts)
-			}
-			var candBytes int
-			for _, p := range candMedia {
-				candBytes += len(p.Data)
-			}
-			if candBytes > maxJudgeMediaBytes {
-				return status.Errorf(codes.InvalidArgument, "candidate[%d] combined media bytes %d exceed ceiling %d", idx, candBytes, maxJudgeMediaBytes)
-			}
+			candMedia := media[idx]
 			jReq := &llm.JudgeRequest{
 				StateJSON:  candState,
 				StateMedia: candMedia,
@@ -773,7 +821,7 @@ func executeParallelCandidateRollouts(ctx context.Context, judge llm.Judge, roll
 			}
 			res, err := judge.Judge(gCtx, jReq, userID, candMeta)
 			if err != nil {
-				return err
+				return candidateMediaError(err, idx, len(rolloutReq.StateMedia))
 			}
 			mu.Lock()
 			totalUsage = totalUsage.Add(res.Usage)
@@ -926,7 +974,7 @@ func evaluateRolloutsRequestFromProto(req *pb.EvaluateRolloutsRequest) (*llm.Eva
 	if state != "" && !json.Valid([]byte(state)) {
 		return nil, status.Error(codes.InvalidArgument, "bad_request: state_json is not valid JSON")
 	}
-	stateMedia, err := judgeMediaFromProto(req.GetStateMedia())
+	stateMedia, err := judgeMediaFromProto("state_media", req.GetStateMedia())
 	if err != nil {
 		return nil, err
 	}
@@ -947,9 +995,12 @@ func evaluateRolloutsRequestFromProto(req *pb.EvaluateRolloutsRequest) (*llm.Eva
 		if actJSON != "" && !json.Valid([]byte(actJSON)) {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: candidate %q action_json is not valid JSON", id)
 		}
-		actMedia, err := judgeMediaFromProto(c.GetActionMedia())
+		actMedia, err := judgeMediaFromProto(fmt.Sprintf("candidates[%d].action_media", i), c.GetActionMedia())
 		if err != nil {
-			return nil, fmt.Errorf("candidate %q: %w", id, err)
+			return nil, err
+		}
+		if err := checkCandidateMedia(i, stateMedia, actMedia); err != nil {
+			return nil, err
 		}
 		if actJSON == "" && len(actMedia) == 0 && c.GetActionText() == "" && state == "" && len(stateMedia) == 0 {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: candidate %q has no action or state", id)

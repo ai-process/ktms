@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 )
 
 // ErrJudgmentUnsupported marks an adapter with no judgment model.
@@ -101,11 +102,28 @@ type Box struct {
 // (format, size, orientation): the caller's to fix, so not a vendor failure.
 var ErrInvalidMedia = errors.New("invalid media")
 
-// InvalidMediaError says what is wrong with which part, for the caller.
-type InvalidMediaError struct{ Msg string }
+// InvalidMediaError says what is wrong with which part, for the caller. Part
+// indexes StateMedia; Field names the request field, "state_media" when empty.
+type InvalidMediaError struct {
+	Field string
+	Part  int
+	Msg   string
+}
 
-func (e *InvalidMediaError) Error() string        { return e.Msg }
+func (e *InvalidMediaError) Error() string {
+	field := e.Field
+	if field == "" {
+		field = "state_media"
+	}
+	return fmt.Sprintf("%s[%d]: %s", field, e.Part, e.Msg)
+}
 func (e *InvalidMediaError) Is(target error) bool { return target == ErrInvalidMedia }
+
+// JudgeMediaChecker is an optional Judge capability: it says whether the
+// vendor would refuse media before any call, so a batch fails before it bills.
+type JudgeMediaChecker interface {
+	CheckJudgeMedia(media []*JudgeMediaPart) error
+}
 
 // JudgeResult is one judgment call's outcome.
 type JudgeResult struct {
