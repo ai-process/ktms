@@ -1,88 +1,154 @@
 # Concepts
 
-A request states its **needs**; models declare **competencies**; everything else about a request's
-purpose travels in free-form attributes, so the proxy knows nothing about your product.
+**The problem.** Code that names models ages with them: a new model means a redeploy, a vendor
+outage means errors, and nothing stops one client from spending the month's budget in an hour.
+
+**The approach.** A request says what it *needs*, models say what they are *good at*, and Keystone
+picks an ordered chain of models for each call. On the way it checks limits, skips models that are
+failing or throttled, and records one usage event per call. Everything about your product travels
+in free-form attributes, so Keystone knows nothing about it.
+
+<p align="center"><img src="img/concepts-request.svg" alt="A request with needs and attributes is routed by a rule or by selection to a model chain, admitted against limits, called with retry, circuit breaker and vendor pauses, and answered with one usage event; a failure moves to the next model of the chain" width="860"></p>
+
+**Contents:** [Glossary](#glossary) · [Needs and competencies](#needs-and-competencies) ·
+[Limits](#limits) · [When a vendor fails](#when-a-vendor-fails) · [Usage reporting](#usage-reporting) ·
+[Restricted data](#restricted-data) · [Semantic cache and latent guardrails](#semantic-cache-and-latent-guardrails)
+
+## Glossary
+
+| Term | Meaning |
+| --- | --- |
+| **Topic, level** | A subject such as `general`, `medical` or `legal`, and how well: `basic` < `proficient` < `expert`. |
+| **Competencies** | What a model is good at: `{general: expert, medical: proficient}`. |
+| **Needs** | What a request needs: `{medical: basic}`. |
+| **Capabilities** | Technical abilities without a level: tools, vision, search, speech. |
+| **Attributes** | The call's context (`user_id`, project, task) for rules and usage. |
+| **Rule** | Matches needs and attributes, and gives an ordered model chain. |
+| **Selection** | How Keystone builds the chain itself when no rule matches. |
+| **Chain** | The models tried in order; each next one is a fallback. |
+| **Excess** | Levels a model has above the request's needs, summed over the topics. |
+| **Blended price** | `(3 × price_in + price_out) / 4` per million tokens. |
+| **Circuit breaker** | Skips a `(vendor, model)` after repeated failures until a probe succeeds. |
+| **Vendor pause** | Skips a model for a vendor key that answered `429`/`503` with `Retry-After`. |
 
 ## Needs and competencies
 
-Both are maps of a **topic** to a **level**. The operator picks the topics: lowercase words such as
-`general`, `medical` or `legal`. The levels are ordered: `basic` < `proficient` < `expert`.
+Both map a **topic** to a **level**. You pick the topics: lowercase words. Levels are ordered.
 
-- A model's **competencies** say what it is good at, e.g. `{general: expert, medical: proficient}`.
-  A model meets any need at its own level or below: `medical: proficient` serves `medical: basic`.
-- A request's **needs** say what the code needs, e.g. `{medical: basic}`. The code knows topics, not
-  models. An unknown level is `INVALID_ARGUMENT`. An unknown topic is no error: no model has it, and
-  `ExplainRoute` shows that.
-- **Capabilities** stay for technical abilities without a level: tools, vision, search.
-  **Attributes** stay the call's context (`user_id`, project, task) for usage and rules.
-- **Effort is deprecated.** `LOW`, `MEDIUM` and `HIGH` are the needs `general: basic`,
-  `proficient` and `expert`, and a request may still send them until 2.0. A model's `efforts` read as
-  `general` at the highest effort listed. Such a model keeps serving exactly the efforts it lists, so
-  a 1.6 configuration routes as before; a model with `competencies` follows the order above.
+| Rule | Example |
+| --- | --- |
+| A model meets any need at its level or below. | `medical: proficient` serves `medical: basic`. |
+| The code knows topics, not models. | A request sends `{medical: basic}`. |
+| An unknown level is an error. | `INVALID_ARGUMENT` |
+| An unknown topic is not an error. | No model has it; `ExplainRoute` shows that. |
 
-**Rules come first.** A rule matches on needs (each of its topics at least at its level) and on
-attributes. A matching rule replaces the selection with its own chain; canary weights and shadow
-traffic exist only in rules. A rule with needs takes higher needs too (`medical: basic` takes
-`medical: expert`); when no model of its chain meets such a request, the selection serves it.
+**Effort is deprecated.** `LOW`, `MEDIUM` and `HIGH` are the needs `general: basic`, `proficient`
+and `expert`, and requests may send them until 2.0. A model's `efforts` read as `general` at the
+highest effort listed, and such a model keeps serving exactly the efforts it lists, so a 1.6
+configuration routes as before.
 
-**Selection without a rule.** When no rule matches and some model declares competencies, Keystone
-picks the chain itself:
+### Rules come first
 
-1. Candidates: enabled models that meet every need and the request's capabilities, have a vendor
-   key, and that the key's and team's `allowed_models` allow. A text call skips speech, image, judge,
-   translate and embedding models.
-2. Order:
-   - placement class first (`nodes_first` or `cloud_first`); price ranks only within a class, so free
-     nodes do not take traffic from `cloud_first`;
-   - then **excess**: levels above the need, summed over the needed topics, so an expert is not
-     spent on a basic task (a model described by efforts counts at its highest effort);
-   - then the **blended price** per million tokens at the standard rate, `(3 × price_in + price_out) / 4`;
-     a translation call ranks by `price_per_million_chars` instead, as translation is billed by
-     characters; speech, images and judgments rank by their token prices;
-   - then the model id.
-3. The first three make the chain; the others are its fallbacks no more. With nothing left the call
-   gets `no_capable_model`.
+- A rule matches on needs (each of its topics at least at its level) and on attributes.
+- A matching rule replaces the selection with its own chain. Canary weights and shadow traffic
+  exist only in rules.
+- A rule with needs also takes higher needs (`medical: basic` takes `medical: expert`). When no model
+  of its chain meets such a request, the selection serves it.
 
-Configurations without competencies keep needing a catch-all rule for every effort, as in 1.6.
+### Selection without a rule
 
-**Throttling & Wait Buffer:**
-- **GCRA Rate Limiting:** Enforces requests-per-minute (`rpm`) via the Generic Cell Rate Algorithm in Redis, with configurable burst capacity (`rpm_burst`, defaulting to `rpm - 1` to preserve classic fixed-window behavior, `< 0` to disable burst). Key limits and user limits are evaluated atomically.
-- **User & Model Overrides:** Configure fine-grained limits per user and model with `SetUserRateLimit` (supports `*` wildcards for user-wide or model-wide defaults).
-- **Spend Limits:** Hard USD caps per API key and per end user (UTC day or month), reserved atomically before each call and settled to the actual cost; see [Spend limits](configuration.md#5-spend-limits-optional).
-- **Daily Token Budgets:** Limits tokens per API key (`daily_tokens_per_key`) and per end-user (`daily_tokens_per_user`, UTC day). A configurable grace margin (`budget_grace_margin`, default 5%, `< 0` to strictly disable) absorbs requests that exceed the budget on their last call without refusing them mid-stream.
-- **Inference Pool Wait Buffer:** For local node pools, requests waiting for free slots use jittered backoff polling up to `queue_timeout_ms`. Interactive requests (non-service callers) are automatically capped to 250ms to safeguard Time-To-First-Token (TTFT). Little's Law predictive admission evaluates the queue depth (KTMS's own leases plus other clients' requests waiting in the engine: what the heartbeat saw waiting beyond KTMS's leases on that node; node selection weighs the same load) and estimated duration, immediately falling back to the next model in the chain if expected wait time exceeds the timeout. A slot lease is renewed for as long as its call runs, unary or streaming, so a long generation never frees a slot the node is still using.
-- A throttled model is skipped in the fallback chain; if none of the chain is available the caller gets `RESOURCE_EXHAUSTED`.
+When no rule matches and some model declares competencies, Keystone builds the chain:
 
-**Upstream Circuit Breaker:**
-- Monitors consecutive upstream failures (5xx server errors, network connection drops, connect/TLS handshake timeouts, and upstream timeouts via `UPSTREAM_REQUEST_TIMEOUT`) per `(vendor, model)`. Caller client aborts and overall client deadline cancellations do not trip the circuit breaker, but vendor stalls beyond `UPSTREAM_REQUEST_TIMEOUT` (total duration for unary/media, per-chunk idle watchdog for streaming) reliably trip it and trigger immediate fallback to the next candidate model.
-- When consecutive failures reach `CIRCUIT_BREAKER_FAIL_THRESHOLD` (default 5), the circuit trips to `OPEN`.
-- Requests skip degraded upstream models immediately, without a network round trip.
-- After `CIRCUIT_BREAKER_COOLDOWN` (default 30s), transitions to `HALF_OPEN` and admits a single probe request. Success restores `CLOSED`; failure re-opens the circuit.
-- If all models in the chain have open circuits, the caller receives `UNAVAILABLE vendors_unavailable`.
+1. **Candidates:** enabled models that meet every need and the request's capabilities, have a vendor
+   key, and are allowed by the key's and the team's `allowed_models`. A text call skips speech,
+   image, judge, translate and embedding models.
+2. **Order:**
 
-**Vendor back-off (`Retry-After`):**
-- Vendor SDKs run with their built-in retries off, so one router attempt is exactly one vendor call. The router retries a `429`, `5xx` or transport failure (connection reset, EOF on a reused connection) once on the same model before falling back, for text, media and streaming calls (a stream only until its first chunk).
-- The vendor's wait is read from `Retry-After` or `retry-after-ms` (OpenAI-compatible APIs, Azure, Anthropic) and from `google.rpc.RetryInfo` (Gemini). Bedrock throttling carries no wait, so it is retried and falls back as before.
-- A wait of up to 1s is honoured in place before the same-model retry. A longer one on a `429` or `503` pauses the model for that client's vendor credential, up to `VENDOR_COOLDOWN_MAX`, and the chain moves on. Clients sharing one vendor key share the pause; other credentials are unaffected. With pauses off, the ordinary same-model retry applies. Shadow traffic respects pauses but never starts one.
-- Paused models are skipped without a network round trip (`ktms_fallbacks_total{reason="cooldown"}`; pauses started are counted in `ktms_vendor_cooldowns_total`). Pauses live in each replica's memory, like circuit breakers, so each replica learns of a pause from its own first rejected call.
-- If every model in the chain is paused, the caller receives `UNAVAILABLE vendors_unavailable` with a gRPC `RetryInfo` for the soonest pause to end; the OpenAI-compatible HTTP API returns it as a `Retry-After` header. When any model failed for another reason, no wait is promised: it may serve the next request.
-- Local node models are never paused: the node pool has its own admission control.
+   | By | Why |
+   | --- | --- |
+   | Placement class (`nodes_first` or `cloud_first`) | Price ranks only within a class, so free nodes do not take traffic from `cloud_first`. |
+   | Excess, lowest first | An expert is not spent on a basic task. A model described by efforts counts at its highest effort. |
+   | Blended price, lowest first | Translation ranks by `price_per_million_chars`; speech, images and judgments by their token prices. |
+   | Model id | A stable tie-break. |
 
-**Usage reporting.** When `USAGE_COLLECTOR_HOST` is set, every call emits an event (vendor,
-model, tokens, duration, status, `action_id`, rule name and your attributes as metadata; KTMS adds
-`effort`, the general need as `low|medium|high`, and from 1.7 `needs`, as `topic=level,…` with
-topics sorted, e.g. `general=basic,medical=proficient`) to a
-gRPC service implementing [`usage-proto/usage/v1/usage.proto`](../usage-proto/usage/v1/usage.proto).
-Events are attributed to the project named by the `usage_project` attribute, falling back to the
-API key's name. Any service implementing `RecordUsageEvent(s)` works as a sink. When
-light-tokenmeter has authentication on, give KTMS a token with the `write` scope in
-`USAGE_COLLECTOR_TOKEN`; a refused token is logged as an error and events are held and retried.
+3. **Chain:** the first three. With nothing left the call gets `no_capable_model`.
+
+Example: a request needs `{medical: basic}`, placement `cloud_first`.
+
+| Model | Competencies | Excess | Blended price | Place |
+| --- | --- | --- | --- | --- |
+| `small-med` | `medical: basic` | 0 | $0.40 | 1 |
+| `mid` | `general: proficient, medical: proficient` | 1 | $1.10 | 2 |
+| `big` | `general: expert, medical: expert` | 2 | $6.00 | 3 |
+| `general-only` | `general: expert` | — | — | not a candidate |
+
+Configurations without competencies still need a catch-all rule for every effort, as in 1.6.
+
+## Limits
+
+| Limit | Scope | Set with | When it is hit |
+| --- | --- | --- | --- |
+| Requests per minute of a model | per client key and model; per user and model | model `rpm`; `SetUserRateLimit` (`*` for defaults) | The model is skipped; the chain moves on. |
+| Requests and tokens per minute of a key | per client key, over all models | key `rpm_limit`, `tpm_limit` | `RESOURCE_EXHAUSTED throttled:key_rpm` / `throttled:key_tpm` with `RetryInfo` |
+| Daily tokens of a model | per client key, per user | model `daily_tokens_per_key`, `daily_tokens_per_user` | The model is skipped. |
+| Spend in USD | per key, user (day or month), team (month) | [Spend limits](configuration.md#5-spend-limits-optional) | The model is skipped; a cheaper one may still fit. |
+| Node slots | per node | the node's slots and `queue_timeout_ms` | The next model in the chain. |
+
+- **Rate limits** use GCRA in Redis with a burst (`rpm_burst`, default `rpm - 1`, which behaves like
+  a fixed window; `< 0` turns burst off). Key and user limits are checked atomically.
+- **Daily budgets** reset at UTC midnight. `budget_grace_margin` (default 5%, `< 0` off) lets the
+  last call over the budget finish instead of failing mid-stream.
+- **Spend limits** reserve the call's worst case atomically before it runs and settle to the real
+  cost after.
+- **Node slots.** A call waiting for a free slot polls with jitter up to `queue_timeout_ms`;
+  interactive calls (not service keys) wait at most 250 ms to protect time to first token. Keystone
+  predicts the wait from the queue (its own leases plus what the engine reports waiting) and the
+  expected duration, and moves to the next model at once when the wait would exceed the timeout. A
+  slot lease is renewed while the call runs, so a long generation never frees a slot still in use.
+- When no model of the chain is available, the caller gets `RESOURCE_EXHAUSTED`.
+
+## When a vendor fails
+
+<p align="center"><img src="img/concepts-breaker.svg" alt="Circuit breaker states: CLOSED lets calls through; five failures in a row open it; after 30 seconds it is HALF_OPEN and lets one probe through; a successful probe closes it, a failed one opens it again" width="700"></p>
+
+| Situation | What Keystone does |
+| --- | --- |
+| `429`, `5xx` or a transport error (reset, EOF on a reused connection) | Retries once on the same model, then the next model. A stream retries only before its first chunk. Vendor SDK retries are off, so one attempt is one vendor call. |
+| The vendor says to wait ≤ 1 s (`Retry-After`, `retry-after-ms`, Gemini `RetryInfo`) | Waits in place, then the same-model retry. |
+| It says to wait longer, on `429` or `503` | Pauses the model for that vendor key, up to `VENDOR_COOLDOWN_MAX`, and moves on. Clients sharing the vendor key share the pause. |
+| `CIRCUIT_BREAKER_FAIL_THRESHOLD` (5) failures in a row of a `(vendor, model)` | Opens the circuit: the model is skipped with no network call. After `CIRCUIT_BREAKER_COOLDOWN` (30 s) one probe goes through. |
+| The vendor stalls past `UPSTREAM_REQUEST_TIMEOUT` | Counts as a failure (the whole call for unary and media, the gap between chunks for streams) and moves on. |
+| Every model of the chain is open or paused | `UNAVAILABLE vendors_unavailable`. When all were paused, `RetryInfo` (HTTP `Retry-After`) says when the soonest pause ends. |
+
+- Failures that count for the breaker: 5xx, dropped connections, connect and TLS timeouts, and
+  upstream timeouts. A caller that hangs up or runs out of its own deadline does not trip it.
+- Bedrock throttling carries no wait: it is retried and falls back as usual.
+- Pauses and breakers live in each replica's memory, so a replica learns of a pause from its own
+  first rejected call. Metrics: `ktms_fallbacks_total{reason="cooldown"}`, `ktms_vendor_cooldowns_total`.
+- Shadow traffic respects pauses but never starts one. Local node models are never paused: the
+  node pool has its own admission.
+
+## Usage reporting
+
+With `USAGE_COLLECTOR_HOST` set, every call sends one event to a gRPC service that implements
+[`usage-proto/usage/v1/usage.proto`](../usage-proto/usage/v1/usage.proto), such as light-tokenmeter.
+
+| Field | Content |
+| --- | --- |
+| vendor, model, tokens, duration, status | What happened. |
+| `action_id` | Your label for the call site. |
+| project | The `usage_project` attribute, or the API key's name. |
+| meta | The rule, your attributes, `effort` (the general need as `low`, `medium` or `high`) and from 1.7 `needs` as `topic=level,…` sorted, e.g. `general=basic,medical=proficient`. |
+
+With light-tokenmeter's authentication on, give Keystone a `write` token in
+`USAGE_COLLECTOR_TOKEN`. A refused token is logged as an error, and events are held and retried.
 
 ## Restricted data
 
-`data_classification: restricted` keeps a call on your self-hosted nodes: no cloud vendor sees it,
-and when the nodes fail there is no fallback to the cloud. Set it on a request, or on a key's policy
-or a team, where it holds for every call of the key whatever the request says:
+`data_classification: restricted` keeps a call on your own nodes: no cloud vendor sees it, and when
+the nodes fail there is no fallback to the cloud.
+
+**Where to set it.** On a key or a team it holds for every call, whatever the request says:
 
 ```bash
 ktms keys mint scribe --team clinic/notes --data-classification restricted
@@ -97,52 +163,49 @@ organizations:
         data_classification: restricted   # every key of the team
 ```
 
-`SetAPIKeyPolicy` and `UpdateTeam` replace the rest of the policy or team, but keep the current
-`data_classification` when the field is empty: a client that predates it, such as an older
-console, cannot lift a restriction by leaving it out. `unrestricted` lifts it, and the
-configuration file does that when the field is removed. `ktms keys list` shows a key's
-restriction, or its team's as `restricted (team)`.
+For one call: `data_classification: restricted` in `GenerateTextRequest` or on
+`/v1/chat/completions`, or the `X-KTMS-Data-Classification: restricted` header (gRPC metadata
+`x-ktms-data-classification`), which also covers embeddings, judgments, speech and images.
 
-For a single call, set `data_classification: restricted` in the request (`GenerateTextRequest`,
-`data_classification` on `/v1/chat/completions`), or send the `X-KTMS-Data-Classification:
-restricted` header over HTTP or `x-ktms-data-classification` gRPC metadata, which also covers
-embeddings, judgments, speech and images. A request can restrict a call, not lift its key's or
-team's restriction; a value other than `restricted` or empty is `INVALID_ARGUMENT`. A restricted call:
+- A request can add the restriction, not lift a key's or team's. A value other than `restricted`
+  or empty is `INVALID_ARGUMENT`.
+- `SetAPIKeyPolicy` and `UpdateTeam` keep the current value when the field is empty, so an older
+  client cannot lift it by leaving it out. `unrestricted` lifts it, and so does removing the field
+  from the configuration file.
+- `ktms keys list` shows a key's restriction, or its team's as `restricted (team)`.
 
-- routes as `placement: nodes_only`: the chain keeps the node models (`VendorLocal`,
-  `VendorOllama`) and is `FAILED_PRECONDITION no_capable_model` without one; when every node fails
-  it is `UNAVAILABLE vendors_unavailable`. `nodes_first` and `cloud_first` become `nodes_only`,
-  `cloud_only` is `INVALID_ARGUMENT`, and a `model_override` of a cloud model is
-  `FAILED_PRECONDITION`.
-- asks the auto-effort judge and the shadow evaluation judge only on nodes, and falls back to the
-  default effort, or skips the evaluation, when no node can judge.
-- skips the response cache, so its answer cannot be served to another key.
-- for embeddings, judgments, speech and images is `FAILED_PRECONDITION` without a node model;
-  batches go to vendors' batch APIs and need a node model too, or are refused.
-- carries `data_classification: restricted` in its usage event's meta; callers cannot set that
-  attribute themselves.
+**What a restricted call does.**
 
-Nodes are models of vendor `local` (registered `ktms-node`s) and `ollama`, an Ollama endpoint you
-configure: point `ollama` models only at servers you run. Restricted data also does not cover what
-is sent outside the model chain: `LATENT_ENCODER_URL` (latent guardrails and the semantic cache)
-and MCP servers. Point the encoder at your own infrastructure.
+| Area | Behaviour |
+| --- | --- |
+| Routing | As `placement: nodes_only`: only node models (`local`, `ollama`). None in the chain: `FAILED_PRECONDITION no_capable_model`; all fail: `UNAVAILABLE vendors_unavailable`. `cloud_only` is `INVALID_ARGUMENT`; a `model_override` of a cloud model is `FAILED_PRECONDITION`. |
+| Judges | The auto-effort and shadow judges run only on nodes; without one, the default effort is used or the evaluation skipped. |
+| Cache | Skipped, so its answer is never served to another key. |
+| Embeddings, judgments, speech, images | `FAILED_PRECONDITION` without a node model. |
+| Batches | Need a node model, or are refused. |
+| Usage | The event's meta carries `data_classification: restricted`; callers cannot set it themselves. |
+
+Nodes are models of vendor `local` (registered `ktms-node`s) and `ollama` (an endpoint you
+configure: point it only at servers you run). The restriction does not cover what is sent outside
+the model chain: `LATENT_ENCODER_URL` (latent guardrails and the semantic cache) and MCP servers.
+Point the encoder at your own infrastructure.
 
 ## Semantic cache and latent guardrails
 
-Both project text into a representation space with the encoder at `LATENT_ENCODER_URL` (a JEPA
-or any embedding model behind an OpenAI-compatible `/v1/embeddings`), falling back to a local,
-lexical hash encoder that folds case, homoglyphs, zero-width and spaced-out letters.
+Both turn text into vectors with the encoder at `LATENT_ENCODER_URL` (a JEPA or any embedding
+model behind an OpenAI-compatible `/v1/embeddings`). Without it, or when it fails, a local lexical
+hash encoder is used; it folds case, homoglyphs, zero-width and spaced-out letters.
 
-- **Semantic cache.** After an exact-cache miss, a request with `enable_cache` compares its final
-  user message (or `request_instruction` when there are no messages) with earlier ones whose
-  everything else — key, config version, system prompt, history, tools, effort, attributes and
-  every number in the message — matches exactly. A hit at `SEMANTIC_CACHE_SIMILARITY_THRESHOLD`
-  returns `cached: true` and usage metadata `cache_match=semantic` with `cache_similarity`.
-  Prompts containing PII and responses with tool calls are never cached; with guardrails on, the
-  message is screened before a near match is served. Vectors and responses are encrypted at rest.
-- **Latent guardrails.** Each prompt is scored against category centroids; the nearest one at
-  `GUARDRAILS_LATENT_THRESHOLD` blocks (or logs) with `guardrail_violation: latent <category>
-  intent detected`. An unreachable encoder fails open after the regex checks have run.
-- **Overhead.** The local encoder runs in-process; measure screening and semantic lookup cost on
-  your hardware with `go test -bench . ./internal/latent ./internal/guardrails ./internal/cache`.
-  A remote encoder adds its own latency, bounded by `LATENT_ENCODER_TIMEOUT`.
+| Feature | What it does | Settings |
+| --- | --- | --- |
+| **Semantic cache** | After an exact-cache miss, an `enable_cache` request whose final user message (or `request_instruction`) is close to an earlier one gets its answer: `cached: true`, usage meta `cache_match=semantic` and `cache_similarity`. | `SEMANTIC_CACHE_*` |
+| **Latent guardrails** | Scores each prompt against category centroids (injection, jailbreak, prompt leak, exfiltration); the nearest one past the threshold blocks or logs with `guardrail_violation: latent <category> intent detected`. | `GUARDRAILS_LATENT_*` |
+
+- **What must match for a cache hit:** everything except the wording of that last message — key,
+  config version, system prompt, history, tools, effort, attributes and every number in the message.
+- **Never cached:** prompts with PII and responses with tool calls. With guardrails on, the message
+  is screened before a near match is served. Vectors and responses are encrypted at rest.
+- **An unreachable encoder** fails open after the regex checks have run.
+- **Cost:** the local encoder runs in-process; measure it with
+  `go test -bench . ./internal/latent ./internal/guardrails ./internal/cache`. A remote encoder adds
+  its own latency, bounded by `LATENT_ENCODER_TIMEOUT`.

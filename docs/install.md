@@ -1,9 +1,29 @@
 # Installation and footprint
 
+**The problem.** A gateway sits in front of every LLM call, so it must be cheap to run, quick to
+start, and easy to put next to your services: Docker, Kubernetes or a plain binary.
+
+**The approach.** Keystone is one Go process. It needs Postgres, and Redis for limits and caches.
+Replicas share nothing else, so you run as many as you like behind a load balancer that ends TLS.
+
+<p align="center"><img src="img/install-deployment.svg" alt="Services, node daemons and ktms-admin reach Keystone replicas through a TLS load balancer; the replicas use Postgres, Redis, light-tokenmeter and the vendors; Prometheus scrapes them on the internal port 9091" width="860"></p>
+
+**Contents:** [Glossary](#glossary) · [Resource footprint](#resource-footprint) ·
+[Docker image](#docker-image) · [Helm chart](#helm-chart-kubernetes) ·
+[From source](#building-from-source) · [Production checklist](#production-checklist)
+
+## Glossary
+
+| Term | Meaning |
+| --- | --- |
+| **Keyring** | `KTMS_ENCRYPTION_KEYS`, the versioned AES keys that encrypt vendor keys in Postgres. Lose it and the vendor keys are lost. |
+| **Bootstrap admin key** | `BOOTSTRAP_ADMIN_KEY`, an implicit admin key for the first setup. Unset it once real keys exist. |
+| **Replica** | One Keystone process. Replicas are stateless; Postgres and Redis hold what they share. |
+| **Slim, audio image** | `coyl/ktms:latest` without ffmpeg, and `coyl/ktms:audio` with it for Gemini speech. |
+
 ## Resource footprint
 
-KTMS is a single Go process with no interpreter. It adds well under a millisecond per request and
-needs tens of megabytes where Python gateways such as LiteLLM Proxy need gigabytes.
+KTMS adds well under a millisecond per request and needs tens of megabytes of memory.
 
 | Metric | KTMS (Go) | LiteLLM Proxy (Python, 4 workers) | Difference |
 |---|---|---|---|
@@ -17,12 +37,14 @@ needs tens of megabytes where Python gateways such as LiteLLM Proxy need gigabyt
 | CPU time per 1,000 requests | ~0.63 s | ~9.7 s | ~15x less |
 | Time to readiness (container start → first proxied answer) | ~170 ms | ~32 s | ~190x faster |
 
-The same stand also measured Bifrost, Portkey, Kong AI Gateway, Apache APISIX, Higress, Envoy AI
-Gateway, agentgateway, New API and Plano. KTMS is in the same class as the compiled and
-Nginx/Envoy-based gateways: all of them add under 1.3 ms at p50 and sustain 4,000 RPS. Among them,
-only agentgateway matches KTMS's memory footprint, while agentgateway, APISIX and Kong add less
-latency (0.25–0.35 ms) and use less CPU per request. The Node.js and Python gateways (Portkey,
-LiteLLM) saturate at 500 and 250 RPS.
+The same stand measured Bifrost, Portkey, Kong AI Gateway, Apache APISIX, Higress, Envoy AI Gateway,
+agentgateway, New API and Plano:
+
+- KTMS is in the class of the compiled and Nginx/Envoy-based gateways: all add under 1.3 ms at p50
+  and sustain 4,000 RPS.
+- Among them, only agentgateway matches KTMS's memory; agentgateway, APISIX and Kong add less
+  latency (0.25–0.35 ms) and use less CPU per request.
+- The Node.js and Python gateways (Portkey, LiteLLM) saturate at 500 and 250 RPS.
 
 *Measured in October 2026 on Google Cloud: each gateway alone on a dedicated `c3-standard-4` (4 vCPU,
 16 GB, x86_64), k6 on a second VM, and a mock OpenAI upstream (0 ms for latency, 10 ms for
@@ -34,29 +56,27 @@ except LiteLLM p99. The stand, every gateway config and the run scripts are in [
 
 ### Docker image
 
-Release images are published to Docker Hub for `linux/amd64` and `linux/arm64` in two variants:
+Images for `linux/amd64` and `linux/arm64` on Docker Hub:
 
-- **`coyl/ktms:latest`** (also tagged **`:slim`** or pinned `:<version>` / `:<version>-slim`): default lightweight image (~67 MB uncompressed, ~21 MB download). A clean Alpine container without `ffmpeg`, optimized for text generation, chat, reasoning, embeddings, and OpenAI TTS.
-- **`coyl/ktms:audio`** (or pinned `:<version>-audio`): extended image (~195 MB uncompressed, ~69 MB download) with `ffmpeg` installed for Gemini speech synthesis (transcoding raw PCM into OGG/Opus voice messages).
+| Tag | Size (uncompressed / pull) | For |
+| --- | --- | --- |
+| `coyl/ktms:latest`, `:slim`, `:<version>`, `:<version>-slim` | ~67 MB / ~21 MB | Everything except Gemini speech: text, chat, embeddings, OpenAI TTS. |
+| `coyl/ktms:audio`, `:<version>-audio` | ~195 MB / ~69 MB | Adds `ffmpeg` for Gemini speech synthesis (PCM to OGG/Opus). |
 
-```bash
-docker pull coyl/ktms:latest      # default lightweight image (~67 MB)
-docker pull coyl/ktms:audio       # with ffmpeg for Gemini speech synthesis (~195 MB)
-```
+- `X.Y` (and `X.Y-slim`, `X.Y-audio`) follows the newest release of that line; `latest`, `slim`
+  and `audio` follow the newest release of all. The [changelog](../CHANGELOG.md) lists each release.
+- Gemini TTS on the slim image fails with gRPC `UNIMPLEMENTED` / HTTP 501 `ffmpeg_missing`. OpenAI
+  TTS produces Opus itself and works on both.
+- The image runs as `appuser` (UID 10001), exposes `8080` (HTTP) and `9090` (gRPC), and takes all
+  settings from environment variables.
+- From 1.0.0, images are signed with cosign and carry an SBOM and provenance; `checksums.txt` is
+  signed too. See [Verifying a Release](../SECURITY.md#verifying-a-release).
 
-`X.Y` (and `X.Y-slim`, `X.Y-audio`) follows the newest release of its line; `latest`, `slim` and
-`audio` follow the newest release of all. The [changelog](../CHANGELOG.md) lists what each release
-changed.
-
-If Gemini TTS is requested without ffmpeg available (e.g. on the default slim image), the proxy returns gRPC `Codes.Unimplemented` / HTTP 501 Not Implemented: `ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/ktms:audio' container image`. OpenAI TTS produces native Opus directly and works on both variants without ffmpeg.
-
-The image runs as a non-root user (`appuser`, UID 10001), exposes `8080` (HTTP) and `9090` (gRPC), and is configured entirely through environment variables. From 1.0.0, images are signed with cosign and carry an SBOM and provenance, and the release's `checksums.txt` is signed: see [Verifying a Release](../SECURITY.md#verifying-a-release).
-
-You need a Postgres database (required; 16 is what the compose file uses) and a Redis (optional, see below;
-6.2 or newer for the local node pool's usage log):
+**Run it.** Needs Postgres (16 in the compose file) and, for limits, Redis (6.2 or newer for the
+node pool's usage log):
 
 ```bash
-# generate the at-rest encryption keyring once and keep it safe
+# generate the keyring once and keep it safe, apart from database backups
 export KTMS_ENCRYPTION_KEYS="1:$(head -c 32 /dev/urandom | base64)"
 export BOOTSTRAP_ADMIN_KEY="$(head -c 24 /dev/urandom | base64 | tr -d '/+=')"
 
@@ -69,7 +89,7 @@ docker run -d --name ktms \
   coyl/ktms:latest
 ```
 
-A minimal Compose service for your own stack:
+A Compose service for your own stack:
 
 ```yaml
 services:
@@ -85,24 +105,29 @@ services:
     depends_on: [db, redis]
 ```
 
-On Kubernetes, point the liveness probe at `GET :8080/healthz` and the readiness probe
-at `GET :8080/readyz` (checks the database). Run as many replicas as you like; they share
-Postgres and Redis and pick up configuration changes within `ROUTING_RELOAD_SECONDS`.
+On Kubernetes without the chart:
+
+| Probe | Endpoint |
+| --- | --- |
+| Liveness | `GET :8080/healthz` |
+| Readiness | `GET :8080/readyz` (checks the database) |
+
+Replicas pick up configuration changes within `ROUTING_RELOAD_SECONDS`.
 
 ### Helm chart (Kubernetes)
 
-An official Helm v3 chart is published with every release at `oci://ghcr.io/ai-process/charts/ktms`
-(source in [`deploy/helm/ktms`](../deploy/helm/ktms)). The chart version is the release version, and
-it runs the image of the same version:
+Published with every release at `oci://ghcr.io/ai-process/charts/ktms` (source in
+[`deploy/helm/ktms`](../deploy/helm/ktms)). The chart version is the release version and runs the
+image of that version.
 
 ```bash
-# 1. Create a secret with your database URL and encryption keys
+# 1. a secret with the database URL and the keys
 kubectl create secret generic ktms-secrets \
   --from-literal=DATABASE_URL='postgres://ktms:pass@db:5432/ktms?sslmode=require' \
   --from-literal=KTMS_ENCRYPTION_KEYS="1:$(head -c 32 /dev/urandom | base64)" \
   --from-literal=BOOTSTRAP_ADMIN_KEY="$(head -c 24 /dev/urandom | base64 | tr -d '/+=')"
 
-# 2. Install the release
+# 2. the release
 helm install ktms oci://ghcr.io/ai-process/charts/ktms --version 1.6.1 \
   --set secrets.existingSecret=ktms-secrets \
   --set ingress.enabled=true \
@@ -111,11 +136,13 @@ helm install ktms oci://ghcr.io/ai-process/charts/ktms --version 1.6.1 \
   --set "ingress.hosts[0].paths[0].pathType=Prefix"
 ```
 
-The chart supports non-root security context (`appuser:10001`), HorizontalPodAutoscaler, Prometheus Operator `ServiceMonitor`, and separate gRPC Ingress configuration. See [`deploy/helm/ktms/README.md`](../deploy/helm/ktms/README.md) for full configuration parameters.
+The chart has a non-root security context (`appuser:10001`), a HorizontalPodAutoscaler, a
+Prometheus Operator `ServiceMonitor` and a separate gRPC Ingress. All values:
+[`deploy/helm/ktms/README.md`](../deploy/helm/ktms/README.md).
 
 ### Building from source
 
-Requires Go 1.26+ (and `ffmpeg` on `PATH` if you use speech).
+Requires Go 1.26+ (and `ffmpeg` on `PATH` for Gemini speech).
 
 ```bash
 make build                       # → bin/ktms-server and bin/ktms-node
@@ -124,38 +151,36 @@ export KTMS_ENCRYPTION_KEYS="1:$(head -c 32 /dev/urandom | base64)"
 ./bin/ktms-server
 ```
 
-Or build the image yourself: `docker build -t ktms .`
+Or build the image: `docker build -t ktms .`
 
 ### Production checklist
 
-- **TLS.** The server speaks plaintext gRPC. Terminate TLS in front of it (Envoy, nginx
-  with `grpc_pass`, a service mesh, a cloud load balancer) or keep it on a private network.
-  Node daemons that reach the proxy through that TLS endpoint run with `--tls`.
-- **Back up the encryption keyring**, apart from the database: without `KTMS_ENCRYPTION_KEYS` the
-  stored vendor keys are unreadable. See [Backups](operations.md#backups-and-the-encryption-keyring).
-- **Mint real keys, then unset `BOOTSTRAP_ADMIN_KEY`.** It is accepted as an implicit admin key.
-- **Run Redis if you want limits.** With `REDIS_ADDR` empty, RPM, token budgets and spend
-  limits are **not enforced** (the proxy fails open by design, and does the same if Redis
-  errors; set `SPEND_LIMITS_FAIL_MODE=closed` to refuse spend-limited calls instead).
-- **Give each client its own API key** (and its own vendor credentials), so spend, models
-  and revocation are per client.
-- **Mind your Postgres connection count.** Each replica holds up to `DB_MAX_CONNS`
-  (default 25) connections.
-- **Back up Postgres.** All configuration lives there; see [Backups](operations.md#backups-and-the-encryption-keyring).
-- **Keep internal ports internal.** Expose gRPC (`:9090`, clients and node daemons) and HTTP
-  (`:8080`). Metrics (`:9091`) belong on the cluster network. `/healthz` and `/readyz` share `:8080`
-  with the API, and `/readyz` reports database state, so block both paths at a public ingress.
-- **Network policies.** Ingress: clients, node daemons, the console, Prometheus (`:9091`) and the
-  kubelet probes. Egress: the vendors, Postgres, Redis, the collector, the nodes, and what you
-  configured (`OTEL_EXPORTER_OTLP_ENDPOINT`, `SENTRY_DSN`, `LATENT_ENCODER_URL`).
-- **TLS to dependencies.** Use `sslmode=require` for Postgres and `USAGE_COLLECTOR_TLS` for the
-  collector. The Redis client has no TLS: keep Redis on a private network with `REDIS_PASSWORD`.
-- **Least-privilege keys.** `generate` for clients; `admin:read` for dashboards, assistants and
-  anything that only looks; `admin` only for the console and operators.
-- **Spend limits on every client key** ([Spend limits](configuration.md#5-spend-limits-optional)).
-- **Secrets.** Keep `KTMS_ENCRYPTION_KEYS`, `DATABASE_URL` and `USAGE_COLLECTOR_TOKEN` in a secret
-  manager; the collector token needs only light-tokenmeter's `write` scope. Rotate the keyring
-  with [Rotating the encryption key](configuration.md#rotating-the-encryption-key).
-- **Nodes.** Leave `NODE_ALLOW_LOCALHOST_ENDPOINTS=false` outside development.
-- **Alerts.** Wire up the [suggested alerts](operations.md#metrics-and-alerts); Redis and the collector fail
-  open, so without them a dead limiter or lost accounting goes unnoticed.
+**Network**
+
+| Do | Why |
+| --- | --- |
+| End TLS in front of Keystone (Envoy, nginx `grpc_pass`, a mesh, a cloud load balancer), or keep it on a private network. Node daemons behind that TLS run with `--tls`. | The server speaks plaintext gRPC. |
+| Expose gRPC `:9090` and HTTP `:8080`. Keep metrics `:9091` on the cluster network. Block `/healthz` and `/readyz` at a public ingress. | `/readyz` reports database state, and the probes share `:8080` with the API. |
+| Network policies. Ingress: clients, node daemons, the console, Prometheus, kubelet probes. Egress: vendors, Postgres, Redis, the collector, the nodes, and `OTEL_EXPORTER_OTLP_ENDPOINT`, `SENTRY_DSN`, `LATENT_ENCODER_URL` if set. | Least access. |
+| `sslmode=require` for Postgres, `USAGE_COLLECTOR_TLS` for the collector. Keep Redis private with `REDIS_PASSWORD`. | The Redis client has no TLS. |
+| Leave `NODE_ALLOW_LOCALHOST_ENDPOINTS=false` outside development. | Otherwise a node may register a loopback or link-local address. |
+
+**Keys and secrets**
+
+| Do | Why |
+| --- | --- |
+| Back up the keyring apart from the database. See [Backups](operations.md#backups-and-the-encryption-keyring). | Without `KTMS_ENCRYPTION_KEYS` the stored vendor keys are unreadable. |
+| Mint real keys, then unset `BOOTSTRAP_ADMIN_KEY`. | It is accepted as an admin key. |
+| One client key, and its own vendor credentials, per client. | Spend, models and revocation are per key. |
+| Least privilege: `generate` for clients, `admin:read` for dashboards and assistants, `admin` only for the console and operators. | A leaked key does less. |
+| Keep `KTMS_ENCRYPTION_KEYS`, `DATABASE_URL` and `USAGE_COLLECTOR_TOKEN` (light-tokenmeter's `write` scope only) in a secret manager. Rotate the keyring as in [Rotating the encryption key](configuration.md#rotating-the-encryption-key). | |
+
+**Money and reliability**
+
+| Do | Why |
+| --- | --- |
+| Run Redis if you want limits. | Without `REDIS_ADDR`, RPM, token budgets and spend limits are **not enforced**; on Redis errors they fail open. `SPEND_LIMITS_FAIL_MODE=closed` refuses spend-limited calls instead. |
+| A [spend limit](configuration.md#5-spend-limits-optional) on every client key. | Caps what a leaked key or a runaway client can spend. |
+| Fit replicas × `DB_MAX_CONNS` (25) under Postgres's `max_connections`. | Each replica holds up to that many connections. |
+| Back up Postgres. See [Backups](operations.md#backups-and-the-encryption-keyring). | All configuration lives there. |
+| Wire up the [suggested alerts](operations.md#metrics-and-alerts). | Redis and the collector fail open: without alerts a dead limiter or lost accounting goes unnoticed. |
