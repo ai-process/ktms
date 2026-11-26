@@ -526,7 +526,7 @@ OUT=$(NODE_KEY=ktms_node_env run_install $ARGS)
 eq "schedule: old agent installs without one, NODE_KEY set or not" 0 "$?"
 hasnt "schedule: old agent gets no --schedule-file" "--schedule-file" "$(cat "$W/svc/ktms-node.service")"
 hasnt "stats: old agent gets no --stats-dir" "--stats-dir" "$(cat "$W/svc/ktms-node.service")"
-has "stats: old agent's status says so" "Stats:   needs a newer node agent" "$OUT"
+has "stats: old daemon's status says so" "Stats:   needs a newer node daemon" "$OUT"
 make_agent 0.11.0 never_registers linux amd64
 OUT=$(run_install $ARGS --version v0.11.0)
 has "schedule: rollback announced" "restoring the previous one" "$OUT"

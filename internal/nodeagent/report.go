@@ -24,8 +24,8 @@ type ReportRow struct {
 	SpanMs       int64   `json:"span_ms"` // the period, up to now
 	BusyShare    float64 `json:"busy"`    // BusyMs / SpanMs
 	CooldownMs   int64   `json:"cooldown_ms"`
-	PausedShare  float64 `json:"paused"`      // share of the agent's samples at 0%; -1 = no samples
-	NoDataMin    int     `json:"no_data_min"` // minutes without a sample: the agent was not running
+	PausedShare  float64 `json:"paused"`      // share of the daemon's samples at 0%; -1 = no samples
+	NoDataMin    int     `json:"no_data_min"` // minutes without a sample: the daemon was not running
 	Samples      int     `json:"samples"`
 	TTFTp50Ms    int64   `json:"ttft_p50_ms,omitempty"`
 	TTFTp95Ms    int64   `json:"ttft_p95_ms,omitempty"`
@@ -169,7 +169,7 @@ func summarize(key string, reqs, busyReqs []RequestRecord, samples []Sample, fro
 	return row
 }
 
-// noData is the time without the agent's minute samples: stretches over two
+// noData is the time without the daemon's minute samples: stretches over two
 // minutes between samples, or before the first and after the last.
 func noData(samples []Sample, from, to time.Time) time.Duration {
 	if len(samples) == 0 {
@@ -287,7 +287,7 @@ func WriteReport(w io.Writer, rep *Report, format string) error {
 			fmt.Fprintf(w, "\nMissing: the proxy no longer had requests from %s to %s.\n", fmtTime(g.From), fmtTime(g.Until))
 		}
 		if rep.Total.NoDataMin > 0 && rep.By != "model" {
-			fmt.Fprintf(w, "\nNo data: the agent was not running for %s of this period; requests then may still be listed.\n", humanDur(int64(rep.Total.NoDataMin)*60000))
+			fmt.Fprintf(w, "\nNo data: the daemon was not running for %s of this period; requests then may still be listed.\n", humanDur(int64(rep.Total.NoDataMin)*60000))
 		}
 		return nil
 	}

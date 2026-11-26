@@ -38,7 +38,7 @@ type Prefs struct {
 }
 
 // Web is the settings window: a page on 127.0.0.1 that only a browser holding
-// a one-time ticket opens. It relays the agent's control API to the page.
+// a one-time ticket opens. It relays the daemon's control API to the page.
 type Web struct {
 	socket    string
 	prefsFile string
@@ -188,7 +188,7 @@ func (w *Web) handleIndex(rw http.ResponseWriter, _ *http.Request) {
 	_, _ = rw.Write(page)
 }
 
-// agentProxy relays /api/v1/... to the agent's socket as /v1/...; event
+// agentProxy relays /api/v1/... to the daemon's socket as /v1/...; event
 // streams flush as they come.
 func (w *Web) agentProxy() http.Handler {
 	tr := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -208,7 +208,7 @@ func (w *Web) agentProxy() http.Handler {
 		ErrorHandler: func(rw http.ResponseWriter, _ *http.Request, err error) {
 			rw.Header().Set("Content-Type", "application/json")
 			rw.WriteHeader(http.StatusBadGateway)
-			_ = json.NewEncoder(rw).Encode(nodeagent.ControlError{Error: "the node agent does not answer: " + err.Error()})
+			_ = json.NewEncoder(rw).Encode(nodeagent.ControlError{Error: "the node daemon does not answer: " + err.Error()})
 		},
 	}
 }

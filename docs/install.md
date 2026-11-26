@@ -130,7 +130,7 @@ Or build the image yourself: `docker build -t ktms .`
 
 - **TLS.** The server speaks plaintext gRPC. Terminate TLS in front of it (Envoy, nginx
   with `grpc_pass`, a service mesh, a cloud load balancer) or keep it on a private network.
-  Node agents that reach the proxy through that TLS endpoint run with `--tls`.
+  Node daemons that reach the proxy through that TLS endpoint run with `--tls`.
 - **Back up the encryption keyring**, apart from the database: without `KTMS_ENCRYPTION_KEYS` the
   stored vendor keys are unreadable. See [Backups](operations.md#backups-and-the-encryption-keyring).
 - **Mint real keys, then unset `BOOTSTRAP_ADMIN_KEY`.** It is accepted as an implicit admin key.
@@ -142,10 +142,10 @@ Or build the image yourself: `docker build -t ktms .`
 - **Mind your Postgres connection count.** Each replica holds up to `DB_MAX_CONNS`
   (default 25) connections.
 - **Back up Postgres.** All configuration lives there; see [Backups](operations.md#backups-and-the-encryption-keyring).
-- **Keep internal ports internal.** Expose gRPC (`:9090`, clients and node agents) and HTTP
+- **Keep internal ports internal.** Expose gRPC (`:9090`, clients and node daemons) and HTTP
   (`:8080`). Metrics (`:9091`) belong on the cluster network. `/healthz` and `/readyz` share `:8080`
   with the API, and `/readyz` reports database state, so block both paths at a public ingress.
-- **Network policies.** Ingress: clients, node agents, the console, Prometheus (`:9091`) and the
+- **Network policies.** Ingress: clients, node daemons, the console, Prometheus (`:9091`) and the
   kubelet probes. Egress: the vendors, Postgres, Redis, the collector, the nodes, and what you
   configured (`OTEL_EXPORTER_OTLP_ENDPOINT`, `SENTRY_DSN`, `LATENT_ENCODER_URL`).
 - **TLS to dependencies.** Use `sslmode=require` for Postgres and `USAGE_COLLECTOR_TLS` for the

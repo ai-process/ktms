@@ -17,9 +17,9 @@ import (
 )
 
 // ErrAgentDown means nothing answers on the control socket.
-var ErrAgentDown = errors.New("the node agent is not running (or predates the control API)")
+var ErrAgentDown = errors.New("the node daemon is not running (or predates the control API)")
 
-// ControlCallError is a refusal from the agent.
+// ControlCallError is a refusal from the daemon.
 type ControlCallError struct {
 	Status int
 	ControlError
@@ -27,7 +27,7 @@ type ControlCallError struct {
 
 func (e *ControlCallError) Error() string { return e.ControlError.Error }
 
-// ControlClient talks to a running agent over its control socket; the CLI
+// ControlClient talks to a running daemon over its control socket; the CLI
 // and the tray both use it.
 type ControlClient struct {
 	Socket string
@@ -68,7 +68,7 @@ func (c *ControlClient) call(ctx context.Context, method, path string, in, out a
 	if resp.StatusCode/100 != 2 {
 		e := &ControlCallError{Status: resp.StatusCode}
 		if err := json.NewDecoder(resp.Body).Decode(&e.ControlError); err != nil || e.ControlError.Error == "" {
-			e.ControlError.Error = fmt.Sprintf("agent answered %s", resp.Status)
+			e.ControlError.Error = fmt.Sprintf("daemon answered %s", resp.Status)
 		}
 		return e
 	}
@@ -148,7 +148,7 @@ func (c *ControlClient) Stats(ctx context.Context, from, to, by string) (*Report
 	return &r, c.call(ctx, http.MethodGet, "/v1/stats?"+q.Encode(), nil, &r)
 }
 
-// Events calls fn with each status the agent streams until ctx ends or the
+// Events calls fn with each status the daemon streams until ctx ends or the
 // stream breaks.
 func (c *ControlClient) Events(ctx context.Context, fn func(*Status)) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://agent/v1/events", nil)
@@ -161,9 +161,9 @@ func (c *ControlClient) Events(ctx context.Context, fn func(*Status)) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("agent answered %s", resp.Status)
+		return fmt.Errorf("daemon answered %s", resp.Status)
 	}
-	// Silence longer than this means the agent is gone, though the socket is not.
+	// Silence longer than this means the daemon is gone, though the socket is not.
 	idle := time.AfterFunc(3*eventsEvery, func() { resp.Body.Close() })
 	defer idle.Stop()
 	sc := bufio.NewScanner(resp.Body)
@@ -186,5 +186,5 @@ func (c *ControlClient) Events(ctx context.Context, fn func(*Status)) error {
 	if err := sc.Err(); err != nil {
 		return err
 	}
-	return errors.New("the agent closed the event stream")
+	return errors.New("the daemon closed the event stream")
 }

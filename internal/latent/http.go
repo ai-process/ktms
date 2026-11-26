@@ -13,7 +13,7 @@ import (
 const maxEncoderResponseBytes = 64 << 20
 
 // HTTPEncoder calls an OpenAI-compatible /v1/embeddings endpoint, which is
-// what a node-agent hosting a JEPA encoder (or any embedding server) serves.
+// what a node daemon hosting a JEPA encoder (or any embedding server) serves.
 type HTTPEncoder struct {
 	url     string
 	model   string
