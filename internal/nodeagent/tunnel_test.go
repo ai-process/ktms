@@ -11,7 +11,7 @@ import (
 )
 
 // A probe still retrying a dead run's address must not announce it after the
-// run is gone, or the agent would register the dead address last.
+// run is gone, or the daemon would register the dead address last.
 func TestTunnelNeverAnnouncesDeadRunsURL(t *testing.T) {
 	dir := t.TempDir()
 	script := `#!/bin/sh

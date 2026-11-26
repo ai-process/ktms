@@ -35,12 +35,12 @@ const (
 type NodeRegistryServiceClient interface {
 	RegisterNode(ctx context.Context, in *RegisterNodeRequest, opts ...grpc.CallOption) (*RegisterNodeResponse, error)
 	// ValidateNode runs the key, node id, address and model checks of RegisterNode without
-	// storing anything, so an agent can learn a permanent refusal before it opens a tunnel.
+	// storing anything, so a daemon can learn a permanent refusal before it opens a tunnel.
 	ValidateNode(ctx context.Context, in *ValidateNodeRequest, opts ...grpc.CallOption) (*ValidateNodeResponse, error)
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 	UnregisterNode(ctx context.Context, in *UnregisterNodeRequest, opts ...grpc.CallOption) (*UnregisterNodeResponse, error)
 	// PullNodeUsage returns the node's request log after a cursor. The proxy keeps
-	// it for NODE_USAGE_RETENTION_HOURS; the agent stores it for the owner.
+	// it for NODE_USAGE_RETENTION_HOURS; the daemon stores it for the owner.
 	PullNodeUsage(ctx context.Context, in *PullNodeUsageRequest, opts ...grpc.CallOption) (*PullNodeUsageResponse, error)
 }
 
@@ -111,12 +111,12 @@ func (c *nodeRegistryServiceClient) PullNodeUsage(ctx context.Context, in *PullN
 type NodeRegistryServiceServer interface {
 	RegisterNode(context.Context, *RegisterNodeRequest) (*RegisterNodeResponse, error)
 	// ValidateNode runs the key, node id, address and model checks of RegisterNode without
-	// storing anything, so an agent can learn a permanent refusal before it opens a tunnel.
+	// storing anything, so a daemon can learn a permanent refusal before it opens a tunnel.
 	ValidateNode(context.Context, *ValidateNodeRequest) (*ValidateNodeResponse, error)
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	UnregisterNode(context.Context, *UnregisterNodeRequest) (*UnregisterNodeResponse, error)
 	// PullNodeUsage returns the node's request log after a cursor. The proxy keeps
-	// it for NODE_USAGE_RETENTION_HOURS; the agent stores it for the owner.
+	// it for NODE_USAGE_RETENTION_HOURS; the daemon stores it for the owner.
 	PullNodeUsage(context.Context, *PullNodeUsageRequest) (*PullNodeUsageResponse, error)
 	mustEmbedUnimplementedNodeRegistryServiceServer()
 }

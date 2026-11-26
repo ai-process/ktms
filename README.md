@@ -85,7 +85,7 @@ From a clone, with an AI assistant, or from scratch with `ktms init`: [Quick sta
 | [Quick start](docs/quickstart.md) | Docker Compose, the first call, `ktms init`, setting up with an AI assistant |
 | [Installation](docs/install.md) | Resource footprint, Docker image, Helm chart, building from source, production checklist |
 | [Configuration](docs/configuration.md) | Every environment variable; keys, vendor keys, models, rules, limits, tenants as API calls or a file |
-| [Nodes](docs/nodes.md) | The node agent, running a local or translation node, troubleshooting |
+| [Nodes](docs/nodes.md) | The node daemon, running a local or translation node, troubleshooting |
 | [Console, CLI and AI assistants](docs/console-and-cli.md) | ktms-admin, the `ktms` command, its MCP server, the Claude Code plugin |
 | [Calling Keystone (gRPC)](docs/grpc-api.md) | Client SDKs, text, streaming, sampling, batches, speech, images, judge, translation, embeddings |
 | [HTTP APIs](docs/http-api.md) | OpenAI-compatible endpoints, model and placement selection, Anthropic Messages API |
@@ -112,8 +112,8 @@ From a clone, with an AI assistant, or from scratch with `ktms init`: [Quick sta
 | **Circuit breaker** | Skips a `(vendor, model)` after repeated failures until a probe succeeds. → [Concepts](docs/concepts.md#concepts) |
 | **Placement** | Where a request may run: cloud vendors, self-hosted nodes, or nodes first. → [Choosing a model and placement](docs/http-api.md#choosing-a-model-and-placement) |
 | **Node** | A machine with your own inference engine that Keystone routes to. → [Run a node](docs/nodes.md#run-a-node) |
-| **Node agent** | The process on a node that reports its models and load to Keystone. → [Node agent](docs/nodes.md#node-agent) |
-| **Node key** | The credential a node agent authenticates with, optionally limited to some models. |
+| **Node daemon** | The process on a node that reports its models and load to Keystone. → [Node daemon](docs/nodes.md#node-daemon) |
+| **Node key** | The credential a node daemon authenticates with, optionally limited to some models. |
 | **Engine** | The inference server behind a node: Ollama, vLLM, llama.cpp, FreeToken or `ktms-mt` for translation. |
 | **Restricted data** | `data_classification: restricted`: a call that stays on your nodes, with no cloud fallback. → [Restricted data](docs/concepts.md#restricted-data) |
 | **Spend limit** | A hard USD cap per key or end user per day or month, reserved before a call. → [Spend limits](docs/configuration.md#5-spend-limits-optional) |

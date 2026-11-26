@@ -23,7 +23,7 @@ import (
 var ctlTimeout = 5 * time.Second
 
 const (
-	eventsEvery    = 10 * time.Second // an idle event stream still hears from the agent this often
+	eventsEvery    = 10 * time.Second // an idle event stream still hears from the daemon this often
 	maxControlBody = 1 << 20
 )
 
@@ -43,7 +43,7 @@ func DefaultHome() string {
 	return base
 }
 
-// DefaultControlSocket is where the agent listens for its owner by default.
+// DefaultControlSocket is where the daemon listens for its owner by default.
 func DefaultControlSocket() string {
 	if h := DefaultHome(); h != "" {
 		return filepath.Join(h, "control.sock")
@@ -63,7 +63,7 @@ type ctlReply struct {
 	err error
 }
 
-var errAgentBusy = errors.New("the agent is not serving yet (still registering with the proxy); try again shortly")
+var errAgentBusy = errors.New("the daemon is not serving yet (still registering with the proxy); try again shortly")
 
 // do hands fn to Run's goroutine and waits for its answer.
 func (a *Agent) do(ctx context.Context, fn func() (any, error)) (any, error) {
@@ -115,7 +115,7 @@ func (a *Agent) startControl() (stop func()) {
 	}
 	lis, err := listenControl(path)
 	if err != nil {
-		log.Warn().Err(err).Str("socket", path).Msg("control API unavailable; the tray and `ktms-node status` will not reach this agent")
+		log.Warn().Err(err).Str("socket", path).Msg("control API unavailable; the tray and `ktms-node status` will not reach this daemon")
 		return func() {}
 	}
 	srv := &http.Server{
@@ -139,7 +139,7 @@ func (a *Agent) startControl() (stop func()) {
 }
 
 // listenControl opens the socket owner-only. A stale socket from a crashed
-// agent is replaced; one another agent still answers on is not.
+// daemon is replaced; one another daemon still answers on is not.
 func listenControl(path string) (net.Listener, error) {
 	dir := filepath.Dir(path)
 	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
@@ -153,7 +153,7 @@ func listenControl(path string) (net.Listener, error) {
 		}
 		if c, err := net.DialTimeout("unix", path, time.Second); err == nil {
 			c.Close()
-			return nil, fmt.Errorf("another agent already listens on %s", path)
+			return nil, fmt.Errorf("another daemon already listens on %s", path)
 		}
 		if err := os.Remove(path); err != nil {
 			return nil, err
@@ -311,7 +311,7 @@ type ScheduleInfo struct {
 	File     string       `json:"file"`
 	Text     string       `json:"text"`
 	Exists   bool         `json:"exists"`
-	Error    string       `json:"error,omitempty"` // the file is invalid; the agent keeps the last valid schedule
+	Error    string       `json:"error,omitempty"` // the file is invalid; the daemon keeps the last valid schedule
 	Line     int          `json:"line,omitempty"`
 	Days     []DayWindows `json:"days,omitempty"`
 	Level    uint32       `json:"level"` // what this text gives now
@@ -365,7 +365,7 @@ func (a *Agent) handleGetSchedule(w http.ResponseWriter, _ *http.Request) {
 		info.Exists = err == nil
 	} else {
 		info = describeSchedule("", a.now())
-		info.ReadOnly = "the agent runs without --schedule-file"
+		info.ReadOnly = "the daemon runs without --schedule-file"
 	}
 	info.File, info.Source = a.cfg.ScheduleFile, ScheduleSourceLocal
 	info.Editable = info.ReadOnly == ""
@@ -410,7 +410,7 @@ func readScheduleBody(r *http.Request) (string, error) {
 	return b.Text, nil
 }
 
-// handlePutSchedule validates and writes the schedule file; the agent picks
+// handlePutSchedule validates and writes the schedule file; the daemon picks
 // it up at once. An invalid text leaves the file untouched.
 func (a *Agent) handlePutSchedule(w http.ResponseWriter, r *http.Request) {
 	if a.sourceNow() == ScheduleSourceKTMS {
@@ -418,7 +418,7 @@ func (a *Agent) handlePutSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.cfg.ScheduleFile == "" {
-		writeCtlError(w, conflict("the agent runs without --schedule-file, so there is no file to save to"))
+		writeCtlError(w, conflict("the daemon runs without --schedule-file, so there is no file to save to"))
 		return
 	}
 	text, err := readScheduleBody(r)
@@ -435,7 +435,7 @@ func (a *Agent) handlePutSchedule(w http.ResponseWriter, r *http.Request) {
 		writeCtlError(w, err)
 		return
 	}
-	// The file is saved either way; a busy agent reads it on its next level tick.
+	// The file is saved either way; a busy daemon reads it on its next level tick.
 	if _, err := a.do(r.Context(), func() (any, error) { return nil, nil }); err != nil && !errors.Is(err, errAgentBusy) {
 		writeCtlError(w, err)
 		return
@@ -453,10 +453,10 @@ func (a *Agent) handlePreviewSchedule(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, describeSchedule(text, a.now()))
 }
 
-// handleStats is `ktms-node stats --format json` over the agent's own log.
+// handleStats is `ktms-node stats --format json` over the daemon's own log.
 func (a *Agent) handleStats(w http.ResponseWriter, r *http.Request) {
 	if a.cfg.StatsDir == "" {
-		writeCtlError(w, conflict("the agent keeps no usage log (--stats=false)"))
+		writeCtlError(w, conflict("the daemon keeps no usage log (--stats=false)"))
 		return
 	}
 	now := a.now()

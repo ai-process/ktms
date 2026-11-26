@@ -20,7 +20,7 @@ const (
 	unloadTimeout     = time.Minute
 )
 
-// pauseState is the agent's schedule bookkeeping; only Run's goroutine touches it.
+// pauseState is the daemon's schedule bookkeeping; only Run's goroutine touches it.
 type pauseState struct {
 	sched     *Schedule
 	content   []byte // of the file last read, valid or not; nil when there is none

@@ -32,7 +32,7 @@ func ParseEngineSpec(v string) (EngineSpec, error) {
 	return EngineSpec{Name: name, URL: raw}, nil
 }
 
-// nodeEngine is one engine the agent inspects; the primary comes first.
+// nodeEngine is one engine the daemon inspects; the primary comes first.
 type nodeEngine struct {
 	name, url string
 	inspector EngineInspector

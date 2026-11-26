@@ -18,7 +18,7 @@ var quickTunnelURL = regexp.MustCompile(`https://[a-z0-9-]+\.trycloudflare\.com`
 
 // tunnelRunner keeps a cloudflared quick tunnel alive in front of the gateway
 // and reports every public URL it obtains. The URL changes on each restart,
-// which is why the agent re-registers when one arrives.
+// which is why the daemon re-registers when one arrives.
 type tunnelRunner struct {
 	binary string
 	probe  func(ctx context.Context, url string) error // proves the URL reaches the gateway

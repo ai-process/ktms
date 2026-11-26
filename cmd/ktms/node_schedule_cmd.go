@@ -15,13 +15,13 @@ import (
 	pb "github.com/ai-process/ktms/gen/ktms/v1"
 )
 
-// nodeScheduleCmd manages the schedules KTMS sends to nodes whose agents
+// nodeScheduleCmd manages the schedules KTMS sends to nodes whose daemons
 // run with --schedule-source=ktms.
 func (a *app) nodeScheduleCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "schedule",
 		Short: "Schedules KTMS sends to nodes that hand theirs to it",
-		Long: `Schedules KTMS keeps for nodes whose agent runs with --schedule-source=ktms (the
+		Long: `Schedules KTMS keeps for nodes whose daemon runs with --schedule-source=ktms (the
 tray's "Schedule set by KTMS"). Other nodes follow their own file and ignore these.`,
 	}
 	var format string

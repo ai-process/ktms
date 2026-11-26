@@ -36,7 +36,7 @@ type RequestRecord struct {
 	CooldownMs      int64     `json:"cooldown_ms,omitempty"`
 }
 
-// Sample is the agent's own view of the node once a minute, one line of
+// Sample is the daemon's own view of the node once a minute, one line of
 // samples-YYYY-MM-DD.jsonl.
 type Sample struct {
 	At            time.Time `json:"at"`
@@ -52,7 +52,7 @@ type Sample struct {
 	Warm          []string  `json:"warm,omitempty"`
 }
 
-// Gap is a stretch the proxy no longer had when the agent pulled: requests in
+// Gap is a stretch the proxy no longer had when the daemon pulled: requests in
 // it may be missing from the log.
 type Gap struct {
 	From  time.Time `json:"from"`
@@ -349,7 +349,7 @@ func (s *StatsStore) Days(kind, from, to string) ([]string, error) {
 }
 
 // readDay calls fn for each line of a day's files; a torn line (crash
-// mid-write) is skipped. The open file goes first: if the agent gzips it in
+// mid-write) is skipped. The open file goes first: if the daemon gzips it in
 // between, its lines show up twice (callers drop repeats), never not at all.
 func (s *StatsStore) readDay(kind, day string, fn func([]byte) error) error {
 	base := filepath.Join(s.dir, kind+"-"+day+".jsonl")

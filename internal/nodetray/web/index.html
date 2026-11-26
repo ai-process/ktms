@@ -61,7 +61,7 @@ label.check { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0;
   </nav>
 </header>
 <main>
-<div id="down" class="notice bad" hidden>The node agent does not answer. Is the node running? <code>ktms-node doctor</code> tells why not.</div>
+<div id="down" class="notice bad" hidden>The node daemon does not answer. Is the node running? <code>ktms-node doctor</code> tells why not.</div>
 
 <section id="status">
   <div class="card">
@@ -121,7 +121,7 @@ label.check { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0;
 <section id="settings">
   <div class="card">
     <label class="check"><input type="checkbox" id="ktms"> <span><b>Schedule set by KTMS</b><br><span class="muted">KTMS sets this node's schedule and load; the schedule on this machine is ignored until you turn this off. Your own pauses still win.</span></span></label>
-    <label class="check"><input type="checkbox" id="notif"> <span><b>Notifications</b><br><span class="muted">When a pause ends, the agent stops answering, or the schedule turns out invalid.</span></span></label>
+    <label class="check"><input type="checkbox" id="notif"> <span><b>Notifications</b><br><span class="muted">When a pause ends, the daemon stops answering, or the schedule turns out invalid.</span></span></label>
   </div>
 </section>
 </main>
@@ -173,7 +173,7 @@ function render(s) {
   else if (s.schedule_error) note = "The schedule is invalid; the previous one holds: " + s.schedule_error;
   else if (L.effective === 0 && active > 0) note = "Waiting for " + active + " request(s) to finish before the models are unloaded.";
   $("#notice").hidden = !note; $("#notice").textContent = note;
-  // The agent caps any pause at 24 hours; say so rather than promise a later switch.
+  // The daemon caps any pause at 24 hours; say so rather than promise a later switch.
   const cap = Date.now() + 864e5, untilAt = L.next && Math.min(new Date(L.next.at).getTime(), cap);
   $("#untilNext").disabled = !L.next;
   $("#untilNext").textContent = !L.next ? "Pause until next switch" : untilAt === cap ? "Pause for 24 hours" : "Pause until " + when(L.next.at);
@@ -187,7 +187,7 @@ function render(s) {
     ["GPU", s.gpu ? Math.round(s.gpu.util_percent) + "%, " + s.gpu.temp_c + "°C, VRAM " + (s.gpu.vram_free_mb / 1024).toFixed(1) + "/" + (s.gpu.vram_total_mb / 1024).toFixed(0) + " GB free" : "–"],
     ["KTMS", s.proxy + (s.connection.last_heartbeat_at ? " · heartbeat " + hm(s.connection.last_heartbeat_at) : "")],
     ["Schedule", s.schedule_source === "ktms" ? "set by KTMS" + (L.ktms && L.ktms.version ? " (version " + L.ktms.version + ")" : " (none received yet)") : (s.schedule_file || "none")],
-    ["Agent", s.version],
+    ["Daemon", s.version],
   ];
   $("#facts").replaceChildren(...facts.flatMap(([k, v]) => { const a = document.createElement("span"), b = document.createElement("span"); a.className = "muted"; a.textContent = k; b.textContent = v; return [a, b]; }));
   $("#ktms").checked = s.schedule_source === "ktms";
