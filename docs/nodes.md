@@ -9,13 +9,7 @@ engine's models with Keystone, and Keystone routes calls to it like to any vendo
 usage accounting and fallback to the cloud when the node is busy, paused or gone. The machine's
 owner decides when it serves, with a schedule, a pause or the tray icon.
 
-```mermaid
-flowchart LR
-    S["Your services"] -->|"one API, one key"| K["Keystone"]
-    K -->|"local model first"| N["Your node<br/>Mac or GPU box"]
-    K -.->|"fallback when the node<br/>is busy, paused or offline"| C["Cloud vendors<br/>OpenAI, Anthropic, Gemini…"]
-    O(["Machine owner"]) -->|"schedule, pause, tray"| N
-```
+<p align="center"><img src="img/nodes-overview.svg" alt="Services call Keystone; Keystone sends calls to your node first and falls back to cloud vendors; the machine owner controls the node with a schedule, a pause or the tray" width="760"></p>
 
 **Contents:** [Glossary](#glossary) · [Run a node in three steps](#run-a-node) ·
 [How it works](#how-it-works) · [Engines](#engines) ·
@@ -116,27 +110,7 @@ that fails to start is rolled back.
 
 ## How it works
 
-```mermaid
-flowchart LR
-    subgraph KTMS["Keystone"]
-        R["Router<br/>slots, fallback"]
-        REG["Node registry"]
-    end
-    subgraph M["Node machine"]
-        D["ktms-node<br/>daemon"]
-        G["Node gateway<br/>127.0.0.1"]
-        E["Engine<br/>Ollama, vLLM…"]
-        T["Tray"]
-        L[("Usage log<br/>~/.ktms-node/stats")]
-    end
-    CF["Cloudflare<br/>quick tunnel"]
-
-    D -->|"register, heartbeats:<br/>models, queue, GPU"| REG
-    R -->|"chat calls"| CF --> G --> E
-    D -->|"polls /metrics"| E
-    T <-->|"control socket"| D
-    D -->|"PullNodeUsage<br/>every minute"| L
-```
+<p align="center"><img src="img/nodes-architecture.svg" alt="The node daemon registers with Keystone and sends heartbeats; Keystone's router sends calls through a quick tunnel to the node gateway and on to the engine; the tray talks to the daemon over a socket; the daemon keeps a usage log" width="860"></p>
 
 | Step | What happens |
 | --- | --- |
