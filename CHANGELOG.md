@@ -7,6 +7,16 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Judgments on images at TypeSafe (experimental). Image bytes in `state_media` go to System One as multipart
+  assets with its images header instead of making TypeSafe yield; `MediaPart.name` lets state, instructions and
+  criteria refer to an image (other judges get the name as a label). Images are checked from their header before
+  the call (PNG or JPEG, each side 280–1568 px, 16 MiB, no EXIF rotation) and refused with `bad_request` naming the
+  size and the limit. Judge calls with images get more time: 8 s plus 2 s per MiB, at most a minute.
+- `JUDGE_TYPE_BOX` (experimental): where an object is on an image, answered as `JudgeAnswer.box` with
+  `confidence_unset` when the vendor gives no confidence; the `box` capability narrows the chain (TypeSafe
+  `jev-1.14.0`). `/v1/decisions` takes `"type": "box"` questions and a `name` on input parts.
+
 ## [1.7.0] - 2026-11-26
 
 ### Added

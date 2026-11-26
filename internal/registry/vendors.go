@@ -131,6 +131,10 @@ const (
 // No text model reads one, so it is opt-in even among judges.
 const CapabilityEmbeddingInput = "embedding_input"
 
+// CapabilityBox marks judge models that answer box questions: where an object
+// is on an image (TypeSafe jev-1.14.0 and later). Experimental.
+const CapabilityBox = "box"
+
 func ValidVendor(v string) bool {
 	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorAnthropic || v == VendorLocal || v == VendorGroq || v == VendorMistral || v == VendorAzure || v == VendorBedrock
 }

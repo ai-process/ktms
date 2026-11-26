@@ -243,6 +243,7 @@ state, in parallel.
 | `JUDGE_TYPE_NOUL` | Does this hold? | probability of yes (`noul`, 0–1) |
 | `JUDGE_TYPE_CHOICE` | Which one? | `choice` plus full `probabilities` and `confidence` |
 | `JUDGE_TYPE_SCORE` | How much? | probability-weighted position on ordered `levels` |
+| `JUDGE_TYPE_BOX` (experimental) | Where on the image? | one `box` (`top`, `bottom`, `left`, `right`, fractions of the image from its top-left corner) and `confidence`, or `confidence_unset` when the vendor gives none |
 
 ```json
 {
@@ -257,7 +258,19 @@ state, in parallel.
 
 - **Multimodal state** goes in `state_media` (`text`, `image`, `audio`, `embedding` parts), with or
   instead of `state_json`. Each media kind narrows the chain to judge models that also declare
-  `vision`, `audio_input` or `embedding_input`; TypeSafe takes JSON state only.
+  `vision`, `audio_input` or `embedding_input`. A box question also needs `box`.
+- **Images at TypeSafe** (experimental, "Dreamer-ready" at the vendor): image bytes in `state_media`
+  go to System One as assets. A part's `name` is how `state_json`, instructions, options, levels and
+  criteria refer to it, so put example images for choice options or score levels in `state_media`
+  too and name them there; unnamed images are listed beside the state as
+  `{"state": <state_json>, "images": [...]}`. TypeSafe takes PNG or JPEG only, each side 280–1568 px,
+  at most 16 MiB a file, upright pixels: Keystone checks that from the image header before the call
+  and answers `bad_request` with the size and the limit, never resizing or rotating. Image URLs,
+  audio and embeddings make TypeSafe yield to the next model. Other judges get a named part's name
+  as a text label before it.
+- **Box** (experimental) is TypeSafe `jev-1.14.0` only: declare `box` on that model and pin the
+  version rather than `jev-latest`. A missing object still gets a box, so ask a noul "is it there?"
+  beside it.
 - Image URLs must be `https` and are forwarded, not fetched. Guardrails inspect text parts only.
 - Limits: 32 parts, 16 MiB of media, 16384 embedding dimensions.
 - Judge vendors: [TypeSafe](https://typesafe.ai) (`jev-latest`, billing input only) and

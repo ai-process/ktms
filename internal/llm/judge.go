@@ -14,6 +14,7 @@ const (
 	JudgeNoul   = "noul"   // does this hold? -> probability of yes
 	JudgeChoice = "choice" // which one? -> option id + distribution
 	JudgeScore  = "score"  // how much? -> weighted position on ordered levels
+	JudgeBox    = "box"    // where is it? -> one box on an image of the state
 )
 
 // JudgeQuestion is one typed question. Which fields carry meaning depends on
@@ -49,6 +50,9 @@ type JudgeMediaPart struct {
 	// vendor can reject a space it was not trained on.
 	Embedding      []float32
 	EmbeddingModel string
+	// Name is how state, instructions and criteria refer to the part; "" for
+	// an unnamed one.
+	Name string
 }
 
 // JudgeRequest is one call's worth of judgment. Every question is answered
@@ -75,7 +79,26 @@ type JudgeAnswer struct {
 	Probabilities map[string]float64
 	Confidence    float64
 	Legend        map[string]string
+	Box           *Box // box questions only
+	// ConfidenceUnset: the vendor gave no confidence, so Confidence means nothing.
+	ConfidenceUnset bool
 }
+
+// Box is a box on an image: edges as fractions 0..1 of its height (Top,
+// Bottom) and width (Left, Right) from the top-left corner.
+type Box struct {
+	Top, Bottom, Left, Right float64
+}
+
+// ErrInvalidMedia marks judge state media a vendor would refuse as it stands
+// (format, size, orientation): the caller's to fix, so not a vendor failure.
+var ErrInvalidMedia = errors.New("invalid media")
+
+// InvalidMediaError says what is wrong with which part, for the caller.
+type InvalidMediaError struct{ Msg string }
+
+func (e *InvalidMediaError) Error() string        { return e.Msg }
+func (e *InvalidMediaError) Is(target error) bool { return target == ErrInvalidMedia }
 
 // JudgeResult is one judgment call's outcome.
 type JudgeResult struct {

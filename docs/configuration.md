@@ -259,6 +259,7 @@ DeepSeek's `prompt_cache_hit_tokens`, Gemini's `cachedContentTokenCount`, Bedroc
 | `judge` | Can serve `Judge` (TypeSafe `jev-latest`, OpenAI `gpt-6-luna`). |
 | `translate` | Can serve `Translate`: a chat model by prompt, a node MT model natively. Declares `languages` (see [Translation](grpc-api.md#translation)). |
 | `embedding_input` | A judge model that scores raw latent vectors in `JudgeRequest.state_media` (`EmbeddingPart`). |
+| `box` | A judge model that answers `JUDGE_TYPE_BOX`: where an object is on an image (TypeSafe `jev-1.14.0`; declare `vision` with it). Experimental. |
 
 <details>
 <summary>Admin API</summary>

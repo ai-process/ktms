@@ -83,6 +83,7 @@ func IsTrippingError(ctx context.Context, err error) bool {
 		errors.Is(err, llm.ErrEmbeddingUnsupported) ||
 		errors.Is(err, llm.ErrImageGenerationUnsupported) ||
 		errors.Is(err, llm.ErrJudgmentUnsupported) ||
+		errors.Is(err, llm.ErrInvalidMedia) ||
 		errors.Is(err, llm.ErrSchemaViolation) {
 		return false
 	}

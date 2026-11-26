@@ -6,25 +6,47 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/ai-process/ktms/internal/llm"
 )
 
-// executeJudgeRequest issues a POST with a Bearer token, enforcing a 1MB response limit
-// and capping error snippets at 300 characters to prevent memory and log bloat.
+// judgeCall is one judge HTTP request: a JSON body by default, multipart for
+// System One with images.
+type judgeCall struct {
+	body        []byte
+	contentType string
+	headers     map[string]string
+	timeout     time.Duration // 0 = judgeTimeout
+}
+
+// executeJudgeRequest issues a JSON POST with a Bearer token.
 func executeJudgeRequest(ctx context.Context, client *http.Client, url, apiKey string, body []byte) ([]byte, int, error) {
+	return executeJudgeCall(ctx, client, url, apiKey, judgeCall{body: body, contentType: "application/json"})
+}
+
+// executeJudgeCall enforces a 1MB response limit and caps error snippets at
+// 300 characters to prevent memory and log bloat.
+func executeJudgeCall(ctx context.Context, client *http.Client, url, apiKey string, call judgeCall) ([]byte, int, error) {
 	if client == nil {
 		client = llm.VendorHTTPClient()
 	}
-	ctx, cancel := context.WithTimeout(ctx, judgeTimeout)
+	timeout := call.timeout
+	if timeout <= 0 {
+		timeout = judgeTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(call.body))
 	if err != nil {
 		return nil, 0, err
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Content-Type", call.contentType)
+	for k, v := range call.headers {
+		httpReq.Header.Set(k, v)
+	}
 
 	resp, err := client.Do(httpReq)
 	if err != nil {

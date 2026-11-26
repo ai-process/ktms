@@ -149,6 +149,7 @@ func (s *ProxyServer) Judge(ctx context.Context, req *pb.JudgeRequest) (*pb.Judg
 			Confidence:    ans.Confidence,
 			Legend:        legend,
 		}
+		resp.Answers[id].Box, resp.Answers[id].ConfidenceUnset = judgeBoxToProto(ans.Box), ans.ConfidenceUnset
 	}
 	return resp, nil
 }
@@ -193,6 +194,10 @@ func judgeRequestFromProto(req *pb.JudgeRequest) (*llm.JudgeRequest, error) {
 				return nil, status.Errorf(codes.InvalidArgument, "bad_request: score %q needs at least two levels", id)
 			}
 		case llm.JudgeNoul:
+		case llm.JudgeBox:
+			if !hasImage(media) {
+				return nil, status.Errorf(codes.InvalidArgument, "bad_request: box %q needs an image in state_media", id)
+			}
 		default:
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: question %q has no type", id)
 		}
@@ -218,6 +223,7 @@ func judgeMediaFromProto(in []*pb.MediaPart) ([]*llm.JudgeMediaPart, error) {
 		return status.Errorf(codes.InvalidArgument, "bad_request: state_media[%d]: "+format, append([]any{i}, args...)...)
 	}
 	out := make([]*llm.JudgeMediaPart, 0, len(in))
+	names := map[string]bool{}
 	total := 0
 	for i, p := range in {
 		var part *llm.JudgeMediaPart
@@ -300,10 +306,23 @@ func judgeMediaFromProto(in []*pb.MediaPart) ([]*llm.JudgeMediaPart, error) {
 		if total > maxJudgeMediaBytes {
 			return nil, status.Errorf(codes.InvalidArgument, "bad_request: state_media exceeds %d bytes", maxJudgeMediaBytes)
 		}
+		if name := p.GetName(); name != "" {
+			if strings.TrimSpace(name) == "" || len(name) > maxJudgeMediaName {
+				return nil, bad(i, "name must be 1..%d bytes and not blank", maxJudgeMediaName)
+			}
+			if names[name] {
+				return nil, bad(i, "name %q is used twice", name)
+			}
+			names[name] = true
+			part.Name = name
+		}
 		out = append(out, part)
 	}
 	return out, nil
 }
+
+// maxJudgeMediaName is TypeSafe's limit on one reference.
+const maxJudgeMediaName = 1024
 
 func validateJudgeMime(mime, family string) error {
 	if err := safefetch.ValidateMediaMimeType(mime); err != nil {
@@ -319,6 +338,12 @@ func validateJudgeMime(mime, family string) error {
 // a judge that silently drops an image would answer about a different state.
 func judgeCapabilities(req *llm.JudgeRequest) []string {
 	caps := []string{registry.CapabilityJudge}
+	for _, q := range req.Questions {
+		if q.Type == llm.JudgeBox {
+			caps = append(caps, registry.CapabilityBox)
+			break
+		}
+	}
 	seen := make(map[string]bool, 3)
 	for _, p := range req.StateMedia {
 		var c string
@@ -373,6 +398,22 @@ func judgeEstimate(req *llm.JudgeRequest) int64 {
 	return int64(runes)/4 + extraTokens + 1
 }
 
+func hasImage(media []*llm.JudgeMediaPart) bool {
+	for _, p := range media {
+		if p.Type == llm.JudgeMediaImage {
+			return true
+		}
+	}
+	return false
+}
+
+func judgeBoxToProto(b *llm.Box) *pb.JudgeBox {
+	if b == nil {
+		return nil
+	}
+	return &pb.JudgeBox{Top: b.Top, Bottom: b.Bottom, Left: b.Left, Right: b.Right}
+}
+
 func judgeTypeFromProto(t pb.JudgeType) string {
 	switch t {
 	case pb.JudgeType_JUDGE_TYPE_NOUL:
@@ -381,6 +422,8 @@ func judgeTypeFromProto(t pb.JudgeType) string {
 		return llm.JudgeChoice
 	case pb.JudgeType_JUDGE_TYPE_SCORE:
 		return llm.JudgeScore
+	case pb.JudgeType_JUDGE_TYPE_BOX:
+		return llm.JudgeBox
 	default:
 		return ""
 	}
@@ -394,6 +437,8 @@ func judgeTypeToProto(t string) pb.JudgeType {
 		return pb.JudgeType_JUDGE_TYPE_CHOICE
 	case llm.JudgeScore:
 		return pb.JudgeType_JUDGE_TYPE_SCORE
+	case llm.JudgeBox:
+		return pb.JudgeType_JUDGE_TYPE_BOX
 	default:
 		return pb.JudgeType_JUDGE_TYPE_UNSPECIFIED
 	}
@@ -857,6 +902,8 @@ func evaluateRolloutsRequestFromProto(req *pb.EvaluateRolloutsRequest) (*llm.Eva
 					return nil, status.Errorf(codes.InvalidArgument, "bad_request: score %q needs at least two levels", id)
 				}
 			case llm.JudgeNoul:
+			case llm.JudgeBox:
+				return nil, status.Errorf(codes.InvalidArgument, "bad_request: criteria %q: box is not supported in rollouts", id)
 			default:
 				return nil, status.Errorf(codes.InvalidArgument, "bad_request: criteria %q has no type", id)
 			}
