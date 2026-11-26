@@ -9,7 +9,7 @@ import (
 	"github.com/ai-process/ktms/internal/nodeagent"
 )
 
-// silentAfter is how long the agent may not answer before the owner hears of it;
+// silentAfter is how long the daemon may not answer before the owner hears of it;
 // a restart takes a few seconds and is not worth a notification.
 const silentAfter = 30 * time.Second
 
@@ -29,12 +29,12 @@ func (n *Notifier) Next(s *nodeagent.Status, err error, now time.Time) []string 
 		}
 		if !n.toldSilent && n.prev != nil && now.Sub(n.silentSince) >= silentAfter {
 			n.toldSilent = true
-			out = append(out, "The node agent does not answer. Requests may not reach this machine.")
+			out = append(out, "The node daemon does not answer. Requests may not reach this machine.")
 		}
 		return out
 	}
 	if n.toldSilent {
-		out = append(out, "The node agent answers again.")
+		out = append(out, "The node daemon answers again.")
 	}
 	n.silentSince, n.toldSilent = time.Time{}, false
 	if p := n.prev; p != nil {

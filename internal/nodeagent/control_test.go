@@ -130,7 +130,7 @@ func TestListenControlReplacesStaleSocketOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := listenControl(path); err == nil || !strings.Contains(err.Error(), "another agent") {
+	if _, err := listenControl(path); err == nil || !strings.Contains(err.Error(), "another daemon") {
 		t.Fatalf("second listener: %v, want refusal", err)
 	}
 	// A crashed agent leaves the file behind with nobody listening.

@@ -1,7 +1,7 @@
 name: Publish Docker image
 
 # Every v* release becomes images on Docker Hub: coyl/ktms:<tag> (server slim & audio),
-# coyl/ktms-node:<tag> (node agent) and coyl/ktms-cli:<tag> (the ktms CLI).
+# coyl/ktms-node:<tag> (node daemon) and coyl/ktms-cli:<tag> (the ktms CLI).
 # Needs the repository secrets DOCKER_USERNAME and DOCKER_PASSWORD (an access token).
 # Called by release.yml after the compatibility check passed.
 on:

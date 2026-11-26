@@ -2,7 +2,7 @@
 
 // Command ktms-node-tray shows a local node's level in the menu bar or tray
 // and lets its owner pause it, limit it and edit its schedule. It is a client
-// of the agent's control socket and keeps no logic of levels of its own.
+// of the daemon's control socket and keeps no logic of levels of its own.
 package main
 
 import (
@@ -26,7 +26,7 @@ import (
 var version = "dev"
 
 func main() {
-	socket := flag.String("control-socket", nodeagent.DefaultControlSocket(), "The agent's control socket")
+	socket := flag.String("control-socket", nodeagent.DefaultControlSocket(), "The daemon's control socket")
 	showVersion := flag.Bool("version", false, "Print the version and exit")
 	flag.Parse()
 	if *showVersion {
@@ -121,7 +121,7 @@ func (t *tray) onReady() {
 	go t.clicks()
 }
 
-// follow keeps an event stream to the agent open, reconnecting while it is down.
+// follow keeps an event stream to the daemon open, reconnecting while it is down.
 func (t *tray) follow() {
 	backoff := time.Second
 	for {
@@ -135,7 +135,7 @@ func (t *tray) follow() {
 	}
 }
 
-// tick redraws a countdown and lets a silent agent raise its notification.
+// tick redraws a countdown and lets a silent daemon raise its notification.
 func (t *tray) tick() {
 	for range time.Tick(time.Second) {
 		t.mu.Lock()

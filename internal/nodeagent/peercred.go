@@ -28,7 +28,7 @@ func ownerOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		uid, ok := r.Context().Value(peerUIDKey{}).(int)
 		if peerCredSupported && (!ok || uid != os.Getuid()) {
-			writeJSON(w, http.StatusForbidden, ControlError{Error: "only the user the agent runs as may control it"})
+			writeJSON(w, http.StatusForbidden, ControlError{Error: "only the user the daemon runs as may control it"})
 			return
 		}
 		next.ServeHTTP(w, r)

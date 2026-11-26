@@ -75,10 +75,10 @@ message HeartbeatRequest {
   NodeResources resources = 5;
   repeated NodeModelSpec models = 6;
   // Share of time the node may spend on proxy requests, 0-100, from its local
-  // schedule. Unset means 100, so agents that predate it keep full capacity.
+  // schedule. Unset means 100, so daemons that predate it keep full capacity.
   optional uint32 capacity_percent = 7;
-  // Where the agent takes its levels from: "local" (its own schedule file) or
-  // "ktms" (HeartbeatResponse.schedule). Empty from agents that predate it.
+  // Where the node daemon takes its levels from: "local" (its own schedule file) or
+  // "ktms" (HeartbeatResponse.schedule). Empty from daemons that predate it.
   string schedule_source = 8;
   // What set capacity_percent: schedule, override (by the owner, on the machine),
   // ktms_schedule, ktms_override or default (no schedule, 100%).
@@ -87,10 +87,10 @@ message HeartbeatRequest {
   google.protobuf.Timestamp capacity_until = 10;
 }
 
-// NodeSchedule is the schedule KTMS keeps for a node whose agent takes its
+// NodeSchedule is the schedule KTMS keeps for a node whose daemon takes its
 // levels from KTMS.
 message NodeSchedule {
-  string text = 1; // rules in the agent's format, "[days] HH:MM-HH:MM level" per line; empty = 100%
+  string text = 1; // rules in the daemon's format, "[days] HH:MM-HH:MM level" per line; empty = 100%
   int64 version = 2; // bumps on every change of text or override; 0 = none set yet
   NodeCapacityOverride override = 3; // unset = none
 }
@@ -107,8 +107,8 @@ message HeartbeatResponse {
   bool drain_requested = 3;
   int32 active_proxy_requests = 4; // requests still running, not counting post-request cooldown
   bool capacity_applied = 5; // false from proxies that ignore capacity_percent
-  // The node's schedule in KTMS, sent only to agents with schedule_source "ktms".
-  // Unset when the proxy could not read it: the agent keeps the last one it got.
+  // The node's schedule in KTMS, sent only to daemons with schedule_source "ktms".
+  // Unset when the proxy could not read it: the daemon keeps the last one it got.
   NodeSchedule schedule = 6;
 }
 
@@ -160,11 +160,11 @@ message UnregisterNodeResponse {
 service NodeRegistryService {
   rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
   // ValidateNode runs the key, node id, address and model checks of RegisterNode without
-  // storing anything, so an agent can learn a permanent refusal before it opens a tunnel.
+  // storing anything, so a daemon can learn a permanent refusal before it opens a tunnel.
   rpc ValidateNode(ValidateNodeRequest) returns (ValidateNodeResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
   rpc UnregisterNode(UnregisterNodeRequest) returns (UnregisterNodeResponse);
   // PullNodeUsage returns the node's request log after a cursor. The proxy keeps
-  // it for NODE_USAGE_RETENTION_HOURS; the agent stores it for the owner.
+  // it for NODE_USAGE_RETENTION_HOURS; the daemon stores it for the owner.
   rpc PullNodeUsage(PullNodeUsageRequest) returns (PullNodeUsageResponse);
 }

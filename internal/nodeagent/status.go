@@ -18,7 +18,7 @@ const (
 	StateOffline   = "offline" // not registered, or the last heartbeat failed
 )
 
-// Status is what the owner sees of the running agent. It carries no key or token.
+// Status is what the owner sees of the running daemon. It carries no key or token.
 type Status struct {
 	Version         string         `json:"version"`
 	NodeID          string         `json:"node_id"`
@@ -99,7 +99,7 @@ type StatusGPU struct {
 	VRAMTotalMB uint64  `json:"vram_total_mb"`
 }
 
-// connState is the agent's view of the proxy; only Run's goroutine touches it.
+// connState is the daemon's view of the proxy; only Run's goroutine touches it.
 type connState struct {
 	registered      bool
 	lastBeat        time.Time
@@ -154,7 +154,7 @@ func (h *statusHub) set(s *Status) {
 	}
 }
 
-// publish snapshots the agent for the control API; Run's goroutine calls it.
+// publish snapshots the daemon for the control API; Run's goroutine calls it.
 func (a *Agent) publish() {
 	p := &a.pause
 	now := a.now()

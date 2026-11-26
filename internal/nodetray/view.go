@@ -1,5 +1,5 @@
 // Package nodetray is the desktop tray's logic, kept apart from the GUI so it
-// is tested without one: what the menu bar shows for an agent status, the
+// is tested without one: what the menu bar shows for a daemon status, the
 // notifications state changes raise, the icons and the settings page.
 package nodetray
 
@@ -18,7 +18,7 @@ const (
 	IconLevel IconKind = iota // 1-100%: a circle filled that much
 	IconPaused
 	IconWaiting // paused, proxy requests still running
-	IconWarn    // agent silent or proxy unreachable
+	IconWarn    // daemon silent or proxy unreachable
 )
 
 // View is everything the menu shows for one status.
@@ -34,7 +34,7 @@ type View struct {
 	Detail   string // "2 requests · qwen3:32b loaded · GPU 87%"
 	Notice   string // a problem worth a line of its own; "" for none
 
-	Connected    bool   // the agent answers: the controls apply
+	Connected    bool   // the daemon answers: the controls apply
 	UntilNext    string // "Pause until the next switch (18:00)"; "" hides it
 	StopNow      string // "Stop now (cuts 2 requests)"; "" hides it
 	CanResume    bool   // a manual level is in force
@@ -87,12 +87,12 @@ func StopNow(s *nodeagent.Status, now time.Time) nodeagent.OverrideRequest {
 	return req
 }
 
-// Build renders a status; err is the last failure to reach the agent.
+// Build renders a status; err is the last failure to reach the daemon.
 func Build(s *nodeagent.Status, err error, now time.Time) View {
 	v := View{Header: "Keystone node"}
 	if err != nil || s == nil {
 		v.Icon, v.Title = IconWarn, ""
-		v.Level = "The node agent does not answer"
+		v.Level = "The node daemon does not answer"
 		v.Tooltip = v.Level
 		if err != nil {
 			v.Detail = shorten(err.Error(), 80)
@@ -145,7 +145,7 @@ func Build(s *nodeagent.Status, err error, now time.Time) View {
 	if n := s.Level.Next; n != nil && (lvl > 0 || s.Level.Source == nodeagent.SourceOverride) {
 		v.UntilNext = "Pause until the next switch (" + clock(n.At, now) + ")"
 		if n.At.Sub(now) > nodeagent.MaxOverride {
-			v.UntilNext = "Pause for 24 hours" // the agent caps it there
+			v.UntilNext = "Pause for 24 hours" // the daemon caps it there
 		}
 	}
 	if s.CanAbort && s.Requests.ProxyActive > 0 {

@@ -27,7 +27,7 @@ type AgentConfig struct {
 	NodeKey        string
 	NodeID         string
 	NodeName       string
-	EngineURL      string // where the agent itself polls the engine; local, never reported
+	EngineURL      string // where the daemon itself polls the engine; local, never reported
 	Endpoint       string // address the proxy dials, as reported at registration
 	Engine         string
 	ExtraEngines   []EngineSpec // engines served beside Engine, behind the built-in gateway
@@ -519,7 +519,7 @@ func (a *Agent) unregister(ctx context.Context) error {
 	log.Info().Str("node_id", a.cfg.NodeID).Msg("unregistering node from proxy")
 	_, err := a.client.UnregisterNode(ctx, &pb.UnregisterNodeRequest{
 		NodeId: a.cfg.NodeID,
-		Reason: "agent shutdown",
+		Reason: "node daemon shutdown",
 	})
 	return err
 }
