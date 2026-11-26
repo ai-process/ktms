@@ -192,18 +192,9 @@ One rule per line, in local time:
 mon-fri 10:00-23:00 0
 ```
 
-A weekday under this file:
+The level this file gives, by hour:
 
-```mermaid
-gantt
-    dateFormat HH:mm
-    axisFormat %H:%M
-    section Mon–Fri
-    100%, night         :done, 00:00, 07:00
-    50%, morning        :active, 07:00, 10:00
-    0%, owner works     :crit, 10:00, 23:00
-    100%                :done, 23:00, 23:59
-```
+<p align="center"><img src="img/nodes-schedule.svg" alt="Weekdays: 100% from 23:00 to 07:00, 50% from 07:00 to 10:00, 0% from 10:00 to 23:00. Weekends: the file has no rule for 10:00 to 23:00, so the node serves at 100%" width="860"></p>
 
 - **Days:** `mon`..`sun`, ranges (`mon-fri`) and lists (`sat,sun`). Without days a rule applies daily.
 - **Times:** a window past midnight belongs to the day it starts on; `24:00` ends a day.
