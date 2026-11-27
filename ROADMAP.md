@@ -34,6 +34,11 @@ Every 1.x release is additive: new RPCs, fields, endpoints and settings. Anythin
 - light-tokenmeter: retention settings for Postgres and ClickHouse, and published memory and
   throughput measurements.
 
+### Local nodes
+
+- One `ktms-node` serving several KTMS gateways, each at its own level, sharing the engine and its
+  loaded models.
+
 ## Next
 
 ### Agent tools: MCP, second stage
@@ -57,6 +62,17 @@ Every 1.x release is additive: new RPCs, fields, endpoints and settings. Anythin
 - Vertex AI: Gemini and Claude through Google Cloud with a service account.
 - Presets for OpenAI-compatible clouds: xAI, OpenRouter, Together, Fireworks, Cerebras.
 
+### Local nodes: JEPA models
+
+- A `jepa` node engine and a reference `ktms-jepa` server that run popular open JEPA models
+  (V-JEPA 2 and 2.1, I-JEPA) on a Mac or a GPU box.
+- Embeddings served by nodes: image and video at `/v1/embeddings`, and text from Ollama. Fallback
+  goes only to a node with the same model, never to another encoder.
+- The latent encoder of the semantic cache and guardrails served through the node pool, with limits
+  and usage accounting.
+- Experimental: world models conditioned on actions (V-JEPA 2-AC first) at `/v1/world/rollout`
+  and `/v1/world/plan`.
+
 ### Spend, security and data
 
 - Budget alerts at thresholds such as 80% and 100%: webhook, Slack and e-mail.
@@ -75,6 +91,8 @@ Every 1.x release is additive: new RPCs, fields, endpoints and settings. Anythin
 - Hedged requests for streaming: a second attempt when the first is slow to start.
 - A corrective retry when a response fails its JSON schema.
 - Cloud routing strategies by latency, load and price.
+- A budget per shadow experiment that covers the candidate, the judge and retries: when it runs
+  out, callers still get answers, the shadow call is skipped and the skip shows in the metrics.
 
 ### Documentation
 
