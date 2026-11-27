@@ -33,6 +33,10 @@ All notable changes to KTMS are listed here. The format follows
   candidate and the part, as `Judge` does for `state_media`: a malformed `action_media` part (was `Unknown`), state and
   action media over the part or byte ceiling together (was `vendor_error`), a name used in both, and an image TypeSafe
   would refuse in any candidate. Such refusals end the chain and do not trip the circuit breaker.
+- TypeSafe judgments without a state (`/v1/decisions` with images, or `Judge` with named images and no `state_json`)
+  send `{}` instead of `null`, which System One refused with a 422 (`vendor_error`; found on 1.8.0-beta.1).
+- TypeSafe answers to criteria given as `{"description", "examples"}` decode: such legend entries read as their
+  description instead of failing the call after it was billed (found on 1.8.0-beta.1).
 
 ## [1.7.0] - 2026-11-26
 
