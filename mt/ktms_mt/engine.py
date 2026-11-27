@@ -4,13 +4,19 @@ import html
 import os
 import re
 import threading
+import unicodedata
 from dataclasses import dataclass
 
 from .catalog import Bundle
 
-# Japanese and Chinese put no space after 。！？, so a sentence ends there
-# without one; the empty match keeps the pieces joinable.
-SENTENCE_SPLIT = re.compile(r"((?<=[.!?…])\s+|(?<=[。！？])\s*)")
+# A sentence ends after its closing quotes and brackets. Japanese and Chinese
+# put no space after 。！？, so the separator there may be empty.
+CLOSERS = "\"'”’)\\]」』）〉》】〕"
+SENTENCE_END = re.compile(
+    rf"[.!?…]+[{CLOSERS}]*(\s+)|(?:[。！？｡]|．(?![0-9０-９])|……)+[{CLOSERS}]*(\s*)")
+CLAUSE_MARKS = "、，；：,;:"
+# Targets written without spaces between words keep synthetic cuts glued.
+UNSPACED = {"ja", "zh", "yue", "wuu", "th", "lo", "km", "my", "bo", "dz"}
 WORDS = re.compile(r"(\s+)")
 TAG = re.compile(r"(<[^>]*>)")
 RAW_TEXT_TAGS = re.compile(r"<(script|style)\b", re.I)
@@ -128,11 +134,8 @@ def split_text(text, tokenize, max_tokens=200):
         if lead:
             gap(lead)
         units = []  # (text, whitespace after it, tokens)
-        parts = SENTENCE_SPLIT.split(body)
-        for k in range(0, len(parts), 2):
-            sep = parts[k + 1] if k + 1 < len(parts) else ""
-            if parts[k] or sep:
-                units.extend(fit(parts[k], sep, tokenize, max_tokens))
+        for sent, sep in sentences(body):
+            units.extend(fit(sent, sep, tokenize, max_tokens))
         group, n_group = [], 0
         for u in units:
             if group and n_group + u[2] > max_tokens:
@@ -144,6 +147,20 @@ def split_text(text, tokenize, max_tokens=200):
         pieces.append("".join(t + s for t, s, _ in group[:-1]) + group[-1][0])
         joiners.append(group[-1][1] + trail + end)
     return pieces, joiners
+
+
+def sentences(body):
+    """(sentence, whitespace after it) pairs covering body."""
+    out, start = [], 0
+    for m in SENTENCE_END.finditer(body):
+        g = 1 if m.group(1) is not None else 2
+        if m.end() == len(body) and not m.group(g):
+            break
+        out.append((body[start:m.start(g)], m.group(g)))
+        start = m.end()
+    if start < len(body):
+        out.append((body[start:], ""))
+    return out
 
 
 def fit(sent, sep, tokenize, max_tokens):
@@ -172,18 +189,52 @@ def fit(sent, sep, tokenize, max_tokens):
 
 def chop(word, tokenize, max_tokens):
     """A word longer than max_tokens (a run without spaces: Japanese, Chinese,
-    a URL) cut by characters; past ~512 tokens the model fails the whole call."""
-    out = []
-    while True:
-        n = len(tokenize(word))
+    a URL) cut by characters; past ~512 tokens the model fails the whole call.
+    Only a bounded window is tokenized per cut, so a huge run stays linear."""
+    out, cap = [], max_tokens * 8
+    while word:
+        window = word[:cap]
+        n = len(tokenize(window))
         if n <= max_tokens:
-            out.append((word, n))
-            return out
-        size = max(1, len(word) * max_tokens // n)
-        while size > 1 and len(tokenize(word[:size])) > max_tokens:
-            size = size * 3 // 4
+            if len(word) <= cap:
+                out.append((word, n))
+                return out
+            size = cap
+        else:
+            size = max(1, len(window) * max_tokens // n)
+            while size > 1 and len(tokenize(word[:size])) > max_tokens:
+                size = size * 3 // 4
+        size = cut_point(word, size)
         out.append((word[:size], len(tokenize(word[:size]))))
         word = word[size:]
+    return out
+
+
+def cut_point(word, size):
+    """Moves a cut back to just after a clause mark in the window's second half,
+    else off a grapheme cluster (combining marks, ZWJ, skin tones, flags)."""
+    for j in range(size - 1, size // 2 - 1, -1):
+        if word[j] in CLAUSE_MARKS:
+            return j + 1
+    start = size
+    while size > 1 and (extends(word[size]) or word[size - 1] == "\u200d"):
+        size -= 1
+    if is_ri(word[size]):
+        k = size
+        while k > 0 and is_ri(word[k - 1]):
+            k -= 1
+        if (size - k) % 2:
+            size -= 1
+    return size if size > 0 else start
+
+
+def extends(ch):
+    return (unicodedata.category(ch) in ("Mn", "Mc", "Me") or ch == "\u200d"
+            or 0x1F3FB <= ord(ch) <= 0x1F3FF or 0xE0020 <= ord(ch) <= 0xE007F)
+
+
+def is_ri(ch):
+    return 0x1F1E6 <= ord(ch) <= 0x1F1FF
 
 
 class Translator:
@@ -251,8 +302,10 @@ class Translator:
             a, b = engine.translate(todo, lang, target) if todo else (0, 0)
             n_in, n_out = n_in + a, n_out + b
             for i, pi, lead, trail, first, n, joiners in layout:
-                body = "".join((segs[first + k].out if segs[first + k].pieces else segs[first + k].text) + joiners[k]
-                               for k in range(n))
+                body = "".join(
+                    (segs[first + k].out if segs[first + k].pieces else segs[first + k].text)
+                    + self.joiner(joiners[k], segs, first + k, first + n, target)
+                    for k in range(n))
                 if fmt == "html":
                     body = html.escape(body, quote=False)
                 parts[i][pi][0] = lead + body + trail
@@ -261,6 +314,16 @@ class Translator:
                 out[i]["text"] = "".join(p[0] for p in pieces)
         usage = {"input_tokens": n_in, "output_tokens": n_out, "characters": sum(len(t) for t in texts)}
         return out, usage
+
+    @staticmethod
+    def joiner(j, segs, k, end, target):
+        """A cut without whitespace between two translations: each output is
+        stripped, so a spaced target needs a space there."""
+        if j or k + 1 >= end or target in UNSPACED:
+            return j
+        if segs[k].pieces and segs[k + 1].pieces:
+            return " "
+        return j
 
 
 def primary(tag):
