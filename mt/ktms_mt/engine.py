@@ -8,7 +8,9 @@ from dataclasses import dataclass
 
 from .catalog import Bundle
 
-SENTENCE_SPLIT = re.compile(r"(?<=[.!?…。！？])(\s+)")
+# Japanese and Chinese put no space after 。！？, so a sentence ends there
+# without one; the empty match keeps the pieces joinable.
+SENTENCE_SPLIT = re.compile(r"((?<=[.!?…])\s+|(?<=[。！？])\s*)")
 WORDS = re.compile(r"(\s+)")
 TAG = re.compile(r"(<[^>]*>)")
 RAW_TEXT_TAGS = re.compile(r"<(script|style)\b", re.I)
@@ -128,7 +130,9 @@ def split_text(text, tokenize, max_tokens=200):
         units = []  # (text, whitespace after it, tokens)
         parts = SENTENCE_SPLIT.split(body)
         for k in range(0, len(parts), 2):
-            units.extend(fit(parts[k], parts[k + 1] if k + 1 < len(parts) else "", tokenize, max_tokens))
+            sep = parts[k + 1] if k + 1 < len(parts) else ""
+            if parts[k] or sep:
+                units.extend(fit(parts[k], sep, tokenize, max_tokens))
         group, n_group = [], 0
         for u in units:
             if group and n_group + u[2] > max_tokens:
@@ -156,11 +160,30 @@ def fit(sent, sep, tokenize, max_tokens):
         if cur and n_cur + nw > max_tokens:
             out.append(("".join(cur[:-1]), cur[-1], n_cur))
             cur, n_cur = [], 0
+        if nw > max_tokens:
+            *heads, (w, nw) = chop(w, tokenize, max_tokens)
+            out.extend((c, "", m) for c, m in heads)
         cur += [w, space]
         n_cur += nw
     if cur:
         out.append(("".join(cur[:-1]), sep, n_cur))
     return out
+
+
+def chop(word, tokenize, max_tokens):
+    """A word longer than max_tokens (a run without spaces: Japanese, Chinese,
+    a URL) cut by characters; past ~512 tokens the model fails the whole call."""
+    out = []
+    while True:
+        n = len(tokenize(word))
+        if n <= max_tokens:
+            out.append((word, n))
+            return out
+        size = max(1, len(word) * max_tokens // n)
+        while size > 1 and len(tokenize(word[:size])) > max_tokens:
+            size = size * 3 // 4
+        out.append((word[:size], len(tokenize(word[:size]))))
+        word = word[size:]
 
 
 class Translator:

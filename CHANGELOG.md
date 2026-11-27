@@ -29,6 +29,9 @@ All notable changes to KTMS are listed here. The format follows
   `jev-1.14.0`). `/v1/decisions` takes `"type": "box"` questions and a `name` on input parts.
 
 ### Fixed
+- ktms-mt splits Japanese and Chinese sentences, which end without a space, and cuts a run without spaces over
+  `max_segment_tokens` by characters. Such a text went to the model whole: past 512 tokens Opus-MT failed the
+  call with "No position encodings are defined for positions >= 512", or translated it into garbage.
 - `EvaluateRollouts` checks candidate media before any vendor call and answers `bad_request` (HTTP 400) naming the
   candidate and the part, as `Judge` does for `state_media`: a malformed `action_media` part (was `Unknown`), state and
   action media over the part or byte ceiling together (was `vendor_error`), a name used in both, and an image TypeSafe

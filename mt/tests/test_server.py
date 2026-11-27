@@ -81,6 +81,15 @@ class TranslatorTest(unittest.TestCase):
         self.assertTrue(all(len(p.split()) <= 3 for p in pieces))
         self.assertIn("e f g", pieces)
 
+    def test_split_text_splits_text_without_spaces(self):
+        # One token per character: Japanese ends sentences without a space, and
+        # a run without spaces longer than the limit is cut by characters.
+        for text in ["あいう。えお！かき", "x" * 11, "ab " + "y" * 9 + " cd。" + "z" * 5 + "。"]:
+            pieces, joiners = split_text(text, list, max_tokens=4)
+            self.assertEqual("".join(p + j for p, j in zip(pieces, joiners)), text)
+            self.assertTrue(all(0 < len(p.replace(" ", "")) <= 4 for p in pieces), pieces)
+        self.assertEqual(split_text("あいう。えお！かき", list, max_tokens=4)[0], ["あいう。", "えお！", "かき"])
+
 
 class ServerTest(unittest.TestCase):
     @classmethod
