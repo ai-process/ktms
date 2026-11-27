@@ -94,13 +94,13 @@ type typeSafeAssetEntry struct {
 }
 
 type typeSafeAnswer struct {
-	Type          string             `json:"type"`
-	Choice        string             `json:"choice"`
-	Noul          float64            `json:"noul"`
-	Score         float64            `json:"score"`
-	Probabilities map[string]float64 `json:"probabilities"`
-	Confidence    *float64           `json:"confidence"`
-	Legend        map[string]string  `json:"legend"`
+	Type          string                     `json:"type"`
+	Choice        string                     `json:"choice"`
+	Noul          float64                    `json:"noul"`
+	Score         float64                    `json:"score"`
+	Probabilities map[string]float64         `json:"probabilities"`
+	Confidence    *float64                   `json:"confidence"`
+	Legend        map[string]json.RawMessage `json:"legend"`
 	Box           *struct {
 		Top    float64 `json:"top"`
 		Bottom float64 `json:"bottom"`
@@ -174,7 +174,7 @@ func (a *TypeSafeAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ st
 			Noul:            ans.Noul,
 			Score:           ans.Score,
 			Probabilities:   ans.Probabilities,
-			Legend:          ans.Legend,
+			Legend:          typeSafeLegend(ans.Legend),
 			ConfidenceUnset: ans.Confidence == nil,
 		}
 		if ans.Confidence != nil {
@@ -265,8 +265,8 @@ func (a *TypeSafeAdapter) systemOneCall(req *llm.JudgeRequest) (judgeCall, error
 		box = box || q.Type == llm.JudgeBox
 	}
 	if len(req.StateMedia) == 0 {
-		if len(sr.State) == 0 {
-			sr.State = json.RawMessage("null")
+		if len(sr.State) == 0 || strings.TrimSpace(string(sr.State)) == "null" {
+			sr.State = typeSafeNoState
 		}
 		body, err := json.Marshal(sr)
 		if err != nil {
@@ -349,6 +349,40 @@ func (a *TypeSafeAdapter) systemOneCall(req *llm.JudgeRequest) (judgeCall, error
 	}, nil
 }
 
+// typeSafeNoState stands for a missing state: System One requires the field
+// and refuses null with a 422.
+var typeSafeNoState = json.RawMessage("{}")
+
+// typeSafeLegend reads a legend whose entries are strings or, for criteria
+// given as {"description", "examples"}, objects: those read as their description.
+func typeSafeLegend(in map[string]json.RawMessage) map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, raw := range in {
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			out[k] = s
+			continue
+		}
+		var obj struct {
+			Description *string `json:"description"`
+		}
+		if json.Unmarshal(raw, &obj) == nil && obj.Description != nil {
+			out[k] = *obj.Description
+			continue
+		}
+		var b bytes.Buffer
+		if json.Compact(&b, raw) != nil {
+			b.Reset()
+			b.Write(raw)
+		}
+		out[k] = b.String()
+	}
+	return out
+}
+
 // unnamedState puts references to unnamed images where System One sees them:
 // the state itself when the caller sent none, else {"state": ..., "images": [...]}.
 func unnamedState(state json.RawMessage, refs []string) json.RawMessage {
@@ -357,7 +391,7 @@ func unnamedState(state json.RawMessage, refs []string) json.RawMessage {
 	}
 	if len(refs) == 0 {
 		if len(state) == 0 {
-			return json.RawMessage("null")
+			return typeSafeNoState
 		}
 		return state
 	}
