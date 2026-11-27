@@ -28,6 +28,16 @@ class FakeEngine:
         return n, n
 
 
+class CharEngine(FakeEngine):
+    def tokenize(self, text):
+        return list(text)
+
+    def translate(self, segments, source, target):
+        for s in segments:
+            s.out = f"[{self.name}] {s.text}"
+        return 0, 0
+
+
 def detect(text):
     return "fr" if "bonjour" in text.lower() else "nl" if "hallo" in text.lower() else "de" if "guten" in text.lower() else "en"
 
@@ -80,6 +90,46 @@ class TranslatorTest(unittest.TestCase):
         self.assertEqual("".join(p + j for p, j in zip(pieces, joiners)), text)
         self.assertTrue(all(len(p.split()) <= 3 for p in pieces))
         self.assertIn("e f g", pieces)
+
+    def test_split_text_splits_text_without_spaces(self):
+        # One token per character: Japanese ends sentences without a space, and
+        # a run without spaces longer than the limit is cut by characters.
+        # Spaces fold into the next token, as SentencePiece's "▁" does.
+        def tok(t):
+            return [c for c in t if not c.isspace()]
+        for text in ["あいう。えお！かき", "x" * 11, "ab " + "y" * 9 + " cd。" + "z" * 5 + "。"]:
+            pieces, joiners = split_text(text, tok, max_tokens=4)
+            self.assertEqual("".join(p + j for p, j in zip(pieces, joiners)), text)
+            self.assertTrue(all(0 < len(tok(p)) <= 4 for p in pieces), pieces)
+        self.assertEqual(split_text("あいう。えお！かき", list, max_tokens=4)[0], ["あいう。", "えお！", "かき"])
+
+    def test_split_text_keeps_closers_and_cuts_at_clause_marks(self):
+        self.assertEqual(split_text("「はい。」と言った。", list, max_tokens=6)[0], ["「はい。」", "と言った。"])
+        self.assertEqual(split_text("一二。三四．五六……七八", list, max_tokens=4)[0], ["一二。", "三四．", "五六……", "七八"])
+        self.assertEqual(split_text("３．５", list, max_tokens=3)[0], ["３．５"])
+        self.assertEqual(split_text("あいう、えおかきく", list, max_tokens=6)[0], ["あいう、", "えおかきく"])
+        family = "\U0001F468\u200d\U0001F469\u200d\U0001F467"
+        self.assertEqual(split_text("ab" + family + "c", list, max_tokens=6)[0], ["ab", family + "c"])
+
+    def test_chop_tokenizes_a_bounded_window(self):
+        seen = []
+
+        def tok(t):
+            seen.append(len(t))
+            return list(t)
+        pieces, _ = split_text("x" * 100000, tok, max_tokens=100)
+        self.assertEqual(sum(map(len, pieces)), 100000)
+        # Re-tokenizing the tail on every cut would be ~50M characters.
+        self.assertLess(sum(seen), 100000 * 20)
+
+    def test_cut_pieces_get_a_space_in_a_spaced_target(self):
+        tr, eng = make()
+        eng["ja-en"] = CharEngine("ja-en")
+        tr.models["opus-mt-ja-en"] = Bundle(target="*", pairs={"ja": "ja-en"})
+        out, _ = tr.translate("opus-mt-ja-en", ["あいう。えおか。"], "ja", "en")
+        self.assertEqual(out[0]["text"], "[ja-en] あいう。 [ja-en] えおか。")
+        out, _ = tr.translate("opus-mt-ja-en", ["あいう。えおか。"], "ja", "zh")
+        self.assertEqual(out[0]["text"], "[ja-en] あいう。[ja-en] えおか。")
 
 
 class ServerTest(unittest.TestCase):
