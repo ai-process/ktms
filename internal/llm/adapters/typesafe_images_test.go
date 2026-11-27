@@ -279,14 +279,16 @@ func TestTypeSafeMissingStateIsEmptyObject(t *testing.T) {
 		{StateJSON: "null", StateMedia: []*llm.JudgeMediaPart{{Type: llm.JudgeMediaImage, Name: "road", Data: pngOf(t, 640, 480)}}, Questions: q},
 		{Questions: q},
 		{StateJSON: " null ", Questions: q},
+		{StateMedia: []*llm.JudgeMediaPart{{Type: llm.JudgeMediaImage, Data: pngOf(t, 640, 480)}}, Questions: q},
 	} {
 		if _, err := a.Judge(context.Background(), req, "u", nil); err != nil {
 			t.Fatal(err)
 		}
 	}
+	want := []string{"{}", "{}", "{}", "{}", `"ktms-image-1"`} // an unnamed image is the state itself
 	for i, s := range states {
-		if s != "{}" {
-			t.Errorf("call %d: state = %s, want {}", i, s)
+		if s != want[i] {
+			t.Errorf("call %d: state = %s, want %s", i, s, want[i])
 		}
 	}
 }
@@ -296,7 +298,7 @@ func TestTypeSafeMissingStateIsEmptyObject(t *testing.T) {
 func TestTypeSafeLegendObjects(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"answers":{"wear":{"type":"score","score":1.7,"legend":{
-			"0":"intact","1":{"description":"potholes","examples":["ex-pothole"]},"2":{"examples":["x"]}}}}}`)
+			"0":"intact","1":{"description":"potholes","examples":["ex-pothole"]},"2":{ "examples": [ "x" ] }}}}}`)
 	}))
 	defer srv.Close()
 	res, err := NewTypeSafeAdapter(srv.URL, "k", "jev-1.14.0").Judge(context.Background(), &llm.JudgeRequest{StateJSON: `{}`,

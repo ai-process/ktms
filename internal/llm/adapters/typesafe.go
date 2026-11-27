@@ -373,7 +373,12 @@ func typeSafeLegend(in map[string]json.RawMessage) map[string]string {
 			out[k] = *obj.Description
 			continue
 		}
-		out[k] = string(raw)
+		var b bytes.Buffer
+		if json.Compact(&b, raw) != nil {
+			b.Reset()
+			b.Write(raw)
+		}
+		out[k] = b.String()
 	}
 	return out
 }
