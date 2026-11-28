@@ -50,6 +50,8 @@ Options:
   --max-concurrency N    parallel requests this machine serves (default 1; 2 with ollama,mt, one
                          of them kept for translation)
   --context N            context tokens per request (default 8192)
+  --judge                the model is a decision model (System One, e.g. pplx-decider-flash:4b):
+                         tag it judge; needs Ollama 0.35 or later (--upgrade-deps)
   --version vX.Y.Z       node daemon release to install (default: latest)
   --key-file PATH        read the node key from a file instead of asking
   --new-key              ask for the node key again even if one is stored
@@ -73,7 +75,7 @@ EOF
 
 parse_args() {
 	PROXY="" NODE_ID="" MODEL="" MT_MODEL="" NAME="" ENGINE="" MAXC="" CTX=8192 VERSION="latest"
-	KEY_SRC="" NEW_KEY=0 PLAINTEXT=0 ENDPOINT="" TRAY=0 UPGRADE=0 DRY_RUN=0 UNINSTALL=0 DOCTOR=0 KEEP_LEGACY=0 PURGE_BACKUPS=0 SCHEDULE_SRC=""
+	KEY_SRC="" NEW_KEY=0 JUDGE=0 PLAINTEXT=0 ENDPOINT="" TRAY=0 UPGRADE=0 DRY_RUN=0 UNINSTALL=0 DOCTOR=0 KEEP_LEGACY=0 PURGE_BACKUPS=0 SCHEDULE_SRC=""
 	while [ $# -gt 0 ]; do
 		opt=$1 val="" shift_n=1
 		case $1 in --*=*) opt=${1%%=*} val=${1#*=} ;; esac
@@ -90,6 +92,7 @@ parse_args() {
 			esac
 			;;
 		--new-key) NEW_KEY=1 ;;
+		--judge) JUDGE=1 ;;
 		--plaintext) PLAINTEXT=1 ;;
 		--tray) TRAY=1 ;;
 		--upgrade-deps) UPGRADE=1 ;;
@@ -110,6 +113,7 @@ parse_args() {
 	*) die "--engine must be ollama, mt or ollama,mt" ;;
 	esac
 	[ -z "$MT_MODEL" ] || [ "$ENGINE" = ollama,mt ] || [ -z "$ENGINE" ] || die "--mt-model goes with --engine ollama,mt"
+	[ "$JUDGE" = 0 ] || [ "${ENGINE:-ollama}" != mt ] || die "--judge goes with an Ollama model, not --engine mt"
 	[ "$UNINSTALL" = 1 ] && return 0
 	[ -n "$PROXY" ] || die "--proxy is required (see --help)"
 	[ -n "$NODE_ID" ] || die "--node-id is required"
@@ -869,6 +873,7 @@ write_node_service() { # binary
 	set -- "$BASE/bin/ktms-node" --proxy-addr "$PROXY" --node-id "$NODE_ID" --node-name "$NAME" \
 		$(engine_args) --max-concurrent "$MAXC" --node-key-file "$BASE/key"
 	[ "$PLAINTEXT" = 1 ] || set -- "$@" --tls
+	[ "$JUDGE" = 0 ] || set -- "$@" --judge-model "$MODEL"
 	if [ -n "$ENDPOINT" ]; then
 		set -- "$@" --endpoint "$ENDPOINT" --expose none
 	else

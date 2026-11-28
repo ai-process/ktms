@@ -53,3 +53,18 @@ var MicrosoftProfile = SystemOneProfile{
 	Path:       "/providers/microsoft/v1/systemone",
 	AuthHeader: "api-key",
 }
+
+// NodeSystemOneProfile is a decision model on a registered node behind its
+// gateway: Ollama 0.35+, llama-server, SGLang and the vendors' own servers all
+// take bare base64 images at the top level. The node's access key is the bearer.
+var NodeSystemOneProfile = SystemOneProfile{
+	Vendor:     "node",
+	Path:       "/v1/systemone",
+	AuthPrefix: "Bearer ",
+	Media:      MediaImages,
+	RawBase64:  true,
+	Images: &SystemOneImageLimits{
+		Name: "the node", MinSide: 1, MinPixels: 1,
+		MaxBytes: 8 << 20, // Ollama takes 32 MiB a request in all
+	},
+}

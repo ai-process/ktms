@@ -85,6 +85,7 @@ Useful options:
 | `--max-concurrency N` | Serve N requests at once (default 1). |
 | `--schedule FILE` | Serve only at some hours: see [Schedule](#schedule). |
 | `--tray` | The menu bar or tray app: see [Tray](#tray). |
+| `--judge` | The model is a [decision model](#a-decision-model-node). |
 | `--engine mt` / `--engine ollama,mt` | A [translation node](#a-translation-node), alone or next to chat. |
 | `--endpoint URL` | You expose the node yourself; no tunnel. |
 | `--dry-run` | Check the machine and print the plan, change nothing. |
@@ -304,6 +305,47 @@ ktms-node stats --tail                           # requests as they arrive
 - Options: `--format json|csv`, `--until`, `--dir` for a log elsewhere. Works offline and without
   the node key.
 
+## A decision-model node
+
+Open decision models (System One: typed questions in, probabilities out) run on a node like any
+Ollama model, and the judge chain falls back to a cloud judge when the node is away. Ollama 0.35 and
+later answers `POST /v1/systemone`, and so do `llama-server`, SGLang and the models' own servers.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ai-process/ktms/vX.Y.Z/scripts/install-node.sh | sh -s -- \
+  --proxy proxy.example.com --node-id anna-decide --model pplx-decider-flash:4b --judge --upgrade-deps
+```
+
+`--judge` tags the model `judge` on the node; `--upgrade-deps` brings an older Ollama to 0.35+.
+The admin registers it with `systemone`, so Keystone speaks System One to it rather than OpenAI
+Decisions, and puts it first in the judge rule:
+
+```yaml
+models:
+  - id: "pplx-decider-flash:4b"
+    vendor: local
+    competencies: {general: basic}
+    capabilities: [judge, systemone, vision]
+rules:
+  - name: judge
+    priority: 160
+    needs: {general: basic}
+    attributes: {modality: judge}
+    use: ["pplx-decider-flash:4b", jev-latest]   # the node first, TypeSafe when it is away
+```
+
+| Model | Ollama tag | Size | Licence | Takes |
+| --- | --- | --- | --- | --- |
+| pplx-decider-flash (Perplexity) | `pplx-decider-flash:4b` | 5.6 GB | Apache-2.0 | text, images |
+| Clef-flash (Cloudflare) | `clef-flash:9b` | 11–12 GB | Apache-2.0 | text, images |
+| d1-2B (Liquid AI) | `d1:2b` | 3.9 GB | LFM Open License (commercial use below $10M revenue) | text, images |
+
+- Questions: noul, choice, score. Box is not served by these models through Ollama.
+- Images go as bare base64 beside the state; a named image's name goes with the state in order.
+- `EvaluateRollouts` judges the candidates one by one on such a model.
+- A node whose engine has no `/v1/systemone` (an older Ollama) answers 404: the call moves to the
+  next model and the node's circuit stays closed.
+
 ## A translation node
 
 `--engine mt` installs [ktms-mt](../mt/README.md) instead of Ollama: CTranslate2 with Opus-MT models
@@ -396,7 +438,7 @@ export NODE_KEY=...                       # or --node-key-file
 | `--engine-url` | `http://127.0.0.1:11434` | Where the daemon polls the engine. |
 | `--extra-engine` | — | Another engine behind the same node, `ENGINE=URL`; needs `--expose=cloudflared`. |
 | `--only-model` | all | Report only these models (repeat or comma-separate), for an engine that shares its model directory. |
-| `--judge-model` | — | Tag these models with `judge`, for `/v1/decisions` and `Judge`. |
+| `--judge-model` | — | Tag these models with `judge`, for `/v1/decisions`, `/v1/systemone` and `Judge`. |
 | `--base-weight` | `100` | The node's weight for balancing. |
 | `--max-concurrent` | 16 (4 for FreeToken) | Requests Keystone sends at once. The installer sets 1, or `--max-concurrency`. |
 | `--engine-max-running` | 4 | FreeToken: requests above this count as waiting. |

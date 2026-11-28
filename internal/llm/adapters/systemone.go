@@ -34,6 +34,7 @@ type SystemOneProfile struct {
 	LongContextHeader string                // sent as "true" for long_context models; "" when the vendor has none
 	Images            *SystemOneImageLimits // nil: text only, a request with images yields
 	Media             SystemOneMedia
+	RawBase64         bool // MediaImages as bare base64 rather than data URLs (Ollama)
 }
 
 // SystemOneMedia is how a vendor takes images next to the state.
@@ -492,6 +493,10 @@ func (a *SystemOneAdapter) inlineImagesCall(sr systemOneRequest, images []system
 			state, _ = json.Marshal(wrapped) // strings and raw JSON always marshal
 		}
 		for _, img := range images {
+			if a.profile.RawBase64 {
+				sr.Images = append(sr.Images, base64.StdEncoding.EncodeToString(img.data))
+				continue
+			}
 			sr.Images = append(sr.Images, img.dataURL())
 		}
 	case MediaStateParts:

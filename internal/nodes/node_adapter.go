@@ -572,11 +572,18 @@ func (pa *PoolAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, userID 
 		return nil, err
 	}
 
-	adapter := pa.newNodeAdapter(client, underlyingModel, cand)
-	adapter.SetDecisionsConfig(cand.Snapshot.Meta.Endpoint, plainAuthToken)
+	var judge llm.Judge
+	if hasCapability(pa.model.Capabilities, registry.CapabilitySystemOne) {
+		endpoint := strings.TrimSuffix(strings.TrimRight(cand.Snapshot.Meta.Endpoint, "/"), "/v1")
+		judge = adapters.NewSystemOneAdapter(adapters.NodeSystemOneProfile, endpoint, plainAuthToken, underlyingModel)
+	} else {
+		adapter := pa.newNodeAdapter(client, underlyingModel, cand)
+		adapter.SetDecisionsConfig(cand.Snapshot.Meta.Endpoint, plainAuthToken)
+		judge = adapter
+	}
 
 	start := time.Now()
-	res, err := adapter.Judge(ctx, req, userID, meta)
+	res, err := judge.Judge(ctx, req, userID, meta)
 	duration := time.Since(start)
 	if res != nil {
 		call.finish(res.Usage, 0, err)
@@ -586,16 +593,21 @@ func (pa *PoolAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, userID 
 
 	if err != nil {
 		isClientErr := ctx.Err() != nil && !errors.Is(context.Cause(ctx), circuitbreaker.ErrUpstreamTimeout)
+		status := 0
 		var decisionErr *adapters.OpenAIDecisionError
+		var systemOneErr *adapters.SystemOneError
 		if errors.As(err, &decisionErr) {
-			switch decisionErr.Status {
-			case 400, 413, 422:
-				isClientErr = true
-			case 404:
-				// Node engine does not expose /v1/decisions for this model.
-				// Yield to the next model in the chain without tripping the node's circuit breaker.
-				return nil, fmt.Errorf("%w: %v", llm.ErrJudgmentUnsupported, err)
-			}
+			status = decisionErr.Status
+		} else if errors.As(err, &systemOneErr) {
+			status = systemOneErr.Status
+		}
+		switch {
+		case status == 400 || status == 413 || status == 422, errors.Is(err, llm.ErrInvalidMedia), errors.Is(err, llm.ErrJudgmentUnsupported):
+			isClientErr = true
+		case status == 404:
+			// The engine does not expose the judge route or the model.
+			// Yield to the next model in the chain without tripping the node's circuit breaker.
+			return nil, fmt.Errorf("%w: %v", llm.ErrJudgmentUnsupported, err)
 		}
 		if !isClientErr {
 			if recErr := pa.selector.mgr.Circuit().RecordFailure(context.Background(), cand.Snapshot.Meta.NodeID); recErr != nil {
@@ -647,8 +659,10 @@ func judgeInputEstimate(req *llm.JudgeRequest) int64 {
 }
 
 // EvaluateRollouts scores multiple rollout candidate actions against a local node.
+// System One has no rollouts route: such models yield, and the caller judges
+// each candidate with Judge instead.
 func (pa *PoolAdapter) EvaluateRollouts(ctx context.Context, req *llm.EvaluateRolloutsRequest, userID string, meta map[string]string) (*llm.EvaluateRolloutsResult, error) {
-	if !hasCapability(pa.model.Capabilities, registry.CapabilityJudge) {
+	if !hasCapability(pa.model.Capabilities, registry.CapabilityJudge) || hasCapability(pa.model.Capabilities, registry.CapabilitySystemOne) {
 		return nil, llm.ErrJudgmentUnsupported
 	}
 

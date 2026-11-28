@@ -226,6 +226,7 @@ var postRoutes = map[string]bool{
 	"/v1/chat/completions":   true,
 	"/v1/decisions":          true,
 	"/v1/decisions/rollouts": true,
+	"/v1/systemone":          true,
 	"/v1/translate":          true,
 }
 

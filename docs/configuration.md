@@ -264,6 +264,7 @@ DeepSeek's `prompt_cache_hit_tokens`, Gemini's `cachedContentTokenCount`, Bedroc
 | `translate` | Can serve `Translate`: a chat model by prompt, a node MT model natively. Declares `languages` (see [Translation](grpc-api.md#translation)). |
 | `embedding_input` | A judge model that scores raw latent vectors in `JudgeRequest.state_media` (`EmbeddingPart`). |
 | `long_context` | TypeSafe only: every call asks for System One's long context (262k tokens per request and per question). Experimental. |
+| `systemone` | A `local` judge model whose node speaks System One (`POST /v1/systemone`: Ollama 0.35+, llama-server, SGLang) instead of OpenAI Decisions. Experimental. |
 | `box` | A judge model that answers `JUDGE_TYPE_BOX`: where an object is on an image (TypeSafe `jev-1.14.0`; declare `vision` with it). Experimental. |
 
 <details>

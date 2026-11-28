@@ -35,6 +35,8 @@ has "bad concurrency" "--max-concurrency" "$(parse --proxy p --node-id n --model
 has "unknown option" "unknown option" "$(parse --bogus)"
 has "option without value" "needs a value" "$(parse --proxy)"
 eq "uninstall needs nothing" "" "$(parse --uninstall)"
+has "judge is not for mt" "--judge goes with an Ollama model" "$(parse --proxy p --node-id n --model opus-mt-de --engine mt --judge)"
+eq "judge flag" "1" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; parse_args --proxy p --node-id n --model pplx-decider-flash:4b --judge; echo "$JUDGE")"
 eq "= form, default port, spaces in name" "p.example.com:443|n1|m:1b|My Node" \
 	"$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; parse_args --proxy=p.example.com --node-id=n1 --model=m:1b --name="My Node"; echo "$PROXY|$NODE_ID|$MODEL|$NAME")"
 
