@@ -62,16 +62,13 @@ Every 1.x release is additive: new RPCs, fields, endpoints and settings. Anythin
 - Vertex AI: Gemini and Claude through Google Cloud with a service account.
 - Presets for OpenAI-compatible clouds: xAI, OpenRouter, Together, Fireworks, Cerebras.
 
-### Local nodes: JEPA models
+### Decision models
 
-- A `jepa` node engine and a reference `ktms-jepa` server that run popular open JEPA models
-  (V-JEPA 2 and 2.1, I-JEPA) on a Mac or a GPU box.
-- Embeddings served by nodes: image and video at `/v1/embeddings`, and text from Ollama. Fallback
-  goes only to a node with the same model, never to another encoder.
-- The latent encoder of the semantic cache and guardrails served through the node pool, with limits
-  and usage accounting.
-- Experimental: world models conditioned on actions (V-JEPA 2-AC first) at `/v1/world/rollout`
-  and `/v1/world/plan`.
+- More decision-model vendors behind the `Judge` RPC and `/v1/decisions`: Gemini Decisions,
+  Microsoft Foundry, Liquid AI, Cloudflare Workers AI and Perplexity, through one adapter for the
+  System One protocol.
+- Open decision models on local nodes (a `decide` engine for pplx-decider, Clef, d1 and others),
+  with fallback from the node to a cloud judge.
 
 ### Spend, security and data
 
@@ -101,6 +98,9 @@ Every 1.x release is additive: new RPCs, fields, endpoints and settings. Anythin
 
 ## Later
 
+- JEPA models on local nodes (V-JEPA 2 and 2.1, I-JEPA): image and video embeddings at
+  `/v1/embeddings`, the latent encoder of the cache and guardrails through the node pool, and
+  experimental world models.
 - Vendor keys kept in Vault and referenced from Keystone (`vault://…`), cached with a TTL and
   rotated in Vault.
 - Local stdio MCP servers published through `ktms-node`, without a public IP.
