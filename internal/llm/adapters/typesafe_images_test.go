@@ -396,6 +396,10 @@ func TestTypeSafeMentions(t *testing.T) {
 		{"only in criteria", `{}`, q(llm.JudgeScore, "how worn?", "like ex-hole", "intact"), "ex-hole", true},
 		{"state that is the name", `"road"`, q(llm.JudgeNoul, "?"), "road", true},
 		{"not across two strings", `["ro","ad"]`, q(llm.JudgeNoul, "?"), "road", false},
+		{"keys do not count", `{"road":"front"}`, q(llm.JudgeNoul, "?"), "road", false},
+		{"numbers do not count", `{"frame":1}`, q(llm.JudgeNoul, "?"), "1", false},
+		{"not JSON", `road at night`, q(llm.JudgeNoul, "?"), "road", true},
+		{"choice descriptions", `{}`, typeSafeChoice("which?", map[string]string{"a": "like ex-hole"}), "ex-hole", true},
 	} {
 		if got := strings.Contains(typeSafeMentions(json.RawMessage(tc.state), tc.questions), tc.ref); got != tc.want {
 			t.Errorf("%s: mentioned = %v, want %v", tc.name, got, tc.want)
@@ -416,4 +420,8 @@ func TestTypeSafeOther400IsNotJudgeTooLarge(t *testing.T) {
 	if errors.Is(err, llm.ErrJudgeTooLarge) || !errors.As(err, &tsErr) || tsErr.Status != http.StatusBadRequest {
 		t.Fatalf("err = %v", err)
 	}
+}
+
+func typeSafeChoice(instr string, options map[string]string) map[string]typeSafeQuestion {
+	return toTypeSafeQuestions(map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeChoice, Instructions: instr, Options: options}})
 }

@@ -395,7 +395,8 @@ func typeSafeLegend(in map[string]json.RawMessage) map[string]string {
 
 // typeSafeMentions is the text System One searches for image names: the string
 // values of the state and of each question's instructions and criteria, decoded
-// (no JSON escapes, no "null" for absent criteria) and kept apart by NULs.
+// (no JSON escapes, no "null" for absent criteria) and kept apart by NULs. Keys
+// and numbers do not count: listing an image twice is harmless, missing one is a 400.
 func typeSafeMentions(state json.RawMessage, questions map[string]typeSafeQuestion) string {
 	var b strings.Builder
 	var walk func(any)
@@ -416,9 +417,10 @@ func typeSafeMentions(state json.RawMessage, questions map[string]typeSafeQuesti
 	}
 	decode := func(raw []byte) {
 		var v any
-		if json.Unmarshal(raw, &v) == nil {
-			walk(v)
+		if json.Unmarshal(raw, &v) != nil {
+			v = string(raw) // not JSON: its text is all there is to search
 		}
+		walk(v)
 	}
 	decode(state)
 	for _, q := range questions {
