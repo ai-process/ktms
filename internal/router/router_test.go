@@ -331,6 +331,11 @@ func TestToStatusMapping(t *testing.T) {
 			t.Errorf("ToStatus(%v) = %v, want %v", err, got, want)
 		}
 	}
+	tooLarge := fmt.Errorf("%w: split it", llm.ErrJudgeTooLarge)
+	if st := status.Convert(ToStatus(tooLarge)); st.Code() != codes.InvalidArgument ||
+		st.Message() != "bad_request: judgment exceeds the model's context: split it" {
+		t.Errorf("ToStatus(ErrJudgeTooLarge) = %v %q", st.Code(), st.Message())
+	}
 	st := status.Convert(ToStatus(audio.ErrFFmpegMissing))
 	wantMsg := "ffmpeg_missing: ffmpeg is required for Gemini speech synthesis: install ffmpeg or use the 'coyl/ktms:audio' container image"
 	if st.Message() != wantMsg {

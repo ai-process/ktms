@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -243,9 +244,9 @@ func (a *TypeSafeAdapter) CheckJudgeMedia(media []*llm.JudgeMediaPart) error {
 		if _, err := typeSafeImageFormat(i, p.Data); err != nil {
 			return err
 		}
-		ref := p.Name
-		if ref == "" {
-			ref = fmt.Sprintf("ktms-image-%d", i+1)
+		ref, err := typeSafeImageRef(i, p.Name)
+		if err != nil {
+			return err
 		}
 		if refs[ref] {
 			return &llm.InvalidMediaError{Part: i, Msg: fmt.Sprintf("name %q is used twice", ref)}
@@ -253,6 +254,18 @@ func (a *TypeSafeAdapter) CheckJudgeMedia(media []*llm.JudgeMediaPart) error {
 		refs[ref] = true
 	}
 	return nil
+}
+
+// typeSafeImageRef is the name System One sees for image i. Mentions are
+// searched in NUL-separated text, so a NUL in a name could match across strings.
+func typeSafeImageRef(i int, name string) (string, error) {
+	if strings.ContainsRune(name, 0) {
+		return "", &llm.InvalidMediaError{Part: i, Msg: "name contains a NUL character"}
+	}
+	if name == "" {
+		return fmt.Sprintf("ktms-image-%d", i+1), nil
+	}
+	return name, nil
 }
 
 // systemOneCall builds the request: plain JSON without images, else multipart
@@ -303,9 +316,9 @@ func (a *TypeSafeAdapter) systemOneCall(req *llm.JudgeRequest) (judgeCall, error
 		if err != nil {
 			return judgeCall{}, err
 		}
-		ref := p.Name
-		if ref == "" {
-			ref = fmt.Sprintf("ktms-image-%d", i+1)
+		ref, err := typeSafeImageRef(i, p.Name)
+		if err != nil {
+			return judgeCall{}, err
 		}
 		// System One refuses an image nothing refers to ("Invalid image request"),
 		// and it finds a name anywhere in the state or questions text.
@@ -393,15 +406,46 @@ func typeSafeLegend(in map[string]json.RawMessage) map[string]string {
 	return out
 }
 
-// typeSafeMentions is the text System One searches for image names: the state
-// and each question's instructions and criteria.
+// typeSafeMentions is the decoded text System One searches for image names, as
+// in 1.8.0 keys and numbers included. Absent criteria add no "null": a name
+// left unlisted because of it is a 400, and a name listed needlessly reshapes the state.
 func typeSafeMentions(state json.RawMessage, questions map[string]typeSafeQuestion) string {
 	var b strings.Builder
-	b.Write(state)
+	var walk func(any)
+	walk = func(v any) {
+		switch v := v.(type) {
+		case string:
+			b.WriteString(v)
+			b.WriteByte(0)
+		case json.Number:
+			b.WriteString(v.String())
+			b.WriteByte(0)
+		case []any:
+			for _, e := range v {
+				walk(e)
+			}
+		case map[string]any:
+			for k, e := range v {
+				b.WriteString(k)
+				b.WriteByte(0)
+				walk(e)
+			}
+		}
+	}
+	decode := func(raw []byte) {
+		var v any
+		d := json.NewDecoder(bytes.NewReader(raw))
+		d.UseNumber()
+		if d.Decode(&v) != nil || d.Decode(new(any)) != io.EOF {
+			v = string(raw) // not JSON: its text is all there is to search
+		}
+		walk(v)
+	}
+	decode(state)
 	for _, q := range questions {
 		for _, v := range []any{q.Instructions, q.Criteria} {
 			if raw, err := json.Marshal(v); err == nil {
-				b.Write(raw)
+				decode(raw)
 			}
 		}
 	}

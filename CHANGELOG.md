@@ -7,6 +7,12 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- TypeSafe judgments look for image names in the decoded text of the state, instructions and criteria: a name such as
+  `n` or `null` no longer counts as mentioned by an absent criteria (the image went unlisted and System One refused
+  it), and a name with `&`, `<` or `>` is found. Object keys and numbers still count as mentions, as in 1.8.0, so a
+  state that refers to an image by key keeps its shape. An image name with a NUL character is refused as invalid media.
+
 ## [1.8.0] - 2026-11-28
 
 ### Added

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ai-process/ktms/internal/llm"
 	"github.com/openai/openai-go/v3"
 )
 
@@ -338,6 +339,8 @@ func TestTrippingErrorClassification(t *testing.T) {
 		{"ErrUpstreamTimeout sentinel", ErrUpstreamTimeout, true},
 		{"UpstreamTimeoutError struct", NewUpstreamTimeoutError(5*time.Second, context.DeadlineExceeded), true},
 		{"Capacity exhausted", mockCapacityError{}, false},
+		{"Judgment too large", fmt.Errorf("%w: split it", llm.ErrJudgeTooLarge), false},
+		{"Invalid media", &llm.InvalidMediaError{Msg: "too wide"}, false},
 	}
 
 	for _, tc := range cases {

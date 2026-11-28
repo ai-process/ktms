@@ -376,3 +376,84 @@ func TestTypeSafeMaxTokensIsJudgeTooLarge(t *testing.T) {
 		t.Errorf("message = %q", err.Error())
 	}
 }
+
+// Mentions are read from decoded values and keys: absent criteria add no "null",
+// JSON escapes do not hide a name, and criteria count as much as instructions.
+func TestTypeSafeMentions(t *testing.T) {
+	q := func(typ, instr string, levels ...string) map[string]typeSafeQuestion {
+		return toTypeSafeQuestions(map[string]*llm.JudgeQuestion{"q": {Type: typ, Instructions: instr, Levels: levels}})
+	}
+	for _, tc := range []struct {
+		name, state string
+		questions   map[string]typeSafeQuestion
+		ref         string
+		want        bool
+	}{
+		{"box without criteria is no null", `{}`, q(llm.JudgeBox, "the hole"), "n", false},
+		{"noul without criteria is no null", ``, q(llm.JudgeNoul, "usable?"), "null", false},
+		{"html characters", `{}`, q(llm.JudgeNoul, "is <a&b> usable?"), "<a&b>", true},
+		{"escaped in the state", `{"img":"a&b"}`, q(llm.JudgeNoul, "?"), "a&b", true},
+		{"only in criteria", `{}`, q(llm.JudgeScore, "how worn?", "like ex-hole", "intact"), "ex-hole", true},
+		{"state that is the name", `"road"`, q(llm.JudgeNoul, "?"), "road", true},
+		{"not across two strings", `["ro","ad"]`, q(llm.JudgeNoul, "?"), "road", false},
+		{"keys count, as in 1.8.0", `{"road":{"angle":30}}`, q(llm.JudgeNoul, "is it blurry?"), "road", true},
+		{"numbers count, as in 1.8.0", `{"frame":12}`, q(llm.JudgeNoul, "?"), "12", true},
+		{"number keeps its text", `{"frame":1.50}`, q(llm.JudgeNoul, "?"), "1.50", true},
+		{"choice option keys", `{}`, typeSafeChoice("which?", map[string]string{"front": "a"}), "front", true},
+		{"trailing text is not JSON", `1 road`, q(llm.JudgeNoul, "?"), "road", true},
+		{"not JSON", `road at night`, q(llm.JudgeNoul, "?"), "road", true},
+		{"choice descriptions", `{}`, typeSafeChoice("which?", map[string]string{"a": "like ex-hole"}), "ex-hole", true},
+	} {
+		if got := strings.Contains(typeSafeMentions(json.RawMessage(tc.state), tc.questions), tc.ref); got != tc.want {
+			t.Errorf("%s: mentioned = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// Only max_tokens_exceeded is the caller's to split; another 400 stays a vendor error.
+func TestTypeSafeOther400IsNotJudgeTooLarge(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"detail":{"error_type":"api_usage_error","message":"Invalid image request."}}`)
+	}))
+	defer srv.Close()
+	_, err := NewTypeSafeAdapter(srv.URL, "k", "jev-1.14.0").Judge(context.Background(), &llm.JudgeRequest{StateJSON: `{}`,
+		Questions: map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "?"}}}, "u", nil)
+	var tsErr *TypeSafeError
+	if errors.Is(err, llm.ErrJudgeTooLarge) || !errors.As(err, &tsErr) || tsErr.Status != http.StatusBadRequest {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func typeSafeChoice(instr string, options map[string]string) map[string]typeSafeQuestion {
+	return toTypeSafeQuestions(map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeChoice, Instructions: instr, Options: options}})
+}
+
+// A key mentions an image as in 1.8.0, so the caller's state keeps its shape.
+func TestTypeSafeKeyMentionKeepsState(t *testing.T) {
+	call, err := NewTypeSafeAdapter("http://x", "k", "jev-1").systemOneCall(&llm.JudgeRequest{
+		StateJSON:  `{"front":{"angle":30}}`,
+		StateMedia: []*llm.JudgeMediaPart{{Type: llm.JudgeMediaImage, Name: "front", Data: pngOf(t, 300, 300)}},
+		Questions:  map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "Is it blurry?"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(call.body, []byte(`"state":{"front":{"angle":30}}`)) || bytes.Contains(call.body, []byte(`"images"`)) {
+		t.Errorf("state reshaped: %s", call.body)
+	}
+}
+
+func TestTypeSafeNameWithNUL(t *testing.T) {
+	a := NewTypeSafeAdapter("http://x", "k", "jev-1")
+	media := []*llm.JudgeMediaPart{{Type: llm.JudgeMediaImage, Name: "ro\x00ad", Data: pngOf(t, 300, 300)}}
+	var inv *llm.InvalidMediaError
+	if err := a.CheckJudgeMedia(media); !errors.As(err, &inv) {
+		t.Errorf("CheckJudgeMedia: %v", err)
+	}
+	_, err := a.systemOneCall(&llm.JudgeRequest{StateJSON: `["ro","ad"]`, StateMedia: media,
+		Questions: map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "?"}}})
+	if !errors.As(err, &inv) {
+		t.Errorf("systemOneCall: %v", err)
+	}
+}
