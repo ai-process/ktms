@@ -377,7 +377,7 @@ func TestTypeSafeMaxTokensIsJudgeTooLarge(t *testing.T) {
 	}
 }
 
-// Mentions are read from decoded string values: absent criteria add no "null",
+// Mentions are read from decoded values and keys: absent criteria add no "null",
 // JSON escapes do not hide a name, and criteria count as much as instructions.
 func TestTypeSafeMentions(t *testing.T) {
 	q := func(typ, instr string, levels ...string) map[string]typeSafeQuestion {
@@ -396,8 +396,11 @@ func TestTypeSafeMentions(t *testing.T) {
 		{"only in criteria", `{}`, q(llm.JudgeScore, "how worn?", "like ex-hole", "intact"), "ex-hole", true},
 		{"state that is the name", `"road"`, q(llm.JudgeNoul, "?"), "road", true},
 		{"not across two strings", `["ro","ad"]`, q(llm.JudgeNoul, "?"), "road", false},
-		{"keys do not count", `{"road":"front"}`, q(llm.JudgeNoul, "?"), "road", false},
-		{"numbers do not count", `{"frame":1}`, q(llm.JudgeNoul, "?"), "1", false},
+		{"keys count, as in 1.8.0", `{"road":{"angle":30}}`, q(llm.JudgeNoul, "is it blurry?"), "road", true},
+		{"numbers count, as in 1.8.0", `{"frame":12}`, q(llm.JudgeNoul, "?"), "12", true},
+		{"number keeps its text", `{"frame":1.50}`, q(llm.JudgeNoul, "?"), "1.50", true},
+		{"choice option keys", `{}`, typeSafeChoice("which?", map[string]string{"front": "a"}), "front", true},
+		{"trailing text is not JSON", `1 road`, q(llm.JudgeNoul, "?"), "road", true},
 		{"not JSON", `road at night`, q(llm.JudgeNoul, "?"), "road", true},
 		{"choice descriptions", `{}`, typeSafeChoice("which?", map[string]string{"a": "like ex-hole"}), "ex-hole", true},
 	} {
@@ -424,4 +427,33 @@ func TestTypeSafeOther400IsNotJudgeTooLarge(t *testing.T) {
 
 func typeSafeChoice(instr string, options map[string]string) map[string]typeSafeQuestion {
 	return toTypeSafeQuestions(map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeChoice, Instructions: instr, Options: options}})
+}
+
+// A key mentions an image as in 1.8.0, so the caller's state keeps its shape.
+func TestTypeSafeKeyMentionKeepsState(t *testing.T) {
+	call, err := NewTypeSafeAdapter("http://x", "k", "jev-1").systemOneCall(&llm.JudgeRequest{
+		StateJSON:  `{"front":{"angle":30}}`,
+		StateMedia: []*llm.JudgeMediaPart{{Type: llm.JudgeMediaImage, Name: "front", Data: pngOf(t, 300, 300)}},
+		Questions:  map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "Is it blurry?"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(call.body, []byte(`"state":{"front":{"angle":30}}`)) || bytes.Contains(call.body, []byte(`"images"`)) {
+		t.Errorf("state reshaped: %s", call.body)
+	}
+}
+
+func TestTypeSafeNameWithNUL(t *testing.T) {
+	a := NewTypeSafeAdapter("http://x", "k", "jev-1")
+	media := []*llm.JudgeMediaPart{{Type: llm.JudgeMediaImage, Name: "ro\x00ad", Data: pngOf(t, 300, 300)}}
+	var inv *llm.InvalidMediaError
+	if err := a.CheckJudgeMedia(media); !errors.As(err, &inv) {
+		t.Errorf("CheckJudgeMedia: %v", err)
+	}
+	_, err := a.systemOneCall(&llm.JudgeRequest{StateJSON: `["ro","ad"]`, StateMedia: media,
+		Questions: map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "?"}}})
+	if !errors.As(err, &inv) {
+		t.Errorf("systemOneCall: %v", err)
+	}
 }
