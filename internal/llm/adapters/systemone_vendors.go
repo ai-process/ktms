@@ -1,5 +1,7 @@
 package adapters
 
+import "time"
+
 // Vendor profiles of System One, checked against each vendor's docs on
 // 2026-11-28 (see ai-process/docs#297). Image limits are the documented ones;
 // what a vendor does not document is left unchecked rather than guessed.
@@ -52,4 +54,23 @@ var MicrosoftProfile = SystemOneProfile{
 	Vendor:     "microsoft",
 	Path:       "/providers/microsoft/v1/systemone",
 	AuthHeader: "api-key",
+}
+
+// NodeSystemOneProfile is a decision model on a registered node behind its
+// gateway: Ollama 0.35+, llama-server, SGLang and the vendors' own servers all
+// take bare base64 images at the top level. The node's access key is the bearer.
+var NodeSystemOneProfile = SystemOneProfile{
+	Vendor:     "node",
+	Path:       "/v1/systemone",
+	AuthPrefix: "Bearer ",
+	Media:      MediaImages,
+	RawBase64:  true,
+	Images: &SystemOneImageLimits{
+		Name: "the node", MinSide: 1, MinPixels: 1,
+		MaxBytes: 8 << 20,
+		MaxBody:  32 << 20, // Ollama's request limit, images as base64 inside it
+		Formats:  []string{"png", "jpg"}, StillOnly: true, UprightOnly: true,
+	},
+	MinTimeout:    30 * time.Second,
+	GatewayErrors: true,
 }

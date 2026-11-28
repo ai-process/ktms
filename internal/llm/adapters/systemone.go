@@ -34,6 +34,9 @@ type SystemOneProfile struct {
 	LongContextHeader string                // sent as "true" for long_context models; "" when the vendor has none
 	Images            *SystemOneImageLimits // nil: text only, a request with images yields
 	Media             SystemOneMedia
+	RawBase64         bool          // MediaImages as bare base64 rather than data URLs (Ollama)
+	MinTimeout        time.Duration // floor on a call's deadline: a node may first load the model
+	GatewayErrors     bool          // a 200 may carry the node gateway's error after keepalives
 }
 
 // SystemOneMedia is how a vendor takes images next to the state.
@@ -208,6 +211,7 @@ func (a *SystemOneAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ s
 		call.headers[a.profile.LongContextHeader] = "true"
 	}
 	call.headers[a.profile.AuthHeader] = a.profile.AuthPrefix + a.apiKey
+	call.timeout = a.deadline(call)
 
 	raw, statusCode, err := executeJudgeCall(ctx, a.http, a.endpoint+strings.ReplaceAll(a.profile.Path, "{model}", url.PathEscape(a.model)), "", call)
 	if err != nil {
@@ -222,6 +226,11 @@ func (a *SystemOneAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ s
 		return failed(fmt.Errorf("%s: %w", a.profile.Vendor, err))
 	}
 
+	if a.profile.GatewayErrors {
+		if gwErr := gatewayError(a.profile.Vendor, raw); gwErr != nil {
+			return failed(gwErr)
+		}
+	}
 	var parsed systemOneResponse
 	if err := json.Unmarshal(systemOneUnwrap(raw), &parsed); err != nil {
 		return failed(fmt.Errorf("%s: decode response: %w", a.profile.Vendor, err))
@@ -492,6 +501,10 @@ func (a *SystemOneAdapter) inlineImagesCall(sr systemOneRequest, images []system
 			state, _ = json.Marshal(wrapped) // strings and raw JSON always marshal
 		}
 		for _, img := range images {
+			if a.profile.RawBase64 {
+				sr.Images = append(sr.Images, base64.StdEncoding.EncodeToString(img.data))
+				continue
+			}
 			sr.Images = append(sr.Images, img.dataURL())
 		}
 	case MediaStateParts:
@@ -525,6 +538,35 @@ func (a *SystemOneAdapter) inlineImagesCall(sr systemOneRequest, images []system
 		headers:     a.imagesHeaders(),
 		timeout:     judgeTimeoutFor(len(body)),
 	}, nil
+}
+
+// deadline is the call's ceiling: the request's own, at least the profile's floor.
+func (a *SystemOneAdapter) deadline(call judgeCall) time.Duration {
+	t := call.timeout
+	if t <= 0 {
+		t = judgeTimeout
+	}
+	return max(t, a.profile.MinTimeout)
+}
+
+// gatewayError reads the node gateway's error sent inside a 200 it committed
+// to keep idle timeouts open, so the engine's real status still drives the chain.
+func gatewayError(vendor string, raw []byte) *SystemOneError {
+	var env struct {
+		Error *struct {
+			Type    string `json:"type"`
+			Status  int    `json:"status"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(raw, &env) != nil || env.Error == nil || env.Error.Type != "node_gateway_error" {
+		return nil
+	}
+	status := env.Error.Status
+	if status == 0 {
+		status = http.StatusBadGateway
+	}
+	return &SystemOneError{Vendor: vendor, Status: status, Body: env.Error.Message}
 }
 
 // systemOneUnwrap reads answers from a {"result": {...}, "success": ...}

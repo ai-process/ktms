@@ -50,6 +50,8 @@ Options:
   --max-concurrency N    parallel requests this machine serves (default 1; 2 with ollama,mt, one
                          of them kept for translation)
   --context N            context tokens per request (default 8192)
+  --judge                the model is a decision model (System One, e.g. pplx-decider-flash:4b):
+                         tag it judge; needs Ollama 0.35 or later (--upgrade-deps)
   --version vX.Y.Z       node daemon release to install (default: latest)
   --key-file PATH        read the node key from a file instead of asking
   --new-key              ask for the node key again even if one is stored
@@ -73,7 +75,7 @@ EOF
 
 parse_args() {
 	PROXY="" NODE_ID="" MODEL="" MT_MODEL="" NAME="" ENGINE="" MAXC="" CTX=8192 VERSION="latest"
-	KEY_SRC="" NEW_KEY=0 PLAINTEXT=0 ENDPOINT="" TRAY=0 UPGRADE=0 DRY_RUN=0 UNINSTALL=0 DOCTOR=0 KEEP_LEGACY=0 PURGE_BACKUPS=0 SCHEDULE_SRC=""
+	KEY_SRC="" NEW_KEY=0 JUDGE=0 PLAINTEXT=0 ENDPOINT="" TRAY=0 UPGRADE=0 DRY_RUN=0 UNINSTALL=0 DOCTOR=0 KEEP_LEGACY=0 PURGE_BACKUPS=0 SCHEDULE_SRC=""
 	while [ $# -gt 0 ]; do
 		opt=$1 val="" shift_n=1
 		case $1 in --*=*) opt=${1%%=*} val=${1#*=} ;; esac
@@ -90,6 +92,7 @@ parse_args() {
 			esac
 			;;
 		--new-key) NEW_KEY=1 ;;
+		--judge) JUDGE=1 ;;
 		--plaintext) PLAINTEXT=1 ;;
 		--tray) TRAY=1 ;;
 		--upgrade-deps) UPGRADE=1 ;;
@@ -110,6 +113,7 @@ parse_args() {
 	*) die "--engine must be ollama, mt or ollama,mt" ;;
 	esac
 	[ -z "$MT_MODEL" ] || [ "$ENGINE" = ollama,mt ] || [ -z "$ENGINE" ] || die "--mt-model goes with --engine ollama,mt"
+	[ "$JUDGE" = 0 ] || [ "${ENGINE:-ollama}" != mt ] || die "--judge goes with an Ollama model, not --engine mt"
 	[ "$UNINSTALL" = 1 ] && return 0
 	[ -n "$PROXY" ] || die "--proxy is required (see --help)"
 	[ -n "$NODE_ID" ] || die "--node-id is required"
@@ -592,9 +596,22 @@ find_ollama_bin() {
 	return 1
 }
 
+# Decision models (--judge) need Ollama's /v1/systemone route.
+OLLAMA_JUDGE_MIN=0.35.0
+
+# ollama_older BIN: true when BIN reports a version below $OLLAMA_JUDGE_MIN; an unknown version is not.
+ollama_older() {
+	v=$("$1" --version 2>/dev/null | sed -n 's/.*version[^0-9]*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -n 1)
+	[ -n "$v" ] || return 1
+	[ "$(printf '%s\n%s\n' "$v" "$OLLAMA_JUDGE_MIN" | sort -t. -k1,1n -k2,2n -k3,3n | head -n 1)" != "$OLLAMA_JUDGE_MIN" ]
+}
+
 ensure_ollama() {
 	OLLAMA_BIN=$(find_ollama_bin || true)
 	if [ -n "$OLLAMA_BIN" ] && [ "$UPGRADE" = 0 ]; then
+		if [ "$JUDGE" = 1 ] && ollama_older "$OLLAMA_BIN"; then
+			die "--judge needs Ollama $OLLAMA_JUDGE_MIN or later for decision models; $OLLAMA_BIN is older: re-run with --upgrade-deps"
+		fi
 		say "Ollama already installed: $OLLAMA_BIN (kept; --upgrade-deps updates it)."
 		return 0
 	fi
@@ -869,6 +886,7 @@ write_node_service() { # binary
 	set -- "$BASE/bin/ktms-node" --proxy-addr "$PROXY" --node-id "$NODE_ID" --node-name "$NAME" \
 		$(engine_args) --max-concurrent "$MAXC" --node-key-file "$BASE/key"
 	[ "$PLAINTEXT" = 1 ] || set -- "$@" --tls
+	[ "$JUDGE" = 0 ] || set -- "$@" --judge-model "$MODEL"
 	if [ -n "$ENDPOINT" ]; then
 		set -- "$@" --endpoint "$ENDPOINT" --expose none
 	else
@@ -1114,11 +1132,9 @@ retire_engine() { # id
 	rm -f "$(svc_file "$1")"
 }
 
-main() {
-	parse_args "$@"
-	[ "$UNINSTALL" = 1 ] && { do_uninstall; return 0; }
-	detect_platform
-	# A re-run without --engine keeps the installed engines instead of replacing them.
+# infer_engine: a re-run without --engine keeps the installed engines instead of
+# replacing them. parse_args checked --judge before this was known, so check again.
+infer_engine() {
 	if [ -z "$ENGINE" ]; then
 		ENGINE=ollama
 		if [ -f "$(svc_file mt)" ]; then
@@ -1126,6 +1142,14 @@ main() {
 			[ ! -f "$(svc_file ollama)" ] || ENGINE=ollama,mt
 		fi
 	fi
+	[ "$JUDGE" = 0 ] || [ "$ENGINE" != mt ] || die "--judge goes with an Ollama model, not --engine mt (this node runs only ktms-mt)"
+}
+
+main() {
+	parse_args "$@"
+	[ "$UNINSTALL" = 1 ] && { do_uninstall; return 0; }
+	detect_platform
+	infer_engine
 	if [ "$ENGINE" = ollama,mt ]; then
 		[ -n "$MT_MODEL" ] || MT_MODEL=opus-mt-de
 		# KTMS counts the node's requests together: one slot would queue translations behind a chat.

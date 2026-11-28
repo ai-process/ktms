@@ -25,6 +25,14 @@ All notable changes to KTMS are listed here. The format follows
   URL with no type known from `mime_type` or its extension yield to the next model, and so does a safety block, read
   from the error's code, status or reason; a chain that ends on a safety block answers `content_blocked`
   (FailedPrecondition) instead of `vendors_unavailable`.
+- Decision models on nodes (experimental): a `local` judge model declaring `systemone` is judged on the node's
+  `POST /v1/systemone` (Ollama 0.35+, llama-server, SGLang), with images as bare base64; the node gateway exposes the
+  route. A 404 from an engine without it moves to the next model of the chain without tripping the node's circuit, and
+  rollouts on such a model judge the candidates one after another, with the node's image limits checked first and no
+  failed usage row. A call may take 30 s, time for the engine to load the model. `install-node.sh --judge` tags the
+  node's model `judge` (`d1` matches `d1:latest`), refuses an Ollama older than 0.35 it would keep and a node that
+  runs only ktms-mt.
+- The node gateway's error after keepalives carries the engine's status in its body (`error.status`).
 
 ### Fixed
 - TypeSafe judgments look for image names in the decoded text of the state, instructions and criteria: a name such as

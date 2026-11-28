@@ -146,6 +146,11 @@ const (
 // No text model reads one, so it is opt-in even among judges.
 const CapabilityEmbeddingInput = "embedding_input"
 
+// CapabilitySystemOne marks a node judge model that speaks System One
+// (POST /v1/systemone: Ollama 0.35+, llama-server, SGLang) rather than OpenAI
+// Decisions. Experimental.
+const CapabilitySystemOne = "systemone"
+
 // CapabilityBox marks judge models that answer box questions: where an object
 // is on an image (TypeSafe jev-1.14.0 and later). Experimental.
 const CapabilityBox = "box"

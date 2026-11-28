@@ -655,6 +655,12 @@ func (t *TrackingAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, user
 	return result, err
 }
 
+// JudgesSerially forwards to the wrapped adapter, if it says.
+func (t *TrackingAdapter) JudgesSerially() bool {
+	s, ok := t.adapter.(llm.SerialJudge)
+	return ok && s.JudgesSerially()
+}
+
 // CheckJudgeMedia forwards to the wrapped adapter's media check, if it has one.
 func (t *TrackingAdapter) CheckJudgeMedia(media []*llm.JudgeMediaPart, questions map[string]*llm.JudgeQuestion) error {
 	if c, ok := t.adapter.(llm.JudgeMediaChecker); ok {
@@ -667,7 +673,7 @@ func (t *TrackingAdapter) CheckJudgeMedia(media []*llm.JudgeMediaPart, questions
 // tracks usage. Adapters without one surface ErrJudgmentUnsupported.
 func (t *TrackingAdapter) EvaluateRollouts(ctx context.Context, req *llm.EvaluateRolloutsRequest, userID string, meta map[string]string) (*llm.EvaluateRolloutsResult, error) {
 	rolloutJudge, ok := t.adapter.(llm.RolloutJudge)
-	if !ok {
+	if !ok || t.JudgesSerially() {
 		return nil, llm.ErrJudgmentUnsupported
 	}
 

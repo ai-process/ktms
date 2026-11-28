@@ -787,6 +787,9 @@ func executeParallelCandidateRollouts(ctx context.Context, judge llm.Judge, roll
 	if len(rolloutReq.Candidates) < concurrency {
 		concurrency = len(rolloutReq.Candidates)
 	}
+	if s, ok := judge.(llm.SerialJudge); ok && s.JudgesSerially() {
+		concurrency = 1
+	}
 	g.SetLimit(concurrency)
 
 	media := make([][]*llm.JudgeMediaPart, len(rolloutReq.Candidates))
