@@ -231,3 +231,33 @@ func TestRequestStatusSeparatesCanceledCalls(t *testing.T) {
 		}
 	}
 }
+
+// serialRollouts is a node model with no rollouts route of its own.
+type serialRollouts struct{ stubAdapter }
+
+func (serialRollouts) JudgesSerially() bool { return true }
+func (serialRollouts) EvaluateRollouts(context.Context, *llm.EvaluateRolloutsRequest, string, map[string]string) (*llm.EvaluateRolloutsResult, error) {
+	return nil, errors.New("must not be called")
+}
+
+// A model judged candidate by candidate yields rollouts without a failed usage row.
+func TestTrackingSkipsRolloutsOfSerialJudge(t *testing.T) {
+	tracker := &capturingTracker{}
+	a := NewTrackingAdapter(&serialRollouts{}, tracker, "local", "pplx-flash")
+	if _, err := a.EvaluateRollouts(context.Background(), &llm.EvaluateRolloutsRequest{}, "u", nil); !errors.Is(err, llm.ErrJudgmentUnsupported) {
+		t.Fatalf("err = %v", err)
+	}
+	if tracker.calls != 0 || !a.JudgesSerially() {
+		t.Errorf("tracker calls %d, serial %v", tracker.calls, a.JudgesSerially())
+	}
+}
+
+// A node judge may first load its model: text-only calls get the node's floor.
+func TestSystemOneNodeTimeoutFloor(t *testing.T) {
+	if d := NewSystemOneAdapter(NodeSystemOneProfile, "", "", "m").deadline(judgeCall{}); d != 30*time.Second {
+		t.Errorf("node deadline = %v", d)
+	}
+	if d := NewSystemOneAdapter(LiquidProfile, "", "", "m").deadline(judgeCall{}); d != judgeTimeout {
+		t.Errorf("liquid deadline = %v", d)
+	}
+}

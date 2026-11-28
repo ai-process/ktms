@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
@@ -192,5 +193,46 @@ func TestPoolAdapter_Judge_SystemOneNamedImage(t *testing.T) {
 	}
 	if state != `{"images":["road"],"state":{"camera":"front"}}` {
 		t.Errorf("state = %s", state)
+	}
+}
+
+// After keepalives the gateway sends its error inside the 200 it committed:
+// the engine's status still decides, so a 400 leaves the circuit closed and a 404 yields.
+func TestPoolAdapter_Judge_SystemOneGatewayErrorIn200(t *testing.T) {
+	ctx := context.Background()
+	var status atomic.Int32
+	pa, mgr := systemOneNodeAt(t, "/v1", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, `   {"error":{"message":"engine returned %d","type":"node_gateway_error","status":%d}}`, status.Load(), status.Load())
+	})
+	req := &llm.JudgeRequest{StateJSON: `{}`, Questions: map[string]*llm.JudgeQuestion{"ok": {Type: llm.JudgeNoul, Instructions: "?"}}}
+	status.Store(http.StatusNotFound)
+	if _, err := pa.Judge(ctx, req, "u", nil); !errors.Is(err, llm.ErrJudgmentUnsupported) {
+		t.Fatalf("404 in a 200: %v", err)
+	}
+	status.Store(http.StatusBadRequest)
+	for i := 0; i < 6; i++ {
+		if _, err := pa.Judge(ctx, req, "u", nil); err == nil {
+			t.Fatal("400 in a 200 read as an answer")
+		}
+	}
+	nodes, err := mgr.ListNodes(ctx)
+	if err != nil || nodes[0].State == pb.NodeState_NODE_STATE_CIRCUIT_BROKEN {
+		t.Errorf("400s in a 200 tripped the node's circuit (%v)", err)
+	}
+}
+
+// A rollout's media is checked against the node's limits before any slot is
+// taken, and such a model judges candidates one at a time.
+func TestPoolAdapter_SystemOneRolloutChecks(t *testing.T) {
+	pa := systemOneNode(t, func(w http.ResponseWriter, r *http.Request) { t.Error("engine called") })
+	if !pa.JudgesSerially() {
+		t.Error("a System One node model must judge serially")
+	}
+	gif := []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00;")
+	if err := pa.CheckJudgeMedia([]*llm.JudgeMediaPart{{Type: llm.JudgeMediaImage, Data: gif}}, nil); !errors.Is(err, llm.ErrInvalidMedia) {
+		t.Errorf("gif on the node: %v", err)
+	}
+	if err := pa.CheckJudgeMedia([]*llm.JudgeMediaPart{{Type: llm.JudgeMediaImage, Data: testPNG(t)}}, nil); err != nil {
+		t.Errorf("png on the node: %v", err)
 	}
 }

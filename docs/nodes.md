@@ -316,7 +316,8 @@ curl -fsSL https://raw.githubusercontent.com/ai-process/ktms/vX.Y.Z/scripts/inst
   --proxy proxy.example.com --node-id anna-decide --model pplx-decider-flash:4b --judge --upgrade-deps
 ```
 
-`--judge` tags the model `judge` on the node; `--upgrade-deps` brings an older Ollama to 0.35+.
+`--judge` tags the model `judge` on the node (`d1` matches Ollama's `d1:latest`); `--upgrade-deps`
+brings an older Ollama to 0.35+, and without it the installer stops on an older one it would keep.
 The admin registers it with `systemone`, so Keystone speaks System One to it rather than OpenAI
 Decisions, and puts it first in the judge rule:
 
@@ -342,7 +343,12 @@ rules:
 
 - Questions: noul, choice, score. Box is not served by these models through Ollama.
 - Images go as bare base64 beside the state; a named image's name goes with the state in order.
-- `EvaluateRollouts` judges the candidates one by one on such a model.
+  PNG or JPEG, upright, at most 8 MiB each and a 32 MiB request: a rollout is checked before any
+  candidate takes a slot.
+- `EvaluateRollouts` judges the candidates one after another on such a model, so a one-slot node
+  serves them all.
+- A call may take 30 s before it counts as a failure: the first one after Ollama unloads the model
+  loads it again. An engine error after the gateway's keepalives keeps its status.
 - A node whose engine has no `/v1/systemone` (an older Ollama) answers 404: the call moves to the
   next model and the node's circuit stays closed.
 

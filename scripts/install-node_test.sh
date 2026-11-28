@@ -36,6 +36,15 @@ has "unknown option" "unknown option" "$(parse --bogus)"
 has "option without value" "needs a value" "$(parse --proxy)"
 eq "uninstall needs nothing" "" "$(parse --uninstall)"
 has "judge is not for mt" "--judge goes with an Ollama model" "$(parse --proxy p --node-id n --model opus-mt-de --engine mt --judge)"
+has "judge on a node that runs only mt" "--judge goes with an Ollama model" \
+	"$(mkdir -p "${TMPDIR:-/tmp}/judge-svc.$$" && touch "${TMPDIR:-/tmp}/judge-svc.$$/ktms-mt.service" &&
+		INSTALL_NODE_SOURCED=1 LLMPROXY_SERVICE_DIR="${TMPDIR:-/tmp}/judge-svc.$$" sh -c '. "$1"; OS=linux ENGINE="" JUDGE=1; infer_engine' sh "$SCRIPT" 2>&1; rm -rf "${TMPDIR:-/tmp}/judge-svc.$$")"
+OV="${TMPDIR:-/tmp}/ollama-ver.$$"
+printf '#!/bin/sh\necho "ollama version is 0.30.2"\n' >"$OV.old" && printf '#!/bin/sh\necho "Warning: no server"; echo "ollama version is 0.35.1"\n' >"$OV.new" && chmod +x "$OV.old" "$OV.new"
+eq "ollama 0.30 is too old for --judge" "old" "$(unit ollama_older "$OV.old" && echo old)"
+eq "ollama 0.35.1 takes --judge" "new" "$(unit ollama_older "$OV.new" || echo new)"
+has "judge refuses an old ollama it keeps" "--upgrade-deps" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; JUDGE=1 UPGRADE=0; find_ollama_bin() { echo "$OV.old"; }; (ensure_ollama) 2>&1)"
+rm -f "$OV.old" "$OV.new"
 eq "judge flag" "1" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; parse_args --proxy p --node-id n --model pplx-decider-flash:4b --judge; echo "$JUDGE")"
 eq "= form, default port, spaces in name" "p.example.com:443|n1|m:1b|My Node" \
 	"$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; parse_args --proxy=p.example.com --node-id=n1 --model=m:1b --name="My Node"; echo "$PROXY|$NODE_ID|$MODEL|$NAME")"

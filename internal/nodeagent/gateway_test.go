@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -302,5 +303,31 @@ func TestGatewayAllowsTranslate(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || hits.Load() != 1 {
 		t.Fatalf("POST /v1/translate status %d, engine hits %d", resp.StatusCode, hits.Load())
+	}
+}
+
+// An engine error after keepalives carries the engine's status in the body, the
+// only place a client can still read it from; a System One judge acts on it.
+func TestGatewayLateEngineErrorCarriesStatus(t *testing.T) {
+	_, srv, _ := newTestGateway(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(150 * time.Millisecond)
+		http.Error(w, "bad image", http.StatusBadRequest)
+	}))
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/systemone", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer access-key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	var env struct {
+		Error struct {
+			Type   string `json:"type"`
+			Status int    `json:"status"`
+		} `json:"error"`
+	}
+	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &env) != nil || env.Error.Status != http.StatusBadRequest || env.Error.Type != "node_gateway_error" {
+		t.Fatalf("status %d body %q", resp.StatusCode, body)
 	}
 }

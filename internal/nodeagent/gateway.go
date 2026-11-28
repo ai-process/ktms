@@ -361,7 +361,7 @@ func (g *Gateway) fail(w http.ResponseWriter, committed, stream bool, status int
 		writeGatewayError(w, status, msg)
 		return
 	}
-	payload := gatewayErrorBody(msg)
+	payload := gatewayErrorBody(msg, status)
 	if stream {
 		_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
 	} else {
@@ -369,15 +369,17 @@ func (g *Gateway) fail(w http.ResponseWriter, committed, stream bool, status int
 	}
 }
 
-func gatewayErrorBody(msg string) []byte {
-	b, _ := json.Marshal(map[string]any{"error": map[string]any{"message": msg, "type": "node_gateway_error"}})
+// gatewayErrorBody carries the status too: after keepalives it is the only
+// place the client can read the engine's real status from.
+func gatewayErrorBody(msg string, status int) []byte {
+	b, _ := json.Marshal(map[string]any{"error": map[string]any{"message": msg, "type": "node_gateway_error", "status": status}})
 	return b
 }
 
 func writeGatewayError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_, _ = w.Write(gatewayErrorBody(msg))
+	_, _ = w.Write(gatewayErrorBody(msg, status))
 }
 
 // listModels merges /v1/models of the engines that are not paused; one that

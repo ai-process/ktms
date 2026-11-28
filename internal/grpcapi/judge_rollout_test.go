@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -501,5 +502,41 @@ func TestParallelRollouts_ConcurrentMetaSafety(t *testing.T) {
 	}
 	if len(res.Evaluations) != 4 {
 		t.Errorf("got %d evals, want 4", len(res.Evaluations))
+	}
+}
+
+// serialJudge counts overlapping calls; it judges one candidate at a time.
+type serialJudge struct {
+	mu          sync.Mutex
+	now, maxNow int
+}
+
+func (s *serialJudge) JudgesSerially() bool { return true }
+func (s *serialJudge) Judge(ctx context.Context, req *llm.JudgeRequest, _ string, _ map[string]string) (*llm.JudgeResult, error) {
+	s.mu.Lock()
+	s.now++
+	s.maxNow = max(s.maxNow, s.now)
+	s.mu.Unlock()
+	time.Sleep(5 * time.Millisecond)
+	s.mu.Lock()
+	s.now--
+	s.mu.Unlock()
+	return (&benchJudge{}).Judge(ctx, req, "", nil)
+}
+
+// A node model with one slot gets its candidates one after another, not 16 at once.
+func TestRolloutsOnSerialJudgeRunOneAtATime(t *testing.T) {
+	j := &serialJudge{}
+	req := &llm.EvaluateRolloutsRequest{StateJSON: `{}`,
+		Criteria: map[string]*llm.JudgeQuestion{"eval": {Type: llm.JudgeScore, Instructions: "?", Levels: []string{"bad", "good"}}}}
+	for i := 0; i < 6; i++ {
+		req.Candidates = append(req.Candidates, &llm.RolloutCandidate{ID: fmt.Sprintf("c%d", i), ActionJSON: `{}`})
+	}
+	res, err := executeParallelCandidateRollouts(context.Background(), j, req, "u", nil)
+	if err != nil || len(res.Evaluations) != 6 {
+		t.Fatalf("res %v err %v", res, err)
+	}
+	if j.maxNow != 1 {
+		t.Errorf("%d candidates judged at once, want 1", j.maxNow)
 	}
 }

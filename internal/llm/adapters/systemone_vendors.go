@@ -1,5 +1,7 @@
 package adapters
 
+import "time"
+
 // Vendor profiles of System One, checked against each vendor's docs on
 // 2026-11-28 (see ai-process/docs#297). Image limits are the documented ones;
 // what a vendor does not document is left unchecked rather than guessed.
@@ -65,6 +67,10 @@ var NodeSystemOneProfile = SystemOneProfile{
 	RawBase64:  true,
 	Images: &SystemOneImageLimits{
 		Name: "the node", MinSide: 1, MinPixels: 1,
-		MaxBytes: 8 << 20, // Ollama takes 32 MiB a request in all
+		MaxBytes: 8 << 20,
+		MaxBody:  32 << 20, // Ollama's request limit, images as base64 inside it
+		Formats:  []string{"png", "jpg"}, StillOnly: true, UprightOnly: true,
 	},
+	MinTimeout:    30 * time.Second,
+	GatewayErrors: true,
 }

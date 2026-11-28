@@ -91,6 +91,14 @@ func TestTagJudgeModels(t *testing.T) {
 	}
 }
 
+// --judge-model d1 tags Ollama's d1:latest, as --only-model d1 keeps it.
+func TestTagJudgeModelsLatestTag(t *testing.T) {
+	tagged := TagJudgeModels([]*pb.NodeModelSpec{{ModelId: "d1:latest", RemoteModelName: "d1:latest"}}, []string{"d1"})
+	if len(tagged[0].Capabilities) != 1 {
+		t.Errorf("d1:latest capabilities = %v", tagged[0].Capabilities)
+	}
+}
+
 func TestDecisionsInspector(t *testing.T) {
 	ctx := context.Background()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

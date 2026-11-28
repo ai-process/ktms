@@ -193,6 +193,13 @@ type RolloutJudge interface {
 	EvaluateRollouts(ctx context.Context, req *EvaluateRolloutsRequest, userID string, meta map[string]string) (*EvaluateRolloutsResult, error)
 }
 
+// SerialJudge is an optional Judge capability: the model judges rollouts one
+// candidate after another (a node with few slots), with no rollouts route of
+// its own, so callers skip EvaluateRollouts and call Judge in turn.
+type SerialJudge interface {
+	JudgesSerially() bool
+}
+
 // Flat returns q with its JSON forms read as text into the plain fields
 // (compact JSON for objects, the string itself for a JSON string), for judges
 // that take text and for what reads levels and options. The JSON stays set.

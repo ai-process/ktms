@@ -658,11 +658,26 @@ func judgeInputEstimate(req *llm.JudgeRequest) int64 {
 	return est
 }
 
+// JudgesSerially is true for System One models: there is no rollouts route,
+// and parallel candidates would race for the node's few slots and fail.
+func (pa *PoolAdapter) JudgesSerially() bool {
+	return hasCapability(pa.model.Capabilities, registry.CapabilitySystemOne)
+}
+
+// CheckJudgeMedia applies the node's System One image limits before a rollout
+// takes any slot; OpenAI-style node judges have no check of their own.
+func (pa *PoolAdapter) CheckJudgeMedia(media []*llm.JudgeMediaPart, questions map[string]*llm.JudgeQuestion) error {
+	if !pa.JudgesSerially() {
+		return nil
+	}
+	return adapters.NewSystemOneAdapter(adapters.NodeSystemOneProfile, "", "", pa.model.ID).CheckJudgeMedia(media, questions)
+}
+
 // EvaluateRollouts scores multiple rollout candidate actions against a local node.
 // System One has no rollouts route: such models yield, and the caller judges
 // each candidate with Judge instead.
 func (pa *PoolAdapter) EvaluateRollouts(ctx context.Context, req *llm.EvaluateRolloutsRequest, userID string, meta map[string]string) (*llm.EvaluateRolloutsResult, error) {
-	if !hasCapability(pa.model.Capabilities, registry.CapabilityJudge) || hasCapability(pa.model.Capabilities, registry.CapabilitySystemOne) {
+	if !hasCapability(pa.model.Capabilities, registry.CapabilityJudge) || pa.JudgesSerially() {
 		return nil, llm.ErrJudgmentUnsupported
 	}
 

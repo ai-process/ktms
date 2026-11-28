@@ -176,12 +176,16 @@ func FilterModels(models []*pb.NodeModelSpec, allow []string) []*pb.NodeModelSpe
 
 // TagJudgeModels ensures models in judge list declare the "judge" capability.
 func TagJudgeModels(models []*pb.NodeModelSpec, judgeModels []string) []*pb.NodeModelSpec {
-	judgeSet := make(map[string]bool, len(judgeModels))
-	for _, jm := range judgeModels {
-		judgeSet[jm] = true
+	isJudge := func(m *pb.NodeModelSpec) bool {
+		for _, jm := range judgeModels { // d1 is Ollama's d1:latest, as for --only-model
+			if sameModel(jm, m.GetModelId()) || sameModel(jm, m.GetRemoteModelName()) {
+				return true
+			}
+		}
+		return false
 	}
 	for _, m := range models {
-		if judgeSet[m.GetModelId()] || judgeSet[m.GetRemoteModelName()] {
+		if isJudge(m) {
 			hasJudge := false
 			for _, c := range m.Capabilities {
 				if c == registry.CapabilityJudge {

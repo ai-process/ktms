@@ -596,9 +596,22 @@ find_ollama_bin() {
 	return 1
 }
 
+# Decision models (--judge) need Ollama's /v1/systemone route.
+OLLAMA_JUDGE_MIN=0.35.0
+
+# ollama_older BIN: true when BIN reports a version below $OLLAMA_JUDGE_MIN; an unknown version is not.
+ollama_older() {
+	v=$("$1" --version 2>/dev/null | sed -n 's/.*version[^0-9]*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -n 1)
+	[ -n "$v" ] || return 1
+	[ "$(printf '%s\n%s\n' "$v" "$OLLAMA_JUDGE_MIN" | sort -t. -k1,1n -k2,2n -k3,3n | head -n 1)" != "$OLLAMA_JUDGE_MIN" ]
+}
+
 ensure_ollama() {
 	OLLAMA_BIN=$(find_ollama_bin || true)
 	if [ -n "$OLLAMA_BIN" ] && [ "$UPGRADE" = 0 ]; then
+		if [ "$JUDGE" = 1 ] && ollama_older "$OLLAMA_BIN"; then
+			die "--judge needs Ollama $OLLAMA_JUDGE_MIN or later for decision models; $OLLAMA_BIN is older: re-run with --upgrade-deps"
+		fi
 		say "Ollama already installed: $OLLAMA_BIN (kept; --upgrade-deps updates it)."
 		return 0
 	fi
@@ -1119,11 +1132,9 @@ retire_engine() { # id
 	rm -f "$(svc_file "$1")"
 }
 
-main() {
-	parse_args "$@"
-	[ "$UNINSTALL" = 1 ] && { do_uninstall; return 0; }
-	detect_platform
-	# A re-run without --engine keeps the installed engines instead of replacing them.
+# infer_engine: a re-run without --engine keeps the installed engines instead of
+# replacing them. parse_args checked --judge before this was known, so check again.
+infer_engine() {
 	if [ -z "$ENGINE" ]; then
 		ENGINE=ollama
 		if [ -f "$(svc_file mt)" ]; then
@@ -1131,6 +1142,14 @@ main() {
 			[ ! -f "$(svc_file ollama)" ] || ENGINE=ollama,mt
 		fi
 	fi
+	[ "$JUDGE" = 0 ] || [ "$ENGINE" != mt ] || die "--judge goes with an Ollama model, not --engine mt (this node runs only ktms-mt)"
+}
+
+main() {
+	parse_args "$@"
+	[ "$UNINSTALL" = 1 ] && { do_uninstall; return 0; }
+	detect_platform
+	infer_engine
 	if [ "$ENGINE" = ollama,mt ]; then
 		[ -n "$MT_MODEL" ] || MT_MODEL=opus-mt-de
 		# KTMS counts the node's requests together: one slot would queue translations behind a chat.
