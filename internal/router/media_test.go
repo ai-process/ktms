@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/ai-process/ktms/internal/audio"
@@ -97,6 +98,20 @@ func TestExecuteMediaStopsOnTerminalError(t *testing.T) {
 	// A terminal error would fail the same way on the next model.
 	if len(tried) != 1 {
 		t.Errorf("tried %v, want only the first model", tried)
+	}
+}
+
+// A judgment beyond the context would be as large for the next model.
+func TestExecuteMediaStopsOnJudgeTooLarge(t *testing.T) {
+	var tried []string
+	_, err := ExecuteMedia(context.Background(), noThrottle{}, mediaReq(
+		mediaModels("a", "b"),
+		func(_ context.Context, m *proxydb.Model, _ llm.ClientAdapter) (llm.TokensUsage, error) {
+			tried = append(tried, m.ID)
+			return llm.TokensUsage{}, fmt.Errorf("%w: split it", llm.ErrJudgeTooLarge)
+		}))
+	if !errors.Is(err, llm.ErrJudgeTooLarge) || len(tried) != 1 {
+		t.Fatalf("err = %v, tried %v", err, tried)
 	}
 }
 

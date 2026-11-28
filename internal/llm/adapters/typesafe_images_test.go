@@ -376,3 +376,44 @@ func TestTypeSafeMaxTokensIsJudgeTooLarge(t *testing.T) {
 		t.Errorf("message = %q", err.Error())
 	}
 }
+
+// Mentions are read from decoded string values: absent criteria add no "null",
+// JSON escapes do not hide a name, and criteria count as much as instructions.
+func TestTypeSafeMentions(t *testing.T) {
+	q := func(typ, instr string, levels ...string) map[string]typeSafeQuestion {
+		return toTypeSafeQuestions(map[string]*llm.JudgeQuestion{"q": {Type: typ, Instructions: instr, Levels: levels}})
+	}
+	for _, tc := range []struct {
+		name, state string
+		questions   map[string]typeSafeQuestion
+		ref         string
+		want        bool
+	}{
+		{"box without criteria is no null", `{}`, q(llm.JudgeBox, "the hole"), "n", false},
+		{"noul without criteria is no null", ``, q(llm.JudgeNoul, "usable?"), "null", false},
+		{"html characters", `{}`, q(llm.JudgeNoul, "is <a&b> usable?"), "<a&b>", true},
+		{"escaped in the state", `{"img":"a&b"}`, q(llm.JudgeNoul, "?"), "a&b", true},
+		{"only in criteria", `{}`, q(llm.JudgeScore, "how worn?", "like ex-hole", "intact"), "ex-hole", true},
+		{"state that is the name", `"road"`, q(llm.JudgeNoul, "?"), "road", true},
+		{"not across two strings", `["ro","ad"]`, q(llm.JudgeNoul, "?"), "road", false},
+	} {
+		if got := strings.Contains(typeSafeMentions(json.RawMessage(tc.state), tc.questions), tc.ref); got != tc.want {
+			t.Errorf("%s: mentioned = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// Only max_tokens_exceeded is the caller's to split; another 400 stays a vendor error.
+func TestTypeSafeOther400IsNotJudgeTooLarge(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"detail":{"error_type":"api_usage_error","message":"Invalid image request."}}`)
+	}))
+	defer srv.Close()
+	_, err := NewTypeSafeAdapter(srv.URL, "k", "jev-1.14.0").Judge(context.Background(), &llm.JudgeRequest{StateJSON: `{}`,
+		Questions: map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "?"}}}, "u", nil)
+	var tsErr *TypeSafeError
+	if errors.Is(err, llm.ErrJudgeTooLarge) || !errors.As(err, &tsErr) || tsErr.Status != http.StatusBadRequest {
+		t.Fatalf("err = %v", err)
+	}
+}
