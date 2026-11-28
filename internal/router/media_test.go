@@ -4,7 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/ai-process/ktms/internal/audio"
 	"github.com/ai-process/ktms/internal/llm"
@@ -182,5 +186,45 @@ func TestMatchModalityIgnoresTextRules(t *testing.T) {
 	// No image rule configured is nil, not the low catch-all.
 	if got := MatchModality(snap, nil, "modality", "image", attrs); got != nil {
 		t.Errorf("MatchModality for an unconfigured modality = %v, want nil", got)
+	}
+}
+
+// Media over one vendor's limits (image count, size) moves to the next model,
+// which may take it; media no model takes is still the caller's bad request.
+func TestExecuteMediaAdvancesPastVendorMediaLimit(t *testing.T) {
+	limit := &llm.InvalidMediaError{Part: 8, Msg: "9 images; Liquid takes at most 8 per call", VendorLimit: true}
+	m, err := ExecuteMedia(context.Background(), noThrottle{}, mediaReq(
+		mediaModels("d1.2", "jev-latest"),
+		func(_ context.Context, m *proxydb.Model, _ llm.ClientAdapter) (llm.TokensUsage, error) {
+			if m.ID == "d1.2" {
+				return llm.TokensUsage{}, limit
+			}
+			return llm.TokensUsage{Output: 1}, nil
+		}))
+	if err != nil || m.ID != "jev-latest" {
+		t.Fatalf("served by %v, err %v; want the second model", m, err)
+	}
+
+	_, err = ExecuteMedia(context.Background(), noThrottle{}, mediaReq(
+		mediaModels("d1.2", "gpt-judge"),
+		func(_ context.Context, m *proxydb.Model, _ llm.ClientAdapter) (llm.TokensUsage, error) {
+			if m.ID == "d1.2" {
+				return llm.TokensUsage{}, limit
+			}
+			return llm.TokensUsage{}, llm.ErrJudgmentUnsupported
+		}))
+	if st := ToStatus(err); status.Code(st) != codes.InvalidArgument || !strings.Contains(st.Error(), "Liquid takes at most 8") {
+		t.Errorf("status = %v, want the vendor's media refusal as bad_request", st)
+	}
+
+	var tried []string
+	_, err = ExecuteMedia(context.Background(), noThrottle{}, mediaReq(
+		mediaModels("jev-latest", "d1.2"),
+		func(_ context.Context, m *proxydb.Model, _ llm.ClientAdapter) (llm.TokensUsage, error) {
+			tried = append(tried, m.ID)
+			return llm.TokensUsage{}, &llm.InvalidMediaError{Msg: `name "a" is used twice`}
+		}))
+	if len(tried) != 1 || status.Code(ToStatus(err)) != codes.InvalidArgument {
+		t.Errorf("tried %v, err %v; a request-level media error ends the chain", tried, err)
 	}
 }

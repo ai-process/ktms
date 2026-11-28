@@ -1001,7 +1001,11 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 		if err == nil {
 			return m, nil
 		}
-		lastErr = err
+		// A model over its media limits tells the caller more than a later one
+		// that cannot judge at all, so its refusal is what the caller sees.
+		if !errors.Is(err, llm.ErrJudgmentUnsupported) || !errors.Is(lastErr, llm.ErrInvalidMedia) {
+			lastErr = err
+		}
 		if llm.ShouldSkipToNextModel(err) {
 			log.Warn().Err(err).Str("model", m.ID).Str("vendor", m.Vendor).
 				Msg("skipping to next model in chain")

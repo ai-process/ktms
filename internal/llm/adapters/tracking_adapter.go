@@ -656,9 +656,9 @@ func (t *TrackingAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, user
 }
 
 // CheckJudgeMedia forwards to the wrapped adapter's media check, if it has one.
-func (t *TrackingAdapter) CheckJudgeMedia(media []*llm.JudgeMediaPart) error {
+func (t *TrackingAdapter) CheckJudgeMedia(media []*llm.JudgeMediaPart, questions map[string]*llm.JudgeQuestion) error {
 	if c, ok := t.adapter.(llm.JudgeMediaChecker); ok {
-		return c.CheckJudgeMedia(media)
+		return c.CheckJudgeMedia(media, questions)
 	}
 	return nil
 }

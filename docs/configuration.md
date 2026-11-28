@@ -172,6 +172,10 @@ ktms vendor-keys list
 | `bedrock` | Amazon Bedrock Converse / ConverseStream | optional override | Key: `<access_key_id>:<secret_access_key>[:<region>[:<session_token>]]`, region `us-east-1` by default. The model id is a foundation model or inference profile ARN/ID. Content filters and guardrail interventions move to the next model. |
 | `ollama` | Any self-hosted OpenAI-compatible server (Ollama, llama.cpp) | required on the model, e.g. `https://host/v1` | The vendor key is the server's own. |
 | `typesafe` | TypeSafe | default | Judgments only. |
+| `liquid` | Liquid AI System One (d1) | `https://api.liquid.ai` | Judgments only (experimental). Models `d1.2`, `d1.2-ultra`. |
+| `cloudflare` | Workers AI System One (Clef) | from the key, or `https://api.cloudflare.com/client/v4/accounts/<account_id>/ai/run/@cf/cloudflare` | Judgments only (experimental). Key: `<account_id>:<api_token>`, or the token alone with the endpoint set. Models `clef`, `clef-flash`, `clef-omni`. |
+| `perplexity` | Perplexity Decisions API | `https://api.perplexity.ai` | Judgments only (experimental). Models `pplx-decider-v1.3`, `pplx-decider-flash-v1.3`. |
+| `microsoft` | Microsoft-Decision on Foundry | required: the Foundry resource, e.g. `https://<resource>.services.ai.azure.com` | Judgments only (experimental). The model id is the deployment name; the key goes in `api-key`. Text only. |
 
 <details>
 <summary>Admin API</summary>
@@ -256,7 +260,7 @@ DeepSeek's `prompt_cache_hit_tokens`, Gemini's `cachedContentTokenCount`, Bedroc
 | `pdf_input` | Can process PDF document parts in multimodal messages (`DocumentPart`). |
 | `tts` | Can serve `SynthesizeSpeech`. |
 | `image` | Can serve `GenerateImage`. |
-| `judge` | Can serve `Judge` (TypeSafe `jev-latest`, OpenAI `gpt-6-luna`). |
+| `judge` | Can serve `Judge` (TypeSafe `jev-latest`, OpenAI `gpt-6-luna`, Liquid `d1.2`, Cloudflare `clef-flash`, Perplexity `pplx-decider-flash-v1.3`, Microsoft-Decision). |
 | `translate` | Can serve `Translate`: a chat model by prompt, a node MT model natively. Declares `languages` (see [Translation](grpc-api.md#translation)). |
 | `embedding_input` | A judge model that scores raw latent vectors in `JudgeRequest.state_media` (`EmbeddingPart`). |
 | `long_context` | TypeSafe only: every call asks for System One's long context (262k tokens per request and per question). Experimental. |

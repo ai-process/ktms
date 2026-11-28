@@ -23,7 +23,7 @@ func TestTypeSafeErrorRetryability(t *testing.T) {
 		404: false,
 	}
 	for code, want := range cases {
-		err := &TypeSafeError{Status: code, Body: "x"}
+		err := &SystemOneError{Status: code, Body: "x"}
 		if got := llm.IsRetryableError(err); got != want {
 			t.Errorf("status %d retryable = %v, want %v", code, got, want)
 		}
@@ -33,7 +33,7 @@ func TestTypeSafeErrorRetryability(t *testing.T) {
 // A 401 must never carry the vendor's body into a log line or an error string:
 // it can echo the credential that was rejected.
 func TestTypeSafeErrorHidesUnauthorizedBody(t *testing.T) {
-	err := &TypeSafeError{Status: 401, Body: "invalid key ts-secret-value"}
+	err := &SystemOneError{Status: 401, Body: "invalid key ts-secret-value"}
 	if strings.Contains(err.Error(), "ts-secret-value") {
 		t.Errorf("401 message leaks the body: %s", err.Error())
 	}
@@ -47,7 +47,7 @@ func TestTypeSafeRefusesTextGeneration(t *testing.T) {
 }
 
 func TestToTypeSafeQuestionsRendersCriteriaPerType(t *testing.T) {
-	got := toTypeSafeQuestions(map[string]*llm.JudgeQuestion{
+	got := toSystemOneQuestions(map[string]*llm.JudgeQuestion{
 		"noul_with":    {Type: llm.JudgeNoul, Instructions: "does it hold?", TrueCriteria: "yes means"},
 		"noul_without": {Type: llm.JudgeNoul, Instructions: "does it hold?"},
 		"pick":         {Type: llm.JudgeChoice, Instructions: "which?", Options: map[string]string{"a": "first", "b": "second"}},

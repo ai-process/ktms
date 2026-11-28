@@ -264,11 +264,21 @@ state, in parallel.
   criteria refer to it, so put example images for choice options or score levels in `state_media`
   too and name them there; unnamed images are listed beside the state as
   `{"state": <state_json>, "images": [...]}`. TypeSafe takes PNG or JPEG only, each side 280–1568 px,
-  at most 16 MiB a file, upright pixels: Keystone checks that from the image header before the call
-  and answers `bad_request` with the size and the limit, never resizing or rotating. Image URLs,
+  at most 16 MiB a file, upright pixels: Keystone checks that from the image header before the call,
+  never resizing or rotating. Media over one vendor's limits passes to the next judge in the chain; when
+  no judge takes it, the answer is `bad_request` with the size and the limit. Image URLs,
   audio and embeddings make TypeSafe yield to the next model. Other judges get a named part's name
   as a text label before it.
-- **Box** (experimental) is TypeSafe `jev-1.14.0` only: declare `box` on that model and pin the
+- **Other System One vendors** (experimental): `liquid` (d1), `cloudflare` (Clef), `perplexity`
+  (pplx-decider) and `microsoft` (Microsoft-Decision on Foundry) take the same questions. Liquid and
+  Cloudflare get images as an `images` array and Perplexity as image parts inside the state; these
+  vendors take images by position, so named images send their names with the state in order
+  (`{"state": …, "images": ["road", null, …]}`, null for an unnamed image, or a text part before each
+  named image at Perplexity). Limits checked before the call: Liquid 8 images (1 with a box question)
+  and a 4.5 MB body with the images as base64, Cloudflare 4 PNG, JPEG or WebP images up to 16 MP and
+  4 MiB a file, Perplexity 8 images up to 2,048 tiles of 32×32 px. Formats, animation and EXIF
+  orientation are checked only where the vendor documents them. Microsoft is text only: images make it yield.
+- **Box** (experimental) is TypeSafe `jev-1.14.0` (and Liquid `d1.2`) only: declare `box` on that model and pin the
   version rather than `jev-latest`. A missing object still gets a box, so ask a noul "is it there?"
   beside it. `ExplainRoute` shows a box chain when you pass `capabilities: ["box"]`.
 - **Structured questions** (experimental): `instructions_json` and `criteria_json` take the JSON

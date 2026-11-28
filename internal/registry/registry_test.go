@@ -2,6 +2,9 @@ package registry
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -566,5 +569,83 @@ func TestValidateRule_ReservedAttributes(t *testing.T) {
 		if err == nil {
 			t.Errorf("expected error for rule filtering on reserved attribute %q, got nil", reservedKey)
 		}
+	}
+}
+
+// Decision vendors build judge-only System One adapters.
+func TestDecisionVendorsBuildJudgeAdapters(t *testing.T) {
+	for _, v := range []string{VendorLiquid, VendorPerplexity, VendorCloudflare, VendorMicrosoft} {
+		if !ValidVendor(v) {
+			t.Fatalf("%s is not a valid vendor", v)
+		}
+		m := model("decider", v, EffortLow)
+		m.Capabilities = []string{CapabilityJudge}
+		m.Endpoint = "https://example.test"
+		adapter, err := buildAdapter(m, "k")
+		if err != nil {
+			t.Fatalf("%s: %v", v, err)
+		}
+		if _, ok := adapter.(llm.Judge); !ok {
+			t.Errorf("%s adapter does not implement llm.Judge", v)
+		}
+		if _, err := adapter.GenerateText(context.Background(), llm.NewChatContext()); err == nil {
+			t.Errorf("%s adapter accepted a text generation", v)
+		}
+	}
+	for v, key := range map[string]string{VendorMicrosoft: "k", VendorCloudflare: "token-without-account"} {
+		if _, err := buildAdapter(model("decider", v, EffortLow), key); err == nil {
+			t.Errorf("%s without an endpoint built an adapter", v)
+		}
+	}
+	if _, err := buildAdapter(model("clef", VendorCloudflare, EffortLow), "acc:tok"); err != nil {
+		t.Errorf("cloudflare account key: %v", err)
+	}
+	if _, err := buildAdapter(model("clef", VendorCloudflare, EffortLow), "acc:"); err == nil {
+		t.Error("cloudflare key without a token built an adapter")
+	}
+}
+
+// A cloudflare key "<account>:<token>" sends only the token.
+func TestCloudflareKeySendsToken(t *testing.T) {
+	var auth, path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth, path = r.Header.Get("Authorization"), r.URL.Path
+		_, _ = io.WriteString(w, `{"answers":{"q":{"type":"noul","noul":0.5}}}`)
+	}))
+	defer srv.Close()
+	m := model("clef-flash", VendorCloudflare, EffortLow)
+	m.Endpoint = srv.URL + "/client/v4/accounts/acc/ai/run/@cf/cloudflare"
+	adapter, err := buildAdapter(m, "acc:tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.(llm.Judge).Judge(context.Background(), &llm.JudgeRequest{StateJSON: `{}`,
+		Questions: map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "?"}}}, "u", nil); err != nil {
+		t.Fatal(err)
+	}
+	if auth != "Bearer tok" || path != "/client/v4/accounts/acc/ai/run/@cf/cloudflare/clef-flash" {
+		t.Errorf("auth %q path %q", auth, path)
+	}
+}
+
+// Mistakes on the new decision vendors fail at apply, not on every call.
+func TestDecisionVendorConfigErrors(t *testing.T) {
+	ms := model("decider", VendorMicrosoft, EffortLow)
+	ms.Capabilities = []string{CapabilityJudge}
+	if err := ValidateModel(ms); err == nil || !strings.Contains(err.Error(), "endpoint") {
+		t.Errorf("microsoft without endpoint: %v", err)
+	}
+	for _, v := range []string{VendorLiquid, VendorCloudflare, VendorPerplexity, VendorMicrosoft} {
+		m := model("decider", v, EffortLow)
+		m.Endpoint = "https://example.test"
+		m.Capabilities = []string{CapabilityJudge, CapabilityLongContext}
+		if err := ValidateModel(m); err == nil || !strings.Contains(err.Error(), "long_context") {
+			t.Errorf("%s with long_context: %v", v, err)
+		}
+	}
+	cf := model("clef", VendorCloudflare, EffortLow)
+	cf.Endpoint = "https://example.test"
+	if _, err := buildAdapter(cf, ":tok"); err == nil || !strings.Contains(err.Error(), "account id") {
+		t.Errorf("cloudflare key with an empty account: %v", err)
 	}
 }

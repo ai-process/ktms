@@ -179,6 +179,13 @@ func ValidateModel(m *proxydb.Model) error {
 	if m.Vendor == VendorOllama && m.Endpoint == "" {
 		return fmt.Errorf("model %s: an ollama model needs its endpoint", m.ID)
 	}
+	if m.Vendor == VendorMicrosoft && m.Endpoint == "" {
+		return fmt.Errorf("model %s: a microsoft model needs its endpoint (the Foundry resource)", m.ID)
+	}
+	if HasCapability(m, CapabilityLongContext) && (m.Vendor == VendorLiquid || m.Vendor == VendorCloudflare ||
+		m.Vendor == VendorPerplexity || m.Vendor == VendorMicrosoft) {
+		return fmt.Errorf("model %s: long_context is TypeSafe's; %s has no long-context option", m.ID, m.Vendor)
+	}
 	if len(m.Efforts) == 0 && len(m.Competencies) == 0 {
 		return fmt.Errorf("model %s: at least one effort or competency is required", m.ID)
 	}

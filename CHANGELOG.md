@@ -7,6 +7,17 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Decision vendors speaking System One (experimental): `liquid` (Liquid AI d1), `cloudflare` (Workers AI Clef),
+  `perplexity` (pplx-decider) and `microsoft` (Microsoft-Decision on Foundry), judgments only. One adapter speaks the
+  protocol with a profile per vendor: path, authentication, opt-in headers, how images travel (TypeSafe's multipart
+  assets, an `images` array, or image parts in the state) and the documented image limits, checked before the call.
+  TypeSafe's configuration is unchanged. A Cloudflare key is `<account_id>:<api_token>`; a Microsoft model needs
+  its Foundry endpoint (checked when the config is applied) and is text only; `long_context` stays TypeSafe's.
+- Judge media over one vendor's limits (image count, size, pixels, format) passes to the next judge in the chain,
+  TypeSafe's included, instead of ending it; `bad_request` comes when no judge takes it. A name used twice still
+  ends the chain. The rollout pre-check applies box-question limits too.
+
 ### Fixed
 - TypeSafe judgments look for image names in the decoded text of the state, instructions and criteria: a name such as
   `n` or `null` no longer counts as mentioned by an absent criteria (the image went unlisted and System One refused

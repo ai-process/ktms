@@ -108,10 +108,12 @@ var ErrJudgeTooLarge = errors.New("judgment exceeds the model's context")
 
 // InvalidMediaError says what is wrong with which part, for the caller. Part
 // indexes StateMedia; Field names the request field, "state_media" when empty.
+// VendorLimit marks media over one vendor's limits that another model may take.
 type InvalidMediaError struct {
-	Field string
-	Part  int
-	Msg   string
+	Field       string
+	Part        int
+	Msg         string
+	VendorLimit bool
 }
 
 func (e *InvalidMediaError) Error() string {
@@ -121,12 +123,14 @@ func (e *InvalidMediaError) Error() string {
 	}
 	return fmt.Sprintf("%s[%d]: %s", field, e.Part, e.Msg)
 }
-func (e *InvalidMediaError) Is(target error) bool { return target == ErrInvalidMedia }
+func (e *InvalidMediaError) Is(target error) bool  { return target == ErrInvalidMedia }
+func (e *InvalidMediaError) SkipToNextModel() bool { return e.VendorLimit }
 
 // JudgeMediaChecker is an optional Judge capability: it says whether the
 // vendor would refuse media before any call, so a batch fails before it bills.
+// The questions matter too: some vendors take fewer images for a box question.
 type JudgeMediaChecker interface {
-	CheckJudgeMedia(media []*JudgeMediaPart) error
+	CheckJudgeMedia(media []*JudgeMediaPart, questions map[string]*JudgeQuestion) error
 }
 
 // JudgeResult is one judgment call's outcome.

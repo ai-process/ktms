@@ -796,7 +796,7 @@ func executeParallelCandidateRollouts(ctx context.Context, judge llm.Judge, roll
 			media[i] = append(slices.Clip(rolloutReq.StateMedia), c.ActionMedia...)
 		}
 		if checker != nil && len(media[i]) > 0 {
-			if err := checker.CheckJudgeMedia(media[i]); err != nil {
+			if err := checker.CheckJudgeMedia(media[i], rolloutReq.Criteria); err != nil {
 				return nil, candidateMediaError(err, i, len(rolloutReq.StateMedia))
 			}
 		}
