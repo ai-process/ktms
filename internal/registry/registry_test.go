@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ai-process/ktms/internal/llm"
+	"github.com/ai-process/ktms/internal/llm/adapters"
 	"github.com/ai-process/ktms/internal/proxydb"
 )
 
@@ -647,5 +648,25 @@ func TestDecisionVendorConfigErrors(t *testing.T) {
 	cf.Endpoint = "https://example.test"
 	if _, err := buildAdapter(cf, ":tok"); err == nil || !strings.Contains(err.Error(), "account id") {
 		t.Errorf("cloudflare key with an empty account: %v", err)
+	}
+}
+
+// A google model declaring judge is Gemini's Decisions API, not a chat model.
+func TestGoogleJudgeModelBuildsGeminiDecisions(t *testing.T) {
+	m := model("gemini-decision-1", VendorGoogle, EffortLow)
+	m.Capabilities = []string{CapabilityJudge}
+	adapter, err := buildAdapter(m, "AIza-k")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := adapter.(*adapters.GeminiDecisionsAdapter); !ok {
+		t.Fatalf("adapter = %T", adapter)
+	}
+	chat, err := buildAdapter(model("gemini-flash", VendorGoogle, EffortLow), "AIza-k")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := chat.(*adapters.GeminiDecisionsAdapter); ok {
+		t.Error("a chat model got the Decisions adapter")
 	}
 }

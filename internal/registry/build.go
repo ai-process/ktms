@@ -159,6 +159,11 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		ConfigureOpenAI(adapter, m, "")
 		return adapter, nil
 	case VendorGoogle:
+		// A Gemini judge model (gemini-decision-1) answers on the Decisions API,
+		// which the genai client does not speak.
+		if HasCapability(m, CapabilityJudge) {
+			return adapters.NewGeminiDecisionsAdapter(m.Endpoint, key, m.ID), nil
+		}
 		config := &genai.ClientConfig{APIKey: key, Backend: genai.BackendGeminiAPI, HTTPClient: llm.VendorHTTPClient()}
 		if m.Endpoint != "" {
 			config.HTTPOptions = genai.HTTPOptions{BaseURL: m.Endpoint}

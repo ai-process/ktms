@@ -75,6 +75,7 @@ These work and are supported, but may change in a minor release. The change is t
   (TypeSafe calls the feature "Dreamer-ready"). Guardrails do not inspect images.
 - **The System One vendors `liquid`, `cloudflare`, `perplexity` and `microsoft`**: their names, key
   formats, default endpoints and image limits.
+- **Gemini Decisions** (`google` models with `judge`): Google's API is v1beta.
 - **`JudgeStream` and `EvaluateRollouts`**, and `POST /v1/decisions/rollouts` over HTTP.
 - **The MCP gateway:** `/mcp`, the `MCPServerSpec` RPCs, `allowed_mcp`, the `mcp_servers` and
   `mcp_credentials` file sections, the `ktms_mcp_*` metrics and `ToolCall` in usage events.
