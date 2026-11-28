@@ -128,7 +128,7 @@ kubectl create secret generic ktms-secrets \
   --from-literal=BOOTSTRAP_ADMIN_KEY="$(head -c 24 /dev/urandom | base64 | tr -d '/+=')"
 
 # 2. the release
-helm install ktms oci://ghcr.io/ai-process/charts/ktms --version 1.7.0 \
+helm install ktms oci://ghcr.io/ai-process/charts/ktms --version 1.8.0 \
   --set secrets.existingSecret=ktms-secrets \
   --set ingress.enabled=true \
   --set "ingress.hosts[0].host=proxy.example.com" \

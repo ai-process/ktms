@@ -7,6 +7,8 @@ All notable changes to KTMS are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-28
+
 ### Added
 - OpenAI Responses API (experimental): `POST /v1/responses`, so Codex CLI (`wire_api = "responses"`)
   and the OpenAI Agents SDK run through Keystone with `model: "auto"` or a registry model id. It shares
@@ -628,7 +630,8 @@ Backport on the 0.12 line.
 Releases before 0.10.0 are described on the
 [GitHub releases page](https://github.com/ai-process/ktms/releases).
 
-[Unreleased]: https://github.com/ai-process/ktms/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/ai-process/ktms/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/ai-process/ktms/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/ai-process/ktms/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/ai-process/ktms/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/ai-process/ktms/compare/v1.5.0...v1.6.0
