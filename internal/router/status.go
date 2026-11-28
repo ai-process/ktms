@@ -62,6 +62,8 @@ func ToStatus(err error) error {
 		return status.Error(codes.FailedPrecondition, "not_configured")
 	case errors.Is(err, llm.ErrInvalidMedia), errors.Is(err, llm.ErrJudgeTooLarge):
 		return status.Error(codes.InvalidArgument, "bad_request: "+err.Error())
+	case errors.Is(err, llm.ErrContentBlocked):
+		return status.Error(codes.FailedPrecondition, "content_blocked")
 	case errors.Is(err, ErrModelAccessDenied):
 		return status.Error(codes.PermissionDenied, "model access denied by key or team policy")
 	case errors.Is(err, ErrNoCapableModel), errors.Is(err, llm.ErrJudgmentUnsupported), errors.Is(err, llm.ErrEmbeddingUnsupported),

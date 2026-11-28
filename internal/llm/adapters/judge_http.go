@@ -26,7 +26,8 @@ func executeJudgeRequest(ctx context.Context, client *http.Client, url, apiKey s
 }
 
 // executeJudgeCall enforces a 1MB response limit and caps error snippets at
-// 300 characters to prevent memory and log bloat.
+// 300 characters to prevent memory and log bloat. A non-2xx reply still returns
+// its body, so callers classify the vendor's error from its structure.
 func executeJudgeCall(ctx context.Context, client *http.Client, url, apiKey string, call judgeCall) ([]byte, int, error) {
 	if client == nil {
 		client = llm.VendorHTTPClient()
@@ -65,7 +66,7 @@ func executeJudgeCall(ctx context.Context, client *http.Client, url, apiKey stri
 		if len(snippet) > 300 {
 			snippet = snippet[:300]
 		}
-		return nil, resp.StatusCode, fmt.Errorf("%s", snippet)
+		return raw, resp.StatusCode, fmt.Errorf("%s", snippet)
 	}
 	return raw, resp.StatusCode, nil
 }

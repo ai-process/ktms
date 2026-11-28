@@ -102,6 +102,10 @@ type Box struct {
 // (format, size, orientation): the caller's to fix, so not a vendor failure.
 var ErrInvalidMedia = errors.New("invalid media")
 
+// ErrContentBlocked marks a vendor's safety refusal of the request's content.
+// Another judge may answer; when none does, retrying the same request will not help.
+var ErrContentBlocked = errors.New("content blocked by the vendor's safety filter")
+
 // ErrJudgeTooLarge marks a judgment beyond the model's context window: the
 // caller's to split, so not a vendor failure and no reason to try another model.
 var ErrJudgeTooLarge = errors.New("judgment exceeds the model's context")

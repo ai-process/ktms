@@ -1001,9 +1001,9 @@ func ExecuteMedia(ctx context.Context, th Throttle, r MediaRequest) (*proxydb.Mo
 		if err == nil {
 			return m, nil
 		}
-		// A model over its media limits tells the caller more than a later one
-		// that cannot judge at all, so its refusal is what the caller sees.
-		if !errors.Is(err, llm.ErrJudgmentUnsupported) || !errors.Is(lastErr, llm.ErrInvalidMedia) {
+		// A refusal of this request (media limits, a safety block) tells the caller
+		// more than a later model that cannot judge at all, so it is what they see.
+		if !errors.Is(err, llm.ErrJudgmentUnsupported) || !(errors.Is(lastErr, llm.ErrInvalidMedia) || errors.Is(lastErr, llm.ErrContentBlocked)) {
 			lastErr = err
 		}
 		if llm.ShouldSkipToNextModel(err) {

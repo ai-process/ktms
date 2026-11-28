@@ -179,6 +179,13 @@ func ValidateModel(m *proxydb.Model) error {
 	if m.Vendor == VendorOllama && m.Endpoint == "" {
 		return fmt.Errorf("model %s: an ollama model needs its endpoint", m.ID)
 	}
+	if IsGeminiDecisionModel(m) {
+		for _, c := range []string{CapabilityTTS, CapabilityImage, CapabilityEmbedding, CapabilityTranslate, CapabilityBatch} {
+			if HasCapability(m, c) {
+				return fmt.Errorf("model %s: a Gemini decision model only judges; %s needs a separate model", m.ID, c)
+			}
+		}
+	}
 	if m.Vendor == VendorMicrosoft && m.Endpoint == "" {
 		return fmt.Errorf("model %s: a microsoft model needs its endpoint (the Foundry resource)", m.ID)
 	}

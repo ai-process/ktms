@@ -164,7 +164,7 @@ ktms vendor-keys list
 | --- | --- | --- | --- |
 | `openai` | OpenAI | default | |
 | `anthropic` | Anthropic | default | |
-| `google` | Gemini | default | |
+| `google` | Gemini | default | A judge model whose id starts with `gemini-decision` (`gemini-decision-1`) is served by the Gemini Decisions API (v1beta, experimental) and only judges; other models by `generateContent`. |
 | `deepseek` | OpenAI-compatible | `https://api.deepseek.com` | |
 | `groq` | OpenAI-compatible | `https://api.groq.com/openai/v1` | |
 | `mistral` | OpenAI-compatible | `https://api.mistral.ai/v1` | |
@@ -260,7 +260,7 @@ DeepSeek's `prompt_cache_hit_tokens`, Gemini's `cachedContentTokenCount`, Bedroc
 | `pdf_input` | Can process PDF document parts in multimodal messages (`DocumentPart`). |
 | `tts` | Can serve `SynthesizeSpeech`. |
 | `image` | Can serve `GenerateImage`. |
-| `judge` | Can serve `Judge` (TypeSafe `jev-latest`, OpenAI `gpt-6-luna`, Liquid `d1.2`, Cloudflare `clef-flash`, Perplexity `pplx-decider-flash-v1.3`, Microsoft-Decision). |
+| `judge` | Can serve `Judge` (TypeSafe `jev-latest`, OpenAI `gpt-6-luna`, Gemini `gemini-decision-1`, Liquid `d1.2`, Cloudflare `clef-flash`, Perplexity `pplx-decider-flash-v1.3`, Microsoft-Decision). |
 | `translate` | Can serve `Translate`: a chat model by prompt, a node MT model natively. Declares `languages` (see [Translation](grpc-api.md#translation)). |
 | `embedding_input` | A judge model that scores raw latent vectors in `JudgeRequest.state_media` (`EmbeddingPart`). |
 | `long_context` | TypeSafe only: every call asks for System One's long context (262k tokens per request and per question). Experimental. |

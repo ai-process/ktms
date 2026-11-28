@@ -278,6 +278,14 @@ state, in parallel.
   and a 4.5 MB body with the images as base64, Cloudflare 4 PNG, JPEG or WebP images up to 16 MP and
   4 MiB a file, Perplexity 8 images up to 2,048 tiles of 32×32 px. Formats, animation and EXIF
   orientation are checked only where the vendor documents them. Microsoft is text only: images make it yield.
+- **Gemini Decisions** (experimental): a `google` judge model whose id starts with `gemini-decision`
+  (`gemini-decision-1`) is served by `POST /v1beta/decisions`. The state goes as text, followed by
+  `state_media` as content blocks: images (bytes, or an https `url` whose `mime_type` is given or follows
+  from its extension; `detail` `low`/`high` as the resolution), audio and text, each named part labelled
+  with its name before it. Noul criteria become `true_description` and `false_description`; structured
+  instructions and criteria go as text. Box questions, embeddings and a URL of unknown type make it yield;
+  a safety block moves to the next judge of the chain, and a chain that ends on one answers
+  `FAILED_PRECONDITION` `content_blocked` (not worth retrying). Usage is `total_input_tokens`, output is 0.
 - **Box** (experimental) is TypeSafe `jev-1.14.0` (and Liquid `d1.2`) only: declare `box` on that model and pin the
   version rather than `jev-latest`. A missing object still gets a box, so ask a noul "is it there?"
   beside it. `ExplainRoute` shows a box chain when you pass `capabilities: ["box"]`.

@@ -44,6 +44,7 @@ says what to do; the reason says why. Over HTTP the same reason is the `code` of
 | `INVALID_ARGUMENT` | `bad_request: <message>` | Empty batch, duplicate `custom_id`, too many items (> `BATCH_MAX_ITEMS`), or invalid parameters. For a judgment, also an image the judge refuses or a call beyond the model's context (`judgment exceeds the model's context`): ask fewer questions per call. |
 | `FAILED_PRECONDITION` | `request_too_large` | The call needs more tokens than a minute of the key's `tpm_limit`; it never fits. Shrink it or raise the limit. |
 | `FAILED_PRECONDITION` | `output_truncated` | Raise `max_output_tokens`; don't retry as is. |
+| `FAILED_PRECONDITION` | `content_blocked` | A judge's safety filter refused the content and no later judge of the chain answered. Don't retry as is. |
 | `FAILED_PRECONDITION` | `no_capable_model` | No model of the chain can serve this request, modality or batch. |
 | `FAILED_PRECONDITION` | `unsupported_language_pair` | `Translate`: models of the chain translate, but none declares this pair. Add a model for it or a `*` fallback. |
 | `FAILED_PRECONDITION` | `no_vendor_key` | The client key holds no credential for the chain's vendors. `local` models never cause this. |
