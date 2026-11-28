@@ -149,7 +149,12 @@ func (a *TypeSafeAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ st
 	raw, statusCode, err := executeJudgeCall(ctx, a.http, a.endpoint+"/v1/systemone", a.apiKey, call)
 	if err != nil {
 		if statusCode > 0 {
-			return failed(&TypeSafeError{Status: statusCode, Body: err.Error()})
+			tsErr := &TypeSafeError{Status: statusCode, Body: err.Error()}
+			if statusCode == http.StatusBadRequest && strings.Contains(tsErr.Body, "max_tokens_exceeded") {
+				return failed(fmt.Errorf("%w: an image named in a question is sent again for each such question, "+
+					"so ask fewer of them per call or name the image in state_json instead: %w", llm.ErrJudgeTooLarge, tsErr))
+			}
+			return failed(tsErr)
 		}
 		return failed(fmt.Errorf("typesafe: %w", err))
 	}
@@ -253,7 +258,7 @@ func (a *TypeSafeAdapter) CheckJudgeMedia(media []*llm.JudgeMediaPart) error {
 // systemOneCall builds the request: plain JSON without images, else multipart
 // with each image as a file part named in "assets". A named image is referred
 // to by its name wherever the caller wrote it; unnamed images get a generated
-// reference, listed next to the caller's state (see unnamedState).
+// reference and, like named ones nothing mentions, are listed next to the state.
 func (a *TypeSafeAdapter) systemOneCall(req *llm.JudgeRequest) (judgeCall, error) {
 	sr := typeSafeRequest{
 		State:     json.RawMessage(req.StateJSON),
@@ -284,7 +289,8 @@ func (a *TypeSafeAdapter) systemOneCall(req *llm.JudgeRequest) (judgeCall, error
 		data         []byte
 	}
 	var files []file
-	var unnamed []string
+	var listed []string // refs System One would otherwise not see
+	mentioned := typeSafeMentions(sr.State, sr.Questions)
 	sr.Assets = make(map[string]typeSafeAssetEntry, len(req.StateMedia))
 	for i, p := range req.StateMedia {
 		// Only image bytes reach System One: a URL it cannot fetch through
@@ -300,7 +306,11 @@ func (a *TypeSafeAdapter) systemOneCall(req *llm.JudgeRequest) (judgeCall, error
 		ref := p.Name
 		if ref == "" {
 			ref = fmt.Sprintf("ktms-image-%d", i+1)
-			unnamed = append(unnamed, ref)
+		}
+		// System One refuses an image nothing refers to ("Invalid image request"),
+		// and it finds a name anywhere in the state or questions text.
+		if p.Name == "" || !strings.Contains(mentioned, ref) {
+			listed = append(listed, ref)
 		}
 		if _, dup := sr.Assets[ref]; dup {
 			return judgeCall{}, &llm.InvalidMediaError{Part: i, Msg: fmt.Sprintf("name %q is used twice", ref)}
@@ -309,7 +319,7 @@ func (a *TypeSafeAdapter) systemOneCall(req *llm.JudgeRequest) (judgeCall, error
 		sr.Assets[ref] = typeSafeAssetEntry{Type: "image", Part: part, Format: format}
 		files = append(files, file{part: part, format: format, data: p.Data})
 	}
-	sr.State = unnamedState(sr.State, unnamed)
+	sr.State = unnamedState(sr.State, listed)
 
 	reqJSON, err := json.Marshal(sr)
 	if err != nil {
@@ -381,6 +391,21 @@ func typeSafeLegend(in map[string]json.RawMessage) map[string]string {
 		out[k] = b.String()
 	}
 	return out
+}
+
+// typeSafeMentions is the text System One searches for image names: the state
+// and each question's instructions and criteria.
+func typeSafeMentions(state json.RawMessage, questions map[string]typeSafeQuestion) string {
+	var b strings.Builder
+	b.Write(state)
+	for _, q := range questions {
+		for _, v := range []any{q.Instructions, q.Criteria} {
+			if raw, err := json.Marshal(v); err == nil {
+				b.Write(raw)
+			}
+		}
+	}
+	return b.String()
 }
 
 // unnamedState puts references to unnamed images where System One sees them:

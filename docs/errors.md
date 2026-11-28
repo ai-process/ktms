@@ -41,7 +41,7 @@ says what to do; the reason says why. Over HTTP the same reason is the `code` of
 | gRPC status | Reason | What to do |
 | --- | --- | --- |
 | `INVALID_ARGUMENT` | `guardrail_violation` | Prompt injection, PII or a latent-space threat was found. Clean the input. |
-| `INVALID_ARGUMENT` | `bad_request: <message>` | Empty batch, duplicate `custom_id`, too many items (> `BATCH_MAX_ITEMS`), or invalid parameters. |
+| `INVALID_ARGUMENT` | `bad_request: <message>` | Empty batch, duplicate `custom_id`, too many items (> `BATCH_MAX_ITEMS`), or invalid parameters. For a judgment, also an image the judge refuses or a call beyond the model's context (`judgment exceeds the model's context`): ask fewer questions per call. |
 | `FAILED_PRECONDITION` | `request_too_large` | The call needs more tokens than a minute of the key's `tpm_limit`; it never fits. Shrink it or raise the limit. |
 | `FAILED_PRECONDITION` | `output_truncated` | Raise `max_output_tokens`; don't retry as is. |
 | `FAILED_PRECONDITION` | `no_capable_model` | No model of the chain can serve this request, modality or batch. |
