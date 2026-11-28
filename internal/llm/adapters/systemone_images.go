@@ -11,50 +11,67 @@ import (
 	"github.com/ai-process/ktms/internal/llm"
 )
 
-// System One's image limits (docs.typesafe.ai/images). It rejects rather than
-// resizes, and one bad image fails the whole request, so the proxy says why
-// before the call instead of relaying a vendor 400.
-const (
-	typeSafeMinSide      = 280
-	typeSafeMaxSide      = 1568
-	typeSafeMinPixels    = 280 * 280
-	typeSafeMaxPixels    = 1568 * 1568
-	typeSafeMaxImageSize = 16 << 20
-)
+// SystemOneImageLimits are what a vendor's System One takes as an image. Vendors
+// reject rather than resize, and one bad image fails the whole request, so the
+// proxy says why before the call instead of relaying a vendor 400.
+type SystemOneImageLimits struct {
+	Name                 string // the vendor as people know it, for messages
+	MinSide, MaxSide     int
+	MinPixels, MaxPixels int
+	MaxBytes             int
+	MaxImages            int // per call, 0 for no limit of its own
+	MaxImagesWithBox     int // per call with a box question, 0 for MaxImages
+}
 
-// typeSafeImageFormat checks one image against those limits from its header
-// only, without decoding pixels, and returns System One's format name.
-func typeSafeImageFormat(i int, data []byte) (string, error) {
+// typeSafeImageLimits are TypeSafe's (docs.typesafe.ai/images).
+var typeSafeImageLimits = SystemOneImageLimits{
+	Name:    "TypeSafe",
+	MinSide: 280, MaxSide: 1568,
+	MinPixels: 280 * 280, MaxPixels: 1568 * 1568,
+	MaxBytes: 16 << 20,
+}
+
+// format checks one image from its header only, without decoding pixels, and
+// returns System One's format name. PNG and JPEG are the protocol's formats.
+func (l *SystemOneImageLimits) format(i int, data []byte) (string, error) {
 	bad := func(format string, args ...any) error {
 		return &llm.InvalidMediaError{Part: i, Msg: fmt.Sprintf(format, args...)}
 	}
-	if len(data) > typeSafeMaxImageSize {
-		return "", bad("image is %d bytes, max %d for TypeSafe", len(data), typeSafeMaxImageSize)
+	if len(data) > l.MaxBytes {
+		return "", bad("image is %d bytes, max %d for %s", len(data), l.MaxBytes, l.Name)
 	}
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
-		return "", bad("not a PNG or JPEG image TypeSafe can read: %v", err)
+		return "", bad("not a PNG or JPEG image %s can read: %v", l.Name, err)
 	}
 	if format != "png" && format != "jpeg" {
-		return "", bad("image is %s; TypeSafe takes PNG or JPEG", format)
+		return "", bad("image is %s; %s takes PNG or JPEG", format, l.Name)
 	}
 	w, h := cfg.Width, cfg.Height
-	if w < typeSafeMinSide || h < typeSafeMinSide || w > typeSafeMaxSide || h > typeSafeMaxSide {
-		return "", bad("image is %dx%d px; TypeSafe needs each side within %d..%d px (scale it, keeping the aspect ratio)", w, h, typeSafeMinSide, typeSafeMaxSide)
+	if w < l.MinSide || h < l.MinSide || (l.MaxSide > 0 && (w > l.MaxSide || h > l.MaxSide)) {
+		return "", bad("image is %dx%d px; %s needs each side %s px (scale it, keeping the aspect ratio)", w, h, l.Name, bounds(l.MinSide, l.MaxSide))
 	}
-	if px := w * h; px < typeSafeMinPixels || px > typeSafeMaxPixels {
-		return "", bad("image has %d pixels; TypeSafe needs %d..%d", px, typeSafeMinPixels, typeSafeMaxPixels)
+	if px := w * h; px < l.MinPixels || (l.MaxPixels > 0 && px > l.MaxPixels) {
+		return "", bad("image has %d pixels; %s needs %s", px, l.Name, bounds(l.MinPixels, l.MaxPixels))
 	}
 	if format == "png" {
 		if pngAnimated(data) {
-			return "", bad("animated PNG; TypeSafe takes still images only")
+			return "", bad("animated PNG; %s takes still images only", l.Name)
 		}
 		return "png", nil
 	}
 	if o := jpegOrientation(data); o > 1 {
-		return "", bad("JPEG has EXIF orientation %d, which TypeSafe ignores: rotate the pixels upright and drop the tag", o)
+		return "", bad("JPEG has EXIF orientation %d, which %s ignores: rotate the pixels upright and drop the tag", o, l.Name)
 	}
 	return "jpg", nil
+}
+
+// bounds says a limit as "within 280..1568", or "at least 1" when there is no top.
+func bounds(lo, hi int) string {
+	if hi <= 0 {
+		return fmt.Sprintf("at least %d", lo)
+	}
+	return fmt.Sprintf("within %d..%d", lo, hi)
 }
 
 // pngAnimated reports an APNG: an acTL chunk before the first IDAT.

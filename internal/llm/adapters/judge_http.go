@@ -42,7 +42,9 @@ func executeJudgeCall(ctx context.Context, client *http.Client, url, apiKey stri
 	if err != nil {
 		return nil, 0, err
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	if apiKey != "" { // System One adapters set their own scheme in call.headers
+		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 	httpReq.Header.Set("Content-Type", call.contentType)
 	for k, v := range call.headers {
 		httpReq.Header.Set(k, v)

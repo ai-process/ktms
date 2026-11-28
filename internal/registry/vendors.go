@@ -22,6 +22,11 @@ const (
 	VendorMistral   = "mistral"
 	VendorAzure     = "azure"
 	VendorBedrock   = "bedrock"
+	// Decision vendors speaking System One; judgments only.
+	VendorLiquid     = "liquid"
+	VendorCloudflare = "cloudflare"
+	VendorPerplexity = "perplexity"
+	VendorMicrosoft  = "microsoft"
 )
 
 // AzureDefaultAPIVersion is used when an azure model has no api-version query override.
@@ -47,6 +52,16 @@ const MistralDefaultEndpoint = "https://api.mistral.ai/v1"
 
 // TypeSafeDefaultEndpoint is used when a typesafe model has no endpoint override.
 const TypeSafeDefaultEndpoint = "https://api.typesafe.ai"
+
+// LiquidDefaultEndpoint is used when a liquid model has no endpoint override.
+const LiquidDefaultEndpoint = "https://api.liquid.ai"
+
+// PerplexityDefaultEndpoint is used when a perplexity model has no endpoint override.
+const PerplexityDefaultEndpoint = "https://api.perplexity.ai"
+
+// CloudflareEndpointFormat is the Workers AI prefix for an account; the model
+// is appended. Used when a cloudflare key is "<account_id>:<api_token>".
+const CloudflareEndpointFormat = "https://api.cloudflare.com/client/v4/accounts/%s/ai/run/@cf/cloudflare"
 
 // Efforts a model may serve and a request may ask for.
 const (
@@ -141,7 +156,8 @@ const CapabilityBox = "box"
 const CapabilityLongContext = "long_context"
 
 func ValidVendor(v string) bool {
-	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorAnthropic || v == VendorLocal || v == VendorGroq || v == VendorMistral || v == VendorAzure || v == VendorBedrock
+	return v == VendorOpenAI || v == VendorGoogle || v == VendorDeepSeek || v == VendorOllama || v == VendorTypeSafe || v == VendorAnthropic || v == VendorLocal || v == VendorGroq || v == VendorMistral || v == VendorAzure || v == VendorBedrock ||
+		v == VendorLiquid || v == VendorCloudflare || v == VendorPerplexity || v == VendorMicrosoft
 }
 
 // SoftSchema reports whether this model needs the prompt-and-verify path.

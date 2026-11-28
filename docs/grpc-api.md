@@ -268,7 +268,15 @@ state, in parallel.
   and answers `bad_request` with the size and the limit, never resizing or rotating. Image URLs,
   audio and embeddings make TypeSafe yield to the next model. Other judges get a named part's name
   as a text label before it.
-- **Box** (experimental) is TypeSafe `jev-1.14.0` only: declare `box` on that model and pin the
+- **Other System One vendors** (experimental): `liquid` (d1), `cloudflare` (Clef), `perplexity`
+  (pplx-decider) and `microsoft` (Microsoft-Decision on Foundry) take the same questions. Liquid and
+  Cloudflare get images as an `images` array and Perplexity as image parts inside the state; these
+  vendors take images by position, so named images send their names with the state in order
+  (`{"state": …, "images": ["road", …]}`, or a text part before each image at Perplexity). Limits
+  checked before the call: Liquid 8 images (1 with a box question), Cloudflare 4 images up to 16 MP,
+  Perplexity 8 images up to 2,048 tiles of 32×32 px; 4 MiB a file at Liquid and Cloudflare. Microsoft is
+  text only: images make it yield.
+- **Box** (experimental) is TypeSafe `jev-1.14.0` (and Liquid `d1.2`) only: declare `box` on that model and pin the
   version rather than `jev-latest`. A missing object still gets a box, so ask a noul "is it there?"
   beside it. `ExplainRoute` shows a box chain when you pass `capabilities: ["box"]`.
 - **Structured questions** (experimental): `instructions_json` and `criteria_json` take the JSON

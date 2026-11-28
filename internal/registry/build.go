@@ -183,6 +183,8 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 			endpoint = TypeSafeDefaultEndpoint
 		}
 		return adapters.NewTypeSafeAdapter(endpoint, key, m.ID).WithLongContext(HasCapability(m, CapabilityLongContext)), nil
+	case VendorLiquid, VendorPerplexity, VendorMicrosoft, VendorCloudflare:
+		return buildSystemOne(m, key)
 	case VendorAnthropic:
 		opts := []anthropicoption.RequestOption{anthropicoption.WithAPIKey(key), anthropicoption.WithHTTPClient(llm.VendorHTTPClient()), anthropicoption.WithMaxRetries(0)}
 		endpoint := m.Endpoint
@@ -233,4 +235,44 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 	default:
 		return nil, fmt.Errorf("unknown vendor %q", m.Vendor)
 	}
+}
+
+// buildSystemOne builds a decision vendor's System One adapter from its profile.
+func buildSystemOne(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
+	endpoint := m.Endpoint
+	var profile adapters.SystemOneProfile
+	switch m.Vendor {
+	case VendorLiquid:
+		profile = adapters.LiquidProfile
+		if endpoint == "" {
+			endpoint = LiquidDefaultEndpoint
+		}
+	case VendorPerplexity:
+		profile = adapters.PerplexityProfile
+		if endpoint == "" {
+			endpoint = PerplexityDefaultEndpoint
+		}
+	case VendorMicrosoft:
+		profile = adapters.MicrosoftProfile
+		if endpoint == "" {
+			return nil, fmt.Errorf("microsoft models require an endpoint (the Foundry resource, e.g. https://<resource>.services.ai.azure.com)")
+		}
+	case VendorCloudflare:
+		profile = adapters.CloudflareProfile
+		if account, token, ok := strings.Cut(key, ":"); ok && account != "" {
+			if token == "" {
+				return nil, fmt.Errorf("cloudflare key %q has no api token after the account id", account+":")
+			}
+			key = token
+			if endpoint == "" {
+				endpoint = fmt.Sprintf(CloudflareEndpointFormat, account)
+			}
+		}
+		if endpoint == "" {
+			return nil, fmt.Errorf("cloudflare models need a key of the form <account_id>:<api_token> or an endpoint naming the account")
+		}
+	default:
+		return nil, fmt.Errorf("%s is not a System One vendor", m.Vendor)
+	}
+	return adapters.NewSystemOneAdapter(profile, endpoint, key, m.ID).WithLongContext(HasCapability(m, CapabilityLongContext)), nil
 }

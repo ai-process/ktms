@@ -70,7 +70,7 @@ func TestTypeSafeImageChecks(t *testing.T) {
 		{"upright tag", withOrientation(jpegOf(t, 640, 480), 1), ""},
 	}
 	for _, c := range cases {
-		_, err := typeSafeImageFormat(0, c.data)
+		_, err := typeSafeImageLimits.format(0, c.data)
 		switch {
 		case c.want == "" && err != nil:
 			t.Errorf("%s: %v", c.name, err)
@@ -83,7 +83,7 @@ func TestTypeSafeImageChecks(t *testing.T) {
 // Images go as multipart assets with the opt-in header; a named image is
 // referred to by name, an unnamed one is listed next to the caller's state.
 func TestTypeSafeJudgeSendsImagesAndBox(t *testing.T) {
-	var got typeSafeRequest
+	var got systemOneRequest
 	var files map[string]int
 	var header, ctype string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -184,7 +184,7 @@ func TestStructuredQuestions(t *testing.T) {
 		InstructionsJSON: json.RawMessage(`["What defect is in", "road", "?"]`),
 		CriteriaJSON:     json.RawMessage(`{"pothole":{"description":"a hole","examples":["ex-hole"]},"crack":"ex-crack"}`),
 	}}
-	ts := toTypeSafeQuestions(q)["defect"]
+	ts := toSystemOneQuestions(q)["defect"]
 	b, _ := json.Marshal(ts)
 	if !strings.Contains(string(b), `"instructions":["What defect is in","road","?"]`) || !strings.Contains(string(b), `"examples":["ex-hole"]`) {
 		t.Errorf("typesafe question = %s", b)
@@ -258,7 +258,7 @@ func TestTypeSafeCheckJudgeMedia(t *testing.T) {
 func TestTypeSafeMissingStateIsEmptyObject(t *testing.T) {
 	var states []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var got typeSafeRequest
+		var got systemOneRequest
 		if mr, err := r.MultipartReader(); err == nil {
 			for p, err := mr.NextPart(); err == nil; p, err = mr.NextPart() {
 				if p.FormName() == "request" {
@@ -315,7 +315,7 @@ func TestTypeSafeLegendObjects(t *testing.T) {
 // System One refuses an image nothing mentions: a named image no question or
 // state names is listed next to the state like an unnamed one.
 func TestTypeSafeListsUnmentionedNamedImages(t *testing.T) {
-	var got typeSafeRequest
+	var got systemOneRequest
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mr, err := r.MultipartReader()
 		if err != nil {
@@ -346,7 +346,7 @@ func TestTypeSafeListsUnmentionedNamedImages(t *testing.T) {
 		{"with an unnamed one", `{}`, []*llm.JudgeMediaPart{img("original"), img(""), img("marked")},
 			`{"images":["original","ktms-image-2"],"state":{}}`},
 	} {
-		got = typeSafeRequest{}
+		got = systemOneRequest{}
 		_, err := a.Judge(context.Background(), &llm.JudgeRequest{StateJSON: tc.state, StateMedia: tc.media,
 			Questions: map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "is the sign in `marked` labelled right?"}}}, "u", nil)
 		if err != nil {
@@ -380,12 +380,12 @@ func TestTypeSafeMaxTokensIsJudgeTooLarge(t *testing.T) {
 // Mentions are read from decoded values and keys: absent criteria add no "null",
 // JSON escapes do not hide a name, and criteria count as much as instructions.
 func TestTypeSafeMentions(t *testing.T) {
-	q := func(typ, instr string, levels ...string) map[string]typeSafeQuestion {
-		return toTypeSafeQuestions(map[string]*llm.JudgeQuestion{"q": {Type: typ, Instructions: instr, Levels: levels}})
+	q := func(typ, instr string, levels ...string) map[string]systemOneQuestion {
+		return toSystemOneQuestions(map[string]*llm.JudgeQuestion{"q": {Type: typ, Instructions: instr, Levels: levels}})
 	}
 	for _, tc := range []struct {
 		name, state string
-		questions   map[string]typeSafeQuestion
+		questions   map[string]systemOneQuestion
 		ref         string
 		want        bool
 	}{
@@ -404,7 +404,7 @@ func TestTypeSafeMentions(t *testing.T) {
 		{"not JSON", `road at night`, q(llm.JudgeNoul, "?"), "road", true},
 		{"choice descriptions", `{}`, typeSafeChoice("which?", map[string]string{"a": "like ex-hole"}), "ex-hole", true},
 	} {
-		if got := strings.Contains(typeSafeMentions(json.RawMessage(tc.state), tc.questions), tc.ref); got != tc.want {
+		if got := strings.Contains(systemOneMentions(json.RawMessage(tc.state), tc.questions), tc.ref); got != tc.want {
 			t.Errorf("%s: mentioned = %v, want %v", tc.name, got, tc.want)
 		}
 	}
@@ -419,14 +419,14 @@ func TestTypeSafeOther400IsNotJudgeTooLarge(t *testing.T) {
 	defer srv.Close()
 	_, err := NewTypeSafeAdapter(srv.URL, "k", "jev-1.14.0").Judge(context.Background(), &llm.JudgeRequest{StateJSON: `{}`,
 		Questions: map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "?"}}}, "u", nil)
-	var tsErr *TypeSafeError
+	var tsErr *SystemOneError
 	if errors.Is(err, llm.ErrJudgeTooLarge) || !errors.As(err, &tsErr) || tsErr.Status != http.StatusBadRequest {
 		t.Fatalf("err = %v", err)
 	}
 }
 
-func typeSafeChoice(instr string, options map[string]string) map[string]typeSafeQuestion {
-	return toTypeSafeQuestions(map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeChoice, Instructions: instr, Options: options}})
+func typeSafeChoice(instr string, options map[string]string) map[string]systemOneQuestion {
+	return toSystemOneQuestions(map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeChoice, Instructions: instr, Options: options}})
 }
 
 // A key mentions an image as in 1.8.0, so the caller's state keeps its shape.

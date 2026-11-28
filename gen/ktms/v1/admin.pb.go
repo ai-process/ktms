@@ -28,7 +28,7 @@ const (
 type ModelSpec struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Id       string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`             // unique registry id, referenced by rules and model_override
-	Vendor   string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`     // openai | anthropic | google | deepseek | ollama | local | typesafe | groq | mistral | azure | bedrock
+	Vendor   string                 `protobuf:"bytes,2,opt,name=vendor,proto3" json:"vendor,omitempty"`     // openai | anthropic | google | deepseek | ollama | local | typesafe | groq | mistral | azure | bedrock | liquid | cloudflare | perplexity | microsoft
 	Endpoint string                 `protobuf:"bytes,3,opt,name=endpoint,proto3" json:"endpoint,omitempty"` // optional base-URL override
 	// Deprecated: Marked as deprecated in ktms/v1/admin.proto.
 	Efforts         []Effort `protobuf:"varint,4,rep,packed,name=efforts,proto3,enum=ktms.v1.Effort" json:"efforts,omitempty"`               // use competencies; read as general at the highest effort listed
