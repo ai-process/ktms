@@ -321,9 +321,10 @@ func TestToStatusMapping(t *testing.T) {
 		ErrNoVendorKey:         codes.FailedPrecondition,
 		llm.ErrOutputTruncated: codes.FailedPrecondition,
 		audio.ErrFFmpegMissing: codes.Unimplemented,
-		&ChainExhausted{Last: audio.ErrFFmpegMissing}: codes.Unimplemented,
-		&ChainExhausted{Last: retryableErr}:           codes.Unavailable,
-		&ChainExhausted{Last: errors.New("x")}:        codes.Internal,
+		&ChainExhausted{Last: audio.ErrFFmpegMissing}:                           codes.Unimplemented,
+		&ChainExhausted{Last: retryableErr}:                                     codes.Unavailable,
+		&ChainExhausted{Last: errors.New("x")}:                                  codes.Internal,
+		&ChainExhausted{Last: fmt.Errorf("%w: split it", llm.ErrJudgeTooLarge)}: codes.InvalidArgument,
 	}
 	for err, want := range cases {
 		if got := status.Code(ToStatus(err)); got != want {

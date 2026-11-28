@@ -102,6 +102,10 @@ type Box struct {
 // (format, size, orientation): the caller's to fix, so not a vendor failure.
 var ErrInvalidMedia = errors.New("invalid media")
 
+// ErrJudgeTooLarge marks a judgment beyond the model's context window: the
+// caller's to split, so not a vendor failure and no reason to try another model.
+var ErrJudgeTooLarge = errors.New("judgment exceeds the model's context")
+
 // InvalidMediaError says what is wrong with which part, for the caller. Part
 // indexes StateMedia; Field names the request field, "state_media" when empty.
 type InvalidMediaError struct {

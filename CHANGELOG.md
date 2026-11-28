@@ -41,6 +41,11 @@ All notable changes to KTMS are listed here. The format follows
   send `{}` instead of `null`, which System One refused with a 422 (`vendor_error`; found on 1.8.0-beta.1).
 - TypeSafe answers to criteria given as `{"description", "examples"}` decode: such legend entries read as their
   description instead of failing the call after it was billed (found on 1.8.0-beta.1).
+- TypeSafe judgments with a named image that neither the state nor any question mentions list it next to the state, as
+  unnamed images are: System One refused such an image with "Invalid image request" (`vendor_error`).
+- A TypeSafe judgment beyond the model's context (`max_tokens_exceeded`; an image named in a question is sent again for
+  each question that names it) answers `bad_request` saying how to split it, instead of `vendor_error`. It ends the
+  chain and does not trip the circuit breaker.
 
 ## [1.7.0] - 2026-11-26
 

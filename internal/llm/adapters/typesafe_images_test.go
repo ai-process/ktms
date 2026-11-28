@@ -311,3 +311,68 @@ func TestTypeSafeLegendObjects(t *testing.T) {
 		t.Errorf("legend = %v", l)
 	}
 }
+
+// System One refuses an image nothing mentions: a named image no question or
+// state names is listed next to the state like an unnamed one.
+func TestTypeSafeListsUnmentionedNamedImages(t *testing.T) {
+	var got typeSafeRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mr, err := r.MultipartReader()
+		if err != nil {
+			t.Errorf("not multipart: %v", err)
+			return
+		}
+		for p, err := mr.NextPart(); err == nil; p, err = mr.NextPart() {
+			if p.FormName() == "request" {
+				_ = json.NewDecoder(p).Decode(&got)
+			}
+		}
+		_, _ = io.WriteString(w, `{"answers":{"q":{"type":"noul","noul":0.5}}}`)
+	}))
+	defer srv.Close()
+	a := NewTypeSafeAdapter(srv.URL, "k", "jev-1.14.0")
+	img := func(name string) *llm.JudgeMediaPart {
+		return &llm.JudgeMediaPart{Type: llm.JudgeMediaImage, Name: name, Data: pngOf(t, 640, 480)}
+	}
+	for _, tc := range []struct {
+		name, state string
+		media       []*llm.JudgeMediaPart
+		want        string
+	}{
+		{"only the marked one is asked about", `{"task":"check"}`, []*llm.JudgeMediaPart{img("original"), img("marked")},
+			`{"images":["original"],"state":{"task":"check"}}`},
+		{"no state", "", []*llm.JudgeMediaPart{img("original"), img("marked")}, `"original"`},
+		{"state names it", `{"before":"original"}`, []*llm.JudgeMediaPart{img("original"), img("marked")}, `{"before":"original"}`},
+		{"with an unnamed one", `{}`, []*llm.JudgeMediaPart{img("original"), img(""), img("marked")},
+			`{"images":["original","ktms-image-2"],"state":{}}`},
+	} {
+		got = typeSafeRequest{}
+		_, err := a.Judge(context.Background(), &llm.JudgeRequest{StateJSON: tc.state, StateMedia: tc.media,
+			Questions: map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "is the sign in `marked` labelled right?"}}}, "u", nil)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if string(got.State) != tc.want {
+			t.Errorf("%s: state = %s, want %s", tc.name, got.State, tc.want)
+		}
+	}
+}
+
+// A judgment beyond the model's context is the caller's to split: bad_request,
+// terminal, not a vendor failure.
+func TestTypeSafeMaxTokensIsJudgeTooLarge(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"detail":{"error_type":"max_tokens_exceeded"}}`)
+	}))
+	defer srv.Close()
+	_, err := NewTypeSafeAdapter(srv.URL, "k", "jev-1.14.0").Judge(context.Background(), &llm.JudgeRequest{
+		StateMedia: []*llm.JudgeMediaPart{{Type: llm.JudgeMediaImage, Name: "road", Data: pngOf(t, 640, 480)}},
+		Questions:  map[string]*llm.JudgeQuestion{"q": {Type: llm.JudgeNoul, Instructions: "is `road` usable?"}}}, "u", nil)
+	if !errors.Is(err, llm.ErrJudgeTooLarge) || llm.IsRetryableError(err) || llm.ShouldSkipToNextModel(err) {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(err.Error(), "max_tokens_exceeded") || !strings.Contains(err.Error(), "fewer") {
+		t.Errorf("message = %q", err.Error())
+	}
+}
