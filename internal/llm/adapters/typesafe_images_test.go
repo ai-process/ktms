@@ -65,7 +65,8 @@ func TestTypeSafeImageChecks(t *testing.T) {
 		{"jpeg ok", jpegOf(t, 1568, 882), ""},
 		{"too wide", pngOf(t, 1920, 1080), "1920x1080"},
 		{"too small", pngOf(t, 200, 400), "200x400"},
-		{"not an image", []byte("hello"), "not a PNG or JPEG"},
+		{"not an image", []byte("hello"), "not a PNG, JPEG"},
+		{"gif", gifOf(t, 640, 480), "image is gif; TypeSafe takes png or jpg"},
 		{"rotated", withOrientation(jpegOf(t, 640, 480), 6), "EXIF orientation 6"},
 		{"upright tag", withOrientation(jpegOf(t, 640, 480), 1), ""},
 	}
@@ -238,18 +239,18 @@ func TestTypeSafeCheckJudgeMedia(t *testing.T) {
 	img := func(name string, w, h int) *llm.JudgeMediaPart {
 		return &llm.JudgeMediaPart{Type: llm.JudgeMediaImage, Name: name, Data: pngOf(t, w, h)}
 	}
-	if err := a.CheckJudgeMedia([]*llm.JudgeMediaPart{img("", 640, 480), img("road", 640, 480)}); err != nil {
+	if err := a.CheckJudgeMedia([]*llm.JudgeMediaPart{img("", 640, 480), img("road", 640, 480)}, nil); err != nil {
 		t.Errorf("valid media: %v", err)
 	}
-	if err := a.CheckJudgeMedia([]*llm.JudgeMediaPart{img("", 640, 480), {Type: llm.JudgeMediaText, Text: "t"}}); !errors.Is(err, llm.ErrJudgmentUnsupported) {
+	if err := a.CheckJudgeMedia([]*llm.JudgeMediaPart{img("", 640, 480), {Type: llm.JudgeMediaText, Text: "t"}}, nil); !errors.Is(err, llm.ErrJudgmentUnsupported) {
 		t.Errorf("text part: %v", err)
 	}
-	err := a.CheckJudgeMedia([]*llm.JudgeMediaPart{img("", 640, 480), img("ktms-image-1", 640, 480)})
+	err := a.CheckJudgeMedia([]*llm.JudgeMediaPart{img("", 640, 480), img("ktms-image-1", 640, 480)}, nil)
 	var im *llm.InvalidMediaError
 	if !errors.As(err, &im) || im.Part != 1 || err.Error() != `state_media[1]: name "ktms-image-1" is used twice` {
 		t.Errorf("generated name clash: %v", err)
 	}
-	if err := NewTrackingAdapter(a, nil, "typesafe", "jev-1.14.0").CheckJudgeMedia([]*llm.JudgeMediaPart{img("", 1920, 1080)}); !errors.Is(err, llm.ErrInvalidMedia) {
+	if err := NewTrackingAdapter(a, nil, "typesafe", "jev-1.14.0").CheckJudgeMedia([]*llm.JudgeMediaPart{img("", 1920, 1080)}, nil); !errors.Is(err, llm.ErrInvalidMedia) {
 		t.Errorf("tracking adapter does not forward: %v", err)
 	}
 }
@@ -448,7 +449,7 @@ func TestTypeSafeNameWithNUL(t *testing.T) {
 	a := NewTypeSafeAdapter("http://x", "k", "jev-1")
 	media := []*llm.JudgeMediaPart{{Type: llm.JudgeMediaImage, Name: "ro\x00ad", Data: pngOf(t, 300, 300)}}
 	var inv *llm.InvalidMediaError
-	if err := a.CheckJudgeMedia(media); !errors.As(err, &inv) {
+	if err := a.CheckJudgeMedia(media, nil); !errors.As(err, &inv) {
 		t.Errorf("CheckJudgeMedia: %v", err)
 	}
 	_, err := a.systemOneCall(&llm.JudgeRequest{StateJSON: `["ro","ad"]`, StateMedia: media,

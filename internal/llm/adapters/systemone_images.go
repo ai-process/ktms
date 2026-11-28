@@ -5,8 +5,14 @@ import (
 	"encoding/binary"
 	"fmt"
 	"image"
+	_ "image/gif"  // registers GIF for image.DecodeConfig
 	_ "image/jpeg" // registers JPEG for image.DecodeConfig
 	_ "image/png"  // registers PNG for image.DecodeConfig
+	"net/http"
+	"slices"
+	"strings"
+
+	_ "golang.org/x/image/webp" // registers WebP for image.DecodeConfig
 
 	"github.com/ai-process/ktms/internal/llm"
 )
@@ -18,9 +24,13 @@ type SystemOneImageLimits struct {
 	Name                 string // the vendor as people know it, for messages
 	MinSide, MaxSide     int
 	MinPixels, MaxPixels int
-	MaxBytes             int
-	MaxImages            int // per call, 0 for no limit of its own
-	MaxImagesWithBox     int // per call with a box question, 0 for MaxImages
+	MaxBytes             int      // per image as sent, 0 for no limit of its own
+	MaxBody              int      // the whole request body, 0 for no limit of its own
+	MaxImages            int      // per call, 0 for no limit of its own
+	MaxImagesWithBox     int      // per call with a box question, 0 for MaxImages
+	Formats              []string // format names taken ("png", "jpg", "webp", "gif"); nil for any image
+	StillOnly            bool     // refuses animated PNGs
+	UprightOnly          bool     // ignores EXIF orientation, so a rotated JPEG would be judged sideways
 }
 
 // typeSafeImageLimits are TypeSafe's (docs.typesafe.ai/images).
@@ -29,23 +39,32 @@ var typeSafeImageLimits = SystemOneImageLimits{
 	MinSide: 280, MaxSide: 1568,
 	MinPixels: 280 * 280, MaxPixels: 1568 * 1568,
 	MaxBytes: 16 << 20,
+	Formats:  []string{"png", "jpg"}, StillOnly: true, UprightOnly: true,
 }
 
+// imageFormats maps sniffed MIME types to System One's format names.
+var imageFormats = map[string]string{"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}
+
 // format checks one image from its header only, without decoding pixels, and
-// returns System One's format name. PNG and JPEG are the protocol's formats.
+// returns System One's format name. Every refusal is this vendor's limit, so
+// another model in the chain may still take the image.
 func (l *SystemOneImageLimits) format(i int, data []byte) (string, error) {
 	bad := func(format string, args ...any) error {
-		return &llm.InvalidMediaError{Part: i, Msg: fmt.Sprintf(format, args...)}
+		return &llm.InvalidMediaError{Part: i, Msg: fmt.Sprintf(format, args...), VendorLimit: true}
 	}
-	if len(data) > l.MaxBytes {
+	if l.MaxBytes > 0 && len(data) > l.MaxBytes {
 		return "", bad("image is %d bytes, max %d for %s", len(data), l.MaxBytes, l.Name)
 	}
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil {
-		return "", bad("not a PNG or JPEG image %s can read: %v", l.Name, err)
+	format, known := imageFormats[http.DetectContentType(data)]
+	if !known {
+		return "", bad("not a PNG, JPEG, WebP or GIF image %s can read", l.Name)
 	}
-	if format != "png" && format != "jpeg" {
-		return "", bad("image is %s; %s takes PNG or JPEG", format, l.Name)
+	if l.Formats != nil && !slices.Contains(l.Formats, format) {
+		return "", bad("image is %s; %s takes %s", format, l.Name, strings.Join(l.Formats, " or "))
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return "", bad("unreadable %s image: %v", format, err)
 	}
 	w, h := cfg.Width, cfg.Height
 	if w < l.MinSide || h < l.MinSide || (l.MaxSide > 0 && (w > l.MaxSide || h > l.MaxSide)) {
@@ -54,16 +73,13 @@ func (l *SystemOneImageLimits) format(i int, data []byte) (string, error) {
 	if px := w * h; px < l.MinPixels || (l.MaxPixels > 0 && px > l.MaxPixels) {
 		return "", bad("image has %d pixels; %s needs %s", px, l.Name, bounds(l.MinPixels, l.MaxPixels))
 	}
-	if format == "png" {
-		if pngAnimated(data) {
-			return "", bad("animated PNG; %s takes still images only", l.Name)
-		}
-		return "png", nil
+	if l.StillOnly && format == "png" && pngAnimated(data) {
+		return "", bad("animated PNG; %s takes still images only", l.Name)
 	}
-	if o := jpegOrientation(data); o > 1 {
+	if o := jpegOrientation(data); l.UprightOnly && format == "jpg" && o > 1 {
 		return "", bad("JPEG has EXIF orientation %d, which %s ignores: rotate the pixels upright and drop the tag", o, l.Name)
 	}
-	return "jpg", nil
+	return format, nil
 }
 
 // bounds says a limit as "within 280..1568", or "at least 1" when there is no top.

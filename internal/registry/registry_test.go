@@ -627,3 +627,25 @@ func TestCloudflareKeySendsToken(t *testing.T) {
 		t.Errorf("auth %q path %q", auth, path)
 	}
 }
+
+// Mistakes on the new decision vendors fail at apply, not on every call.
+func TestDecisionVendorConfigErrors(t *testing.T) {
+	ms := model("decider", VendorMicrosoft, EffortLow)
+	ms.Capabilities = []string{CapabilityJudge}
+	if err := ValidateModel(ms); err == nil || !strings.Contains(err.Error(), "endpoint") {
+		t.Errorf("microsoft without endpoint: %v", err)
+	}
+	for _, v := range []string{VendorLiquid, VendorCloudflare, VendorPerplexity, VendorMicrosoft} {
+		m := model("decider", v, EffortLow)
+		m.Endpoint = "https://example.test"
+		m.Capabilities = []string{CapabilityJudge, CapabilityLongContext}
+		if err := ValidateModel(m); err == nil || !strings.Contains(err.Error(), "long_context") {
+			t.Errorf("%s with long_context: %v", v, err)
+		}
+	}
+	cf := model("clef", VendorCloudflare, EffortLow)
+	cf.Endpoint = "https://example.test"
+	if _, err := buildAdapter(cf, ":tok"); err == nil || !strings.Contains(err.Error(), "account id") {
+		t.Errorf("cloudflare key with an empty account: %v", err)
+	}
+}

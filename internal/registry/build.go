@@ -259,13 +259,16 @@ func buildSystemOne(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		}
 	case VendorCloudflare:
 		profile = adapters.CloudflareProfile
-		if account, token, ok := strings.Cut(key, ":"); ok && account != "" {
+		if account, token, ok := strings.Cut(key, ":"); ok {
+			if account == "" {
+				return nil, fmt.Errorf("cloudflare key has no account id before the colon: want <account_id>:<api_token>")
+			}
 			if token == "" {
 				return nil, fmt.Errorf("cloudflare key %q has no api token after the account id", account+":")
 			}
 			key = token
 			if endpoint == "" {
-				endpoint = fmt.Sprintf(CloudflareEndpointFormat, account)
+				endpoint = fmt.Sprintf(CloudflareEndpointFormat, url.PathEscape(account))
 			}
 		}
 		if endpoint == "" {

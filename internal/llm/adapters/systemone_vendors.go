@@ -12,7 +12,7 @@ var LiquidProfile = SystemOneProfile{
 	Media:      MediaImages,
 	Images: &SystemOneImageLimits{
 		Name: "Liquid", MinSide: 1, MinPixels: 1,
-		MaxBytes:  4 << 20, // the whole body stays under 4.5 MB
+		MaxBody:   4_500_000, // images go as base64 inside it
 		MaxImages: 8, MaxImagesWithBox: 1,
 	},
 }
@@ -27,6 +27,7 @@ var CloudflareProfile = SystemOneProfile{
 	Images: &SystemOneImageLimits{
 		Name: "Cloudflare", MinSide: 1, MinPixels: 1,
 		MaxPixels: 16_000_000, MaxBytes: 4 << 20, MaxImages: 4,
+		Formats: []string{"png", "jpg", "webp"},
 	},
 }
 

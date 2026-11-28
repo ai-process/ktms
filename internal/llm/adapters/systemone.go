@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"strings"
 	"time"
 
@@ -208,7 +209,7 @@ func (a *SystemOneAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ s
 	}
 	call.headers[a.profile.AuthHeader] = a.profile.AuthPrefix + a.apiKey
 
-	raw, statusCode, err := executeJudgeCall(ctx, a.http, a.endpoint+strings.ReplaceAll(a.profile.Path, "{model}", a.model), "", call)
+	raw, statusCode, err := executeJudgeCall(ctx, a.http, a.endpoint+strings.ReplaceAll(a.profile.Path, "{model}", url.PathEscape(a.model)), "", call)
 	if err != nil {
 		if statusCode > 0 {
 			tsErr := &SystemOneError{Vendor: a.profile.Vendor, Status: statusCode, Body: err.Error()}
@@ -296,9 +297,18 @@ func toSystemOneQuestions(in map[string]*llm.JudgeQuestion) map[string]systemOne
 
 // CheckJudgeMedia runs the checks systemOneCall would, without building a
 // body, so a rollout batch with one bad image fails before any candidate bills.
-func (a *SystemOneAdapter) CheckJudgeMedia(media []*llm.JudgeMediaPart) error {
-	_, err := a.checkImages(media, false)
+func (a *SystemOneAdapter) CheckJudgeMedia(media []*llm.JudgeMediaPart, questions map[string]*llm.JudgeQuestion) error {
+	_, err := a.checkImages(media, hasBox(questions))
 	return err
+}
+
+func hasBox(questions map[string]*llm.JudgeQuestion) bool {
+	for _, q := range questions {
+		if q.Type == llm.JudgeBox {
+			return true
+		}
+	}
+	return false
 }
 
 // systemImage is one checked image with the reference the request uses for it.
@@ -315,10 +325,10 @@ type systemImage struct {
 func (a *SystemOneAdapter) checkImages(media []*llm.JudgeMediaPart, box bool) ([]systemImage, error) {
 	lim := a.profile.Images
 	if lim != nil && lim.MaxImages > 0 && len(media) > lim.MaxImages {
-		return nil, &llm.InvalidMediaError{Part: lim.MaxImages, Msg: fmt.Sprintf("%d images; %s takes at most %d per call", len(media), lim.Name, lim.MaxImages)}
+		return nil, &llm.InvalidMediaError{Part: lim.MaxImages, Msg: fmt.Sprintf("%d images; %s takes at most %d per call", len(media), lim.Name, lim.MaxImages), VendorLimit: true}
 	}
 	if lim != nil && box && lim.MaxImagesWithBox > 0 && len(media) > lim.MaxImagesWithBox {
-		return nil, &llm.InvalidMediaError{Part: lim.MaxImagesWithBox, Msg: fmt.Sprintf("%d images; %s answers a box question about %d image only", len(media), lim.Name, lim.MaxImagesWithBox)}
+		return nil, &llm.InvalidMediaError{Part: lim.MaxImagesWithBox, Msg: fmt.Sprintf("%d images; %s answers a box question about %d image only", len(media), lim.Name, lim.MaxImagesWithBox), VendorLimit: true}
 	}
 	out := make([]systemImage, 0, len(media))
 	refs := make(map[string]bool, len(media))
@@ -365,10 +375,7 @@ func (a *SystemOneAdapter) systemOneCall(req *llm.JudgeRequest) (judgeCall, erro
 		Model:     a.model,
 		Questions: toSystemOneQuestions(req.Questions),
 	}
-	box := false
-	for _, q := range req.Questions {
-		box = box || q.Type == llm.JudgeBox
-	}
+	box := hasBox(req.Questions)
 	if len(req.StateMedia) == 0 {
 		if len(sr.State) == 0 || strings.TrimSpace(string(sr.State)) == "null" {
 			sr.State = systemOneNoState
@@ -445,10 +452,12 @@ func (a *SystemOneAdapter) systemOneCall(req *llm.JudgeRequest) (judgeCall, erro
 }
 
 func (img systemImage) mime() string {
-	if img.format == "png" {
-		return "image/png"
+	for m, f := range imageFormats {
+		if f == img.format {
+			return m
+		}
 	}
-	return "image/jpeg"
+	return "application/octet-stream"
 }
 
 func (img systemImage) dataURL() string {
@@ -470,9 +479,11 @@ func (a *SystemOneAdapter) inlineImagesCall(sr systemOneRequest, images []system
 	switch a.profile.Media {
 	case MediaImages:
 		if named {
-			refs := make([]string, len(images))
+			refs := make([]*string, len(images)) // null for unnamed: generated names stay inside the proxy
 			for i, img := range images {
-				refs[i] = img.ref
+				if img.named {
+					refs[i] = &img.ref
+				}
 			}
 			wrapped := map[string]any{"images": refs}
 			if len(state) > 0 {
@@ -503,6 +514,10 @@ func (a *SystemOneAdapter) inlineImagesCall(sr systemOneRequest, images []system
 	body, err := json.Marshal(sr)
 	if err != nil {
 		return judgeCall{}, fmt.Errorf("%s: encode request: %w", a.profile.Vendor, err)
+	}
+	if lim := a.profile.Images; lim.MaxBody > 0 && len(body) > lim.MaxBody {
+		return judgeCall{}, &llm.InvalidMediaError{Part: 0, VendorLimit: true,
+			Msg: fmt.Sprintf("request is %d bytes with its images as base64, max %d for %s", len(body), lim.MaxBody, lim.Name)}
 	}
 	return judgeCall{
 		body:        body,
