@@ -43,7 +43,8 @@ OV="${TMPDIR:-/tmp}/ollama-ver.$$"
 printf '#!/bin/sh\necho "ollama version is 0.30.2"\n' >"$OV.old" && printf '#!/bin/sh\necho "Warning: no server"; echo "ollama version is 0.35.1"\n' >"$OV.new" && chmod +x "$OV.old" "$OV.new"
 eq "ollama 0.30 is too old for --judge" "old" "$(unit ollama_older "$OV.old" && echo old)"
 eq "ollama 0.35.1 takes --judge" "new" "$(unit ollama_older "$OV.new" || echo new)"
-has "judge refuses an old ollama it keeps" "--upgrade-deps" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; JUDGE=1 UPGRADE=0; find_ollama_bin() { echo "$OV.old"; }; (ensure_ollama) 2>&1)"
+has "judge refuses an old ollama it keeps" "--upgrade-deps" \
+	"$(OLD="$OV.old" INSTALL_NODE_SOURCED=1 sh -c '. "$1"; JUDGE=1 UPGRADE=0; find_ollama_bin() { echo "$OLD"; }; ensure_ollama' sh "$SCRIPT" 2>&1)"
 rm -f "$OV.old" "$OV.new"
 eq "judge flag" "1" "$(INSTALL_NODE_SOURCED=1; . "$SCRIPT"; parse_args --proxy p --node-id n --model pplx-decider-flash:4b --judge; echo "$JUDGE")"
 eq "= form, default port, spaces in name" "p.example.com:443|n1|m:1b|My Node" \
