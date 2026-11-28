@@ -228,3 +228,29 @@ func TestExecuteMediaAdvancesPastVendorMediaLimit(t *testing.T) {
 		t.Errorf("tried %v, err %v; a request-level media error ends the chain", tried, err)
 	}
 }
+
+type blockedErr struct{}
+
+func (blockedErr) Error() string         { return "gemini decisions: 400 blocked" }
+func (blockedErr) SkipToNextModel() bool { return true }
+func (blockedErr) Is(target error) bool  { return target == llm.ErrContentBlocked }
+
+// A safety block passes to the next judge; when the chain ends on one, the
+// caller learns it is the content, not an outage worth retrying.
+func TestExecuteMediaEndsOnContentBlock(t *testing.T) {
+	for name, chain := range map[string][]*proxydb.Model{
+		"alone":             mediaModels("gemini-decision-1"),
+		"then cannot judge": mediaModels("gemini-decision-1", "gpt-judge"),
+	} {
+		_, err := ExecuteMedia(context.Background(), noThrottle{}, mediaReq(chain,
+			func(_ context.Context, m *proxydb.Model, _ llm.ClientAdapter) (llm.TokensUsage, error) {
+				if m.ID == "gemini-decision-1" {
+					return llm.TokensUsage{}, blockedErr{}
+				}
+				return llm.TokensUsage{}, llm.ErrJudgmentUnsupported
+			}))
+		if st := ToStatus(err); status.Code(st) != codes.FailedPrecondition || !strings.Contains(st.Error(), "content_blocked") {
+			t.Errorf("%s: status = %v", name, st)
+		}
+	}
+}

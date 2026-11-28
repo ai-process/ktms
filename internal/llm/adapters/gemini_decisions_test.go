@@ -127,24 +127,29 @@ func TestGeminiDecisionsSafetySkipsToNextModel(t *testing.T) {
 	defer srv.Close()
 	_, err := NewGeminiDecisionsAdapter(srv.URL, "k", "gemini-decision-1").Judge(context.Background(),
 		&llm.JudgeRequest{StateJSON: `{}`, Questions: geminiQuestions()}, "u", nil)
-	if err == nil || llm.IsRetryableError(err) || !llm.ShouldSkipToNextModel(err) || !strings.HasPrefix(err.Error(), "gemini decisions: 400") {
+	if err == nil || llm.IsRetryableError(err) || !llm.ShouldSkipToNextModel(err) || !errors.Is(err, llm.ErrContentBlocked) ||
+		!strings.HasPrefix(err.Error(), "gemini decisions: 400") {
 		t.Fatalf("err = %v", err)
 	}
-	if geminiDecisionSafetyBlock(`{"error":{"code":"invalid_argument","message":"too many questions"}}`) || geminiDecisionSafetyBlock("not json") {
+	if geminiDecisionSafetyBlock([]byte(`{"error":{"code":"invalid_argument","message":"too many questions"}}`)) || geminiDecisionSafetyBlock([]byte("not json")) {
 		t.Error("a limit error or a non-JSON body read as a safety block")
 	}
 }
 
 func TestGeminiDecisionSafetyBlockClassification(t *testing.T) {
-	long := `{"error":{"code":"image_safety","message":"` + strings.Repeat("x", 400) + `"}}`
+	long := `{"error":{"message":"` + strings.Repeat("x", 400) + `","code":"image_safety"}}`
 	for body, want := range map[string]bool{
 		`{"error":{"code":"prohibited_content","message":"no"}}`: true,
 		`{"error":{"code":"blocklist"}}`:                         true,
-		long[:300]:                                                true, // cut by the HTTP helper
-		`{"error":{"code":"invalid_argument"}}`:                  false,
-		`<html>bad gateway</html>`:                               false,
+		`{"error":{"code":"SAFETY"}}`:                            true,
+		long:                                                     true, // past 300 bytes, code after message
+		`{"error":{"code":400,"message":"blocked","status":"SAFETY"}}`:                                   true,
+		`{"error":{"code":400,"status":"INVALID_ARGUMENT","details":[{"reason":"PROHIBITED_CONTENT"}]}}`: true,
+		`{"error":{"code":400,"message":"bad","status":"INVALID_ARGUMENT"}}`:                             false,
+		`{"error":{"code":"invalid_argument"}}`:                                                          false,
+		`<html>bad gateway</html>`:                                                                       false,
 	} {
-		if got := geminiDecisionSafetyBlock(body); got != want {
+		if got := geminiDecisionSafetyBlock([]byte(body)); got != want {
 			t.Errorf("%.60s: %v, want %v", body, got, want)
 		}
 	}
@@ -179,7 +184,7 @@ func TestGeminiDecisionsQuestionForms(t *testing.T) {
 			t.Errorf("%s criteria = %s", id, c)
 		}
 	}
-	if qs["structured"].Instructions == "" || strings.HasPrefix(qs["structured"].Instructions, "[") && !strings.Contains(qs["structured"].Instructions, "road") {
+	if qs["structured"].Instructions != `["Which defect is in","road","?"]` {
 		t.Errorf("structured instructions = %q", qs["structured"].Instructions)
 	}
 }
@@ -189,21 +194,28 @@ func TestGeminiDecisionMediaParts(t *testing.T) {
 	if err != nil || b.URI == "" || b.Type != "audio" {
 		t.Errorf("audio url: %+v %v", b, err)
 	}
-	b, err = geminiDecisionMedia(0, &llm.JudgeMediaPart{Type: llm.JudgeMediaImage, Data: pngOf(t, 320, 240), Detail: "ultra_high"})
-	if err != nil || b.Resolution != "ultra_high" || b.MimeType != "image/png" {
+	b, err = geminiDecisionMedia(0, &llm.JudgeMediaPart{Type: llm.JudgeMediaImage, Data: pngOf(t, 320, 240), Detail: "high"})
+	if err != nil || b.Resolution != "high" || b.MimeType != "image/png" {
 		t.Errorf("image: %+v %v", b, err)
 	}
 	for name, p := range map[string]*llm.JudgeMediaPart{
 		"audio without a type": {Type: llm.JudgeMediaAudio, Data: []byte("not audio at all")},
 		"image with no bytes":  {Type: llm.JudgeMediaImage, MimeType: "image/png"},
-		"image url, no type":   {Type: llm.JudgeMediaImage, URL: "https://example.test/x"},
 	} {
 		if _, err := geminiDecisionMedia(2, p); !errors.Is(err, llm.ErrInvalidMedia) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
+	// A URL's type comes from its extension; without one Gemini yields to the next judge.
+	b, err = geminiDecisionMedia(0, &llm.JudgeMediaPart{Type: llm.JudgeMediaImage, URL: "https://cdn.test/a/x.png?v=2"})
+	if err != nil || b.MimeType != "image/png" {
+		t.Errorf("url with extension: %+v %v", b, err)
+	}
+	if _, err := geminiDecisionMedia(0, &llm.JudgeMediaPart{Type: llm.JudgeMediaImage, URL: "https://cdn.test/x"}); !errors.Is(err, llm.ErrJudgmentUnsupported) {
+		t.Errorf("url without a type: %v", err)
+	}
 	a := NewGeminiDecisionsAdapter("http://unused", "k", "gemini-decision-1")
-	if err := a.CheckJudgeMedia([]*llm.JudgeMediaPart{{Type: llm.JudgeMediaImage, MimeType: "image/png"}}); !errors.Is(err, llm.ErrInvalidMedia) {
+	if err := a.CheckJudgeMedia([]*llm.JudgeMediaPart{{Type: llm.JudgeMediaImage, MimeType: "image/png"}}, nil); !errors.Is(err, llm.ErrInvalidMedia) {
 		t.Errorf("CheckJudgeMedia: %v", err)
 	}
 }

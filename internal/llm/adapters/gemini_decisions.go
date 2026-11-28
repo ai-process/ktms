@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
-	"regexp"
+	"net/url"
+	"path"
 	"strings"
 
 	"github.com/ai-process/ktms/internal/llm"
@@ -72,9 +74,6 @@ type geminiDecisionBlock struct {
 	Resolution string `json:"resolution,omitempty"`
 }
 
-// geminiDecisionsMaxInline is the documented ceiling on base64 data in one request.
-const geminiDecisionsMaxInline = 100 << 20
-
 // Judge asks every question against one input in a single call.
 func (a *GeminiDecisionsAdapter) Judge(ctx context.Context, req *llm.JudgeRequest, _ string, _ map[string]string) (*llm.JudgeResult, error) {
 	failed := func(err error) (*llm.JudgeResult, error) {
@@ -105,7 +104,7 @@ func (a *GeminiDecisionsAdapter) Judge(ctx context.Context, req *llm.JudgeReques
 	if err != nil {
 		if statusCode > 0 {
 			vendorErr := &SystemOneError{Vendor: "gemini decisions", Status: statusCode, Body: err.Error()}
-			if statusCode == http.StatusBadRequest && geminiDecisionSafetyBlock(vendorErr.Body) {
+			if statusCode == http.StatusBadRequest && geminiDecisionSafetyBlock(raw) {
 				return failed(&geminiSafetyError{vendorErr})
 			}
 			return failed(vendorErr)
@@ -203,7 +202,6 @@ func geminiDecisionInput(req *llm.JudgeRequest) (any, error) {
 	if state != "" {
 		blocks = append(blocks, geminiDecisionBlock{Type: "text", Text: state})
 	}
-	inline := 0
 	for i, p := range req.StateMedia {
 		if p.Name != "" {
 			blocks = append(blocks, geminiDecisionBlock{Type: "text", Text: "`" + p.Name + "`:"})
@@ -211,9 +209,6 @@ func geminiDecisionInput(req *llm.JudgeRequest) (any, error) {
 		b, err := geminiDecisionMedia(i, p)
 		if err != nil {
 			return nil, err
-		}
-		if inline += len(b.Data); inline > geminiDecisionsMaxInline {
-			return nil, &llm.InvalidMediaError{Part: i, Msg: fmt.Sprintf("base64 media reach %d bytes here; Gemini takes at most %d per request", inline, geminiDecisionsMaxInline)}
 		}
 		blocks = append(blocks, b)
 	}
@@ -230,8 +225,7 @@ func geminiDecisionMedia(i int, p *llm.JudgeMediaPart) (geminiDecisionBlock, err
 		return geminiDecisionBlock{Type: "text", Text: p.Text}, nil
 	case llm.JudgeMediaImage:
 		b = geminiDecisionBlock{Type: "image", MimeType: p.MimeType}
-		switch p.Detail {
-		case "low", "medium", "high", "ultra_high":
+		if p.Detail == string(llm.ImageDetailLow) || p.Detail == string(llm.ImageDetailHigh) {
 			b.Resolution = p.Detail
 		}
 	case llm.JudgeMediaAudio:
@@ -246,6 +240,13 @@ func geminiDecisionMedia(i int, p *llm.JudgeMediaPart) (geminiDecisionBlock, err
 	switch {
 	case p.URL != "":
 		b.URI = p.URL
+		if b.MimeType == "" {
+			b.MimeType = urlMimeType(p.URL)
+		}
+		if b.MimeType == "" {
+			// Gemini needs the type of a URL it fetches; another judge may not.
+			return geminiDecisionBlock{}, fmt.Errorf("%w: %s url without a mime_type", llm.ErrJudgmentUnsupported, b.Type)
+		}
 	case len(p.Data) > 0:
 		if b.MimeType == "" {
 			b.MimeType = http.DetectContentType(p.Data)
@@ -262,7 +263,7 @@ func geminiDecisionMedia(i int, p *llm.JudgeMediaPart) (geminiDecisionBlock, err
 
 // CheckJudgeMedia applies the per-part checks Judge would, before any call, so
 // a rollout batch with one bad part fails before a candidate bills.
-func (a *GeminiDecisionsAdapter) CheckJudgeMedia(media []*llm.JudgeMediaPart) error {
+func (a *GeminiDecisionsAdapter) CheckJudgeMedia(media []*llm.JudgeMediaPart, _ map[string]*llm.JudgeQuestion) error {
 	_, err := geminiDecisionInput(&llm.JudgeRequest{StateMedia: media})
 	return err
 }
@@ -273,24 +274,47 @@ type geminiSafetyError struct{ *SystemOneError }
 
 func (e *geminiSafetyError) SkipToNextModel() bool { return true }
 func (e *geminiSafetyError) Unwrap() error         { return e.SystemOneError }
+func (e *geminiSafetyError) Is(target error) bool  { return target == llm.ErrContentBlocked }
 
-func geminiDecisionSafetyBlock(body string) bool {
+// geminiSafetyReasons are the error codes, statuses and ErrorInfo reasons that
+// mean a safety block, compared without case.
+var geminiSafetyReasons = map[string]bool{"safety": true, "prohibited_content": true, "blocklist": true, "image_safety": true, "content_blocked": true}
+
+// geminiDecisionSafetyBlock reads a Google error body: code is a number in the
+// usual shape and a string in the Decisions examples, so both are read.
+func geminiDecisionSafetyBlock(body []byte) bool {
 	var e struct {
 		Error struct {
-			Code string `json:"code"`
+			Code    json.RawMessage `json:"code"`
+			Status  string          `json:"status"`
+			Details []struct {
+				Reason string `json:"reason"`
+			} `json:"details"`
 		} `json:"error"`
 	}
-	code := ""
-	if json.Unmarshal([]byte(body), &e) == nil {
-		code = e.Error.Code
-	} else if m := geminiErrorCode.FindStringSubmatch(body); m != nil {
-		code = m[1] // the body is cut at 300 bytes: read the code from its head
+	if json.Unmarshal(body, &e) != nil {
+		return false
 	}
-	switch code {
-	case "safety", "prohibited_content", "blocklist", "image_safety", "content_blocked":
-		return true
+	var code string
+	_ = json.Unmarshal(e.Error.Code, &code) // a numeric code says nothing about safety
+	reasons := []string{code, e.Error.Status}
+	for _, d := range e.Error.Details {
+		reasons = append(reasons, d.Reason)
+	}
+	for _, r := range reasons {
+		if geminiSafetyReasons[strings.ToLower(r)] {
+			return true
+		}
 	}
 	return false
 }
 
-var geminiErrorCode = regexp.MustCompile(`"error"\s*:\s*\{\s*"code"\s*:\s*"([a-z_]+)"`)
+// urlMimeType guesses a media type from the URL path's extension, "" when unknown.
+func urlMimeType(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	t, _, _ := strings.Cut(mime.TypeByExtension(path.Ext(u.Path)), ";")
+	return t
+}

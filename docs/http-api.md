@@ -168,7 +168,7 @@ the [error contract](errors.md#error-contract) in `code`:
 
 | HTTP | `type` | `code` examples |
 | --- | --- | --- |
-| 400 | `invalid_request_error` | `output_truncated`, `no_capable_model`, `unsupported_language_pair`, `no_vendor_key`, `not_configured`; validation messages |
+| 400 | `invalid_request_error` | `output_truncated`, `content_blocked`, `no_capable_model`, `unsupported_language_pair`, `no_vendor_key`, `not_configured`; validation messages |
 | 401 / 403 | `authentication_error` / `permission_error` | missing or invalid key, missing scope |
 | 429 | `rate_limit_error` | `throttled:rpm`, `throttled:key_rpm`, `throttled:key_tpm`, `throttled:budget_key`, `throttled:budget_user` (with `Retry-After`) |
 | 429 | `insufficient_quota` | `insufficient_quota`; the message names the cap, e.g. `throttled:spend_key_daily`. `Retry-After` is the seconds until the period resets (UTC midnight or month start). |

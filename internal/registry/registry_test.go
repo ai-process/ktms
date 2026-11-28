@@ -670,3 +670,22 @@ func TestGoogleJudgeModelBuildsGeminiDecisions(t *testing.T) {
 		t.Error("a chat model got the Decisions adapter")
 	}
 }
+
+// Only a decision model gets the Decisions adapter: a chat model declaring
+// judge keeps yielding judgments, and a decision model does nothing else.
+func TestGeminiDecisionModelSelection(t *testing.T) {
+	chat := model("gemini-2.5-flash", VendorGoogle, EffortLow)
+	chat.Capabilities = []string{CapabilityJudge}
+	adapter, err := buildAdapter(chat, "AIza-k")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := adapter.(*adapters.GeminiDecisionsAdapter); ok {
+		t.Error("a chat model declaring judge got the Decisions adapter")
+	}
+	dm := model("gemini-decision-1", VendorGoogle, EffortLow)
+	dm.Capabilities = []string{CapabilityJudge, CapabilityTTS}
+	if err := ValidateModel(dm); err == nil || !strings.Contains(err.Error(), "only judges") {
+		t.Errorf("decision model with tts: %v", err)
+	}
+}

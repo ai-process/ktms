@@ -159,9 +159,9 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 		ConfigureOpenAI(adapter, m, "")
 		return adapter, nil
 	case VendorGoogle:
-		// A Gemini judge model (gemini-decision-1) answers on the Decisions API,
-		// which the genai client does not speak.
-		if HasCapability(m, CapabilityJudge) {
+		// A Gemini decision model answers on the Decisions API, which the genai
+		// client does not speak; a chat model declaring judge still yields judgments.
+		if IsGeminiDecisionModel(m) {
 			return adapters.NewGeminiDecisionsAdapter(m.Endpoint, key, m.ID), nil
 		}
 		config := &genai.ClientConfig{APIKey: key, Backend: genai.BackendGeminiAPI, HTTPClient: llm.VendorHTTPClient()}
@@ -240,6 +240,12 @@ func buildAdapter(m *proxydb.Model, key string) (llm.ClientAdapter, error) {
 	default:
 		return nil, fmt.Errorf("unknown vendor %q", m.Vendor)
 	}
+}
+
+// IsGeminiDecisionModel reports a google model served by the Decisions API:
+// a judge whose id names a decision model (gemini-decision-1).
+func IsGeminiDecisionModel(m *proxydb.Model) bool {
+	return m.Vendor == VendorGoogle && HasCapability(m, CapabilityJudge) && strings.HasPrefix(m.ID, "gemini-decision")
 }
 
 // buildSystemOne builds a decision vendor's System One adapter from its profile.

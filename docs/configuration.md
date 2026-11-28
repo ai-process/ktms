@@ -164,7 +164,7 @@ ktms vendor-keys list
 | --- | --- | --- | --- |
 | `openai` | OpenAI | default | |
 | `anthropic` | Anthropic | default | |
-| `google` | Gemini | default | A model declaring `judge` (`gemini-decision-1`) is served by the Gemini Decisions API (v1beta, experimental); other models by `generateContent`. |
+| `google` | Gemini | default | A judge model whose id starts with `gemini-decision` (`gemini-decision-1`) is served by the Gemini Decisions API (v1beta, experimental) and only judges; other models by `generateContent`. |
 | `deepseek` | OpenAI-compatible | `https://api.deepseek.com` | |
 | `groq` | OpenAI-compatible | `https://api.groq.com/openai/v1` | |
 | `mistral` | OpenAI-compatible | `https://api.mistral.ai/v1` | |

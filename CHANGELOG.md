@@ -17,10 +17,14 @@ All notable changes to KTMS are listed here. The format follows
 - Judge media over one vendor's limits (image count, size, pixels, format) passes to the next judge in the chain,
   TypeSafe's included, instead of ending it; `bad_request` comes when no judge takes it. A name used twice still
   ends the chain. The rollout pre-check applies box-question limits too.
-- Gemini Decisions API (experimental): a `google` model declaring `judge` (`gemini-decision-1`) is served by
-  `POST /v1beta/decisions` with `x-goog-api-key`: the state and `state_media` (images, image URLs, audio, text) as
-  content blocks, noul criteria as `true_description`/`false_description`, usage from `total_input_tokens`. Box
-  questions and embeddings yield to the next model, and so does a safety block.
+- Gemini Decisions API (experimental): a `google` judge model whose id starts with `gemini-decision`
+  (`gemini-decision-1`) is served by `POST /v1beta/decisions` with `x-goog-api-key`: the state and `state_media`
+  (images, image URLs, audio, text) as content blocks, noul criteria as `true_description`/`false_description`, usage
+  from `total_input_tokens`. Other google models declaring `judge` keep yielding judgments, and a decision model
+  declaring `tts`, `image`, `embedding`, `translate` or `batch` is refused at apply. Box questions, embeddings and a
+  URL with no type known from `mime_type` or its extension yield to the next model, and so does a safety block, read
+  from the error's code, status or reason; a chain that ends on a safety block answers `content_blocked`
+  (FailedPrecondition) instead of `vendors_unavailable`.
 
 ### Fixed
 - TypeSafe judgments look for image names in the decoded text of the state, instructions and criteria: a name such as
